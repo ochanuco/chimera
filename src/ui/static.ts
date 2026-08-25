@@ -1,0 +1,549 @@
+// Static CSS/JS served by src/routes/assets.ts. Kept as plain strings (no
+// bundler asset pipeline) per the "no external CDN" constraint in docs/ui.md.
+
+export const styleCss = `
+:root {
+  color-scheme: dark;
+  --bg: #121214;
+  --bg-elevated: #1b1b1f;
+  --border: #2b2b31;
+  --text: #e8e8ec;
+  --text-dim: #97979f;
+  --accent: #7c9cf5;
+  --good: #5fbf7b;
+  --neutral: #b8ab5f;
+  --bad: #d4695f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.nav a { color: var(--text); font-weight: 600; }
+.nav a.brand { color: var(--accent); margin-right: 0.5rem; }
+
+.container { padding: 1.25rem; max-width: 1600px; margin: 0 auto; }
+
+h1, h2, h3 { font-weight: 600; }
+h1 { font-size: 1.4rem; }
+h2 { font-size: 1.1rem; margin-top: 2rem; }
+
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+.filter-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  gap: 0.25rem;
+}
+.filter-form input, .filter-form select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+}
+.filter-form .checkbox-field { flex-direction: row; align-items: center; gap: 0.4rem; }
+.filter-form button {
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.card .thumb-link { display: block; background: #000; }
+.card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; }
+.card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
+
+.rating-group { display: flex; gap: 0.25rem; }
+.rate-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 5px;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+.rate-btn[data-rating="good"].active { background: var(--good); color: #0c1a10; border-color: var(--good); }
+.rate-btn[data-rating="neutral"].active { background: var(--neutral); color: #1c1808; border-color: var(--neutral); }
+.rate-btn[data-rating="bad"].active { background: var(--bad); color: #200a08; border-color: var(--bad); }
+
+.bookmark-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+.bookmark-btn[data-bookmarked="true"] { opacity: 1; filter: none; }
+
+.tag-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.tag-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.tag-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.75rem; }
+
+.tag-add-form { display: flex; gap: 0.3rem; }
+.tag-add-form input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+  width: 7rem;
+}
+.tag-add-form button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.compare-check-row { display: flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; color: var(--text-dim); }
+
+.compare-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  padding: 0.7rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 20;
+}
+.compare-bar.hidden { display: none; }
+.compare-bar a.compare-go {
+  background: var(--accent);
+  color: #10131c;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-weight: 600;
+}
+
+.pagination { display: flex; gap: 1rem; align-items: center; margin: 1.5rem 0; }
+.pagination .disabled { color: var(--text-dim); pointer-events: none; }
+
+details.section {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.6rem;
+}
+details.section summary { cursor: pointer; font-weight: 600; }
+details.section .section-body { margin-top: 0.6rem; }
+
+.kv-table { border-collapse: collapse; width: 100%; }
+.kv-table td { padding: 0.2rem 0.5rem 0.2rem 0; vertical-align: top; font-size: 0.85rem; }
+.kv-table td:first-child { color: var(--text-dim); white-space: nowrap; }
+
+.gen-detail-hero { text-align: center; margin-bottom: 1rem; }
+.gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); }
+
+.note-form textarea {
+  width: 100%;
+  min-height: 5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: inherit;
+}
+.note-form button {
+  margin-top: 0.4rem;
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+.save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
+
+.batch-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.batch-row img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: #000; }
+.batch-row .batch-meta { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.batch-row .instruction-excerpt { color: var(--text-dim); font-size: 0.8rem; }
+
+.hidden { display: none !important; }
+
+.story-tree ul { list-style: none; padding-left: 1.4rem; border-left: 1px dashed var(--border); }
+.story-tree li { margin: 0.5rem 0; }
+.story-node { display: flex; align-items: center; gap: 0.6rem; }
+.story-node img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: #000; }
+.rel-edit-form { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
+.rel-edit-form input, .rel-edit-form textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.78rem;
+}
+
+.compare-columns { display: flex; gap: 1rem; flex-wrap: wrap; }
+.compare-col { flex: 1 1 220px; max-width: 320px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
+.compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; }
+.compare-col select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; }
+.instructions-box textarea {
+  width: 100%;
+  min-height: 6rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+.instructions-box button {
+  margin-top: 0.5rem;
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+}
+
+.empty-state { color: var(--text-dim); padding: 2rem 0; }
+.bookmark-section { margin-bottom: 2rem; }
+`;
+
+export const appJs = `
+(function () {
+  function qs(sel, root) { return (root || document).querySelector(sel); }
+  function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  async function api(url, method, body) {
+    const res = await fetch(url, {
+      method: method || 'GET',
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const data = await res.json();
+        if (data && data.error && data.error.message) message = data.error.message;
+      } catch (e) {}
+      throw new Error(message || ('request failed: ' + res.status));
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get('content-type') || '';
+    return ct.indexOf('application/json') !== -1 ? res.json() : null;
+  }
+
+  // --- Rating ---
+  function initRating() {
+    document.addEventListener('click', async function (ev) {
+      const btn = ev.target.closest('.rate-btn');
+      if (!btn) return;
+      const group = btn.closest('.rating-group');
+      const id = group.getAttribute('data-generation-id');
+      const current = group.getAttribute('data-current') || '';
+      const clicked = btn.getAttribute('data-rating');
+      const next = current === clicked ? null : clicked;
+      try {
+        await api('/api/v1/generations/' + id + '/rating', 'PUT', { rating: next });
+        group.setAttribute('data-current', next || '');
+        qsa('.rate-btn', group).forEach(function (b) {
+          b.classList.toggle('active', b.getAttribute('data-rating') === next);
+        });
+      } catch (e) {
+        alert('rating update failed: ' + e.message);
+      }
+    });
+  }
+
+  // --- Bookmark ---
+  function initBookmark() {
+    document.addEventListener('click', async function (ev) {
+      const btn = ev.target.closest('.bookmark-btn');
+      if (!btn) return;
+      const kind = btn.getAttribute('data-kind');
+      const id = btn.getAttribute('data-id');
+      const bookmarked = btn.getAttribute('data-bookmarked') === 'true';
+      const method = bookmarked ? 'DELETE' : 'PUT';
+      try {
+        await api('/api/v1/' + kind + '/' + id + '/bookmark', method);
+        btn.setAttribute('data-bookmarked', bookmarked ? 'false' : 'true');
+      } catch (e) {
+        alert('bookmark update failed: ' + e.message);
+      }
+    });
+  }
+
+  // --- Tag add ---
+  function initTagAdd() {
+    document.addEventListener('submit', async function (ev) {
+      const form = ev.target.closest('.tag-add-form');
+      if (!form) return;
+      ev.preventDefault();
+      const kind = form.getAttribute('data-kind');
+      const id = form.getAttribute('data-id');
+      const input = qs('input[name="name"]', form);
+      const name = (input.value || '').trim();
+      if (!name) return;
+      try {
+        const tag = await api('/api/v1/' + kind + '/' + id + '/tags', 'POST', { name: name, created_by: 'human' });
+        const container = form.parentElement.querySelector('.tag-chips');
+        if (container) {
+          const chip = document.createElement('span');
+          chip.className = 'tag-chip';
+          chip.setAttribute('data-tag-id', tag.id);
+          const label = document.createElement('span');
+          label.textContent = '#' + tag.name;
+          chip.appendChild(label);
+          if (form.hasAttribute('data-removable')) {
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'tag-remove-btn';
+            removeBtn.setAttribute('data-kind', kind);
+            removeBtn.setAttribute('data-id', id);
+            removeBtn.setAttribute('data-tag-id', tag.id);
+            removeBtn.textContent = '\\u00d7';
+            chip.appendChild(removeBtn);
+          }
+          container.appendChild(chip);
+        }
+        input.value = '';
+      } catch (e) {
+        alert('failed to add tag: ' + e.message);
+      }
+    });
+  }
+
+  // --- Tag remove ---
+  function initTagRemove() {
+    document.addEventListener('click', async function (ev) {
+      const btn = ev.target.closest('.tag-remove-btn');
+      if (!btn) return;
+      const kind = btn.getAttribute('data-kind');
+      const id = btn.getAttribute('data-id');
+      const tagId = btn.getAttribute('data-tag-id');
+      try {
+        await api('/api/v1/' + kind + '/' + id + '/tags/' + tagId, 'DELETE');
+        btn.closest('.tag-chip').remove();
+      } catch (e) {
+        alert('failed to remove tag: ' + e.message);
+      }
+    });
+  }
+
+  // --- Tag suggestions ---
+  function initTagSuggestions() {
+    document.addEventListener('input', async function (ev) {
+      const input = ev.target.closest('.tag-add-form input[name="name"]');
+      if (!input) return;
+      const q = input.value.trim();
+      if (!q) return;
+      try {
+        const data = await api('/api/v1/tags?q=' + encodeURIComponent(q));
+        const listId = input.getAttribute('list');
+        const list = listId ? document.getElementById(listId) : null;
+        if (list) {
+          list.innerHTML = '';
+          (data.items || []).forEach(function (t) {
+            const opt = document.createElement('option');
+            opt.value = t.name;
+            list.appendChild(opt);
+          });
+        }
+      } catch (e) {}
+    });
+  }
+
+  // --- Note editing ---
+  function initNoteForm() {
+    document.addEventListener('submit', async function (ev) {
+      const form = ev.target.closest('.note-form');
+      if (!form) return;
+      ev.preventDefault();
+      const kind = form.getAttribute('data-kind');
+      const id = form.getAttribute('data-id');
+      const textarea = qs('textarea[name="note"]', form);
+      const status = qs('.save-status', form);
+      try {
+        await api('/api/v1/' + kind + '/' + id, 'PATCH', { note: textarea.value });
+        if (status) {
+          status.textContent = 'saved';
+          setTimeout(function () { status.textContent = ''; }, 1500);
+        }
+      } catch (e) {
+        if (status) status.textContent = 'failed: ' + e.message;
+      }
+    });
+  }
+
+  // --- Compare selection bar ---
+  function initCompareBar() {
+    const bar = document.getElementById('compare-bar');
+    if (!bar) return;
+    function update() {
+      const checked = qsa('.compare-check:checked').map(function (c) { return c.value; });
+      if (checked.length > 0) {
+        bar.classList.remove('hidden');
+        qs('#compare-count', bar).textContent = 'Compare (' + checked.length + ')';
+        qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + checked.slice(0, 9).join(','));
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+    document.addEventListener('change', function (ev) {
+      if (ev.target.classList && ev.target.classList.contains('compare-check')) update();
+    });
+    update();
+  }
+
+  // --- Story relation inline edit ---
+  function initStoryRelationEdit() {
+    document.addEventListener('click', function (ev) {
+      const btn = ev.target.closest('.rel-edit-toggle');
+      if (!btn) return;
+      const targetId = btn.getAttribute('data-target');
+      const form = document.getElementById(targetId);
+      if (form) form.classList.toggle('hidden');
+    });
+    document.addEventListener('submit', async function (ev) {
+      const form = ev.target.closest('.rel-edit-form');
+      if (!form) return;
+      ev.preventDefault();
+      const storyId = form.getAttribute('data-story-id');
+      const relationId = form.getAttribute('data-relation-id');
+      const label = qs('input[name="label"]', form).value;
+      const description = qs('textarea[name="description"]', form).value;
+      try {
+        await api('/api/v1/stories/' + storyId + '/relations/' + relationId, 'PATCH', { label: label, description: description });
+        const display = document.querySelector('.rel-label-display[data-relation-id="' + relationId + '"]');
+        if (display) display.textContent = label || '(no label)';
+        form.classList.add('hidden');
+      } catch (e) {
+        alert('failed to update relation: ' + e.message);
+      }
+    });
+  }
+
+  // --- Compare page: build instructions text ---
+  function initCompareBuilder() {
+    const box = document.getElementById('compare-page');
+    if (!box) return;
+    const output = document.getElementById('instructions-output');
+    function build() {
+      const lines = [];
+      qsa('.aspect-select', box).forEach(function (sel) {
+        if (!sel.value) return;
+        const shortId = sel.getAttribute('data-short-id');
+        lines.push(window.location.origin + '/g/' + shortId + ' \\u306e ' + sel.value);
+      });
+      if (lines.length > 0) lines.push('\\u3092\\u63a1\\u7528\\u3057\\u3066\\u518d\\u751f\\u6210');
+      if (output) output.value = lines.join('\\n');
+    }
+    qsa('.aspect-select', box).forEach(function (sel) {
+      sel.addEventListener('change', build);
+    });
+    build();
+    const copyBtn = document.getElementById('copy-instructions-btn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async function () {
+        try {
+          await navigator.clipboard.writeText(output.value);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+        } catch (e) {
+          output.select();
+          document.execCommand('copy');
+        }
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initRating();
+    initBookmark();
+    initTagAdd();
+    initTagRemove();
+    initTagSuggestions();
+    initNoteForm();
+    initCompareBar();
+    initStoryRelationEdit();
+    initCompareBuilder();
+  });
+})();
+`;
