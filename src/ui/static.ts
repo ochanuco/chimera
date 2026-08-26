@@ -272,6 +272,12 @@ details.section .section-body { margin-top: 0.6rem; }
   .detail-right { font-size: 0.85rem; }
   .detail-right h1 { font-size: 1.15rem; margin: 0 0 0.5rem; }
   .detail-right details.section { padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; }
+
+  /* 固定配置の compare バー表示中はペイン末尾がバーに隠れるため、バー高さ分の余白を足す */
+  .detail-layout:has(~ #compare-bar:not(.hidden)) .detail-left,
+  .detail-layout:has(~ #compare-bar:not(.hidden)) .detail-right {
+    padding-bottom: 3.5rem;
+  }
 }
 
 .note-form textarea {
