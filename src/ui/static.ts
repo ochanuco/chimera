@@ -935,3 +935,15 @@ export const appJs = `
   });
 })();
 `;
+
+// content hash (FNV-1a) — アセット URL の ?v= に使い、デプロイごとに
+// ブラウザキャッシュを確実に破棄する
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+export const assetVersion = fnv1a(styleCss + appJs);
