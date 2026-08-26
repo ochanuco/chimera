@@ -22,10 +22,10 @@ export interface GraphEdgeData {
 
 const IMG_SIZE = 120;
 
-/** Cubic bezier from a node's right edge to another node's left edge. */
+/** Cubic bezier from a node's bottom edge down to another node's top edge. */
 function edgePath(sx: number, sy: number, tx: number, ty: number): string {
-  const pull = Math.max(Math.abs(tx - sx) / 2, 50);
-  return `M ${sx} ${sy} C ${sx + pull} ${sy}, ${tx - pull} ${ty}, ${tx} ${ty}`;
+  const pull = Math.max(Math.abs(ty - sy) / 2, 50);
+  return `M ${sx} ${sy} C ${sx} ${sy + pull}, ${tx} ${ty - pull}, ${tx} ${ty}`;
 }
 
 export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: GraphEdgeData[] }) {
@@ -74,16 +74,16 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
               const s = layout.positions.get(e.source_batch_id);
               const t = layout.positions.get(e.target_batch_id);
               if (!s || !t) return null;
-              const sx = s.x + NODE_WIDTH;
-              const sy = s.y + NODE_HEIGHT / 2;
-              const tx = t.x;
-              const ty = t.y + NODE_HEIGHT / 2;
+              const sx = s.x + NODE_WIDTH / 2;
+              const sy = s.y + NODE_HEIGHT;
+              const tx = t.x + NODE_WIDTH / 2;
+              const ty = t.y;
               const mx = (sx + tx) / 2;
               const my = (sy + ty) / 2;
               return (
                 <g class={`graph-edge edge-${e.type}`}>
                   <path d={edgePath(sx, sy, tx, ty)} />
-                  <text x={mx} y={my - 4} text-anchor="middle">
+                  <text x={mx + 6} y={my} text-anchor="start">
                     {e.label}
                   </text>
                 </g>
