@@ -1,20 +1,8 @@
 # chimera — ComfyUI Generation Manager
 
-ComfyUI で生成した画像を、単なる置き場ではなく生成探索の provenance・Story・評価・semantic 情報つきで永続管理する Web GUI / Management API。Cloudflare Workers + D1 + R2 で動く。
+ComfyUI で生成した画像を、単なる置き場ではなく生成探索の provenance・Story・評価・semantic 情報つきで永続管理する Web GUI / Management API。
 
 設計ドキュメントは [docs/](docs/README.md) が正本。
-
-## 本番環境
-
-- URL: https://chimera.chanu.co （Web GUI / API 同一ホスト）
-- 認証: Cloudflare Access。ブラウザは Access ログイン、スクリプトは Service Token をヘッダーに付与する
-
-```
-CF-Access-Client-Id: <client id>
-CF-Access-Client-Secret: <client secret>
-```
-
-Service Token は 1Password の `chimera-claude-agent` に保管。Git にコミットしない。
 
 ## 使い方
 
