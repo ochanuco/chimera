@@ -275,4 +275,70 @@ describe('Web GUI pages', () => {
     expect(body).toContain('id="graph-svg"');
     expect(body).toContain('graph-viewport');
   });
+
+  it('GET /graph?story= shows only the Batches connected to that Story', async () => {
+    const b1 = await createBatch();
+    const b2 = await createBatch();
+    const other = await createBatch();
+    const story = await postJson<{ id: string }>('/api/v1/stories', {
+      name: `graph-scope-story-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
+      source_batch_id: b1.body.id,
+      target_batch_id: b2.body.id,
+      label: 'continues',
+    });
+
+    const res = await req(`/graph?story=${story.body.id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(b1.body.short_id);
+    expect(body).toContain(b2.body.short_id);
+    expect(body).not.toContain(other.body.short_id);
+  });
+
+  it('GET /graph?root= shows only the ancestor/descendant subgraph of that Batch', async () => {
+    const a = await createBatch();
+    const b = await createBatch({ refinement: { source_batch_id: a.body.id, actor: 'human', reason: 'retry' } });
+    const c = await createBatch({ refinement: { source_batch_id: b.body.id, actor: 'human', reason: 'retry' } });
+    const unrelated = await createBatch();
+
+    const res = await req(`/graph?root=${b.body.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(a.body.short_id);
+    expect(body).toContain(b.body.short_id);
+    expect(body).toContain(c.body.short_id);
+    expect(body).not.toContain(unrelated.body.short_id);
+  });
+
+  it('GET /graph?root= with an unknown Batch shows a "Batch not found" message', async () => {
+    await createBatch();
+    const res = await req('/graph?root=doesnotexist');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('Batch not found: doesnotexist');
+  });
+
+  it('GET /graph?all=1 shows every Batch regardless of connectivity', async () => {
+    const isolatedOld = await createBatch();
+    const isolatedNew = await createBatch();
+
+    const res = await req('/graph?all=1');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(isolatedOld.body.short_id);
+    expect(body).toContain(isolatedNew.body.short_id);
+  });
+
+  it('GET /graph with no query params defaults to the Active tree (connected component of the newest Batch)', async () => {
+    const isolatedOld = await createBatch();
+    const isolatedNew = await createBatch();
+
+    const res = await req('/graph');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(isolatedNew.body.short_id);
+    expect(body).not.toContain(isolatedOld.body.short_id);
+  });
 });

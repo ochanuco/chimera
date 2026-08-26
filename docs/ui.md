@@ -258,7 +258,8 @@ Reference（青）エッジは、参照元Generationのサムネイルが画面�
 
 ナビゲーションはコンテキストメニュー経由のみです。Batchヘッダーの左クリックは何も起きません（ページ遷移なし）。Generationサムネイルの左クリックはCompare選択のトグルです（こちらもページ遷移なし）。1件以上選択すると画面下部にCompareバーが現れ、`/compare?ids=...`
 へリンクします（Galleryのcompareバーと同じ仕組み）。Generationサムネイル、またはBatchヘッダー/枠を右クリックするとコンテキストメニューが開き、「Copy
-ID」「Copy URL」「Open detail」（`/g/{short_id}`または`/b/{short_id}`を新規タブで開く）、Generationの場合はさらに「Add/Remove
+ID」「Copy URL」「Open detail」（`/g/{short_id}`または`/b/{short_id}`を新規タブで開く）、「Show
+subgraph from here」（対象Batchを起点にrootスコープへ遷移）、Generationの場合はさらに「Add/Remove
 from compare」のトグルを提供します。
 
 パン/ズームはvanilla JSでSVGのviewBoxを操作します。JS
@@ -266,7 +267,27 @@ from compare」のトグルを提供します。
 
 サイクル（Story等が過去Batchに戻るケース）を検出した場合、そのエッジは描画は維持しつつlayer計算からのみ除外します。
 
-Batchが1件も無い場合はempty-stateを表示します。
+### 表示スコープ
+
+Batch数が増えるとレイアウト計算・レンダリングが重くなるため、表示範囲を絞るスコープを持ちます。白紙スタートは作らず、無指定でも必ず何かを表示します。
+
+決定優先順はURLクエリパラメータ、localStorageの復元値、サーバー側デフォルトの順です。
+
+``` text
+?story=<story_id>  そのStoryのStoryRelationに現れるBatchのみ
+?root=<short_id>   指定Batchの祖先+子孫（3種エッジすべてを辿り、有向に到達可能な集合）+自身
+?all=1             全Batch（従来表示）
+（無指定）          Active tree: created_atが最新のBatchを含む連結成分（エッジを無向として辿る）
+```
+
+凡例の近くにセレクタ（`Active tree` / `All` / Story一覧 /
+root絞り込み中のみ動的に現れる`Subgraph: <short_id>`）と、現在のスコープ名と表示件数（例:
+`Active tree · 12 batches`）を表示します。セレクタの変更・コンテキストメニューの「Show subgraph
+from here」はどちらも遷移前にlocalStorage（キー`chimera.graphScope`）へ選択したクエリ文字列を保存し、次回`/graph`をクエリ無しで開いたときにその保存値へ自動的にリダイレクトします（`Active
+tree`を選び直すと保存値は削除されます）。
+
+`root`で指定したBatchが存在しない場合はempty-stateに「Batch not found:
+<値>」を表示します。Batchが1件も無い場合も同様にempty-stateを表示します。
 
 ## Bookmarks
 
