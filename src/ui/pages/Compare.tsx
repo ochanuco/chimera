@@ -22,6 +22,9 @@ export interface CompareItem {
   image_url: string;
   rating: 'bad' | 'neutral' | 'good' | null;
   character_name: string | null;
+  batch_short_id: string | null;
+  seed: number | null;
+  created_at: string;
   semantic: CompareSemantic | null;
 }
 
@@ -52,11 +55,21 @@ function buildRow(label: string, items: CompareItem[], extract: (s: CompareSeman
   return { label, values, diff };
 }
 
+/** Builds a row from generation-level facts, available regardless of semantic analysis. */
+function buildBasicRow(label: string, items: CompareItem[], extract: (item: CompareItem) => string | null): CompareRow {
+  const values = items.map((item) => extract(item) ?? NO_VALUE);
+  const diff = new Set(values).size > 1;
+  return { label, values, diff };
+}
+
 const CORE_FIELDS = ['pose', 'expression', 'outfit', 'style', 'composition'] as const;
 
 export function ComparePage({ items, missingIds, warning }: { items: CompareItem[]; missingIds: string[]; warning?: string }) {
   const rows: CompareRow[] = [];
   if (items.length >= 2) {
+    rows.push(buildBasicRow('batch', items, (i) => i.batch_short_id));
+    rows.push(buildBasicRow('seed', items, (i) => (i.seed != null ? String(i.seed) : null)));
+    rows.push(buildBasicRow('created', items, (i) => i.created_at.slice(0, 10)));
     rows.push(buildRow('summary', items, (s) => s.summary));
     for (const field of CORE_FIELDS) {
       rows.push(buildRow(field, items, (s) => s.core[field]));
@@ -102,6 +115,13 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
               </div>
             ))}
           </div>
+
+          {items.some((item) => !item.semantic) ? (
+            <p class="empty-state">
+              Some generations are not semantically analyzed yet — their semantic rows show "(not analyzed)". Run
+              semantic analysis (UC-11) to compare them.
+            </p>
+          ) : null}
 
           <div class="compare-table-wrap">
             <table class="compare-table">

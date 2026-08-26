@@ -203,10 +203,10 @@ pages.get('/compare', async (c) => {
     warning = 'Select at least 2 generations to compare.';
   }
 
-  const items: CompareItem[] = [];
   const missingIds: string[] = [];
   const origin = new URL(c.req.url).origin;
 
+  const rows: { row: GenerationRow; characterName: string | null }[] = [];
   for (const id of idsToUse) {
     const row = await getGenerationByIdOrShortId(c.env.DB, id);
     if (!row) {
@@ -216,15 +216,24 @@ pages.get('/compare', async (c) => {
     const character = row.character_id
       ? await c.env.DB.prepare('SELECT name FROM characters WHERE id = ?').bind(row.character_id).first<{ name: string }>()
       : null;
-
-    items.push({
-      short_id: row.short_id,
-      image_url: generationImageUrl(origin, row.short_id),
-      rating: row.rating,
-      character_name: character?.name ?? null,
-      semantic: parseCompareSemantic(row),
-    });
+    rows.push({ row, characterName: character?.name ?? null });
   }
+
+  const batchShortIds = await resolveBatchShortIds(
+    c.env.DB,
+    rows.map(({ row }) => row.batch_id),
+  );
+
+  const items: CompareItem[] = rows.map(({ row, characterName }) => ({
+    short_id: row.short_id,
+    image_url: generationImageUrl(origin, row.short_id),
+    rating: row.rating,
+    character_name: characterName,
+    batch_short_id: batchShortIds.get(row.batch_id) ?? null,
+    seed: row.seed,
+    created_at: row.created_at,
+    semantic: parseCompareSemantic(row),
+  }));
 
   return c.html(<ComparePage items={items} missingIds={missingIds} warning={warning} />);
 });
