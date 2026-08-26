@@ -40,14 +40,6 @@ batches.post('/', async (c) => {
   const body = createBatchSchema.parse(await c.req.json());
   const db = c.env.DB;
 
-  const existingBatch = await db
-    .prepare('SELECT * FROM batches WHERE idempotency_key = ?')
-    .bind(body.idempotency_key)
-    .first<BatchRow>();
-  if (existingBatch) {
-    return c.json(serializeBatch(existingBatch), 200);
-  }
-
   // Resolve and validate every referenced entity before writing anything.
   if (body.experiment_id) {
     const experiment = await db
@@ -114,7 +106,8 @@ batches.post('/', async (c) => {
       .prepare(
         `INSERT INTO batches (id, short_id, experiment_id, raw_instruction, recipe, prompt, negative_prompt,
           parameters_json, git_commit, git_dirty, note, bookmark, status, idempotency_key, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
       )
       .bind(
         row.id,
@@ -188,9 +181,18 @@ batches.post('/', async (c) => {
     }
   }
 
-  await db.batch(statements);
+  const results = await db.batch(statements);
 
-  return c.json(serializeBatch(row), 201);
+  // Check if the batch INSERT succeeded (created new) or conflicted (already existed)
+  const created = results[0]?.meta?.changes === 1;
+  const finalBatch = created
+    ? row
+    : await db
+        .prepare('SELECT * FROM batches WHERE idempotency_key = ?')
+        .bind(body.idempotency_key)
+        .first<BatchRow>();
+
+  return c.json(serializeBatch(finalBatch!), created ? 201 : 200);
 });
 
 batches.patch('/:id', async (c) => {
@@ -235,6 +237,9 @@ batches.get('/', async (c) => {
   const conditions: string[] = [];
   const binds: unknown[] = [];
   if (query.bookmark !== undefined) {
+    if (query.bookmark !== 'true' && query.bookmark !== 'false') {
+      throw badRequest('bookmark query param must be "true" or "false"');
+    }
     conditions.push('b.bookmark = ?');
     binds.push(query.bookmark === 'true' ? 1 : 0);
   }
@@ -262,7 +267,7 @@ batches.get('/', async (c) => {
     LEFT JOIN counts ON counts.batch_id = b.id
     LEFT JOIN firsts ON firsts.batch_id = b.id
     ${where}
-    ORDER BY b.created_at DESC
+    ORDER BY b.created_at DESC, b.id
     LIMIT ? OFFSET ?
   `;
 
@@ -383,31 +388,32 @@ batches.post('/:batchId/jobs', async (c) => {
   const db = c.env.DB;
   const batch = await getBatchOr404(db, c.req.param('batchId'));
 
-  const existing = await db
-    .prepare('SELECT * FROM comfy_jobs WHERE idempotency_key = ?')
-    .bind(body.idempotency_key)
-    .first<ComfyJobRow>();
-  if (existing) {
+  const id = uuidv7();
+  const now = nowIso();
+  const result = await db
+    .prepare(
+      'INSERT INTO comfy_jobs (id, batch_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING',
+    )
+    .bind(id, batch.id, body.seed, body.index, 'created', body.idempotency_key, now, now)
+    .run();
+
+  const created = result.meta.changes === 1;
+  if (!created) {
+    const existing = await db
+      .prepare('SELECT * FROM comfy_jobs WHERE idempotency_key = ?')
+      .bind(body.idempotency_key)
+      .first<ComfyJobRow>();
     return c.json(
       {
-        id: existing.id,
-        batch_id: existing.batch_id,
-        seed: existing.seed,
-        index: existing.job_index,
-        status: existing.status,
+        id: existing!.id,
+        batch_id: existing!.batch_id,
+        seed: existing!.seed,
+        index: existing!.job_index,
+        status: existing!.status,
       },
       200,
     );
   }
-
-  const id = uuidv7();
-  const now = nowIso();
-  await db
-    .prepare(
-      'INSERT INTO comfy_jobs (id, batch_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)',
-    )
-    .bind(id, batch.id, body.seed, body.index, 'created', body.idempotency_key, now, now)
-    .run();
 
   return c.json({ id, batch_id: batch.id, seed: body.seed, index: body.index, status: 'created' }, 201);
 });

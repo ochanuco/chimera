@@ -59,8 +59,16 @@ describe('Generation search', () => {
   it('filters by created_at date range', async () => {
     const { generation } = await createGeneration();
 
-    const today = new Date().toISOString().slice(0, 10);
-    const inRange = await getJson<SearchResult>(`/api/v1/generations?from=${today}&to=${today}&limit=200`);
+    // Use yesterday to tomorrow to avoid timezone issues
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const tomorrow = new Date(now);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const from = yesterday.toISOString().slice(0, 10);
+    const to = tomorrow.toISOString().slice(0, 10);
+
+    const inRange = await getJson<SearchResult>(`/api/v1/generations?from=${from}&to=${to}&limit=200`);
     expect(inRange.body.items.map((g) => g.id)).toContain(generation.id);
 
     const outOfRange = await getJson<SearchResult>('/api/v1/generations?from=2000-01-01&to=2000-01-02');

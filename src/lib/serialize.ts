@@ -1,5 +1,5 @@
 import { toBool } from './db';
-import type { BatchRow, GenerationRow, StoryRow } from '../types';
+import type { BatchRow, GenerationRow, StoryRow, StoryRelationRow } from '../types';
 
 export function canonicalGenerationUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}`;
@@ -61,5 +61,20 @@ export function serializeStory(row: StoryRow) {
     note: row.note,
     bookmark: toBool(row.bookmark),
     created_at: row.created_at,
+  };
+}
+
+export function serializeStoryRelation(row: StoryRelationRow) {
+  return {
+    id: row.id,
+    story_id: row.story_id,
+    source_batch_id: row.source_batch_id,
+    target_batch_id: row.target_batch_id,
+    label: row.label,
+    description: row.description,
+    raw_instruction: row.raw_instruction,
+    generated_by: row.generated_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }

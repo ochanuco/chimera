@@ -94,7 +94,7 @@ generations.get('/', async (c) => {
 
   const { results } = await db
     .prepare(
-      `SELECT g.*, ch.name AS character_name, GROUP_CONCAT(t.name) AS tag_names
+      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json
        FROM generations g
        LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
@@ -105,22 +105,26 @@ generations.get('/', async (c) => {
        LIMIT ? OFFSET ?`,
     )
     .bind(...binds, limit, offset)
-    .all<GenerationRow & { character_name: string | null; tag_names: string | null }>();
+    .all<GenerationRow & { character_name: string | null; tag_names_json: string }>();
 
-  const items = (results ?? []).map((r) => ({
-    id: r.id,
-    short_id: r.short_id,
-    canonical_url: canonicalGenerationUrl(org, r.short_id),
-    image_url: generationImageUrl(org, r.short_id),
-    thumbnail_url: generationImageUrl(org, r.short_id),
-    rating: r.rating,
-    bookmark: toBool(r.bookmark),
-    summary: r.summary,
-    character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
-    tags: r.tag_names ? r.tag_names.split(',') : [],
-    created_at: r.created_at,
-    batch_id: r.batch_id,
-  }));
+  const items = (results ?? []).map((r) => {
+    const tagArray = r.tag_names_json ? JSON.parse(r.tag_names_json) : [];
+    const tags = Array.isArray(tagArray) ? tagArray.filter((t) => t !== null) : [];
+    return {
+      id: r.id,
+      short_id: r.short_id,
+      canonical_url: canonicalGenerationUrl(org, r.short_id),
+      image_url: generationImageUrl(org, r.short_id),
+      thumbnail_url: generationImageUrl(org, r.short_id),
+      rating: r.rating,
+      bookmark: toBool(r.bookmark),
+      summary: r.summary,
+      character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
+      tags,
+      created_at: r.created_at,
+      batch_id: r.batch_id,
+    };
+  });
 
   return c.json({ items, total: countRow?.total ?? 0 });
 });

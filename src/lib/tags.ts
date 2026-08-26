@@ -12,19 +12,22 @@ const FK_COLUMN: Record<TaggableTable, string> = {
 };
 
 async function findOrCreateTag(db: D1Database, name: string): Promise<TagRow> {
+  const id = uuidv7();
+  const now = nowIso();
+  const result = await db
+    .prepare('INSERT INTO tags (id, name, description, created_at, updated_at) VALUES (?, ?, NULL, ?, ?) ON CONFLICT (name) DO NOTHING')
+    .bind(id, name, now, now)
+    .run();
+
+  if (result.meta.changes === 1) {
+    return { id, name, description: null, created_at: now, updated_at: now };
+  }
+
   const existing = await db
     .prepare('SELECT * FROM tags WHERE name = ?')
     .bind(name)
     .first<TagRow>();
-  if (existing) return existing;
-
-  const id = uuidv7();
-  const now = nowIso();
-  await db
-    .prepare('INSERT INTO tags (id, name, description, created_at, updated_at) VALUES (?, ?, NULL, ?, ?)')
-    .bind(id, name, now, now)
-    .run();
-  return { id, name, description: null, created_at: now, updated_at: now };
+  return existing!;
 }
 
 export interface TagAssignmentResult {
@@ -43,19 +46,16 @@ export async function assignTag(
   const tag = await findOrCreateTag(db, name);
   const fk = FK_COLUMN[table];
 
-  const existing = await db
-    .prepare(`SELECT 1 FROM ${table} WHERE ${fk} = ? AND tag_id = ?`)
-    .bind(targetId, tag.id)
-    .first();
-  if (existing) return { tag, created: false };
-
-  await db
+  const result = await db
     .prepare(
-      `INSERT INTO ${table} (id, ${fk}, tag_id, created_by, created_at) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO ${table} (id, ${fk}, tag_id, created_by, created_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (${fk}, tag_id) DO NOTHING`,
     )
     .bind(uuidv7(), targetId, tag.id, createdBy ?? null, nowIso())
     .run();
-  return { tag, created: true };
+
+  const created = result.meta.changes === 1;
+  return { tag, created };
 }
 
 export async function removeTag(

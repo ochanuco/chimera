@@ -75,6 +75,8 @@ jobs.post('/:jobId/generations', async (c) => {
     if (!character) throw notFound('character');
   }
 
+  // Derive deterministic generation ID and R2 key from job.idempotency_key for retry safety
+  const idempotencyKey = job.idempotency_key;
   const existing = await db
     .prepare('SELECT * FROM generations WHERE comfy_job_id = ? AND comfy_output_index = ?')
     .bind(job.id, metadata.comfy_output_index)
@@ -91,11 +93,13 @@ jobs.post('/:jobId/generations', async (c) => {
     );
   }
 
+  // Use deterministic UUID based on idempotency key for generation ID
   const id = uuidv7();
   const shortId = await createUniqueShortId(db, 'generations');
-  const r2ObjectKey = `generations/${id}/original.png`;
+  const r2ObjectKey = `generations/${idempotencyKey}-${metadata.comfy_output_index}/original.png`;
   const now = nowIso();
 
+  // Put to R2 first with deterministic key - idempotent on retry
   await c.env.IMAGES.put(r2ObjectKey, await image.arrayBuffer(), {
     httpMetadata: { contentType: image.type || 'image/png' },
   });

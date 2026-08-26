@@ -14,7 +14,7 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
       {warning ? <p class="empty-state">{warning}</p> : null}
       {missingIds.length > 0 ? <p class="empty-state">Not found: {missingIds.join(', ')}</p> : null}
 
-      {items.length === 0 ? (
+      {items.length < 2 ? (
         <p class="empty-state">Select 2–9 generations from the Gallery to compare.</p>
       ) : (
         <div id="compare-page">

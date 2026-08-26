@@ -100,17 +100,19 @@ export function GalleryPage({
         </div>
       )}
 
-      <div class="pagination">
-        <a href={hasPrev ? pageLink(filters, Math.max(0, filters.offset - filters.limit)) : '#'} class={hasPrev ? '' : 'disabled'}>
-          ← Prev
-        </a>
-        <span>
-          {filters.offset + 1}–{Math.min(filters.offset + filters.limit, total)} of {total}
-        </span>
-        <a href={hasNext ? pageLink(filters, filters.offset + filters.limit) : '#'} class={hasNext ? '' : 'disabled'}>
-          Next →
-        </a>
-      </div>
+      {total > 0 ? (
+        <div class="pagination">
+          <a href={hasPrev ? pageLink(filters, Math.max(0, filters.offset - filters.limit)) : '#'} class={hasPrev ? '' : 'disabled'}>
+            ← Prev
+          </a>
+          <span>
+            {filters.offset + 1}–{Math.min(filters.offset + filters.limit, total)} of {total}
+          </span>
+          <a href={hasNext ? pageLink(filters, filters.offset + filters.limit) : '#'} class={hasNext ? '' : 'disabled'}>
+            Next →
+          </a>
+        </div>
+      ) : null}
 
       <div id="compare-bar" class="compare-bar hidden">
         <span id="compare-count">Compare (0)</span>

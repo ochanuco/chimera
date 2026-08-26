@@ -8,6 +8,22 @@ describe('Web GUI pages', () => {
     expect(res.headers.get('location')).toContain('/gallery');
   });
 
+  it('GET /style.css returns CSS with correct Content-Type', async () => {
+    const res = await req('/style.css');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/css');
+    const body = await res.text();
+    expect(body.length).toBeGreaterThan(0);
+  });
+
+  it('GET /app.js returns JavaScript with correct Content-Type', async () => {
+    const res = await req('/app.js');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('application/javascript');
+    const body = await res.text();
+    expect(body.length).toBeGreaterThan(0);
+  });
+
   it('GET /gallery returns 200 HTML including a registered generation short_id', async () => {
     const { generation } = await createGeneration();
     const res = await req('/gallery?limit=200');
@@ -44,7 +60,7 @@ describe('Web GUI pages', () => {
   });
 
   it('GET /stories/{id} includes the relation label', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: 'ui-story' });
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();
     const b2 = await createBatch();
     await postJson(`/api/v1/stories/${story.body.id}/relations`, {

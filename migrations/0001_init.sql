@@ -105,7 +105,7 @@ CREATE TABLE tags (
 
 CREATE TABLE generation_tags (
   id TEXT PRIMARY KEY,
-  generation_id TEXT NOT NULL REFERENCES generations(id),
+  generation_id TEXT NOT NULL REFERENCES generations(id) ON DELETE CASCADE,
   tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   created_by TEXT CHECK (created_by IN ('human', 'claude')),
   created_at TEXT NOT NULL,
@@ -116,7 +116,7 @@ CREATE INDEX idx_generation_tags_tag_id ON generation_tags(tag_id);
 
 CREATE TABLE batch_tags (
   id TEXT PRIMARY KEY,
-  batch_id TEXT NOT NULL REFERENCES batches(id),
+  batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
   tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   created_by TEXT CHECK (created_by IN ('human', 'claude')),
   created_at TEXT NOT NULL,
@@ -127,7 +127,7 @@ CREATE INDEX idx_batch_tags_tag_id ON batch_tags(tag_id);
 
 CREATE TABLE story_tags (
   id TEXT PRIMARY KEY,
-  story_id TEXT NOT NULL REFERENCES stories(id),
+  story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
   tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   created_by TEXT CHECK (created_by IN ('human', 'claude')),
   created_at TEXT NOT NULL,
@@ -138,7 +138,7 @@ CREATE INDEX idx_story_tags_tag_id ON story_tags(tag_id);
 
 CREATE TABLE experiment_tags (
   id TEXT PRIMARY KEY,
-  experiment_id TEXT NOT NULL REFERENCES experiments(id),
+  experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
   tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   created_by TEXT CHECK (created_by IN ('human', 'claude')),
   created_at TEXT NOT NULL,
@@ -149,8 +149,8 @@ CREATE INDEX idx_experiment_tags_tag_id ON experiment_tags(tag_id);
 
 CREATE TABLE batch_references (
   id TEXT PRIMARY KEY,
-  source_generation_id TEXT NOT NULL REFERENCES generations(id),
-  target_batch_id TEXT NOT NULL REFERENCES batches(id),
+  source_generation_id TEXT NOT NULL REFERENCES generations(id) ON DELETE CASCADE,
+  target_batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
   purpose TEXT,
   aspect TEXT,
   instruction TEXT,
@@ -162,8 +162,8 @@ CREATE INDEX idx_batch_references_target_batch_id ON batch_references(target_bat
 
 CREATE TABLE batch_relations (
   id TEXT PRIMARY KEY,
-  source_batch_id TEXT NOT NULL REFERENCES batches(id),
-  target_batch_id TEXT NOT NULL REFERENCES batches(id),
+  source_batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+  target_batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
   type TEXT,
   actor TEXT NOT NULL CHECK (actor IN ('human', 'claude')),
   reason TEXT,
@@ -176,9 +176,9 @@ CREATE INDEX idx_batch_relations_target_batch_id ON batch_relations(target_batch
 
 CREATE TABLE story_relations (
   id TEXT PRIMARY KEY,
-  story_id TEXT NOT NULL REFERENCES stories(id),
-  source_batch_id TEXT NOT NULL REFERENCES batches(id),
-  target_batch_id TEXT NOT NULL REFERENCES batches(id),
+  story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  source_batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+  target_batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
   raw_instruction TEXT,
   label TEXT,
   description TEXT,

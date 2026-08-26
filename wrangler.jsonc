@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "chimera",
-      "database_id": "TBD",
+      "database_id": "TBD", // Must be replaced with the real D1 database ID before deployment
       "migrations_dir": "migrations"
     }
   ],

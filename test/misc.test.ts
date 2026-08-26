@@ -26,7 +26,7 @@ describe('Characters', () => {
 describe('Experiments', () => {
   it('supports create/list/get/patch', async () => {
     const created = await postJson<{ id: string; name: string }>('/api/v1/experiments', {
-      name: 'exp-1',
+      name: `exp-1-${crypto.randomUUID().slice(0, 8)}`,
       note: 'initial',
     });
     expect(created.status).toBe(201);
@@ -48,7 +48,7 @@ describe('Experiments', () => {
   });
 
   it('a batch can be attached to an experiment', async () => {
-    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: 'exp-batch' });
+    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-batch-${crypto.randomUUID().slice(0, 8)}` });
     const batch = await createBatch({ experiment_id: experiment.body.id });
     expect(batch.status).toBe(201);
     expect(batch.body).toMatchObject({ experiment_id: experiment.body.id });
@@ -57,7 +57,7 @@ describe('Experiments', () => {
 
 describe('Stories list', () => {
   it('reports batch_count for a story', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: 'count-story' });
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `count-story-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();
     const b2 = await createBatch();
     await postJson(`/api/v1/stories/${story.body.id}/relations`, {

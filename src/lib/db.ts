@@ -48,8 +48,8 @@ export function parsePagination(
 ): Pagination {
   const limitRaw = query.limit ? Number(query.limit) : defaultLimit;
   const offsetRaw = query.offset ? Number(query.offset) : 0;
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : defaultLimit;
-  const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+  const limit = Number.isSafeInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 200) : defaultLimit;
+  const offset = Number.isSafeInteger(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
   return { limit, offset };
 }
 

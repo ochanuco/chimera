@@ -11,7 +11,7 @@ import { nowIso, getBatchByIdOrShortId } from '../lib/db';
 import { assignTag, listTagsForTarget, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { notFound } from '../lib/errors';
-import { serializeBatch, serializeGenerationLight, serializeStory } from '../lib/serialize';
+import { serializeBatch, serializeGenerationLight, serializeStory, serializeStoryRelation } from '../lib/serialize';
 import type { AppEnv, BatchRow, GenerationRow, StoryRelationRow, StoryRow } from '../types';
 
 export const stories = new Hono<AppEnv>();
@@ -77,20 +77,54 @@ stories.get('/:id', async (c) => {
     new Set(relations.flatMap((r) => [r.source_batch_id, r.target_batch_id])),
   );
 
-  const batches = await Promise.all(
-    batchIds.map(async (batchId) => {
-      const batch = await db.prepare('SELECT * FROM batches WHERE id = ?').bind(batchId).first<BatchRow>();
+  if (batchIds.length === 0) {
+    const tags = await listTagsForTarget(db, 'story_tags', story.id);
+    return c.json({
+      ...serializeStory(story),
+      relations: [],
+      batches: [],
+      tags: tags.map((t) => t.name),
+    });
+  }
+
+  // Fetch all batches in one query
+  const placeholders = batchIds.map(() => '?').join(',');
+  const { results: batchRows } = await db
+    .prepare(`SELECT * FROM batches WHERE id IN (${placeholders})`)
+    .bind(...batchIds)
+    .all<BatchRow>();
+
+  // Fetch representative generations for all batches in one query
+  const { results: genRows } = await db
+    .prepare(
+      `SELECT * FROM (
+         SELECT g.*, ROW_NUMBER() OVER (PARTITION BY g.batch_id ORDER BY g.created_at ASC, g.id ASC) AS rn
+         FROM generations g
+         WHERE g.batch_id IN (${placeholders})
+       ) WHERE rn = 1`
+    )
+    .bind(...batchIds)
+    .all<GenerationRow>();
+
+  // Build lookup maps
+  const batchMap = new Map<string, BatchRow>();
+  (batchRows ?? []).forEach((b) => batchMap.set(b.id, b));
+
+  const genMap = new Map<string, GenerationRow>();
+  (genRows ?? []).forEach((g) => genMap.set(g.batch_id, g));
+
+  // Combine in original order
+  const batches = batchIds
+    .map((batchId) => {
+      const batch = batchMap.get(batchId);
       if (!batch) return null;
-      const representative = await db
-        .prepare('SELECT * FROM generations WHERE batch_id = ? ORDER BY created_at ASC, id ASC LIMIT 1')
-        .bind(batchId)
-        .first<GenerationRow>();
+      const representative = genMap.get(batchId);
       return {
         ...serializeBatch(batch),
         representative_generation: representative ? serializeGenerationLight(representative, org) : null,
       };
-    }),
-  );
+    })
+    .filter((b): b is NonNullable<typeof b> => b !== null);
 
   const tags = await listTagsForTarget(db, 'story_tags', story.id);
 
@@ -170,21 +204,20 @@ stories.post('/:storyId/relations', async (c) => {
     )
     .run();
 
-  return c.json(
-    {
-      id,
-      story_id: story.id,
-      source_batch_id: sourceBatch.id,
-      target_batch_id: targetBatch.id,
-      label: body.label ?? null,
-      description: body.description ?? null,
-      raw_instruction: body.raw_instruction ?? null,
-      generated_by: body.generated_by ?? null,
-      created_at: now,
-      updated_at: now,
-    },
-    201,
-  );
+  const created: StoryRelationRow = {
+    id,
+    story_id: story.id,
+    source_batch_id: sourceBatch.id,
+    target_batch_id: targetBatch.id,
+    label: body.label ?? null,
+    description: body.description ?? null,
+    raw_instruction: body.raw_instruction ?? null,
+    generated_by: body.generated_by ?? null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  return c.json(serializeStoryRelation(created), 201);
 });
 
 stories.patch('/:storyId/relations/:relationId', async (c) => {
@@ -218,7 +251,8 @@ stories.patch('/:storyId/relations/:relationId', async (c) => {
     .prepare('SELECT * FROM story_relations WHERE id = ?')
     .bind(relation.id)
     .first<StoryRelationRow>();
-  return c.json(updated);
+  if (!updated) throw notFound('story relation');
+  return c.json(serializeStoryRelation(updated));
 });
 
 stories.put('/:id/bookmark', async (c) => {

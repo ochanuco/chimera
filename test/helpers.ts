@@ -50,13 +50,23 @@ export async function createBatch(overrides: Record<string, unknown> = {}) {
   });
 }
 
+// Track next index per batch for default calls
+const batchIndexCounters = new Map<string, number>();
+
 export async function createJob(batchId: string, overrides: Record<string, unknown> = {}) {
+  let index = 0;
+  if (!('index' in overrides)) {
+    const current = batchIndexCounters.get(batchId) ?? 0;
+    index = current;
+    batchIndexCounters.set(batchId, current + 1);
+  }
+
   return postJson<{ id: string; batch_id: string; seed: number; index: number }>(
     `/api/v1/batches/${batchId}/jobs`,
     {
       idempotency_key: crypto.randomUUID(),
       seed: 123,
-      index: 0,
+      index,
       ...overrides,
     },
   );
@@ -93,12 +103,21 @@ export async function createGeneration(overrides: {
   metadata?: Record<string, unknown>;
 } = {}) {
   const batch = await createBatch(overrides.batchOverrides);
+  if (batch.status !== 201 && batch.status !== 200) {
+    throw new Error(`createBatch failed with status ${batch.status}: ${JSON.stringify(batch.body)}`);
+  }
   const job = await createJob(batch.body.id, overrides.jobOverrides);
+  if (job.status !== 201 && job.status !== 200) {
+    throw new Error(`createJob failed with status ${job.status}: ${JSON.stringify(job.body)}`);
+  }
   const ingest = await ingestGeneration(job.body.id, {
     seed: 123,
     original_filename: 'out_00001_.png',
     comfy_output_index: 0,
     ...overrides.metadata,
   });
+  if (ingest.status !== 201 && ingest.status !== 200) {
+    throw new Error(`ingestGeneration failed with status ${ingest.status}: ${JSON.stringify(ingest.body)}`);
+  }
   return { batch: batch.body, job: job.body, generation: ingest.body };
 }

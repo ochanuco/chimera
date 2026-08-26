@@ -19,21 +19,24 @@ characters.post('/', async (c) => {
   const body = createCharacterSchema.parse(await c.req.json());
   const db = c.env.DB;
 
-  const existing = await db
-    .prepare('SELECT * FROM characters WHERE name = ?')
-    .bind(body.name)
-    .first<CharacterRow>();
-  if (existing) throw conflict(`character with name '${body.name}' already exists`);
-
   const row: CharacterRow = {
     id: uuidv7(),
     name: body.name,
     aliases: body.aliases ? JSON.stringify(body.aliases) : null,
   };
-  await db
-    .prepare('INSERT INTO characters (id, name, aliases) VALUES (?, ?, ?)')
-    .bind(row.id, row.name, row.aliases)
-    .run();
+
+  try {
+    await db
+      .prepare('INSERT INTO characters (id, name, aliases) VALUES (?, ?, ?)')
+      .bind(row.id, row.name, row.aliases)
+      .run();
+  } catch (err) {
+    // Check if this is a unique constraint violation on name
+    if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+      throw conflict(`character with name '${body.name}' already exists`);
+    }
+    throw err;
+  }
 
   return c.json(serialize(row), 201);
 });

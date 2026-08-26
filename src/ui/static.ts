@@ -365,23 +365,26 @@ export const appJs = `
         const tag = await api('/api/v1/' + kind + '/' + id + '/tags', 'POST', { name: name, created_by: 'human' });
         const container = form.parentElement.querySelector('.tag-chips');
         if (container) {
-          const chip = document.createElement('span');
-          chip.className = 'tag-chip';
-          chip.setAttribute('data-tag-id', tag.id);
-          const label = document.createElement('span');
-          label.textContent = '#' + tag.name;
-          chip.appendChild(label);
-          if (form.hasAttribute('data-removable')) {
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'tag-remove-btn';
-            removeBtn.setAttribute('data-kind', kind);
-            removeBtn.setAttribute('data-id', id);
-            removeBtn.setAttribute('data-tag-id', tag.id);
-            removeBtn.textContent = '\\u00d7';
-            chip.appendChild(removeBtn);
+          const existingChip = container.querySelector('[data-tag-id="' + tag.id + '"]');
+          if (!existingChip) {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.setAttribute('data-tag-id', tag.id);
+            const label = document.createElement('span');
+            label.textContent = '#' + tag.name;
+            chip.appendChild(label);
+            if (form.hasAttribute('data-removable')) {
+              const removeBtn = document.createElement('button');
+              removeBtn.type = 'button';
+              removeBtn.className = 'tag-remove-btn';
+              removeBtn.setAttribute('data-kind', kind);
+              removeBtn.setAttribute('data-id', id);
+              removeBtn.setAttribute('data-tag-id', tag.id);
+              removeBtn.textContent = '\\u00d7';
+              chip.appendChild(removeBtn);
+            }
+            container.appendChild(chip);
           }
-          container.appendChild(chip);
         }
         input.value = '';
       } catch (e) {
@@ -409,24 +412,44 @@ export const appJs = `
 
   // --- Tag suggestions ---
   function initTagSuggestions() {
+    let debounceTimer = null;
+    let abortController = null;
     document.addEventListener('input', async function (ev) {
       const input = ev.target.closest('.tag-add-form input[name="name"]');
       if (!input) return;
       const q = input.value.trim();
+
+      // Clear previous timer
+      if (debounceTimer) clearTimeout(debounceTimer);
+      // Abort previous request
+      if (abortController) abortController.abort();
+
       if (!q) return;
-      try {
-        const data = await api('/api/v1/tags?q=' + encodeURIComponent(q));
-        const listId = input.getAttribute('list');
-        const list = listId ? document.getElementById(listId) : null;
-        if (list) {
-          list.innerHTML = '';
-          (data.items || []).forEach(function (t) {
-            const opt = document.createElement('option');
-            opt.value = t.name;
-            list.appendChild(opt);
+
+      debounceTimer = setTimeout(async function () {
+        abortController = new AbortController();
+        try {
+          const res = await fetch('/api/v1/tags?q=' + encodeURIComponent(q), {
+            signal: abortController.signal
           });
+          if (!res.ok) return;
+          const data = await res.json();
+          const listId = input.getAttribute('list');
+          const list = listId ? document.getElementById(listId) : null;
+          if (list) {
+            list.innerHTML = '';
+            (data.items || []).forEach(function (t) {
+              const opt = document.createElement('option');
+              opt.value = t.name;
+              list.appendChild(opt);
+            });
+          }
+        } catch (e) {
+          if (e.name !== 'AbortError') {
+            // Ignore abort errors, log others silently
+          }
         }
-      } catch (e) {}
+      }, 200);
     });
   }
 
@@ -460,7 +483,8 @@ export const appJs = `
       const checked = qsa('.compare-check:checked').map(function (c) { return c.value; });
       if (checked.length > 0) {
         bar.classList.remove('hidden');
-        qs('#compare-count', bar).textContent = 'Compare (' + checked.length + ')';
+        const displayCount = Math.min(checked.length, 9);
+        qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
         qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + checked.slice(0, 9).join(','));
       } else {
         bar.classList.add('hidden');

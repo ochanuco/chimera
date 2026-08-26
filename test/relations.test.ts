@@ -91,7 +91,7 @@ describe('Batch relations', () => {
 
 describe('Story relations', () => {
   it('creates a story, links batches, and lists them on the story', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: 'summer arc' });
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `summer arc-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();
     const b2 = await createBatch();
 
@@ -117,7 +117,7 @@ describe('Story relations', () => {
   });
 
   it('nested story on batch create links previous batches via StoryRelation', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: 'branching arc' });
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `branching arc-${crypto.randomUUID().slice(0, 8)}` });
     const prev = await createBatch();
 
     const created = await postJson<{ id: string }>('/api/v1/batches', {
@@ -141,7 +141,7 @@ describe('Story relations', () => {
   });
 
   it('PATCH updates relation label/description', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: 'edit arc' });
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `edit arc-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();
     const b2 = await createBatch();
     const rel = await postJson<{ id: string }>(`/api/v1/stories/${story.body.id}/relations`, {
@@ -149,6 +149,7 @@ describe('Story relations', () => {
       target_batch_id: b2.body.id,
       label: 'first label',
     });
+    expect(rel.status).toBe(201);
 
     const patched = await postJson<{ label: string }>(
       `/api/v1/stories/${story.body.id}/relations/${rel.body.id}`,
