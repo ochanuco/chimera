@@ -353,12 +353,14 @@ details.section .section-body { margin-top: 0.6rem; }
 .graph-viewport {
   position: relative;
   height: 78vh;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
 }
-#graph-svg { display: block; cursor: grab; touch-action: none; }
+/* Fill the frame so the whole viewport is pan/zoom-able; without JS the
+   viewBox still shows the entire graph scaled to fit. */
+#graph-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #graph-svg.dragging { cursor: grabbing; }
 
 .graph-node { cursor: pointer; }
@@ -634,11 +636,31 @@ export const appJs = `
     if (parts.length !== 4 || parts.some(function (n) { return isNaN(n); })) return;
 
     var vb = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+
+    // The SVG fills its frame (100%/100%), so expand the viewBox to the frame's
+    // aspect ratio. This removes preserveAspectRatio letterboxing and keeps the
+    // cursor-to-viewBox math below exact.
+    var frame = svg.getBoundingClientRect();
+    if (frame.width > 0 && frame.height > 0) {
+      var frameAspect = frame.width / frame.height;
+      var vbAspect = vb.w / vb.h;
+      if (vbAspect < frameAspect) {
+        var newVbW = vb.h * frameAspect;
+        vb.x -= (newVbW - vb.w) / 2;
+        vb.w = newVbW;
+      } else if (vbAspect > frameAspect) {
+        var newVbH = vb.w / frameAspect;
+        vb.y -= (newVbH - vb.h) / 2;
+        vb.h = newVbH;
+      }
+    }
+
     var baseW = vb.w;
     var minScale = 0.2;
     var maxScale = 3;
 
     var initial = { x: vb.x, y: vb.y, w: vb.w, h: vb.h };
+    apply();
 
     function apply() {
       svg.setAttribute('viewBox', vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h);
