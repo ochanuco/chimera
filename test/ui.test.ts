@@ -148,6 +148,41 @@ describe('Web GUI pages', () => {
     expect(genHtml).not.toContain(refBatch.body.id);
   });
 
+  it('GET /b/{short_id} shows 親/子/兄弟 sections with type badges', async () => {
+    const { generation: sourceGen } = await createGeneration();
+    const refBatch = await createBatch({
+      references: [{ source_generation_id: sourceGen.id, purpose: 'style' }],
+    });
+
+    const res = await req(`/b/${refBatch.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('親 (1)');
+    expect(html).toContain('子 (0)');
+    expect(html).toContain('兄弟 (0)');
+    expect(html).toContain('rel-badge rel-reference');
+  });
+
+  it('GET /g/{short_id} shows 親 (own Batch material) and 子 (downstream usage) separately', async () => {
+    const { generation: material } = await createGeneration();
+    const { generation: middleGen } = await createGeneration({
+      batchOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition' }] },
+    });
+    const consumer = await createBatch();
+    await postJson(`/api/v1/batches/${consumer.body.id}/references`, {
+      source_generation_id: middleGen.id,
+      purpose: 'outfit',
+    });
+
+    const res = await req(`/g/${middleGen.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // 親 shows the material this Generation's own Batch referenced.
+    expect(html).toContain(material.short_id);
+    // 子 shows the Batch that used this Generation as material.
+    expect(html).toContain(consumer.body.short_id);
+  });
+
   it('GET /compare?ids=a,b renders both generations', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();

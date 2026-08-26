@@ -86,8 +86,17 @@ pages.get('/b/:shortId', async (c) => {
   const referencedBatchIds = [
     ...data.relations.outgoing.map((r) => r.target_batch_id),
     ...data.relations.incoming.map((r) => r.source_batch_id),
+    ...data.story_relations.map((r) => r.source_batch_id),
+    ...data.story_relations.map((r) => r.target_batch_id),
+    ...data.reference_children.map((r) => r.batch_id),
+    ...data.siblings.map((s) => s.batch_id),
+    ...data.siblings.filter((s) => s.via === 'refinement').map((s) => s.shared_id),
   ];
-  const referencedGenerationIds = data.references.map((r) => r.source_generation_id);
+  const referencedGenerationIds = [
+    ...data.references.map((r) => r.source_generation_id),
+    ...data.reference_children.map((r) => r.source_generation_id),
+    ...data.siblings.filter((s) => s.via === 'reference').map((s) => s.shared_id),
+  ];
 
   const [storyNames, generationTags, batchShortIds, generationShortIds] = await Promise.all([
     (async () => {

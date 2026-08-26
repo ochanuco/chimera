@@ -327,30 +327,84 @@ batches.get('/:id', async (c) => {
   const batch = await getBatchOr404(db, c.req.param('id'));
   const org = origin(c);
 
-  const [jobs, generations, references, outgoingRelations, incomingRelations, storyRelations, tags] =
-    await Promise.all([
-      db.prepare('SELECT * FROM comfy_jobs WHERE batch_id = ? ORDER BY job_index ASC').bind(batch.id).all<ComfyJobRow>(),
-      db.prepare('SELECT * FROM generations WHERE batch_id = ? ORDER BY created_at ASC').bind(batch.id).all<GenerationRow>(),
-      db
-        .prepare('SELECT * FROM batch_references WHERE target_batch_id = ? ORDER BY created_at ASC')
-        .bind(batch.id)
-        .all<BatchReferenceRow>(),
-      db
-        .prepare('SELECT * FROM batch_relations WHERE source_batch_id = ? ORDER BY created_at ASC')
-        .bind(batch.id)
-        .all<BatchRelationRow>(),
-      db
-        .prepare('SELECT * FROM batch_relations WHERE target_batch_id = ? ORDER BY created_at ASC')
-        .bind(batch.id)
-        .all<BatchRelationRow>(),
-      db
-        .prepare(
-          'SELECT * FROM story_relations WHERE source_batch_id = ? OR target_batch_id = ? ORDER BY created_at ASC',
-        )
-        .bind(batch.id, batch.id)
-        .all<StoryRelationRow>(),
-      listTagsForTarget(db, 'batch_tags', batch.id),
-    ]);
+  const [
+    jobs,
+    generations,
+    references,
+    outgoingRelations,
+    incomingRelations,
+    storyRelations,
+    tags,
+    referenceChildrenRows,
+    siblingsByRefinement,
+    siblingsByReference,
+  ] = await Promise.all([
+    db.prepare('SELECT * FROM comfy_jobs WHERE batch_id = ? ORDER BY job_index ASC').bind(batch.id).all<ComfyJobRow>(),
+    db.prepare('SELECT * FROM generations WHERE batch_id = ? ORDER BY created_at ASC').bind(batch.id).all<GenerationRow>(),
+    db
+      .prepare('SELECT * FROM batch_references WHERE target_batch_id = ? ORDER BY created_at ASC')
+      .bind(batch.id)
+      .all<BatchReferenceRow>(),
+    db
+      .prepare('SELECT * FROM batch_relations WHERE source_batch_id = ? ORDER BY created_at ASC')
+      .bind(batch.id)
+      .all<BatchRelationRow>(),
+    db
+      .prepare('SELECT * FROM batch_relations WHERE target_batch_id = ? ORDER BY created_at ASC')
+      .bind(batch.id)
+      .all<BatchRelationRow>(),
+    db
+      .prepare(
+        'SELECT * FROM story_relations WHERE source_batch_id = ? OR target_batch_id = ? ORDER BY created_at ASC',
+      )
+      .bind(batch.id, batch.id)
+      .all<StoryRelationRow>(),
+    listTagsForTarget(db, 'batch_tags', batch.id),
+    // Batches that used one of this Batch's own Generations as reference material ("children" via Reference).
+    db
+      .prepare(
+        `SELECT br.target_batch_id AS batch_id, br.source_generation_id AS source_generation_id,
+          br.purpose AS purpose, br.aspect AS aspect
+         FROM batch_references br
+         JOIN generations g ON g.id = br.source_generation_id
+         WHERE g.batch_id = ? AND br.target_batch_id != ?
+         ORDER BY br.created_at ASC`,
+      )
+      .bind(batch.id, batch.id)
+      .all<{ batch_id: string; source_generation_id: string; purpose: string | null; aspect: string | null }>(),
+    // Siblings via refinement: other Batches refined from the same source_batch_id that refined this one.
+    db
+      .prepare(
+        `SELECT br2.target_batch_id AS batch_id, br2.source_batch_id AS shared_id
+         FROM batch_relations br1
+         JOIN batch_relations br2 ON br2.source_batch_id = br1.source_batch_id AND br2.type = 'refinement'
+         WHERE br1.target_batch_id = ? AND br1.type = 'refinement' AND br2.target_batch_id != ?`,
+      )
+      .bind(batch.id, batch.id)
+      .all<{ batch_id: string; shared_id: string }>(),
+    // Siblings via reference: other Batches that used the same source Generation(s) as this one.
+    db
+      .prepare(
+        `SELECT br2.target_batch_id AS batch_id, br2.source_generation_id AS shared_id
+         FROM batch_references br1
+         JOIN batch_references br2 ON br2.source_generation_id = br1.source_generation_id
+         WHERE br1.target_batch_id = ? AND br2.target_batch_id != ?`,
+      )
+      .bind(batch.id, batch.id)
+      .all<{ batch_id: string; shared_id: string }>(),
+  ]);
+
+  const siblingsRaw = [
+    ...(siblingsByRefinement.results ?? []).map((r) => ({ batch_id: r.batch_id, via: 'refinement' as const, shared_id: r.shared_id })),
+    ...(siblingsByReference.results ?? []).map((r) => ({ batch_id: r.batch_id, via: 'reference' as const, shared_id: r.shared_id })),
+  ];
+  const seenSiblings = new Set<string>();
+  const siblings = siblingsRaw.filter((s) => {
+    const key = `${s.via}:${s.batch_id}:${s.shared_id}`;
+    if (seenSiblings.has(key)) return false;
+    seenSiblings.add(key);
+    return true;
+  });
 
   return c.json({
     ...serializeBatch(batch),
@@ -405,6 +459,13 @@ batches.get('/:id', async (c) => {
       updated_at: r.updated_at,
     })),
     tags: tags.map((t) => t.name),
+    reference_children: (referenceChildrenRows.results ?? []).map((r) => ({
+      batch_id: r.batch_id,
+      source_generation_id: r.source_generation_id,
+      purpose: r.purpose,
+      aspect: r.aspect,
+    })),
+    siblings,
   });
 });
 

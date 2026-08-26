@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getGenerationByIdOrShortId, resolveBatchShortIds } from '../lib/db';
+import { getGenerationByIdOrShortId, resolveBatchShortIds, resolveGenerationShortIds } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
@@ -46,18 +46,22 @@ images.get('/:shortId', async (c) => {
     listTagsForTarget(db, 'generation_tags', generation.id),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
-  const batchShortIds = await resolveBatchShortIds(
-    db,
-    data.references.map((r) => r.target_batch_id),
-  );
 
   let storyLinks: { story_id: string; story_name: string; label: string | null }[] = [];
+  // "親" (parent) material for a Generation is its own Batch's reference material
+  // (batch_references where target_batch_id = the owning Batch), not `data.references`
+  // (which is the reverse: Batches downstream that used *this* Generation as material,
+  // i.e. this Generation's "子" — see `used_by` below).
+  let parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[] = [];
   if (data.batch) {
     const batchRes = await internalApiRequest(c, `/api/v1/batches/${data.batch.id}`);
     if (batchRes.ok) {
       const batchData = (await batchRes.json()) as {
+        references: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
         story_relations: { story_id: string; label: string | null }[];
       };
+      parentReferences = batchData.references;
+
       const storyIds = Array.from(new Set(batchData.story_relations.map((r) => r.story_id)));
       const storyNames = new Map<string, string>();
       await Promise.all(
@@ -77,12 +81,22 @@ images.get('/:shortId', async (c) => {
     }
   }
 
+  const [batchShortIds, generationShortIds] = await Promise.all([
+    resolveBatchShortIds(db, data.used_by.map((r) => r.batch_id)),
+    resolveGenerationShortIds(
+      db,
+      parentReferences.map((r) => r.source_generation_id),
+    ),
+  ]);
+
   return c.html(
     <GenerationDetailPage
       data={data}
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
       storyLinks={storyLinks}
       batchShortIds={batchShortIds}
+      generationShortIds={generationShortIds}
+      parentReferences={parentReferences}
     />,
   );
 });

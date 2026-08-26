@@ -28,6 +28,7 @@ export interface GenerationDetailData {
     git_dirty: boolean;
   } | null;
   references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
+  used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   comfy_job: { id: string; seed: number | null; comfy_prompt_id: string | null; status: string } | null;
   original_filename: string | null;
 }
@@ -40,16 +41,27 @@ function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
 }
 
+/** Small rounded label distinguishing which of the three Relation types (see CLAUDE.md invariants) a row comes from. */
+function RelBadge({ kind }: { kind: 'reference' | 'refinement' | 'story' }) {
+  const label = kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : 'Story';
+  return <span class={`rel-badge rel-${kind}`}>{label}</span>;
+}
+
 export function GenerationDetailPage({
   data,
   tags,
   storyLinks,
   batchShortIds,
+  generationShortIds,
+  parentReferences,
 }: {
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
   storyLinks: { story_id: string; story_name: string; label: string | null }[];
   batchShortIds: Map<string, string>;
+  generationShortIds: Map<string, string>;
+  /** The owning Batch's own reference material (its "parents"), fetched from that Batch's detail. */
+  parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
 }) {
   return (
     <Layout title={`Generation ${data.short_id}`}>
@@ -121,18 +133,48 @@ export function GenerationDetailPage({
         </div>
       </details>
 
-      <details class="section">
-        <summary>References ({data.references.length})</summary>
+      <details class="section" open>
+        <summary>親 ({parentReferences.length})</summary>
         <div class="section-body">
-          {data.references.length === 0 ? (
+          {parentReferences.length === 0 ? (
             <p>None.</p>
           ) : (
             <table class="kv-table">
-              {data.references.map((r) => (
+              {parentReferences.map((r) => (
                 <tr>
                   <td>
-                    <a href={refLink('/b/', r.target_batch_id, batchShortIds).href}>
-                      {refLink('/b/', r.target_batch_id, batchShortIds).label}
+                    <RelBadge kind="reference" />
+                  </td>
+                  <td>
+                    <a href={refLink('/g/', r.source_generation_id, generationShortIds).href}>
+                      {refLink('/g/', r.source_generation_id, generationShortIds).label}
+                    </a>
+                  </td>
+                  <td>
+                    purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}
+                  </td>
+                </tr>
+              ))}
+            </table>
+          )}
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>子 ({data.used_by.length})</summary>
+        <div class="section-body">
+          {data.used_by.length === 0 ? (
+            <p>None.</p>
+          ) : (
+            <table class="kv-table">
+              {data.used_by.map((r) => (
+                <tr>
+                  <td>
+                    <RelBadge kind="reference" />
+                  </td>
+                  <td>
+                    <a href={refLink('/b/', r.batch_id, batchShortIds).href}>
+                      {refLink('/b/', r.batch_id, batchShortIds).label}
                     </a>
                   </td>
                   <td>
