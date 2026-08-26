@@ -57,7 +57,13 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
           <span class="legend-swatch legend-story"></span> Story（続き）
         </div>
       </div>
-      <div class="graph-viewport">
+      <div class="graph-stage">
+        <div id="graph-zoom-controls" class="graph-zoom-controls">
+          <button type="button" data-zoom="in" title="Zoom in">+</button>
+          <button type="button" data-zoom="out" title="Zoom out">−</button>
+          <button type="button" data-zoom="reset" title="Reset view">⌂</button>
+        </div>
+        <div class="graph-viewport">
         <svg
           id="graph-svg"
           viewBox={`0 0 ${layout.width} ${layout.height}`}
@@ -117,6 +123,7 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
             })}
           </g>
         </svg>
+        </div>
       </div>
     </Layout>
   );

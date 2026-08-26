@@ -328,7 +328,30 @@ details.section .section-body { margin-top: 0.6rem; }
 .legend-swatch.legend-relation { border-color: var(--graph-relation); border-top-style: dashed; }
 .legend-swatch.legend-story { border-color: var(--graph-story); }
 
+.graph-stage { position: relative; }
+.graph-zoom-controls {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.graph-zoom-controls button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.graph-zoom-controls button:hover { border-color: var(--accent); }
+
 .graph-viewport {
+  position: relative;
   height: 78vh;
   overflow: auto;
   border: 1px solid var(--border);
@@ -615,16 +638,16 @@ export const appJs = `
     var minScale = 0.2;
     var maxScale = 3;
 
+    var initial = { x: vb.x, y: vb.y, w: vb.w, h: vb.h };
+
     function apply() {
       svg.setAttribute('viewBox', vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h);
     }
 
-    svg.addEventListener('wheel', function (ev) {
-      ev.preventDefault();
+    function zoomAt(clientX, clientY, factor) {
       var rect = svg.getBoundingClientRect();
-      var pointerX = vb.x + ((ev.clientX - rect.left) / rect.width) * vb.w;
-      var pointerY = vb.y + ((ev.clientY - rect.top) / rect.height) * vb.h;
-      var factor = ev.deltaY > 0 ? 1.1 : 0.9;
+      var pointerX = vb.x + ((clientX - rect.left) / rect.width) * vb.w;
+      var pointerY = vb.y + ((clientY - rect.top) / rect.height) * vb.h;
       var newW = vb.w * factor;
       var newH = vb.h * factor;
       var scale = baseW / newW;
@@ -634,7 +657,51 @@ export const appJs = `
       vb.w = newW;
       vb.h = newH;
       apply();
+    }
+
+    // Trackpad-first wheel handling: pinch gestures reach the browser as wheel
+    // events with ctrlKey=true (Cmd+scroll opts in explicitly), so those zoom
+    // around the cursor; a plain two-finger scroll pans instead of zooming.
+    svg.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      if (ev.ctrlKey || ev.metaKey) {
+        zoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.01));
+        return;
+      }
+      var rect = svg.getBoundingClientRect();
+      vb.x += (ev.deltaX / rect.width) * vb.w;
+      vb.y += (ev.deltaY / rect.height) * vb.h;
+      apply();
     }, { passive: false });
+
+    // Safari sends pinches as gesture* events instead of ctrl+wheel.
+    var gestureScale = 1;
+    svg.addEventListener('gesturestart', function (ev) {
+      ev.preventDefault();
+      gestureScale = ev.scale;
+    });
+    svg.addEventListener('gesturechange', function (ev) {
+      ev.preventDefault();
+      if (!ev.scale) return;
+      zoomAt(ev.clientX, ev.clientY, gestureScale / ev.scale);
+      gestureScale = ev.scale;
+    });
+
+    var controls = document.getElementById('graph-zoom-controls');
+    if (controls) {
+      controls.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-zoom]') : null;
+        if (!btn) return;
+        var rect = svg.getBoundingClientRect();
+        var action = btn.getAttribute('data-zoom');
+        if (action === 'in') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 0.8);
+        else if (action === 'out') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
+        else {
+          vb.x = initial.x; vb.y = initial.y; vb.w = initial.w; vb.h = initial.h;
+          apply();
+        }
+      });
+    }
 
     var dragging = false;
     var lastX = 0;
