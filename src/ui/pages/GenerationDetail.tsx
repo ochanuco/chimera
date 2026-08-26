@@ -1,0 +1,222 @@
+import { Layout } from '../layout';
+
+export interface GenerationDetailData {
+  id: string;
+  short_id: string;
+  canonical_url: string;
+  image: { url: string };
+  character: { id: string; name: string } | null;
+  created_at: string;
+  rating: 'bad' | 'neutral' | 'good' | null;
+  bookmark: boolean;
+  note: string | null;
+  summary: string | null;
+  semantic: {
+    schema_version: number;
+    core: Record<string, string | null>;
+    strengths: string[];
+    defects: string[];
+    attributes: Record<string, unknown>;
+  } | null;
+  batch: {
+    id: string;
+    short_id: string;
+    prompt: string | null;
+    recipe: string | null;
+    raw_instruction: string | null;
+    git_commit: string | null;
+    git_dirty: boolean;
+  } | null;
+  references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
+  comfy_job: { id: string; seed: number | null; comfy_prompt_id: string | null; status: string } | null;
+  original_filename: string | null;
+}
+
+const RATINGS = ['bad', 'neutral', 'good'] as const;
+
+export function GenerationDetailPage({
+  data,
+  tags,
+  storyLinks,
+}: {
+  data: GenerationDetailData;
+  tags: { id: string; name: string }[];
+  storyLinks: { story_id: string; story_name: string; label: string | null }[];
+}) {
+  return (
+    <Layout title={`Generation ${data.short_id}`}>
+      <div class="gen-detail-hero">
+        <img src={data.image.url} alt={data.short_id} />
+      </div>
+      <h1>{data.short_id}</h1>
+      {data.character ? <p>{data.character.name}</p> : null}
+      <div class="card-top-row">
+        <div class="rating-group" data-generation-id={data.id} data-current={data.rating ?? ''}>
+          {RATINGS.map((r) => (
+            <button type="button" class={`rate-btn${data.rating === r ? ' active' : ''}`} data-rating={r}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          class="bookmark-btn"
+          data-kind="generations"
+          data-id={data.id}
+          data-bookmarked={data.bookmark ? 'true' : 'false'}
+        >
+          🔖
+        </button>
+      </div>
+
+      <datalist id="tag-suggestions"></datalist>
+      <div class="tag-chips">
+        {tags.map((t) => (
+          <span class="tag-chip">
+            #{t.name}
+            <button type="button" class="tag-remove-btn" data-kind="generations" data-id={data.id} data-tag-id={t.id}>
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <form class="tag-add-form" data-kind="generations" data-id={data.id} data-removable="true">
+        <input type="text" name="name" list="tag-suggestions" placeholder="add tag" />
+        <button type="submit">+</button>
+      </form>
+
+      <details class="section" open>
+        <summary>Summary</summary>
+        <div class="section-body">{data.summary ?? 'No summary yet.'}</div>
+      </details>
+
+      <details class="section">
+        <summary>Semantic</summary>
+        <div class="section-body">
+          {data.semantic ? (
+            <>
+              <table class="kv-table">
+                {Object.entries(data.semantic.core).map(([k, v]) => (
+                  <tr>
+                    <td>{k}</td>
+                    <td>{v ?? '-'}</td>
+                  </tr>
+                ))}
+              </table>
+              <p>Strengths: {data.semantic.strengths.length ? data.semantic.strengths.join(', ') : '-'}</p>
+              <p>Defects: {data.semantic.defects.length ? data.semantic.defects.join(', ') : '-'}</p>
+              <pre>{JSON.stringify(data.semantic.attributes, null, 2)}</pre>
+            </>
+          ) : (
+            <p>Not analyzed yet.</p>
+          )}
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>References ({data.references.length})</summary>
+        <div class="section-body">
+          {data.references.length === 0 ? (
+            <p>None.</p>
+          ) : (
+            <table class="kv-table">
+              {data.references.map((r) => (
+                <tr>
+                  <td>
+                    <a href={`/b/${r.target_batch_id}`}>{r.target_batch_id}</a>
+                  </td>
+                  <td>
+                    purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}
+                  </td>
+                </tr>
+              ))}
+            </table>
+          )}
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Story</summary>
+        <div class="section-body">
+          {storyLinks.length === 0 ? (
+            <p>Not part of a story.</p>
+          ) : (
+            <ul>
+              {storyLinks.map((s) => (
+                <li>
+                  <a href={`/stories/${s.story_id}`}>{s.story_name}</a>
+                  {s.label ? ` — ${s.label}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Prompt</summary>
+        <div class="section-body">
+          <table class="kv-table">
+            <tr>
+              <td>prompt</td>
+              <td>{data.batch?.prompt ?? '-'}</td>
+            </tr>
+          </table>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Seed</summary>
+        <div class="section-body">{data.comfy_job?.seed ?? '-'}</div>
+      </details>
+
+      <details class="section">
+        <summary>ComfyUI Job</summary>
+        <div class="section-body">
+          <table class="kv-table">
+            <tr>
+              <td>prompt_id</td>
+              <td>{data.comfy_job?.comfy_prompt_id ?? '-'}</td>
+            </tr>
+            <tr>
+              <td>status</td>
+              <td>{data.comfy_job?.status ?? '-'}</td>
+            </tr>
+            <tr>
+              <td>original_filename</td>
+              <td>{data.original_filename ?? '-'}</td>
+            </tr>
+          </table>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>Git</summary>
+        <div class="section-body">
+          <table class="kv-table">
+            <tr>
+              <td>commit</td>
+              <td>{data.batch?.git_commit ?? '-'}</td>
+            </tr>
+            <tr>
+              <td>dirty</td>
+              <td>{data.batch?.git_dirty ? 'yes' : 'no'}</td>
+            </tr>
+          </table>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>Note</summary>
+        <div class="section-body">
+          <form class="note-form" data-kind="generations" data-id={data.id}>
+            <textarea name="note">{data.note ?? ''}</textarea>
+            <br />
+            <button type="submit">Save</button>
+            <span class="save-status"></span>
+          </form>
+        </div>
+      </details>
+    </Layout>
+  );
+}
