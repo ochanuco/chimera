@@ -434,7 +434,7 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 /* Fill the frame so the whole viewport is pan/zoom-able; without JS the
    viewBox still shows the entire graph scaled to fit. */
-#graph-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+#graph-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; transform-origin: 0 0; }
 #graph-svg.dragging { cursor: grabbing; }
 
 .graph-node-card { fill: var(--bg-elevated); stroke: var(--border); stroke-width: 1; }
@@ -967,8 +967,16 @@ export const appJs = `
   }
 
   // --- Graph pan/zoom ---
-  // Drags/zooms by rewriting the SVG's viewBox. Without JS the browser falls
-  // back to the .graph-viewport container's native scrollbars (see style.css).
+  // During an active gesture (wheel, pinch, drag) this avoids touching the
+  // SVG's viewBox: a viewBox write forces the whole SVG — including the
+  // dozens of full-resolution PNG thumbnails it embeds as <image> — to
+  // re-rasterize, which is what makes pan/zoom feel janky. Instead the
+  // gesture only moves a CSS transform on the SVG element (GPU-composited,
+  // no re-rasterization). Once the gesture goes idle the transform is folded
+  // into the viewBox ("commit") and reset to identity, so viewBox stays the
+  // single source of truth between gestures — initial layout, the zoom
+  // buttons, persisted zoom, and graph selection/context-menu code all
+  // read/write viewBox only, never the transform.
   function initGraphPanZoom() {
     var svg = document.getElementById('graph-svg');
     if (!svg) return;
@@ -1005,6 +1013,16 @@ export const appJs = `
     var baseW = frame.width > 0 ? frame.width : vb.w;
     var minScale = 0.05;
     var maxScale = 20;
+
+    // pending is the not-yet-committed CSS transform layered on top of
+    // vb, expressed in the SVG element's own screen-space pixels: a point
+    // at local (pre-transform) coordinate p renders at k*p + (tx,ty).
+    // frameRect is the element's bounding rect cached while the transform
+    // is identity (init, right after commit, and on resize) — it must never
+    // be re-read while a gesture is live, because the CSS transform itself
+    // would skew getBoundingClientRect.
+    var pending = { k: 1, tx: 0, ty: 0 };
+    var frameRect = frame;
 
     function persistScale() {
       if (frame.width <= 0) return;
@@ -1044,19 +1062,114 @@ export const appJs = `
       persistScale();
     }
 
+    // --- transform-during-gesture / commit-on-idle plumbing ---
+
+    var rafPending = false;
+    function scheduleTransformFrame() {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(function () {
+        rafPending = false;
+        svg.style.transform = 'translate(' + pending.tx + 'px,' + pending.ty + 'px) scale(' + pending.k + ')';
+      });
+    }
+
+    function beginGesture() {
+      svg.style.willChange = 'transform';
+    }
+
+    function endGesture() {
+      svg.style.willChange = '';
+    }
+
+    var COMMIT_DEBOUNCE_MS = 150;
+    var commitTimer = null;
+    function scheduleDebouncedCommit() {
+      if (commitTimer) clearTimeout(commitTimer);
+      commitTimer = setTimeout(function () {
+        commitTimer = null;
+        commit();
+      }, COMMIT_DEBOUNCE_MS);
+    }
+    function cancelDebouncedCommit() {
+      if (commitTimer) {
+        clearTimeout(commitTimer);
+        commitTimer = null;
+      }
+    }
+
+    // Folds the pending CSS transform into viewBox and resets it to
+    // identity. A no-op (besides clearing will-change) when nothing is
+    // pending, so it is safe to call unconditionally before any code path
+    // that reads vb or the SVG's rendered position.
+    function commit() {
+      cancelDebouncedCommit();
+      if (pending.k !== 1 || pending.tx !== 0 || pending.ty !== 0) {
+        var oldW = vb.w;
+        var oldH = vb.h;
+        var k = pending.k;
+        vb.w = oldW / k;
+        vb.h = oldH / k;
+        vb.x = vb.x - (pending.tx / k) * (oldW / frameRect.width);
+        vb.y = vb.y - (pending.ty / k) * (oldH / frameRect.height);
+        pending = { k: 1, tx: 0, ty: 0 };
+        svg.style.transform = '';
+        apply();
+        frameRect = svg.getBoundingClientRect();
+        persistScale();
+      }
+      endGesture();
+    }
+
+    // Discards the pending transform without folding it into vb — used by
+    // the reset button, which replaces vb outright.
+    function discardPending() {
+      cancelDebouncedCommit();
+      pending = { k: 1, tx: 0, ty: 0 };
+      svg.style.transform = '';
+      endGesture();
+    }
+
+    // A click or right-click anywhere can reach graph selection / the
+    // context menu (see initGraphSelection / initGraphContextMenu), which
+    // read the SVG's rendered position — so flush any in-flight gesture
+    // ahead of those handlers via a capturing listener.
+    document.addEventListener('contextmenu', commit, true);
+    document.addEventListener('click', commit, true);
+
+    window.addEventListener('resize', function () {
+      if (pending.k === 1 && pending.tx === 0 && pending.ty === 0) {
+        frameRect = svg.getBoundingClientRect();
+      }
+    });
+
+    function pendingZoomAt(clientX, clientY, factor) {
+      var f = 1 / factor;
+      var newK = f * pending.k;
+      var newScale = baseW / (vb.w / newK);
+      if (newScale < minScale || newScale > maxScale) return;
+      var cx = clientX - frameRect.left;
+      var cy = clientY - frameRect.top;
+      pending.tx = f * pending.tx + (1 - f) * cx;
+      pending.ty = f * pending.ty + (1 - f) * cy;
+      pending.k = newK;
+      scheduleTransformFrame();
+    }
+
     // Trackpad-first wheel handling: pinch gestures reach the browser as wheel
     // events with ctrlKey=true (Cmd+scroll opts in explicitly), so those zoom
     // around the cursor; a plain two-finger scroll pans instead of zooming.
     svg.addEventListener('wheel', function (ev) {
       ev.preventDefault();
+      beginGesture();
       if (ev.ctrlKey || ev.metaKey) {
-        zoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.01));
-        return;
+        pendingZoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.01));
+      } else {
+        pending.tx -= ev.deltaX;
+        pending.ty -= ev.deltaY;
+        scheduleTransformFrame();
       }
-      var rect = svg.getBoundingClientRect();
-      vb.x += (ev.deltaX / rect.width) * vb.w;
-      vb.y += (ev.deltaY / rect.height) * vb.h;
-      apply();
+      scheduleDebouncedCommit();
     }, { passive: false });
 
     // Safari sends pinches as gesture* events instead of ctrl+wheel.
@@ -1064,12 +1177,18 @@ export const appJs = `
     svg.addEventListener('gesturestart', function (ev) {
       ev.preventDefault();
       gestureScale = ev.scale;
+      beginGesture();
     });
     svg.addEventListener('gesturechange', function (ev) {
       ev.preventDefault();
       if (!ev.scale) return;
-      zoomAt(ev.clientX, ev.clientY, gestureScale / ev.scale);
+      pendingZoomAt(ev.clientX, ev.clientY, gestureScale / ev.scale);
       gestureScale = ev.scale;
+      scheduleDebouncedCommit();
+    });
+    svg.addEventListener('gestureend', function (ev) {
+      ev.preventDefault();
+      commit();
     });
 
     var controls = document.getElementById('graph-zoom-controls');
@@ -1077,15 +1196,19 @@ export const appJs = `
       controls.addEventListener('click', function (ev) {
         var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-zoom]') : null;
         if (!btn) return;
-        var rect = svg.getBoundingClientRect();
         var action = btn.getAttribute('data-zoom');
-        if (action === 'in') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 0.8);
-        else if (action === 'out') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
-        else {
+        if (action === 'reset') {
+          discardPending();
           vb.x = initial.x; vb.y = initial.y; vb.w = initial.w; vb.h = initial.h;
           persistScale();
           apply();
+          frameRect = svg.getBoundingClientRect();
+          return;
         }
+        commit();
+        var rect = svg.getBoundingClientRect();
+        if (action === 'in') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 0.8);
+        else if (action === 'out') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
       });
     }
 
@@ -1098,19 +1221,21 @@ export const appJs = `
       lastX = ev.clientX;
       lastY = ev.clientY;
       svg.classList.add('dragging');
+      beginGesture();
     });
     window.addEventListener('mousemove', function (ev) {
       if (!dragging) return;
-      var rect = svg.getBoundingClientRect();
-      vb.x -= ((ev.clientX - lastX) / rect.width) * vb.w;
-      vb.y -= ((ev.clientY - lastY) / rect.height) * vb.h;
+      pending.tx += ev.clientX - lastX;
+      pending.ty += ev.clientY - lastY;
       lastX = ev.clientX;
       lastY = ev.clientY;
-      apply();
+      scheduleTransformFrame();
     });
     window.addEventListener('mouseup', function () {
+      if (!dragging) return;
       dragging = false;
       svg.classList.remove('dragging');
+      commit();
     });
   }
 
