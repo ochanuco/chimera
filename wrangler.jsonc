@@ -4,6 +4,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-08-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Cloudflare Access が境界認証を担うため、Access の外にある workers.dev は閉じる
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "chimera.chanu.co",
+      "custom_domain": true
+    }
+  ],
   "observability": {
     "enabled": true
   },
