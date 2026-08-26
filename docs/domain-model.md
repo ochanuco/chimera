@@ -334,6 +334,20 @@ good
 
 Tag と Rating は別概念です。
 
+運用基準:
+
+``` text
+bad      失敗。破綻しており材料にもならない
+neutral  惜しい・判断保留（デフォルト）
+good     採用圏
+```
+
+4段階以上には拡張しません。「超気に入った」は Bookmark で表現します。
+「惜しい」の理由は Rating ではなく Tag（`#pose-good` / `#hand-bad` 等）と
+semantic metadata の strengths / defects が担います。Claude は
+「neutral + defects の記述」から惜しさの内容を読み取れるため、
+Rating は粗いフィルタ軸に徹します。
+
 ## Bookmark
 
 Bookmark は「後から素早く呼び出す」ための状態です。
@@ -347,7 +361,9 @@ Story
 Experiment
 ```
 
-Favorite ではなく Bookmark と呼びます。品質評価とは無関係です。
+Favorite ではなく Bookmark と呼びます。品質評価の段階ではありません。
+「超気に入った」Generation は再利用したい Generation と実質同じ集合なので、
+Rating を4段階に増やす代わりに Bookmark で表現します。
 
 ## Note / Summary
 
