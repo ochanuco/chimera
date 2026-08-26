@@ -75,6 +75,31 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-size: 0.85rem;
 }
 .filter-form .checkbox-field { flex-direction: row; align-items: center; gap: 0.4rem; }
+.filter-form-lookup {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--border);
+  opacity: 0.8;
+}
+.filter-form-lookup label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  gap: 0.25rem;
+}
+.filter-form-lookup input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
 .filter-form button {
   background: var(--accent);
   color: #10131c;

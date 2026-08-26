@@ -41,6 +41,31 @@ describe('Web GUI pages', () => {
     expect(body).toContain(generation.short_id);
   });
 
+  it('GET /gallery?original_filename= finds a generation by exact original filename', async () => {
+    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00001_.png' } });
+    const res = await req('/gallery?original_filename=yk-lineT3_00001_.png');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(generation.short_id);
+  });
+
+  it('GET /gallery?original_filename= excludes generations with a non-matching filename', async () => {
+    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00002_.png' } });
+    const res = await req('/gallery?original_filename=does-not-exist.png');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).not.toContain(generation.short_id);
+  });
+
+  it('GET /gallery?comfy_prompt_id= finds a generation by exact ComfyUI job id', async () => {
+    const { job, generation } = await createGeneration();
+    await postJson(`/api/v1/jobs/${job.id}`, { comfy_prompt_id: 'a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df' }, 'PATCH');
+    const res = await req('/gallery?comfy_prompt_id=a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(generation.short_id);
+  });
+
   it('GET /g/{short_id} returns 200 HTML including the image URL', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}`);
