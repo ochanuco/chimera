@@ -1,4 +1,5 @@
 import type { FC, PropsWithChildren } from 'hono/jsx';
+import { assetVersion } from './static';
 
 const NAV_ITEMS = [
   { href: '/gallery', label: 'Gallery' },
@@ -15,7 +16,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = ({ title, child
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{title ? `${title} - Chimera` : 'Chimera'}</title>
-        <link rel="stylesheet" href="/assets/style.css" />
+        <link rel="stylesheet" href={`/assets/style.css?v=${assetVersion}`} />
       </head>
       <body>
         <nav class="nav">
@@ -27,7 +28,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = ({ title, child
           ))}
         </nav>
         <main class="container">{children}</main>
-        <script src="/assets/app.js"></script>
+        <script src={`/assets/app.js?v=${assetVersion}`}></script>
       </body>
     </html>
   );
