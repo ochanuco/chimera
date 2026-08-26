@@ -70,25 +70,41 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
           preserveAspectRatio="xMidYMid meet"
         >
           <g class="graph-edges">
-            {edges.map((e) => {
-              const s = layout.positions.get(e.source_batch_id);
-              const t = layout.positions.get(e.target_batch_id);
-              if (!s || !t) return null;
-              const sx = s.x + NODE_WIDTH / 2;
-              const sy = s.y + NODE_HEIGHT;
-              const tx = t.x + NODE_WIDTH / 2;
-              const ty = t.y;
-              const mx = (sx + tx) / 2;
-              const my = (sy + ty) / 2;
-              return (
-                <g class={`graph-edge edge-${e.type}`}>
-                  <path d={edgePath(sx, sy, tx, ty)} />
-                  <text x={mx + 6} y={my} text-anchor="start">
-                    {e.label}
-                  </text>
-                </g>
-              );
-            })}
+            {(() => {
+              // 同一 Batch ペア間の複数エッジ（reference と refinement が併存する等）が
+              // 完全に同一パスへ重なりラベルも潰れるため、ペア内 index で横にずらす。
+              const pairCounts = new Map<string, number>();
+              for (const e of edges) {
+                const key = `${e.source_batch_id}->${e.target_batch_id}`;
+                pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+              }
+              const pairSeen = new Map<string, number>();
+              return edges.map((e) => {
+                const s = layout.positions.get(e.source_batch_id);
+                const t = layout.positions.get(e.target_batch_id);
+                if (!s || !t) return null;
+                const key = `${e.source_batch_id}->${e.target_batch_id}`;
+                const count = pairCounts.get(key) ?? 1;
+                const index = pairSeen.get(key) ?? 0;
+                pairSeen.set(key, index + 1);
+                const fan = (index - (count - 1) / 2) * 36;
+
+                const sx = s.x + NODE_WIDTH / 2 + fan;
+                const sy = s.y + NODE_HEIGHT;
+                const tx = t.x + NODE_WIDTH / 2 + fan;
+                const ty = t.y;
+                const mx = (sx + tx) / 2;
+                const my = (sy + ty) / 2 + (index - (count - 1) / 2) * 18;
+                return (
+                  <g class={`graph-edge edge-${e.type}`}>
+                    <path d={edgePath(sx, sy, tx, ty)} />
+                    <text x={mx + 8} y={my} text-anchor="start">
+                      {e.label}
+                    </text>
+                  </g>
+                );
+              });
+            })()}
           </g>
           <g class="graph-nodes">
             {nodes.map((n) => {

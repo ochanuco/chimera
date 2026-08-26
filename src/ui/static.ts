@@ -379,11 +379,11 @@ details.section .section-body { margin-top: 0.6rem; }
 .graph-edge.edge-relation path { stroke: var(--graph-relation); stroke-dasharray: 7 5; }
 .graph-edge.edge-story path { stroke: var(--graph-story); }
 .graph-edge text {
-  font-size: 10px;
-  fill: var(--text-dim);
+  font-size: 13px;
+  fill: var(--text);
   paint-order: stroke;
   stroke: var(--bg);
-  stroke-width: 3px;
+  stroke-width: 4px;
   stroke-linejoin: round;
 }
 `;
