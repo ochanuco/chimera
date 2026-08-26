@@ -32,6 +32,8 @@ pages.get('/gallery', async (c) => {
     to: q.to || undefined,
     rating: q.rating || undefined,
     bookmark: q.bookmark === 'true' ? 'true' : undefined,
+    comfy_prompt_id: q.comfy_prompt_id || undefined,
+    original_filename: q.original_filename || undefined,
     limit,
     offset,
   };
@@ -43,6 +45,8 @@ pages.get('/gallery', async (c) => {
   if (filters.to) apiParams.set('to', filters.to);
   if (filters.rating) apiParams.set('rating', filters.rating);
   if (filters.bookmark) apiParams.set('bookmark', filters.bookmark);
+  if (filters.comfy_prompt_id) apiParams.set('comfy_prompt_id', filters.comfy_prompt_id);
+  if (filters.original_filename) apiParams.set('original_filename', filters.original_filename);
   apiParams.set('limit', String(limit));
   apiParams.set('offset', String(offset));
 

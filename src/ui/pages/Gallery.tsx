@@ -12,6 +12,8 @@ export interface GalleryFilters {
   to?: string;
   rating?: string;
   bookmark?: string;
+  comfy_prompt_id?: string;
+  original_filename?: string;
   limit: number;
   offset: number;
 }
@@ -24,6 +26,8 @@ function pageLink(filters: GalleryFilters, offset: number): string {
   if (filters.to) params.set('to', filters.to);
   if (filters.rating) params.set('rating', filters.rating);
   if (filters.bookmark) params.set('bookmark', filters.bookmark);
+  if (filters.comfy_prompt_id) params.set('comfy_prompt_id', filters.comfy_prompt_id);
+  if (filters.original_filename) params.set('original_filename', filters.original_filename);
   params.set('limit', String(filters.limit));
   params.set('offset', String(offset));
   return `/gallery?${params.toString()}`;
@@ -86,6 +90,17 @@ export function GalleryPage({
           Bookmarked only
         </label>
         <button type="submit">Search</button>
+
+        <div class="filter-form-lookup">
+          <label>
+            Job ID
+            <input type="text" name="comfy_prompt_id" value={filters.comfy_prompt_id ?? ''} placeholder="ComfyUI prompt id" />
+          </label>
+          <label>
+            Filename
+            <input type="text" name="original_filename" value={filters.original_filename ?? ''} placeholder="original filename" />
+          </label>
+        </div>
       </form>
 
       <datalist id="tag-suggestions"></datalist>
