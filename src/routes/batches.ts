@@ -201,6 +201,22 @@ batches.post('/', async (c) => {
     return c.json(serializeBatch(raced), 200);
   }
 
+  // provenance の中核 (prompt / recipe / instruction) が全部空の登録は、API を
+  // 直接叩いて request.json 契約を経由していない可能性が高い。自動化を壊さない
+  // よう拒否はせず、warnings とログで気付けるようにするだけに留める。
+  const hasGenerationMetadata =
+    body.raw_instruction != null ||
+    body.recipe != null ||
+    body.prompt != null ||
+    body.negative_prompt != null ||
+    body.parameters != null;
+  if (!hasGenerationMetadata) {
+    const warning =
+      'batch created without generation metadata (raw_instruction / recipe / prompt / negative_prompt / parameters are all empty)';
+    console.warn(`${warning}: batch=${row.short_id}`);
+    return c.json({ ...serializeBatch(row), warnings: [warning] }, 201);
+  }
+
   return c.json(serializeBatch(row), 201);
 });
 

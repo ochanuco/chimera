@@ -53,6 +53,21 @@ describe('Batch create + idempotency', () => {
     expect(res.status).toBe(201);
   });
 
+  it('warns (without rejecting) when a batch is created with no generation metadata', async () => {
+    const empty = await postJson<{ warnings?: string[] }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(empty.status).toBe(201);
+    expect(empty.body.warnings?.length).toBe(1);
+
+    const withPrompt = await postJson<{ warnings?: string[] }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      prompt: 'has metadata',
+    });
+    expect(withPrompt.status).toBe(201);
+    expect(withPrompt.body.warnings).toBeUndefined();
+  });
+
   it('404s when experiment_id does not exist', async () => {
     const res = await postJson('/api/v1/batches', {
       idempotency_key: crypto.randomUUID(),
