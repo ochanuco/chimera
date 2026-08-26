@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getGenerationByIdOrShortId, resolveBatchShortIds, resolveGenerationShortIds } from '../lib/db';
+import { getBatchByIdOrShortId, getGenerationByIdOrShortId, resolveBatchShortIds, resolveGenerationShortIds } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { generationImageUrl } from '../lib/serialize';
 import { listBookmarkedExperiments, listBookmarkedStories } from '../lib/ui-queries';
@@ -10,7 +10,7 @@ import { BatchDetailPage, type BatchDetailData } from '../ui/pages/BatchDetail';
 import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
-import { GraphPage, type GraphNodeData, type GraphEdgeData } from '../ui/pages/Graph';
+import { GraphPage, type GraphNodeData, type GraphEdgeData, type GraphStoryOption, type GraphScope } from '../ui/pages/Graph';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import type { AppEnv, GenerationRow } from '../types';
@@ -169,10 +169,119 @@ pages.get('/bookmarks', async (c) => {
   );
 });
 
+/** BFS over an adjacency map, returning every id reachable from start (start included). */
+function reachableIds(start: string, adjacency: Map<string, Set<string>>): Set<string> {
+  const visited = new Set<string>([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const next of adjacency.get(current) ?? []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return visited;
+}
+
+function addEdge(adjacency: Map<string, Set<string>>, from: string, to: string): void {
+  let set = adjacency.get(from);
+  if (!set) {
+    set = new Set();
+    adjacency.set(from, set);
+  }
+  set.add(to);
+}
+
+/** Ancestors + descendants of rootId, following all edge types as directed source -> target, plus rootId itself. */
+function subgraphIds(edges: GraphEdgeData[], rootId: string): Set<string> {
+  const forward = new Map<string, Set<string>>();
+  const backward = new Map<string, Set<string>>();
+  for (const e of edges) {
+    addEdge(forward, e.source_batch_id, e.target_batch_id);
+    addEdge(backward, e.target_batch_id, e.source_batch_id);
+  }
+  const descendants = reachableIds(rootId, forward);
+  const ancestors = reachableIds(rootId, backward);
+  return new Set([...descendants, ...ancestors]);
+}
+
+/** Connected component (edges treated as undirected) containing the most recently created Batch. */
+function activeComponentIds(nodes: GraphNodeData[], edges: GraphEdgeData[]): Set<string> {
+  if (nodes.length === 0) return new Set();
+  // nodes arrive sorted by created_at ASC, id ASC (see /api/v1/graph), so the last entry is the newest.
+  const latest = nodes[nodes.length - 1]!;
+  const undirected = new Map<string, Set<string>>();
+  for (const e of edges) {
+    addEdge(undirected, e.source_batch_id, e.target_batch_id);
+    addEdge(undirected, e.target_batch_id, e.source_batch_id);
+  }
+  return reachableIds(latest.id, undirected);
+}
+
+function filterGraph(
+  nodes: GraphNodeData[],
+  edges: GraphEdgeData[],
+  ids: Set<string>,
+): { nodes: GraphNodeData[]; edges: GraphEdgeData[] } {
+  return {
+    nodes: nodes.filter((n) => ids.has(n.id)),
+    edges: edges.filter((e) => ids.has(e.source_batch_id) && ids.has(e.target_batch_id)),
+  };
+}
+
 pages.get('/graph', async (c) => {
-  const res = await internalApiRequest(c, '/api/v1/graph');
-  const data = (await res.json()) as { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
-  return c.html(<GraphPage nodes={data.nodes} edges={data.edges} />);
+  const q = c.req.query();
+  const [graphRes, storiesRes] = await Promise.all([
+    internalApiRequest(c, '/api/v1/graph'),
+    internalApiRequest(c, '/api/v1/stories'),
+  ]);
+  const data = (await graphRes.json()) as { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
+  const storiesData = (await storiesRes.json()) as { items: GraphStoryOption[] };
+
+  let filtered: { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
+  let scope: GraphScope;
+  let emptyMessage: string | undefined;
+
+  if (q.all === '1') {
+    filtered = { nodes: data.nodes, edges: data.edges };
+    scope = { value: 'all', label: 'All' };
+  } else if (q.story) {
+    const story = storiesData.items.find((s) => s.id === q.story);
+    const ids = new Set<string>();
+    for (const e of data.edges) {
+      if (e.type === 'story' && e.story_id === q.story) {
+        ids.add(e.source_batch_id);
+        ids.add(e.target_batch_id);
+      }
+    }
+    filtered = filterGraph(data.nodes, data.edges, ids);
+    scope = { value: `story:${q.story}`, label: story ? story.name : 'Story' };
+  } else if (q.root) {
+    const batch = await getBatchByIdOrShortId(c.env.DB, q.root);
+    if (!batch) {
+      filtered = { nodes: [], edges: [] };
+      scope = { value: `root:${q.root}`, label: `Subgraph: ${q.root}` };
+      emptyMessage = `Batch not found: ${q.root}`;
+    } else {
+      filtered = filterGraph(data.nodes, data.edges, subgraphIds(data.edges, batch.id));
+      scope = { value: `root:${batch.short_id}`, label: `Subgraph: ${batch.short_id}` };
+    }
+  } else {
+    filtered = filterGraph(data.nodes, data.edges, activeComponentIds(data.nodes, data.edges));
+    scope = { value: '', label: 'Active tree' };
+  }
+
+  return c.html(
+    <GraphPage
+      nodes={filtered.nodes}
+      edges={filtered.edges}
+      stories={storiesData.items}
+      scope={scope}
+      emptyMessage={emptyMessage}
+    />,
+  );
 });
 
 /** Parses a Generation's semantic_json into CompareSemantic; NULL or unparseable JSON is treated as "not analyzed". */

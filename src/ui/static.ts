@@ -375,6 +375,15 @@ details.section .section-body { margin-top: 0.6rem; }
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
 .bookmark-section { margin-bottom: 2rem; }
 
+.graph-scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+.graph-scope-label { color: var(--text-dim); }
+
 .graph-legend {
   display: flex;
   flex-wrap: wrap;
@@ -793,6 +802,47 @@ export const appJs = `
     });
   }
 
+  // --- Graph scope selector (filters which Batches /graph renders) ---
+  var GRAPH_SCOPE_KEY = 'chimera.graphScope';
+
+  function goToGraphScope(query) {
+    try {
+      if (query) {
+        localStorage.setItem(GRAPH_SCOPE_KEY, query);
+      } else {
+        localStorage.removeItem(GRAPH_SCOPE_KEY);
+      }
+    } catch (e) { /* localStorage unavailable */ }
+    window.location.href = query ? '/graph?' + query : '/graph';
+  }
+
+  // Restores the last-used scope when /graph is opened with no query params.
+  // Runs before other init so the redirect happens as early as possible.
+  function restoreGraphScope() {
+    var select = document.getElementById('graph-scope');
+    if (!select || window.location.search) return;
+    var saved;
+    try {
+      saved = localStorage.getItem(GRAPH_SCOPE_KEY);
+    } catch (e) {
+      return;
+    }
+    if (saved) window.location.replace('/graph?' + saved);
+  }
+
+  function initGraphScope() {
+    var select = document.getElementById('graph-scope');
+    if (!select) return;
+    select.addEventListener('change', function () {
+      var value = select.value;
+      var query = '';
+      if (value === 'all') query = 'all=1';
+      else if (value.indexOf('story:') === 0) query = 'story=' + value.slice('story:'.length);
+      else if (value.indexOf('root:') === 0) query = 'root=' + value.slice('root:'.length);
+      goToGraphScope(query);
+    });
+  }
+
   // --- Graph right-click context menu ---
   function initGraphContextMenu() {
     const svg = document.getElementById('graph-svg');
@@ -840,6 +890,7 @@ export const appJs = `
 
       if (genEl) {
         const shortId = genEl.getAttribute('data-gen-short-id');
+        const batchShortId = genEl.getAttribute('data-batch-short-id');
         addItem('Copy ID', function (btn) { copyText(shortId, btn); });
         addItem('Copy URL', function (btn) { copyText(window.location.origin + '/g/' + shortId, btn); });
         addItem('Open detail', function () {
@@ -852,6 +903,9 @@ export const appJs = `
           updateCompareBar();
           closeMenu();
         });
+        addItem('Show subgraph from here', function () {
+          goToGraphScope('root=' + batchShortId);
+        });
       } else if (batchEl) {
         const shortId = batchEl.getAttribute('data-batch-short-id');
         addItem('Copy ID', function (btn) { copyText(shortId, btn); });
@@ -859,6 +913,9 @@ export const appJs = `
         addItem('Open detail', function () {
           window.open(window.location.origin + '/b/' + shortId, '_blank');
           closeMenu();
+        });
+        addItem('Show subgraph from here', function () {
+          goToGraphScope('root=' + shortId);
         });
       }
 
@@ -1058,6 +1115,7 @@ export const appJs = `
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    restoreGraphScope();
     initRating();
     initBookmark();
     initThumbPreview();
@@ -1067,6 +1125,7 @@ export const appJs = `
     initNoteForm();
     initCompareBar();
     initStoryRelationEdit();
+    initGraphScope();
     initGraphPanZoom();
     initGraphSelection();
     initGraphContextMenu();

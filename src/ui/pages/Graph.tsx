@@ -32,6 +32,18 @@ export interface GraphEdgeData {
   target_batch_id: string;
   label: string;
   source_generation_short_id?: string;
+  story_id?: string;
+}
+
+export interface GraphStoryOption {
+  id: string;
+  name: string;
+}
+
+/** Current scope selection: value is the <select> option value ("" / "all" / "story:<id>" / "root:<short_id>"); label is the human-readable text shown next to the selector. */
+export interface GraphScope {
+  value: string;
+  label: string;
 }
 
 /**
@@ -45,12 +57,57 @@ function edgePath(sx: number, sy: number, tx: number, ty: number, bulge: number)
   return `M ${sx} ${sy} C ${sx + bulge} ${sy + pull}, ${tx + bulge} ${ty - pull}, ${tx} ${ty}`;
 }
 
-export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: GraphEdgeData[] }) {
+export function GraphPage({
+  nodes,
+  edges,
+  stories,
+  scope,
+  emptyMessage,
+}: {
+  nodes: GraphNodeData[];
+  edges: GraphEdgeData[];
+  stories: GraphStoryOption[];
+  scope: GraphScope;
+  emptyMessage?: string;
+}) {
+  const scopeBar = (
+    <div class="graph-scope-bar">
+      <select id="graph-scope">
+        <option value="" selected={scope.value === ''}>
+          Active tree
+        </option>
+        <option value="all" selected={scope.value === 'all'}>
+          All
+        </option>
+        {stories.length > 0 && (
+          <optgroup label="── Stories ──">
+            {stories.map((s) => (
+              <option value={`story:${s.id}`} selected={scope.value === `story:${s.id}`}>
+                {s.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {scope.value.startsWith('root:') && (
+          <option value={scope.value} selected>
+            {scope.label}
+          </option>
+        )}
+      </select>
+      <span class="graph-scope-label">
+        {scope.label} · {nodes.length} batches
+      </span>
+    </div>
+  );
+
   if (nodes.length === 0) {
     return (
       <Layout title="Graph">
         <h1>Graph</h1>
-        <p class="empty-state">No batches yet. Once generations start, their provenance graph appears here.</p>
+        {scopeBar}
+        <p class="empty-state">
+          {emptyMessage ?? 'No batches yet. Once generations start, their provenance graph appears here.'}
+        </p>
       </Layout>
     );
   }
@@ -76,6 +133,7 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
   return (
     <Layout title="Graph">
       <h1>Graph</h1>
+      {scopeBar}
       <div class="graph-legend">
         <div class="legend-row">
           <span class="legend-swatch legend-reference"></span> Reference（材料）
