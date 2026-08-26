@@ -42,6 +42,17 @@ describe('Batch create + idempotency', () => {
     expect(detail.body.references).toHaveLength(1);
   });
 
+  it('accepts explicit null for references / refinement / story per request.json contract', async () => {
+    const res = await postJson<{ id: string }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      prompt: 'null fields',
+      references: null,
+      refinement: null,
+      story: null,
+    });
+    expect(res.status).toBe(201);
+  });
+
   it('404s when experiment_id does not exist', async () => {
     const res = await postJson('/api/v1/batches', {
       idempotency_key: crypto.randomUUID(),

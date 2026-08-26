@@ -36,9 +36,10 @@ export const createBatchSchema = z.object({
   parameters: z.record(z.string(), z.unknown()).optional(),
   git_commit: z.string().optional(),
   git_dirty: z.boolean().optional(),
-  references: z.array(referenceInputSchema).optional(),
-  refinement: refinementInputSchema.optional(),
-  story: storyInputSchema.optional(),
+  // request.json (docs/generation-request.md) は「該当なし」を明示的な null で表す
+  references: z.array(referenceInputSchema).nullish(),
+  refinement: refinementInputSchema.nullish(),
+  story: storyInputSchema.nullish(),
 });
 
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;

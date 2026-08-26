@@ -12,6 +12,14 @@ Web GUI     → Read / user mutation
 
 認証はCloudflare Accessで行い、アプリ独自認証は実装しません。
 
+クライアント実装上の注意:
+
+-   Cloudflare がライブラリ既定の User-Agent（Python urllib
+    等）をブロックすることがあるため、明示的な User-Agent
+    ヘッダーを送ること。
+-   `references` / `refinement` / `story` は request.json
+    と同様、キー省略と明示的な `null` のどちらも「該当なし」として受理する。
+
 ## Batch
 
 ### Create Batch
@@ -85,6 +93,26 @@ completed
 ingested
 failed
 ```
+
+## Character
+
+Character は検索の第一級属性であり、事前登録が必要です。Generation ingest
+の `character_id` には登録済み Character の id を渡します。
+
+``` text
+POST /api/v1/characters
+GET  /api/v1/characters
+```
+
+``` json
+{
+  "name": "浜風",
+  "aliases": []
+}
+```
+
+CLI / Claude は name で GET
+して既存を解決し、なければ作成してから id を使います。
 
 ## Generation Ingest
 
