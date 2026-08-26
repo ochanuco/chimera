@@ -95,42 +95,45 @@ Story: yk-line
 
 ## Compare
 
-複数Generationを画像中心で比較します。
+複数GenerationのSemantic Metadataをdiff表示します。
 
-2〜9枚程度を想定します。
+2〜9枚を想定します（10件以上の選択は先頭9件のみ表示し警告を出す）。
 
-各画像から「次の生成でどの要素を採用するか」を指定できるUIを将来的に提供します。
-
-例:
+Generationごとに縦カラムで並べ、上から画像・short_idリンク・rating・character名を表示します。
 
 ``` text
-G123
-[IMAGE]
-Poseとして採用
-
-G456
-[IMAGE]
-Outfitとして採用
+[IMAGE]        [IMAGE]
+abc123         xyz987
+good           neutral
+浜風           浜風
 ```
 
-結果:
+その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
+expression / outfit / style / composition）、strengths、defects、そして全
+Generationのattributesキーの和集合。列は各Generationです。
 
 ``` text
-Selected references
-
-G123 → pose
-G456 → outfit
+              abc123          xyz987
+summary       a girl on...    a girl on...
+pose          standing        sitting
+expression    smiling         —
+outfit        school uniform  school uniform
+style         —               —
+composition   —               —
+strengths     —               —
+defects       —               —
+lighting      backlit         —
 ```
 
-MVPではComfyUIへ直接生成要求を送らず、Claudeへ渡す指示を生成・コピーできれば十分です。
+同じ行で全カラムの値が一致しない場合、その行の値セルを軽く強調表示（diff）します。
+semantic未解析（semantic_jsonがNULL）のGenerationは列全体が `(not analyzed)`
+になります。値がnullの項目は `—` と表示し、attributes行はすべてのGeneration
+で値なしの場合は行ごと表示しません（summary / core / strengths / defects の
+固定行は常に表示）。
 
-例:
+テーブルは横スクロール可能なコンテナに収め、列数が多くても崩れないようにします。
 
-``` text
-https://example/g/abc123 の pose
-https://example/g/xyz987 の outfit
-を採用して再生成
-```
+Compareは比較表示のみで、ComfyUIへの生成要求も指示テキストの生成も行いません。
 
 ## Generation Detail
 

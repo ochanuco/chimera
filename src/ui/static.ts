@@ -285,26 +285,23 @@ details.section .section-body { margin-top: 0.6rem; }
 .compare-columns { display: flex; gap: 1rem; flex-wrap: wrap; }
 .compare-col { flex: 1 1 220px; max-width: 320px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
 .compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; }
-.compare-col select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; }
-.instructions-box textarea {
-  width: 100%;
-  min-height: 6rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 0.6rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.compare-meta { font-size: 0.8rem; color: var(--text-dim); }
+
+.compare-table-wrap { overflow-x: auto; margin-top: 1.25rem; }
+.compare-table { border-collapse: collapse; width: 100%; min-width: 480px; }
+.compare-table th, .compare-table td {
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--border);
   font-size: 0.85rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
 }
-.instructions-box button {
-  margin-top: 0.5rem;
-  background: var(--accent);
-  color: #10131c;
-  border: none;
-  border-radius: 6px;
-  padding: 0.4rem 1rem;
-  cursor: pointer;
+.compare-table th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+.compare-table td:first-child { color: var(--text-dim); white-space: nowrap; }
+.compare-table td.diff {
+  border-left: 3px solid var(--accent);
+  background: rgba(124, 156, 245, 0.08);
 }
 
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
@@ -549,40 +546,6 @@ export const appJs = `
     });
   }
 
-  // --- Compare page: build instructions text ---
-  function initCompareBuilder() {
-    const box = document.getElementById('compare-page');
-    if (!box) return;
-    const output = document.getElementById('instructions-output');
-    function build() {
-      const lines = [];
-      qsa('.aspect-select', box).forEach(function (sel) {
-        if (!sel.value) return;
-        const shortId = sel.getAttribute('data-short-id');
-        lines.push(window.location.origin + '/g/' + shortId + ' \\u306e ' + sel.value);
-      });
-      if (lines.length > 0) lines.push('\\u3092\\u63a1\\u7528\\u3057\\u3066\\u518d\\u751f\\u6210');
-      if (output) output.value = lines.join('\\n');
-    }
-    qsa('.aspect-select', box).forEach(function (sel) {
-      sel.addEventListener('change', build);
-    });
-    build();
-    const copyBtn = document.getElementById('copy-instructions-btn');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', async function () {
-        try {
-          await navigator.clipboard.writeText(output.value);
-          copyBtn.textContent = 'Copied!';
-          setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
-        } catch (e) {
-          output.select();
-          document.execCommand('copy');
-        }
-      });
-    }
-  }
-
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -592,7 +555,6 @@ export const appJs = `
     initNoteForm();
     initCompareBar();
     initStoryRelationEdit();
-    initCompareBuilder();
   });
 })();
 `;

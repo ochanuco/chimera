@@ -157,4 +157,42 @@ describe('Web GUI pages', () => {
     expect(body).toContain(g1.short_id);
     expect(body).toContain(g2.short_id);
   });
+
+  it('GET /compare shows a semantic diff table with per-row highlighting for differing values', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+
+    await postJson(
+      `/api/v1/generations/${g1.id}/semantic`,
+      {
+        schema_version: 1,
+        summary: 'a girl standing',
+        core: { pose: 'standing', style: 'anime' },
+        strengths: ['clean lines'],
+        defects: [],
+      },
+      'PUT',
+    );
+    await postJson(
+      `/api/v1/generations/${g2.id}/semantic`,
+      {
+        schema_version: 1,
+        summary: 'a girl sitting',
+        core: { pose: 'sitting', style: 'anime' },
+        strengths: [],
+        defects: ['blurry hands'],
+      },
+      'PUT',
+    );
+
+    const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    expect(body).toContain(g1.short_id);
+    expect(body).toContain(g2.short_id);
+    expect(body).toContain('standing');
+    expect(body).toContain('sitting');
+    expect(body).toContain('class="diff"');
+  });
 });
