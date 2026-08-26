@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { toBool } from '../lib/db';
 import type { AppEnv } from '../types';
 
 export const graph = new Hono<AppEnv>();
@@ -10,7 +11,13 @@ interface BatchNodeRow {
   status: string;
   created_at: string;
   generation_count: number;
-  thumbnail_generation_short_id: string | null;
+}
+
+interface BatchGenerationRow {
+  batch_id: string;
+  short_id: string;
+  rating: string | null;
+  bookmark: number;
 }
 
 interface ReferenceEdgeRow {
@@ -41,28 +48,33 @@ interface StoryEdgeRow {
 graph.get('/', async (c) => {
   const db = c.env.DB;
 
-  const [nodesResult, referencesResult, relationsResult, storyRelationsResult] = await Promise.all([
+  const [nodesResult, generationsResult, referencesResult, relationsResult, storyRelationsResult] = await Promise.all([
     db
       .prepare(
         `WITH counts AS (
            SELECT batch_id, COUNT(*) AS cnt FROM generations GROUP BY batch_id
-         ),
-         firsts AS (
-           SELECT * FROM (
-             SELECT g.batch_id, g.short_id,
-               ROW_NUMBER() OVER (PARTITION BY g.batch_id ORDER BY g.created_at ASC, g.id ASC) AS rn
-             FROM generations g
-           ) WHERE rn = 1
          )
          SELECT b.id, b.short_id, b.raw_instruction, b.status, b.created_at,
-           COALESCE(counts.cnt, 0) AS generation_count,
-           firsts.short_id AS thumbnail_generation_short_id
+           COALESCE(counts.cnt, 0) AS generation_count
          FROM batches b
          LEFT JOIN counts ON counts.batch_id = b.id
-         LEFT JOIN firsts ON firsts.batch_id = b.id
          ORDER BY b.created_at ASC, b.id ASC`,
       )
       .all<BatchNodeRow>(),
+    // One bulk query for every Batch's first 9 Generations (by created_at), so the
+    // per-node thumbnail strip never costs an N+1 round trip per Batch.
+    db
+      .prepare(
+        `WITH ranked AS (
+           SELECT g.batch_id, g.short_id, g.rating, g.bookmark,
+             ROW_NUMBER() OVER (PARTITION BY g.batch_id ORDER BY g.created_at ASC, g.id ASC) AS rn
+           FROM generations g
+         )
+         SELECT batch_id, short_id, rating, bookmark FROM ranked
+         WHERE rn <= 9
+         ORDER BY batch_id ASC, rn ASC`,
+      )
+      .all<BatchGenerationRow>(),
     // Reference edges are provenance from a Generation to a Batch; rolled up to
     // the source Generation's own Batch so the graph stays batch-to-batch.
     db
@@ -92,15 +104,27 @@ graph.get('/', async (c) => {
       .all<StoryEdgeRow>(),
   ]);
 
-  const nodes = (nodesResult.results ?? []).map((row) => ({
-    id: row.id,
-    short_id: row.short_id,
-    raw_instruction: row.raw_instruction ? row.raw_instruction.slice(0, 60) : null,
-    status: row.status,
-    created_at: row.created_at,
-    generation_count: row.generation_count,
-    thumbnail_generation_short_id: row.thumbnail_generation_short_id,
-  }));
+  const generationsByBatchId = new Map<string, { short_id: string; rating: string | null; bookmark: boolean }[]>();
+  for (const row of generationsResult.results ?? []) {
+    const list = generationsByBatchId.get(row.batch_id) ?? [];
+    list.push({ short_id: row.short_id, rating: row.rating, bookmark: toBool(row.bookmark) });
+    generationsByBatchId.set(row.batch_id, list);
+  }
+
+  const nodes = (nodesResult.results ?? []).map((row) => {
+    const generations = generationsByBatchId.get(row.id) ?? [];
+    return {
+      id: row.id,
+      short_id: row.short_id,
+      raw_instruction: row.raw_instruction ? row.raw_instruction.slice(0, 60) : null,
+      status: row.status,
+      created_at: row.created_at,
+      generation_count: row.generation_count,
+      generations,
+      // Back-compat: earlier single-thumbnail field, now redundant with generations[0].
+      thumbnail_generation_short_id: generations[0]?.short_id ?? null,
+    };
+  });
 
   const referenceEdges = (referencesResult.results ?? [])
     .filter((row) => row.source_batch_id !== row.target_batch_id)

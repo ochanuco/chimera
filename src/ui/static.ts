@@ -363,16 +363,47 @@ details.section .section-body { margin-top: 0.6rem; }
 #graph-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #graph-svg.dragging { cursor: grabbing; }
 
-.graph-node { cursor: pointer; }
 .graph-node-card { fill: var(--bg-elevated); stroke: var(--border); stroke-width: 1; }
-.graph-node:hover .graph-node-card { stroke: var(--accent); }
-.graph-node-noimg { fill: #000; }
+.graph-batch-header { cursor: default; }
 .graph-node-shortid {
   fill: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
 }
 .graph-node-status { fill: var(--text-dim); font-size: 11px; }
+
+.graph-gen-thumb { cursor: pointer; }
+.graph-gen-ring { fill: none; stroke: transparent; stroke-width: 2; }
+.graph-gen-thumb.rating-good .graph-gen-ring { stroke: var(--good); }
+.graph-gen-thumb.selected .graph-gen-ring { stroke: var(--accent); stroke-width: 3; }
+.graph-gen-more-rect { fill: var(--bg); stroke: var(--border); stroke-dasharray: 4 3; }
+.graph-gen-more text { fill: var(--text-dim); font-size: 12px; }
+.graph-gen-empty { fill: #000; stroke: var(--border); stroke-dasharray: 4 3; }
+
+.graph-context-menu {
+  position: fixed;
+  z-index: 30;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+}
+.graph-context-menu.hidden { display: none; }
+.graph-context-menu-item {
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.82rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.graph-context-menu-item:hover { background: var(--bg); }
 
 .graph-edge path { fill: none; stroke-width: 2; }
 .graph-edge.edge-reference path { stroke: var(--graph-reference); }
@@ -581,24 +612,136 @@ export const appJs = `
   }
 
   // --- Compare selection bar ---
+  // Feeds off two independent selection sources: Gallery's checkboxes
+  // (.compare-check) and Graph's clicked-to-select thumbnails (.graph-gen-thumb.selected).
+  function collectCompareIds() {
+    const ids = qsa('.compare-check:checked').map(function (c) { return c.value; });
+    qsa('.graph-gen-thumb.selected').forEach(function (t) {
+      const id = t.getAttribute('data-gen-short-id');
+      if (id && ids.indexOf(id) === -1) ids.push(id);
+    });
+    return ids;
+  }
+  function updateCompareBar() {
+    const bar = document.getElementById('compare-bar');
+    if (!bar) return;
+    const ids = collectCompareIds();
+    if (ids.length > 0) {
+      bar.classList.remove('hidden');
+      const displayCount = Math.min(ids.length, 9);
+      qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
+      qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
+    } else {
+      bar.classList.add('hidden');
+    }
+  }
   function initCompareBar() {
     const bar = document.getElementById('compare-bar');
     if (!bar) return;
-    function update() {
-      const checked = qsa('.compare-check:checked').map(function (c) { return c.value; });
-      if (checked.length > 0) {
-        bar.classList.remove('hidden');
-        const displayCount = Math.min(checked.length, 9);
-        qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
-        qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + checked.slice(0, 9).join(','));
-      } else {
-        bar.classList.add('hidden');
-      }
-    }
     document.addEventListener('change', function (ev) {
-      if (ev.target.classList && ev.target.classList.contains('compare-check')) update();
+      if (ev.target.classList && ev.target.classList.contains('compare-check')) updateCompareBar();
     });
-    update();
+    updateCompareBar();
+  }
+
+  // --- Graph thumbnail selection (feeds the compare bar) ---
+  function initGraphSelection() {
+    const svg = document.getElementById('graph-svg');
+    if (!svg) return;
+    svg.addEventListener('click', function (ev) {
+      const thumb = ev.target.closest ? ev.target.closest('.graph-gen-thumb') : null;
+      if (!thumb) return;
+      thumb.classList.toggle('selected');
+      updateCompareBar();
+    });
+  }
+
+  // --- Graph right-click context menu ---
+  function initGraphContextMenu() {
+    const svg = document.getElementById('graph-svg');
+    const menu = document.getElementById('graph-context-menu');
+    if (!svg || !menu) return;
+
+    function closeMenu() {
+      menu.classList.add('hidden');
+      menu.innerHTML = '';
+    }
+
+    function flashCopied(btn) {
+      const original = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = original; }, 900);
+    }
+
+    function copyText(text, btn) {
+      try {
+        navigator.clipboard.writeText(text).then(function () {
+          flashCopied(btn);
+        }).catch(function () {});
+      } catch (e) {}
+    }
+
+    function addItem(label, onClick) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'graph-context-menu-item';
+      btn.textContent = label;
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        onClick(btn);
+      });
+      menu.appendChild(btn);
+    }
+
+    svg.addEventListener('contextmenu', function (ev) {
+      const genEl = ev.target.closest ? ev.target.closest('[data-gen-short-id]') : null;
+      const batchEl = !genEl && ev.target.closest ? ev.target.closest('[data-batch-short-id]') : null;
+      if (!genEl && !batchEl) return;
+      ev.preventDefault();
+
+      menu.innerHTML = '';
+
+      if (genEl) {
+        const shortId = genEl.getAttribute('data-gen-short-id');
+        addItem('Copy ID', function (btn) { copyText(shortId, btn); });
+        addItem('Copy URL', function (btn) { copyText(window.location.origin + '/g/' + shortId, btn); });
+        addItem('Open detail', function () {
+          window.open(window.location.origin + '/g/' + shortId, '_blank');
+          closeMenu();
+        });
+        const selected = genEl.classList.contains('selected');
+        addItem(selected ? 'Remove from compare' : 'Add to compare', function () {
+          genEl.classList.toggle('selected');
+          updateCompareBar();
+          closeMenu();
+        });
+      } else if (batchEl) {
+        const shortId = batchEl.getAttribute('data-batch-short-id');
+        addItem('Copy ID', function (btn) { copyText(shortId, btn); });
+        addItem('Copy URL', function (btn) { copyText(window.location.origin + '/b/' + shortId, btn); });
+        addItem('Open detail', function () {
+          window.open(window.location.origin + '/b/' + shortId, '_blank');
+          closeMenu();
+        });
+      }
+
+      menu.style.left = ev.clientX + 'px';
+      menu.style.top = ev.clientY + 'px';
+      menu.classList.remove('hidden');
+    });
+
+    document.addEventListener('click', function () {
+      closeMenu();
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') closeMenu();
+    });
+    document.addEventListener('scroll', function () {
+      closeMenu();
+    }, true);
+    svg.addEventListener('wheel', function () {
+      closeMenu();
+    });
   }
 
   // --- Story relation inline edit ---
@@ -771,6 +914,8 @@ export const appJs = `
     initCompareBar();
     initStoryRelationEdit();
     initGraphPanZoom();
+    initGraphSelection();
+    initGraphContextMenu();
   });
 })();
 `;
