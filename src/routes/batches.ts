@@ -367,10 +367,10 @@ batches.get('/:id', async (c) => {
           br.purpose AS purpose, br.aspect AS aspect
          FROM batch_references br
          JOIN generations g ON g.id = br.source_generation_id
-         WHERE g.batch_id = ?
+         WHERE g.batch_id = ? AND br.target_batch_id != ?
          ORDER BY br.created_at ASC`,
       )
-      .bind(batch.id)
+      .bind(batch.id, batch.id)
       .all<{ batch_id: string; source_generation_id: string; purpose: string | null; aspect: string | null }>(),
     // Siblings via refinement: other Batches refined from the same source_batch_id that refined this one.
     db
