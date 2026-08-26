@@ -306,6 +306,61 @@ POST /api/v1/stories/{story_id}/relations
 }
 ```
 
+## Graph
+
+生成履歴全体をBatch単位のノードとして返します。`/graph`
+のGraph View SSRが内部で利用しますが、外部からも利用可能です。
+
+``` text
+GET /api/v1/graph
+```
+
+``` json
+{
+  "nodes": [
+    {
+      "id": "...",
+      "short_id": "...",
+      "raw_instruction": "先頭60文字",
+      "status": "...",
+      "created_at": "...",
+      "generation_count": 3,
+      "thumbnail_generation_short_id": "... or null"
+    }
+  ],
+  "edges": [
+    {
+      "type": "reference",
+      "source_batch_id": "...",
+      "target_batch_id": "...",
+      "label": "pose (abc123)",
+      "source_generation_short_id": "abc123",
+      "aspect": "pose"
+    },
+    {
+      "type": "relation",
+      "source_batch_id": "...",
+      "target_batch_id": "...",
+      "label": "refinement / human",
+      "relation_type": "refinement",
+      "actor": "human"
+    },
+    {
+      "type": "story",
+      "source_batch_id": "...",
+      "target_batch_id": "...",
+      "label": "<story name>: <relation label>",
+      "story_id": "..."
+    }
+  ]
+}
+```
+
+`edges[].type`はBatchReference / BatchRelation /
+StoryRelationに対応し、統合しません（Relation Separation、`domain-model.md`
+参照）。reference エッジは、Generation起点のBatchReferenceをsource
+Generationが属するBatchへ集約したものです。source/targetが同一Batchになるものは除外します。
+
 ## Tags
 
 対象別endpointを使用します。

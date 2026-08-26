@@ -10,6 +10,7 @@ import { BatchDetailPage, type BatchDetailData } from '../ui/pages/BatchDetail';
 import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
+import { GraphPage, type GraphNodeData, type GraphEdgeData } from '../ui/pages/Graph';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import type { AppEnv, GenerationRow } from '../types';
@@ -157,6 +158,12 @@ pages.get('/bookmarks', async (c) => {
       experiments={bookmarkedExperiments}
     />,
   );
+});
+
+pages.get('/graph', async (c) => {
+  const res = await internalApiRequest(c, '/api/v1/graph');
+  const data = (await res.json()) as { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
+  return c.html(<GraphPage nodes={data.nodes} edges={data.edges} />);
 });
 
 /** Parses a Generation's semantic_json into CompareSemantic; NULL or unparseable JSON is treated as "not analyzed". */

@@ -200,6 +200,43 @@ descriptionはClaude生成ですが、人間が編集できます。
 
 Graph全体を常時表示せず、Storyを閲覧するときのみ使用します。
 
+## Graph View
+
+`/graph` は生成履歴全体を1画面で見るための、`Provenance View`
+とは別の高度な表示です。Provenance View が選択
+Generation/Batch周辺の1 hopに留めるのに対し、Graph
+Viewは全Batchを一度にレイアウトします。
+
+サーバーサイドでレイヤード DAG レイアウトを計算し、SVG として SSR
+します。
+
+``` text
+layer(Batch) = 入次数ゼロのルートからの最長パス長
+x = layer
+y = 同一layer内でのcreated_at順
+```
+
+BatchReference / BatchRelation / StoryRelationは統合せず、視覚的に区別します（Relation
+Separation、`docs/domain-model.md` 参照）。
+
+``` text
+Reference   実線・青系   生成材料として何を使ったか
+Refinement  破線・橙系   前Batchを受けてどう再試行したか
+Story       実線・緑系   作品上の続き
+```
+
+左上に凡例（3種の線種と意味）を固定表示します。
+
+ノードはBatchのサムネイル・short_id・statusを表示し、`/b/{short_id}`
+へのリンクになっています。
+
+パン/ズームはvanilla JSでSVGのviewBoxを操作します。JS
+無効時はコンテナのスクロールにフォールバックし、SVG自体は常に表示されます。
+
+サイクル（Story等が過去Batchに戻るケース）を検出した場合、そのエッジは描画は維持しつつlayer計算からのみ除外します。
+
+Batchが1件も無い場合はempty-stateを表示します。
+
 ## Bookmarks
 
 Bookmarkした対象を素早く呼び出します。

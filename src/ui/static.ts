@@ -13,6 +13,9 @@ export const styleCss = `
   --good: #5fbf7b;
   --neutral: #b8ab5f;
   --bad: #d4695f;
+  --graph-reference: #6fa8fd;
+  --graph-relation: #e2914f;
+  --graph-story: #4fd8a4;
 }
 
 * { box-sizing: border-box; }
@@ -306,6 +309,58 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
 .bookmark-section { margin-bottom: 2rem; }
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.legend-row { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.legend-swatch { display: inline-block; width: 22px; height: 0; border-top-width: 3px; border-top-style: solid; }
+.legend-swatch.legend-reference { border-color: var(--graph-reference); }
+.legend-swatch.legend-relation { border-color: var(--graph-relation); border-top-style: dashed; }
+.legend-swatch.legend-story { border-color: var(--graph-story); }
+
+.graph-viewport {
+  height: 78vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+#graph-svg { display: block; cursor: grab; touch-action: none; }
+#graph-svg.dragging { cursor: grabbing; }
+
+.graph-node { cursor: pointer; }
+.graph-node-card { fill: var(--bg-elevated); stroke: var(--border); stroke-width: 1; }
+.graph-node:hover .graph-node-card { stroke: var(--accent); }
+.graph-node-noimg { fill: #000; }
+.graph-node-shortid {
+  fill: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.graph-node-status { fill: var(--text-dim); font-size: 11px; }
+
+.graph-edge path { fill: none; stroke-width: 2; }
+.graph-edge.edge-reference path { stroke: var(--graph-reference); }
+.graph-edge.edge-relation path { stroke: var(--graph-relation); stroke-dasharray: 7 5; }
+.graph-edge.edge-story path { stroke: var(--graph-story); }
+.graph-edge text {
+  font-size: 10px;
+  fill: var(--text-dim);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
 `;
 
 export const appJs = `
@@ -546,6 +601,66 @@ export const appJs = `
     });
   }
 
+  // --- Graph pan/zoom ---
+  // Drags/zooms by rewriting the SVG's viewBox. Without JS the browser falls
+  // back to the .graph-viewport container's native scrollbars (see style.css).
+  function initGraphPanZoom() {
+    var svg = document.getElementById('graph-svg');
+    if (!svg) return;
+    var parts = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
+    if (parts.length !== 4 || parts.some(function (n) { return isNaN(n); })) return;
+
+    var vb = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+    var baseW = vb.w;
+    var minScale = 0.2;
+    var maxScale = 3;
+
+    function apply() {
+      svg.setAttribute('viewBox', vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h);
+    }
+
+    svg.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      var rect = svg.getBoundingClientRect();
+      var pointerX = vb.x + ((ev.clientX - rect.left) / rect.width) * vb.w;
+      var pointerY = vb.y + ((ev.clientY - rect.top) / rect.height) * vb.h;
+      var factor = ev.deltaY > 0 ? 1.1 : 0.9;
+      var newW = vb.w * factor;
+      var newH = vb.h * factor;
+      var scale = baseW / newW;
+      if (scale < minScale || scale > maxScale) return;
+      vb.x = pointerX - (pointerX - vb.x) * (newW / vb.w);
+      vb.y = pointerY - (pointerY - vb.y) * (newH / vb.h);
+      vb.w = newW;
+      vb.h = newH;
+      apply();
+    }, { passive: false });
+
+    var dragging = false;
+    var lastX = 0;
+    var lastY = 0;
+    svg.addEventListener('mousedown', function (ev) {
+      if (ev.target && ev.target.closest && ev.target.closest('a')) return;
+      dragging = true;
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      svg.classList.add('dragging');
+    });
+    window.addEventListener('mousemove', function (ev) {
+      if (!dragging) return;
+      var rect = svg.getBoundingClientRect();
+      vb.x -= ((ev.clientX - lastX) / rect.width) * vb.w;
+      vb.y -= ((ev.clientY - lastY) / rect.height) * vb.h;
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      apply();
+    });
+    window.addEventListener('mouseup', function () {
+      dragging = false;
+      svg.classList.remove('dragging');
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -555,6 +670,7 @@ export const appJs = `
     initNoteForm();
     initCompareBar();
     initStoryRelationEdit();
+    initGraphPanZoom();
   });
 })();
 `;
