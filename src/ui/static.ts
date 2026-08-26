@@ -17,6 +17,7 @@ export const styleCss = `
   --graph-relation: #e2914f;
   --graph-story: #4fd8a4;
   --nav-h: 3.25rem;
+  --thumb-ar: 2 / 3;
 }
 
 * { box-sizing: border-box; }
@@ -131,9 +132,27 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   display: flex;
   flex-direction: column;
 }
-.card .thumb-link { display: block; background: #000; }
-.card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; }
+.card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: #000; }
+.card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.card .thumb-link .thumb-bg { object-fit: cover; filter: blur(14px) brightness(0.7); transform: scale(1.2); }
+.card .thumb-link .thumb-fg { object-fit: contain; }
 .card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+#thumb-preview {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 100;
+  max-width: min(40vw, 640px);
+  max-height: 80vh;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+#thumb-preview img { display: block; max-width: 100%; max-height: 100%; border-radius: 6px; }
+#thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
 
@@ -530,6 +549,78 @@ export const appJs = `
         alert('bookmark update failed: ' + e.message);
       }
     });
+  }
+
+  // --- Thumbnail hover preview ---
+  function initThumbPreview() {
+    if (!window.matchMedia || !window.matchMedia('(hover: hover)').matches) return;
+
+    const preview = document.createElement('div');
+    preview.id = 'thumb-preview';
+    const previewImg = document.createElement('img');
+    preview.appendChild(previewImg);
+    document.body.appendChild(preview);
+
+    let timer = null;
+    let currentLink = null;
+
+    function hide() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      preview.classList.remove('visible');
+      currentLink = null;
+    }
+
+    function show(link) {
+      const fg = link.querySelector('.thumb-fg');
+      if (!fg || !fg.src) return;
+      previewImg.src = fg.src;
+      preview.classList.add('visible');
+      position(link);
+      // 未キャッシュ画像は load 後にサイズが確定するため再配置する
+      previewImg.onload = function () {
+        if (currentLink === link) position(link);
+      };
+    }
+
+    function position(link) {
+      const margin = 8;
+      const rect = link.getBoundingClientRect();
+      const pw = preview.offsetWidth;
+      const ph = preview.offsetHeight;
+      let left = rect.right + margin;
+      if (left + pw > window.innerWidth) left = rect.left - margin - pw;
+      if (left < margin) left = margin;
+      let top = rect.top;
+      if (top + ph > window.innerHeight - margin) top = window.innerHeight - margin - ph;
+      if (top < margin) top = margin;
+      preview.style.left = left + 'px';
+      preview.style.top = top + 'px';
+    }
+
+    document.addEventListener('mouseover', function (ev) {
+      const link = ev.target.closest ? ev.target.closest('.card .thumb-link') : null;
+      if (!link || link === currentLink) return;
+      if (timer) clearTimeout(timer);
+      currentLink = link;
+      timer = setTimeout(function () {
+        timer = null;
+        show(link);
+      }, 200);
+    });
+
+    document.addEventListener('mouseout', function (ev) {
+      const link = ev.target.closest ? ev.target.closest('.card .thumb-link') : null;
+      if (!link) return;
+      const related = ev.relatedTarget;
+      if (related && link.contains(related)) return;
+      hide();
+    });
+
+    document.addEventListener('click', hide);
+    window.addEventListener('scroll', hide, true);
   }
 
   // --- Tag add ---
@@ -969,6 +1060,7 @@ export const appJs = `
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
+    initThumbPreview();
     initTagAdd();
     initTagRemove();
     initTagSuggestions();
