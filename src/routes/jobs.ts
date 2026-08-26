@@ -105,6 +105,9 @@ jobs.post('/:jobId/generations', async (c) => {
     .first<GenerationRow>();
   if (existing) {
     await ensureObject(existing);
+    if (job.status !== 'ingested') {
+      await db.prepare('UPDATE comfy_jobs SET status = ?, updated_at = ? WHERE id = ?').bind('ingested', nowIso(), job.id).run();
+    }
     return respond(existing, 200);
   }
 
@@ -147,6 +150,9 @@ jobs.post('/:jobId/generations', async (c) => {
       .first<GenerationRow>();
     if (!raced) throw err;
     await ensureObject(raced);
+    if (job.status !== 'ingested') {
+      await db.prepare('UPDATE comfy_jobs SET status = ?, updated_at = ? WHERE id = ?').bind('ingested', nowIso(), job.id).run();
+    }
     return respond(raced, 200);
   }
 

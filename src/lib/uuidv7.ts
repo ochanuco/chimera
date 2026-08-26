@@ -9,22 +9,27 @@ let counter = 0;
 
 export function uuidv7(): string {
   const unixTsMs = Date.now();
-  const bytes = new Uint8Array(16);
-
-  bytes[0] = (unixTsMs / 2 ** 40) & 0xff;
-  bytes[1] = (unixTsMs / 2 ** 32) & 0xff;
-  bytes[2] = (unixTsMs / 2 ** 24) & 0xff;
-  bytes[3] = (unixTsMs / 2 ** 16) & 0xff;
-  bytes[4] = (unixTsMs / 2 ** 8) & 0xff;
-  bytes[5] = unixTsMs & 0xff;
 
   // Monotonic counter: reset when timestamp changes, increment within same ms
   if (unixTsMs !== lastTimestamp) {
     lastTimestamp = unixTsMs;
     counter = crypto.getRandomValues(new Uint16Array(1))[0]! & 0x0fff;
   } else {
-    counter = (counter + 1) & 0x0fff;
+    counter = counter + 1;
+    if (counter > 0x0fff) {
+      lastTimestamp = lastTimestamp + 1;
+      counter = crypto.getRandomValues(new Uint16Array(1))[0]! & 0x0fff;
+    }
   }
+
+  const bytes = new Uint8Array(16);
+
+  bytes[0] = (lastTimestamp / 2 ** 40) & 0xff;
+  bytes[1] = (lastTimestamp / 2 ** 32) & 0xff;
+  bytes[2] = (lastTimestamp / 2 ** 24) & 0xff;
+  bytes[3] = (lastTimestamp / 2 ** 16) & 0xff;
+  bytes[4] = (lastTimestamp / 2 ** 8) & 0xff;
+  bytes[5] = lastTimestamp & 0xff;
 
   const rand = new Uint8Array(8);
   crypto.getRandomValues(rand);
