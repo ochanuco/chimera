@@ -27,7 +27,23 @@ export interface BatchDetailData {
   tags: string[];
 }
 
-export function BatchDetailPage({ batch, storyNames }: { batch: BatchDetailData; storyNames: Record<string, string> }) {
+/** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
+function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
+  const shortId = shortIds.get(id);
+  return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
+}
+
+export function BatchDetailPage({
+  batch,
+  storyNames,
+  batchShortIds,
+  generationShortIds,
+}: {
+  batch: BatchDetailData;
+  storyNames: Record<string, string>;
+  batchShortIds: Map<string, string>;
+  generationShortIds: Map<string, string>;
+}) {
   const refinementIncoming = batch.relations.incoming.find((r) => r.type === 'refinement');
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
 
@@ -72,7 +88,10 @@ export function BatchDetailPage({ batch, storyNames }: { batch: BatchDetailData;
         {refinementIncoming ? (
           <>
             {' '}
-            · Refinement from: <a href={`/b/${refinementIncoming.source_batch_id}`}>{refinementIncoming.source_batch_id}</a>
+            · Refinement from:{' '}
+            <a href={refLink('/b/', refinementIncoming.source_batch_id, batchShortIds).href}>
+              {refLink('/b/', refinementIncoming.source_batch_id, batchShortIds).label}
+            </a>
           </>
         ) : null}
         {storyIds.length > 0 ? (
@@ -114,7 +133,9 @@ export function BatchDetailPage({ batch, storyNames }: { batch: BatchDetailData;
               {batch.references.map((r) => (
                 <tr>
                   <td>
-                    <a href={`/g/${r.source_generation_id}`}>{r.source_generation_id}</a>
+                    <a href={refLink('/g/', r.source_generation_id, generationShortIds).href}>
+                      {refLink('/g/', r.source_generation_id, generationShortIds).label}
+                    </a>
                   </td>
                   <td>
                     purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}
@@ -136,7 +157,9 @@ export function BatchDetailPage({ batch, storyNames }: { batch: BatchDetailData;
             {batch.relations.outgoing.map((r) => (
               <tr>
                 <td>
-                  <a href={`/b/${r.target_batch_id}`}>{r.target_batch_id}</a>
+                  <a href={refLink('/b/', r.target_batch_id, batchShortIds).href}>
+                    {refLink('/b/', r.target_batch_id, batchShortIds).label}
+                  </a>
                 </td>
                 <td>
                   {r.type ?? '-'} / {r.actor} / {r.reason ?? '-'}
@@ -149,7 +172,9 @@ export function BatchDetailPage({ batch, storyNames }: { batch: BatchDetailData;
             {batch.relations.incoming.map((r) => (
               <tr>
                 <td>
-                  <a href={`/b/${r.source_batch_id}`}>{r.source_batch_id}</a>
+                  <a href={refLink('/b/', r.source_batch_id, batchShortIds).href}>
+                    {refLink('/b/', r.source_batch_id, batchShortIds).label}
+                  </a>
                 </td>
                 <td>
                   {r.type ?? '-'} / {r.actor} / {r.reason ?? '-'}

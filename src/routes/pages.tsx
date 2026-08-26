@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getGenerationByIdOrShortId } from '../lib/db';
+import { getGenerationByIdOrShortId, resolveBatchShortIds, resolveGenerationShortIds } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { generationImageUrl } from '../lib/serialize';
 import { listBookmarkedExperiments, listBookmarkedStories } from '../lib/ui-queries';
@@ -82,7 +82,13 @@ pages.get('/b/:shortId', async (c) => {
   }
   const data = (await res.json()) as BatchDetailData;
 
-  const [storyNames, generationTags] = await Promise.all([
+  const referencedBatchIds = [
+    ...data.relations.outgoing.map((r) => r.target_batch_id),
+    ...data.relations.incoming.map((r) => r.source_batch_id),
+  ];
+  const referencedGenerationIds = data.references.map((r) => r.source_generation_id);
+
+  const [storyNames, generationTags, batchShortIds, generationShortIds] = await Promise.all([
     (async () => {
       const storyIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
       const names: Record<string, string> = {};
@@ -98,6 +104,8 @@ pages.get('/b/:shortId', async (c) => {
       return names;
     })(),
     Promise.all(data.generations.map((g) => listTagsForTarget(c.env.DB, 'generation_tags', g.id))),
+    resolveBatchShortIds(c.env.DB, referencedBatchIds),
+    resolveGenerationShortIds(c.env.DB, referencedGenerationIds),
   ]);
 
   const generationsWithTags = data.generations.map((g, i) => ({
@@ -105,7 +113,14 @@ pages.get('/b/:shortId', async (c) => {
     tags: (generationTags[i] ?? []).map((t) => t.name),
   }));
 
-  return c.html(<BatchDetailPage batch={{ ...data, generations: generationsWithTags }} storyNames={storyNames} />);
+  return c.html(
+    <BatchDetailPage
+      batch={{ ...data, generations: generationsWithTags }}
+      storyNames={storyNames}
+      batchShortIds={batchShortIds}
+      generationShortIds={generationShortIds}
+    />,
+  );
 });
 
 pages.get('/stories', async (c) => {

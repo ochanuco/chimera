@@ -34,14 +34,22 @@ export interface GenerationDetailData {
 
 const RATINGS = ['bad', 'neutral', 'good'] as const;
 
+/** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
+function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
+  const shortId = shortIds.get(id);
+  return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
+}
+
 export function GenerationDetailPage({
   data,
   tags,
   storyLinks,
+  batchShortIds,
 }: {
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
   storyLinks: { story_id: string; story_name: string; label: string | null }[];
+  batchShortIds: Map<string, string>;
 }) {
   return (
     <Layout title={`Generation ${data.short_id}`}>
@@ -123,7 +131,9 @@ export function GenerationDetailPage({
               {data.references.map((r) => (
                 <tr>
                   <td>
-                    <a href={`/b/${r.target_batch_id}`}>{r.target_batch_id}</a>
+                    <a href={refLink('/b/', r.target_batch_id, batchShortIds).href}>
+                      {refLink('/b/', r.target_batch_id, batchShortIds).label}
+                    </a>
                   </td>
                   <td>
                     purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}

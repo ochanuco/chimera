@@ -129,6 +129,25 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
   });
 
+  it('GET /b/{short_id} and /g/{short_id} show reference short_ids, not raw UUIDs', async () => {
+    const { generation: sourceGen } = await createGeneration();
+    const refBatch = await createBatch({
+      references: [{ source_generation_id: sourceGen.id, purpose: 'style' }],
+    });
+
+    const batchRes = await req(`/b/${refBatch.body.short_id}`);
+    expect(batchRes.status).toBe(200);
+    const batchHtml = await batchRes.text();
+    expect(batchHtml).toContain(sourceGen.short_id);
+    expect(batchHtml).not.toContain(sourceGen.id);
+
+    const genRes = await req(`/g/${sourceGen.short_id}`);
+    expect(genRes.status).toBe(200);
+    const genHtml = await genRes.text();
+    expect(genHtml).toContain(refBatch.body.short_id);
+    expect(genHtml).not.toContain(refBatch.body.id);
+  });
+
   it('GET /compare?ids=a,b renders both generations', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();

@@ -37,6 +37,30 @@ export async function getGenerationByIdOrShortId(
     .first<GenerationRow>();
 }
 
+/** Resolves short_ids for a set of Batch UUIDs, for display in reference links. Missing ids are simply absent from the result. */
+export async function resolveBatchShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return new Map();
+  const placeholders = unique.map(() => '?').join(', ');
+  const { results } = await db
+    .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
+    .bind(...unique)
+    .all<{ id: string; short_id: string }>();
+  return new Map((results ?? []).map((r) => [r.id, r.short_id]));
+}
+
+/** Resolves short_ids for a set of Generation UUIDs, for display in reference links. Missing ids are simply absent from the result. */
+export async function resolveGenerationShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return new Map();
+  const placeholders = unique.map(() => '?').join(', ');
+  const { results } = await db
+    .prepare(`SELECT id, short_id FROM generations WHERE id IN (${placeholders})`)
+    .bind(...unique)
+    .all<{ id: string; short_id: string }>();
+  return new Map((results ?? []).map((r) => [r.id, r.short_id]));
+}
+
 export interface Pagination {
   limit: number;
   offset: number;

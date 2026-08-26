@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getGenerationByIdOrShortId } from '../lib/db';
+import { getGenerationByIdOrShortId, resolveBatchShortIds } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
@@ -46,6 +46,10 @@ images.get('/:shortId', async (c) => {
     listTagsForTarget(db, 'generation_tags', generation.id),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
+  const batchShortIds = await resolveBatchShortIds(
+    db,
+    data.references.map((r) => r.target_batch_id),
+  );
 
   let storyLinks: { story_id: string; story_name: string; label: string | null }[] = [];
   if (data.batch) {
@@ -78,6 +82,7 @@ images.get('/:shortId', async (c) => {
       data={data}
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
       storyLinks={storyLinks}
+      batchShortIds={batchShortIds}
     />,
   );
 });
