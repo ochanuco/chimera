@@ -226,6 +226,10 @@ describe('Web GUI pages', () => {
     expect(body).toContain('edge-reference');
     expect(body).toContain('edge-relation');
     expect(body).toContain('edge-story');
+    expect(body).toContain(`data-gen-short-id="${generation.short_id}"`);
+    expect(body).toContain(`data-batch-short-id="${sourceBatch.short_id}"`);
+    expect(body).toContain(`data-batch-short-id="${targetBatch.body.short_id}"`);
+    expect(body).toContain('id="graph-context-menu"');
   });
 
   it('GET /graph with no query params still renders the pan/zoom SVG container', async () => {

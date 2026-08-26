@@ -229,8 +229,15 @@ Story       実線・緑系   作品上の続き
 
 左上に凡例（3種の線種と意味）を固定表示します。
 
-ノードはBatchのサムネイル・short_id・statusを表示し、`/b/{short_id}`
-へのリンクになっています。
+ノードはBatchの「グループ枠」（角丸の矩形）です。中にGenerationのサムネイルを3列グリッドで並べ（最大9枚まで表示、10枚目以降は9枚目の枠を「+n」のプレースホルダーに置き換えます）、上部のヘッダー行にBatchのshort_id（monospace）と`status
+· count`を表示します。ノードの高さはサムネイル行数（3列グリッド）に応じて可変で、layerのy位置はその上のlayerで最も高いノードに合わせて決まります。
+
+Reference（青）エッジは、参照元Generationのサムネイルが画面上に実在する場合はそのサムネイル下端から、実在しない場合（Batchが9枚を超えて保持しており、参照元がoverflow枠に落ちた場合）はBatch枠の下端にフォールバックして描画します。Relation（橙・破線）とStory（緑）のエッジは従来どおりBatch枠の下端→Batch枠の上端です。
+
+ナビゲーションはコンテキストメニュー経由のみです。Batchヘッダーの左クリックは何も起きません（ページ遷移なし）。Generationサムネイルの左クリックはCompare選択のトグルです（こちらもページ遷移なし）。1件以上選択すると画面下部にCompareバーが現れ、`/compare?ids=...`
+へリンクします（Galleryのcompareバーと同じ仕組み）。Generationサムネイル、またはBatchヘッダー/枠を右クリックするとコンテキストメニューが開き、「Copy
+ID」「Copy URL」「Open detail」（`/g/{short_id}`または`/b/{short_id}`を新規タブで開く）、Generationの場合はさらに「Add/Remove
+from compare」のトグルを提供します。
 
 パン/ズームはvanilla JSでSVGのviewBoxを操作します。JS
 無効時はコンテナのスクロールにフォールバックし、SVG自体は常に表示されます。

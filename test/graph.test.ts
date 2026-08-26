@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, getJson, postJson } from './helpers';
+import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson } from './helpers';
+
+interface GraphGeneration {
+  short_id: string;
+  rating: 'good' | 'neutral' | 'bad' | null;
+  bookmark: boolean;
+}
 
 interface GraphNode {
   id: string;
@@ -8,6 +14,7 @@ interface GraphNode {
   status: string;
   created_at: string;
   generation_count: number;
+  generations: GraphGeneration[];
   thumbnail_generation_short_id: string | null;
 }
 
@@ -131,5 +138,71 @@ describe('GET /api/v1/graph', () => {
     expect(edge).toBeDefined();
     expect(edge?.story_id).toBe(story.body.id);
     expect(edge?.label).toContain('move to the beach');
+  });
+
+  it('returns a batch\'s generations array, ascending by created_at, with short_id/rating/bookmark per entry', async () => {
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const g1 = await ingestGeneration(job.body.id, {
+      seed: 1,
+      original_filename: 'multi-1.png',
+      comfy_output_index: 0,
+    });
+    const g2 = await ingestGeneration(job.body.id, {
+      seed: 2,
+      original_filename: 'multi-2.png',
+      comfy_output_index: 1,
+    });
+    const g3 = await ingestGeneration(job.body.id, {
+      seed: 3,
+      original_filename: 'multi-3.png',
+      comfy_output_index: 2,
+    });
+
+    const res = await getJson<{ nodes: GraphNode[] }>('/api/v1/graph');
+    const node = res.body.nodes.find((n) => n.id === batch.body.id);
+    expect(node).toBeDefined();
+    expect(node?.generations).toHaveLength(3);
+    expect(node?.generations.map((g) => g.short_id)).toEqual([
+      g1.body.short_id,
+      g2.body.short_id,
+      g3.body.short_id,
+    ]);
+    for (const g of node?.generations ?? []) {
+      expect(g.rating).toBeNull();
+      expect(g.bookmark).toBe(false);
+    }
+  });
+
+  it('caps generations at 9 even when a batch has more than 9 generations', async () => {
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    for (let i = 0; i < 10; i += 1) {
+      const result = await ingestGeneration(job.body.id, {
+        seed: i,
+        original_filename: `overflow-${i}.png`,
+        comfy_output_index: i,
+      });
+      expect(result.status).toBe(201);
+    }
+
+    const res = await getJson<{ nodes: GraphNode[] }>('/api/v1/graph');
+    const node = res.body.nodes.find((n) => n.id === batch.body.id);
+    expect(node).toBeDefined();
+    expect(node?.generation_count).toBe(10);
+    expect(node?.generations).toHaveLength(9);
+  });
+
+  it('surfaces a generation\'s rating and bookmark in its generations[] entry', async () => {
+    const { batch, generation } = await createGeneration();
+    await postJson(`/api/v1/generations/${generation.id}/rating`, { rating: 'good' }, 'PUT');
+    await postJson(`/api/v1/generations/${generation.id}/bookmark`, undefined, 'PUT');
+
+    const res = await getJson<{ nodes: GraphNode[] }>('/api/v1/graph');
+    const node = res.body.nodes.find((n) => n.id === batch.id);
+    const entry = node?.generations.find((g) => g.short_id === generation.short_id);
+    expect(entry).toBeDefined();
+    expect(entry?.rating).toBe('good');
+    expect(entry?.bookmark).toBe(true);
   });
 });
