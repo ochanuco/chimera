@@ -378,12 +378,15 @@ details.section .section-body { margin-top: 0.6rem; }
 .graph-edge.edge-reference path { stroke: var(--graph-reference); }
 .graph-edge.edge-relation path { stroke: var(--graph-relation); stroke-dasharray: 7 5; }
 .graph-edge.edge-story path { stroke: var(--graph-story); }
+/* Font size / outline are overridden per zoom level by initGraphPanZoom so the
+   labels stay a constant on-screen size (matching the legend text). The static
+   values are the no-JS fallback. */
 .graph-edge text {
-  font-size: 13px;
+  font-size: var(--graph-edge-font, 13px);
   fill: var(--text);
   paint-order: stroke;
   stroke: var(--bg);
-  stroke-width: 4px;
+  stroke-width: var(--graph-edge-stroke, 4px);
   stroke-linejoin: round;
 }
 `;
@@ -662,8 +665,16 @@ export const appJs = `
     var initial = { x: vb.x, y: vb.y, w: vb.w, h: vb.h };
     apply();
 
+    var LABEL_SCREEN_PX = 14; // 凡例テキストと同じ見た目サイズに揃える
+
     function apply() {
       svg.setAttribute('viewBox', vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h);
+      var rect = svg.getBoundingClientRect();
+      if (rect.width > 0) {
+        var fontSvg = (LABEL_SCREEN_PX * vb.w) / rect.width;
+        svg.style.setProperty('--graph-edge-font', fontSvg + 'px');
+        svg.style.setProperty('--graph-edge-stroke', fontSvg * 0.3 + 'px');
+      }
     }
 
     function zoomAt(clientX, clientY, factor) {
