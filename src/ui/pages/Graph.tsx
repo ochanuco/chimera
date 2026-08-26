@@ -67,8 +67,7 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
         <svg
           id="graph-svg"
           viewBox={`0 0 ${layout.width} ${layout.height}`}
-          width={layout.width}
-          height={layout.height}
+          preserveAspectRatio="xMidYMid meet"
         >
           <g class="graph-edges">
             {edges.map((e) => {
