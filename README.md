@@ -16,6 +16,7 @@ ComfyUI で生成した画像を、単なる置き場ではなく生成探索の
 | `/stories`, `/stories/{id}` | Story の一覧・DAG 表示。relation の label はインライン編集可 |
 | `/bookmarks` | Bookmark した Generation / Batch / Story / Experiment |
 | `/compare?ids=a,b` | 2〜9枚比較。aspect を選んで Claude へ渡す指示テキストを生成・コピー |
+| `/graph` | 生成履歴全体の Graph 表示。Reference / Refinement / Story の3種のエッジを視覚的に区別、パン/ズーム可能 |
 
 ### API
 

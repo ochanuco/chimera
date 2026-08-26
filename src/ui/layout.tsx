@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { href: '/batches', label: 'Batches' },
   { href: '/stories', label: 'Stories' },
   { href: '/bookmarks', label: 'Bookmarks' },
+  { href: '/graph', label: 'Graph' },
 ];
 
 export const Layout: FC<PropsWithChildren<{ title?: string }>> = ({ title, children }) => {

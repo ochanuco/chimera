@@ -195,4 +195,45 @@ describe('Web GUI pages', () => {
     expect(body).toContain('sitting');
     expect(body).toContain('class="diff"');
   });
+
+  it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {
+    const { generation, batch: sourceBatch } = await createGeneration();
+    const targetBatch = await createBatch({
+      references: [{ source_generation_id: generation.id, purpose: 'composition', aspect: 'pose' }],
+      refinement: { source_batch_id: sourceBatch.id, actor: 'human', reason: 'retry' },
+    });
+
+    const story = await postJson<{ id: string }>('/api/v1/stories', {
+      name: `graph-ui-story-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
+      source_batch_id: sourceBatch.id,
+      target_batch_id: targetBatch.body.id,
+      label: 'continues the scene',
+    });
+
+    const res = await req('/graph');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const body = await res.text();
+
+    expect(body).toContain(sourceBatch.short_id);
+    expect(body).toContain(targetBatch.body.short_id);
+    expect(body).toContain('graph-legend');
+    expect(body).toContain('legend-reference');
+    expect(body).toContain('legend-relation');
+    expect(body).toContain('legend-story');
+    expect(body).toContain('edge-reference');
+    expect(body).toContain('edge-relation');
+    expect(body).toContain('edge-story');
+  });
+
+  it('GET /graph with no query params still renders the pan/zoom SVG container', async () => {
+    await createBatch();
+    const res = await req('/graph');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('id="graph-svg"');
+    expect(body).toContain('graph-viewport');
+  });
 });
