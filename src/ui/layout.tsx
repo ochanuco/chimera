@@ -9,7 +9,11 @@ const NAV_ITEMS = [
   { href: '/graph', label: 'Graph' },
 ];
 
-export const Layout: FC<PropsWithChildren<{ title?: string }>> = ({ title, children }) => {
+export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean }>> = ({
+  title,
+  fullBleed,
+  children,
+}) => {
   return (
     <html lang="ja">
       <head>
@@ -27,7 +31,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string }>> = ({ title, child
             <a href={item.href}>{item.label}</a>
           ))}
         </nav>
-        <main class="container">{children}</main>
+        <main class={fullBleed ? 'container container-full' : 'container'}>{children}</main>
         <script src={`/assets/app.js?v=${assetVersion}`}></script>
       </body>
     </html>

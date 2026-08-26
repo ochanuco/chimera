@@ -69,17 +69,17 @@ good  🔖
 
 1回の生成要求をまとめて確認する画面です。
 
-例:
+幅1100px以上（MBP 16インチのフルスクリーン運用を想定）では、左（Generation
+サムネイルグリッド）: 右（情報）= 2:1 の2ペインをビューポート1画面に収め、
+各ペインが独立してスクロールします。それ未満の幅では従来どおり縦一列です。
+
+例（2ペイン時）:
 
 ``` text
-Batch B001
-"浜風をseed違いで9枚"
-
-[img][img][img]
-[img][img][img]
-[img][img][img]
-
-親 2 · 子 1 · 兄弟 0 · Story: yk-line
+[img][img][img] | Batch B001
+[img][img][img] | "結月ゆかりをseed違いで9枚"
+[img][img][img] | 親 2 · 子 1 · 兄弟 0 · Story: yk-line
+                | Tags / 親 / 子 / 兄弟 / Prompt / ...
 ```
 
 Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
@@ -120,7 +120,7 @@ Generationごとに縦カラムで並べ、上から画像・short_idリンク�
 [IMAGE]        [IMAGE]
 abc123         xyz987
 good           neutral
-浜風           浜風
+ゆかり         ゆかり
 ```
 
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
@@ -152,18 +152,19 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 
 ## Generation Detail
 
-画像を最上部に大きく表示します。
+幅1100px以上では左ペインに画像をペイン全体で表示し、右ペイン（幅比 2:1）に
+情報を縦に並べます。それ未満の幅では画像を最上部に大きく表示する縦一列です。
 
 ``` text
-[ IMAGE ]
-
-abc123
-浜風
-good  🔖
-#pose-good #outfit-good
+[ IMAGE ] | abc123
+[ IMAGE ] | 結月ゆかり
+[ IMAGE ] | good  🔖
+[ IMAGE ] | #pose-good #outfit-good
 ```
 
-下部は折りたたみ可能な詳細セクション:
+情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
+表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
+Batch Detail の Parameters）のみ既定で畳みます。
 
 ``` text
 Summary

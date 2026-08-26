@@ -134,7 +134,7 @@ GET  /api/v1/characters
 
 ``` json
 {
-  "name": "浜風",
+  "name": "結月ゆかり",
   "aliases": []
 }
 ```
@@ -193,7 +193,7 @@ GET /api/v1/generations/{id-or-short-id}/context
   },
   "character": {
     "id": "...",
-    "name": "浜風"
+    "name": "結月ゆかり"
   },
   "created_at": "...",
   "rating": "good",
@@ -251,7 +251,7 @@ original_filename
 主な用途:
 
 ``` text
-character=hamakaze
+character=yukari
 tag=outfit-good
 bookmark=true
 from=2026-01-01
