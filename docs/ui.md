@@ -210,10 +210,12 @@ Viewは全Batchを一度にレイアウトします。
 サーバーサイドでレイヤード DAG レイアウトを計算し、SVG として SSR
 します。
 
+家系図のように上が親（祖先）、下が子（子孫）となる縦型レイアウトです。
+
 ``` text
 layer(Batch) = 入次数ゼロのルートからの最長パス長
-x = layer
-y = 同一layer内でのcreated_at順
+y = layer（上から下へ）
+x = 同一layer内でのcreated_at順
 ```
 
 BatchReference / BatchRelation / StoryRelationは統合せず、視覚的に区別します（Relation

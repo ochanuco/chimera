@@ -637,22 +637,22 @@ export const appJs = `
 
     var vb = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
 
-    // The SVG fills its frame (100%/100%), so expand the viewBox to the frame's
-    // aspect ratio. This removes preserveAspectRatio letterboxing and keeps the
-    // cursor-to-viewBox math below exact.
+    // The SVG fills its frame (100%/100%), so shape the viewBox to the frame's
+    // aspect ratio (removes letterboxing and keeps cursor-to-viewBox math exact).
+    // Initial view: fit the graph width; if the graph is taller than the frame,
+    // anchor the newest (bottom) layer at the bottom edge so the frame fills
+    // upward with ancestor rows instead of wasting space below the newest row.
+    var contentH = vb.h;
     var frame = svg.getBoundingClientRect();
     if (frame.width > 0 && frame.height > 0) {
       var frameAspect = frame.width / frame.height;
-      var vbAspect = vb.w / vb.h;
-      if (vbAspect < frameAspect) {
-        var newVbW = vb.h * frameAspect;
-        vb.x -= (newVbW - vb.w) / 2;
-        vb.w = newVbW;
-      } else if (vbAspect > frameAspect) {
-        var newVbH = vb.w / frameAspect;
-        vb.y -= (newVbH - vb.h) / 2;
-        vb.h = newVbH;
+      var newVbH = vb.w / frameAspect;
+      if (newVbH >= contentH) {
+        vb.y -= (newVbH - contentH) / 2;
+      } else {
+        vb.y = contentH - newVbH;
       }
+      vb.h = newVbH;
     }
 
     var baseW = vb.w;

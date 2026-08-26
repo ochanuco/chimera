@@ -43,8 +43,9 @@ export interface GraphLayout {
 
 export const NODE_WIDTH = 160;
 export const NODE_HEIGHT = 172;
-export const LAYER_GAP_X = 260;
-export const NODE_GAP_Y = 210;
+// 家系図スタイルの縦型レイアウト: layer が縦（上=親）、同一 layer 内の並びが横。
+export const NODE_GAP_X = 210;
+export const LAYER_GAP_Y = 280;
 export const MARGIN = 40;
 
 /** Finds edge indices that close a cycle, via DFS with a 3-color (unvisited/visiting/done) guard. */
@@ -122,7 +123,7 @@ function computeLayers(nodeIds: string[], edges: LayoutEdgeInput[], backEdgeIndi
 
 /**
  * Computes x/y positions for every node: x by layer, y by created_at order
- * within the layer. Node spacing is fixed (see NODE_WIDTH / NODE_GAP_Y).
+ * within the layer. Node spacing is fixed (see NODE_GAP_X / LAYER_GAP_Y).
  */
 export function computeGraphLayout(nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): GraphLayout {
   const nodeIds = nodes.map((n) => n.id);
@@ -147,16 +148,16 @@ export function computeGraphLayout(nodes: LayoutNodeInput[], edges: LayoutEdgeIn
         id: node.id,
         layer,
         order,
-        x: MARGIN + layer * LAYER_GAP_X,
-        y: MARGIN + order * NODE_GAP_Y,
+        x: MARGIN + order * NODE_GAP_X,
+        y: MARGIN + layer * LAYER_GAP_Y,
       });
       maxLayer = Math.max(maxLayer, layer);
       maxOrder = Math.max(maxOrder, order);
     });
   }
 
-  const width = MARGIN * 2 + (maxLayer + 1) * LAYER_GAP_X - (LAYER_GAP_X - NODE_WIDTH);
-  const height = MARGIN * 2 + (maxOrder + 1) * NODE_GAP_Y - (NODE_GAP_Y - NODE_HEIGHT);
+  const width = MARGIN * 2 + (maxOrder + 1) * NODE_GAP_X - (NODE_GAP_X - NODE_WIDTH);
+  const height = MARGIN * 2 + (maxLayer + 1) * LAYER_GAP_Y - (LAYER_GAP_Y - NODE_HEIGHT);
 
   return { positions, width, height };
 }
