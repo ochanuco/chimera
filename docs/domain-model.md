@@ -348,6 +348,11 @@ semantic metadata の strengths / defects が担います。Claude は
 「neutral + defects の記述」から惜しさの内容を読み取れるため、
 Rating は粗いフィルタ軸に徹します。
 
+Rating を付けるのは人間のみです。Claude は人間の Rating と semantic
+metadata を読んで改善案を設計する側であり、Rating を書き込みません
+（Claude による画像検品は、人間がどうしても判断できない場合の
+フォールバックに限ります）。
+
 ## Bookmark
 
 Bookmark は「後から素早く呼び出す」ための状態です。
