@@ -785,16 +785,19 @@ export const appJs = `
 
     // The SVG fills its frame (100%/100%), so shape the viewBox to the frame's
     // aspect ratio (removes letterboxing and keeps cursor-to-viewBox math exact).
-    // Initial view: fit the graph width, but never above scale 1 (1 viewBox unit
-    // = 1 CSS px) — a narrow single-column graph would otherwise blow up huge.
+    // Initial view: fit the graph width, but never above ~0.51x scale
+    // (= 等倍から − ボタン3回ぶん、1/1.25^3)。1本鎖の狭いグラフでも
+    // 周辺の文脈が見渡せる引き気味の倍率を初期値にする。
     // If the graph is taller than the frame, anchor the newest (bottom) layer at
     // the bottom edge so the frame fills upward with ancestor rows.
+    var INITIAL_MAX_SCALE = 1 / Math.pow(1.25, 3);
     var contentW = vb.w;
     var contentH = vb.h;
     var frame = svg.getBoundingClientRect();
     if (frame.width > 0 && frame.height > 0) {
-      if (vb.w < frame.width) {
-        vb.w = frame.width;
+      var minVbW = frame.width / INITIAL_MAX_SCALE;
+      if (vb.w < minVbW) {
+        vb.w = minVbW;
         vb.x -= (vb.w - contentW) / 2;
       }
       var frameAspect = frame.width / frame.height;
