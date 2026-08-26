@@ -783,36 +783,41 @@ export const appJs = `
 
     var vb = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
 
-    // The SVG fills its frame (100%/100%), so shape the viewBox to the frame's
-    // aspect ratio (removes letterboxing and keeps cursor-to-viewBox math exact).
-    // Initial view: fit the graph width, but never above ~0.51x scale
-    // (= 等倍から − ボタン3回ぶん、1/1.25^3)。1本鎖の狭いグラフでも
-    // 周辺の文脈が見渡せる引き気味の倍率を初期値にする。
-    // If the graph is taller than the frame, anchor the newest (bottom) layer at
-    // the bottom edge so the frame fills upward with ancestor rows.
-    var INITIAL_MAX_SCALE = 1 / Math.pow(1.25, 3);
+    // The SVG fills its frame (100%/100%). Initial view: open at the zoom scale
+    // the user last used (persisted in localStorage), defaulting to 0.7x of the
+    // design size. Content is centered horizontally; if taller than the frame,
+    // the newest (bottom) layer is anchored at the bottom edge.
+    var ZOOM_STORE_KEY = 'chimera-graph-zoom';
+    var scale = 0.7;
+    try {
+      var stored = parseFloat(localStorage.getItem(ZOOM_STORE_KEY) || '');
+      if (stored > 0.05 && stored < 20) scale = stored;
+    } catch (e) { /* localStorage unavailable */ }
+
     var contentW = vb.w;
     var contentH = vb.h;
     var frame = svg.getBoundingClientRect();
     if (frame.width > 0 && frame.height > 0) {
-      var minVbW = frame.width / INITIAL_MAX_SCALE;
-      if (vb.w < minVbW) {
-        vb.w = minVbW;
-        vb.x -= (vb.w - contentW) / 2;
-      }
-      var frameAspect = frame.width / frame.height;
-      var newVbH = vb.w / frameAspect;
-      if (newVbH >= contentH) {
-        vb.y -= (newVbH - contentH) / 2;
+      vb.w = frame.width / scale;
+      vb.h = frame.height / scale;
+      vb.x = (contentW - vb.w) / 2;
+      if (vb.h >= contentH) {
+        vb.y = (contentH - vb.h) / 2;
       } else {
-        vb.y = contentH - newVbH;
+        vb.y = contentH - vb.h;
       }
-      vb.h = newVbH;
     }
 
-    var baseW = vb.w;
-    var minScale = 0.2;
-    var maxScale = 3;
+    var baseW = frame.width > 0 ? frame.width : vb.w;
+    var minScale = 0.05;
+    var maxScale = 20;
+
+    function persistScale() {
+      if (frame.width <= 0) return;
+      try {
+        localStorage.setItem(ZOOM_STORE_KEY, String(frame.width / vb.w));
+      } catch (e) { /* localStorage unavailable */ }
+    }
 
     var initial = { x: vb.x, y: vb.y, w: vb.w, h: vb.h };
     apply();
@@ -842,6 +847,7 @@ export const appJs = `
       vb.w = newW;
       vb.h = newH;
       apply();
+      persistScale();
     }
 
     // Trackpad-first wheel handling: pinch gestures reach the browser as wheel
@@ -883,6 +889,7 @@ export const appJs = `
         else if (action === 'out') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
         else {
           vb.x = initial.x; vb.y = initial.y; vb.w = initial.w; vb.h = initial.h;
+          persistScale();
           apply();
         }
       });
