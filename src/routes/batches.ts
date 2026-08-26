@@ -40,6 +40,12 @@ batches.post('/', async (c) => {
   const body = createBatchSchema.parse(await c.req.json());
   const db = c.env.DB;
 
+  const replayed = await db
+    .prepare('SELECT * FROM batches WHERE idempotency_key = ?')
+    .bind(body.idempotency_key)
+    .first<BatchRow>();
+  if (replayed) return c.json(serializeBatch(replayed), 200);
+
   // Resolve and validate every referenced entity before writing anything.
   if (body.experiment_id) {
     const experiment = await db
@@ -106,8 +112,7 @@ batches.post('/', async (c) => {
       .prepare(
         `INSERT INTO batches (id, short_id, experiment_id, raw_instruction, recipe, prompt, negative_prompt,
           parameters_json, git_commit, git_dirty, note, bookmark, status, idempotency_key, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (idempotency_key) DO NOTHING`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         row.id,
@@ -181,18 +186,22 @@ batches.post('/', async (c) => {
     }
   }
 
-  const results = await db.batch(statements);
+  try {
+    // db.batch is transactional: a concurrent request with the same idempotency
+    // key makes this fail on the unique constraint and rolls back the reference /
+    // relation inserts too, so no rows end up pointing at a batch that was never
+    // created.
+    await db.batch(statements);
+  } catch (err) {
+    const raced = await db
+      .prepare('SELECT * FROM batches WHERE idempotency_key = ?')
+      .bind(body.idempotency_key)
+      .first<BatchRow>();
+    if (!raced) throw err;
+    return c.json(serializeBatch(raced), 200);
+  }
 
-  // Check if the batch INSERT succeeded (created new) or conflicted (already existed)
-  const created = results[0]?.meta?.changes === 1;
-  const finalBatch = created
-    ? row
-    : await db
-        .prepare('SELECT * FROM batches WHERE idempotency_key = ?')
-        .bind(body.idempotency_key)
-        .first<BatchRow>();
-
-  return c.json(serializeBatch(finalBatch!), created ? 201 : 200);
+  return c.json(serializeBatch(row), 201);
 });
 
 batches.patch('/:id', async (c) => {

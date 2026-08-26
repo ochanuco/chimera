@@ -22,6 +22,26 @@ describe('Batch create + idempotency', () => {
     expect(retry.body.id).toBe(first.body.id);
   });
 
+  it('does not duplicate references when a batch create with references is replayed', async () => {
+    const { generation } = await createGeneration();
+    const key = crypto.randomUUID();
+    const payload = {
+      idempotency_key: key,
+      prompt: 'mashup',
+      references: [{ source_generation_id: generation.id, purpose: 'composition', aspect: 'pose' }],
+    };
+
+    const first = await postJson<{ id: string }>('/api/v1/batches', payload);
+    expect(first.status).toBe(201);
+
+    const retry = await postJson<{ id: string }>('/api/v1/batches', payload);
+    expect(retry.status).toBe(200);
+    expect(retry.body.id).toBe(first.body.id);
+
+    const detail = await getJson<{ references: unknown[] }>(`/api/v1/batches/${first.body.id}`);
+    expect(detail.body.references).toHaveLength(1);
+  });
+
   it('404s when experiment_id does not exist', async () => {
     const res = await postJson('/api/v1/batches', {
       idempotency_key: crypto.randomUUID(),

@@ -75,35 +75,47 @@ jobs.post('/:jobId/generations', async (c) => {
     if (!character) throw notFound('character');
   }
 
-  // Derive deterministic generation ID and R2 key from job.idempotency_key for retry safety
-  const idempotencyKey = job.idempotency_key;
+  const imageBuffer = await image.arrayBuffer();
+  const contentType = image.type || 'image/png';
+  const origin = new URL(c.req.url).origin;
+
+  const respond = (g: Pick<GenerationRow, 'id' | 'short_id' | 'r2_object_key'>, status: 200 | 201) =>
+    c.json(
+      {
+        id: g.id,
+        short_id: g.short_id,
+        canonical_url: canonicalGenerationUrl(origin, g.short_id),
+        r2_object_key: g.r2_object_key,
+      },
+      status,
+    );
+
+  // Replay path for a prior ingest that inserted the row but failed before the
+  // R2 PUT completed: the row already fixes the object key, so re-upload there.
+  const ensureObject = async (g: Pick<GenerationRow, 'r2_object_key'>) => {
+    const head = await c.env.IMAGES.head(g.r2_object_key);
+    if (!head) {
+      await c.env.IMAGES.put(g.r2_object_key, imageBuffer, { httpMetadata: { contentType } });
+    }
+  };
+
   const existing = await db
     .prepare('SELECT * FROM generations WHERE comfy_job_id = ? AND comfy_output_index = ?')
     .bind(job.id, metadata.comfy_output_index)
     .first<GenerationRow>();
   if (existing) {
-    return c.json(
-      {
-        id: existing.id,
-        short_id: existing.short_id,
-        canonical_url: canonicalGenerationUrl(new URL(c.req.url).origin, existing.short_id),
-        r2_object_key: existing.r2_object_key,
-      },
-      200,
-    );
+    await ensureObject(existing);
+    return respond(existing, 200);
   }
 
-  // Use deterministic UUID based on idempotency key for generation ID
   const id = uuidv7();
   const shortId = await createUniqueShortId(db, 'generations');
-  const r2ObjectKey = `generations/${idempotencyKey}-${metadata.comfy_output_index}/original.png`;
+  const r2ObjectKey = `generations/${id}/original.png`;
   const now = nowIso();
 
-  // Put to R2 first with deterministic key - idempotent on retry
-  await c.env.IMAGES.put(r2ObjectKey, await image.arrayBuffer(), {
-    httpMetadata: { contentType: image.type || 'image/png' },
-  });
-
+  // D1 first: committing the row fixes the Generation ID / R2 key before any R2
+  // write, so a failure at either store leaves no orphan object and every retry
+  // converges on the same row and key.
   try {
     await db
       .prepare(
@@ -127,34 +139,22 @@ jobs.post('/:jobId/generations', async (c) => {
       .run();
   } catch (err) {
     // Concurrent duplicate ingest raced us on the (comfy_job_id, comfy_output_index)
-    // unique constraint. Return the row the other request created.
+    // unique constraint. Return the row the other request created, making sure the
+    // object exists in case the winner has not finished its R2 PUT yet.
     const raced = await db
       .prepare('SELECT * FROM generations WHERE comfy_job_id = ? AND comfy_output_index = ?')
       .bind(job.id, metadata.comfy_output_index)
       .first<GenerationRow>();
     if (!raced) throw err;
-    return c.json(
-      {
-        id: raced.id,
-        short_id: raced.short_id,
-        canonical_url: canonicalGenerationUrl(new URL(c.req.url).origin, raced.short_id),
-        r2_object_key: raced.r2_object_key,
-      },
-      200,
-    );
+    await ensureObject(raced);
+    return respond(raced, 200);
   }
+
+  await c.env.IMAGES.put(r2ObjectKey, imageBuffer, { httpMetadata: { contentType } });
 
   if (job.status !== 'ingested') {
     await db.prepare('UPDATE comfy_jobs SET status = ?, updated_at = ? WHERE id = ?').bind('ingested', now, job.id).run();
   }
 
-  return c.json(
-    {
-      id,
-      short_id: shortId,
-      canonical_url: canonicalGenerationUrl(new URL(c.req.url).origin, shortId),
-      r2_object_key: r2ObjectKey,
-    },
-    201,
-  );
+  return respond({ id, short_id: shortId, r2_object_key: r2ObjectKey }, 201);
 });

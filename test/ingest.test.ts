@@ -41,6 +41,26 @@ describe('Generation ingest', () => {
     expect(count?.n).toBe(1);
   });
 
+  it('re-uploads a missing R2 object when the same ingest is replayed', async () => {
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const metadata = { seed: 7, original_filename: 'replay.png', comfy_output_index: 0 };
+
+    const first = await ingestGeneration(job.body.id, metadata);
+    expect(first.status).toBe(201);
+
+    // Simulate a partial failure where the row was committed but the R2 PUT was lost.
+    await env.IMAGES.delete(first.body.r2_object_key);
+
+    const replay = await ingestGeneration(job.body.id, metadata);
+    expect(replay.status).toBe(200);
+    expect(replay.body.id).toBe(first.body.id);
+    expect(replay.body.r2_object_key).toBe(first.body.r2_object_key);
+
+    const object = await env.IMAGES.get(first.body.r2_object_key);
+    expect(object).not.toBeNull();
+  });
+
   it('allows multiple outputs from the same job at different output indices', async () => {
     const batch = await createBatch();
     const job = await createJob(batch.body.id);

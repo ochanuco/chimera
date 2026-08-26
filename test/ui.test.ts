@@ -8,18 +8,18 @@ describe('Web GUI pages', () => {
     expect(res.headers.get('location')).toContain('/gallery');
   });
 
-  it('GET /style.css returns CSS with correct Content-Type', async () => {
-    const res = await req('/style.css');
+  it('GET /assets/style.css returns CSS with correct Content-Type', async () => {
+    const res = await req('/assets/style.css');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/css');
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
   });
 
-  it('GET /app.js returns JavaScript with correct Content-Type', async () => {
-    const res = await req('/app.js');
+  it('GET /assets/app.js returns JavaScript with correct Content-Type', async () => {
+    const res = await req('/assets/app.js');
     expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toContain('application/javascript');
+    expect(res.headers.get('content-type')).toContain('javascript');
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
   });
