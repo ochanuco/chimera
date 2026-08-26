@@ -1,13 +1,83 @@
 import { Layout } from '../layout';
 
-const ASPECTS = ['pose', 'expression', 'outfit', 'style', 'composition', 'other'] as const;
+const NOT_ANALYZED = '(not analyzed)';
+const NO_VALUE = '—';
+
+export interface CompareSemantic {
+  summary: string | null;
+  core: {
+    pose: string | null;
+    expression: string | null;
+    outfit: string | null;
+    style: string | null;
+    composition: string | null;
+  };
+  strengths: string[];
+  defects: string[];
+  attributes: Record<string, unknown>;
+}
 
 export interface CompareItem {
   short_id: string;
   image_url: string;
+  rating: 'bad' | 'neutral' | 'good' | null;
+  character_name: string | null;
+  semantic: CompareSemantic | null;
 }
 
+interface CompareRow {
+  label: string;
+  values: string[];
+  diff: boolean;
+}
+
+/** Renders an array field ("strengths"/"defects"/list-shaped attributes) as a comma-joined string, or null if empty. */
+function joinList(values: string[] | undefined): string | null {
+  if (!values || values.length === 0) return null;
+  return values.join(', ');
+}
+
+/** Normalizes an arbitrary attribute value to a display string, or null if it carries no value. */
+function attributeText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return joinList(value.map(String));
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+/** Builds one comparison row: per-item raw values, feeding both display text and the "all value-less" check. */
+function buildRow(label: string, items: CompareItem[], extract: (s: CompareSemantic) => string | null): CompareRow {
+  const values = items.map((item) => (item.semantic ? (extract(item.semantic) ?? NO_VALUE) : NOT_ANALYZED));
+  const diff = new Set(values).size > 1;
+  return { label, values, diff };
+}
+
+const CORE_FIELDS = ['pose', 'expression', 'outfit', 'style', 'composition'] as const;
+
 export function ComparePage({ items, missingIds, warning }: { items: CompareItem[]; missingIds: string[]; warning?: string }) {
+  const rows: CompareRow[] = [];
+  if (items.length >= 2) {
+    rows.push(buildRow('summary', items, (s) => s.summary));
+    for (const field of CORE_FIELDS) {
+      rows.push(buildRow(field, items, (s) => s.core[field]));
+    }
+    rows.push(buildRow('strengths', items, (s) => joinList(s.strengths)));
+    rows.push(buildRow('defects', items, (s) => joinList(s.defects)));
+
+    const attributeKeys = new Set<string>();
+    for (const item of items) {
+      if (item.semantic) {
+        for (const key of Object.keys(item.semantic.attributes)) attributeKeys.add(key);
+      }
+    }
+    for (const key of Array.from(attributeKeys).sort()) {
+      const analyzedItems = items.filter((item) => item.semantic);
+      const allValueLess = analyzedItems.every((item) => attributeText(item.semantic!.attributes[key]) === null);
+      if (allValueLess) continue;
+      rows.push(buildRow(key, items, (s) => attributeText(s.attributes[key])));
+    }
+  }
+
   return (
     <Layout title="Compare">
       <h1>Compare</h1>
@@ -21,25 +91,39 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
           <div class="compare-columns">
             {items.map((item) => (
               <div class="compare-col">
-                <img src={item.image_url} alt={item.short_id} />
-                <div class="short-id-link">{item.short_id}</div>
-                <select class="aspect-select" data-short-id={item.short_id}>
-                  <option value="">(not used)</option>
-                  {ASPECTS.map((a) => (
-                    <option value={a}>{a}</option>
-                  ))}
-                </select>
+                <a href={`/g/${item.short_id}`}>
+                  <img src={item.image_url} alt={item.short_id} />
+                </a>
+                <a class="short-id-link" href={`/g/${item.short_id}`}>
+                  {item.short_id}
+                </a>
+                <div class="compare-meta">{item.rating ?? NO_VALUE}</div>
+                <div class="compare-meta">{item.character_name ?? NO_VALUE}</div>
               </div>
             ))}
           </div>
 
-          <div class="instructions-box">
-            <h2>Selected references</h2>
-            <textarea id="instructions-output" readonly></textarea>
-            <br />
-            <button type="button" id="copy-instructions-btn">
-              Copy
-            </button>
+          <div class="compare-table-wrap">
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  {items.map((item) => (
+                    <th>{item.short_id}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr>
+                    <td>{row.label}</td>
+                    {row.values.map((v) => (
+                      <td class={row.diff ? 'diff' : undefined}>{v}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

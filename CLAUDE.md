@@ -25,7 +25,7 @@ npm run typecheck && npm test
 - `references` / `refinement` / `story` はキー省略と明示 null の両方を「該当なし」として受理する（request.json 契約）
 - SSR ページから API を呼ぶときは `src/lib/internal-api.ts` の `internalApiRequest` を使う（`app.request` にパスだけ渡すと origin が localhost になり絶対 URL が壊れる）
 - 認証はアプリ内に実装しない（Cloudflare Access 境界）。workers.dev ルートは無効のまま維持する
-- GUI から ComfyUI へ生成要求を送らない。Compare は Claude へ渡す指示テキストの生成まで
+- GUI から ComfyUI へ生成要求を送らない。Compare は semantic metadata の diff 表示まで（指示テキスト生成はしない）
 
 ## 本番
 

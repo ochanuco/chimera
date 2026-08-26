@@ -10,9 +10,9 @@ import { BatchDetailPage, type BatchDetailData } from '../ui/pages/BatchDetail';
 import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
-import { ComparePage, type CompareItem } from '../ui/pages/Compare';
+import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
-import type { AppEnv } from '../types';
+import type { AppEnv, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 import type { BatchRowData } from '../ui/components/BatchRow';
 
@@ -159,6 +159,34 @@ pages.get('/bookmarks', async (c) => {
   );
 });
 
+/** Parses a Generation's semantic_json into CompareSemantic; NULL or unparseable JSON is treated as "not analyzed". */
+function parseCompareSemantic(row: GenerationRow): CompareSemantic | null {
+  if (!row.semantic_json) return null;
+  try {
+    const parsed = JSON.parse(row.semantic_json) as {
+      core?: Partial<CompareSemantic['core']>;
+      strengths?: string[];
+      defects?: string[];
+      attributes?: Record<string, unknown>;
+    };
+    return {
+      summary: row.summary,
+      core: {
+        pose: parsed.core?.pose ?? null,
+        expression: parsed.core?.expression ?? null,
+        outfit: parsed.core?.outfit ?? null,
+        style: parsed.core?.style ?? null,
+        composition: parsed.core?.composition ?? null,
+      },
+      strengths: parsed.strengths ?? [],
+      defects: parsed.defects ?? [],
+      attributes: parsed.attributes ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
 pages.get('/compare', async (c) => {
   const idsParam = c.req.query('ids') ?? '';
   const requestedIds = idsParam
@@ -185,7 +213,17 @@ pages.get('/compare', async (c) => {
       missingIds.push(id);
       continue;
     }
-    items.push({ short_id: row.short_id, image_url: generationImageUrl(origin, row.short_id) });
+    const character = row.character_id
+      ? await c.env.DB.prepare('SELECT name FROM characters WHERE id = ?').bind(row.character_id).first<{ name: string }>()
+      : null;
+
+    items.push({
+      short_id: row.short_id,
+      image_url: generationImageUrl(origin, row.short_id),
+      rating: row.rating,
+      character_name: character?.name ?? null,
+      semantic: parseCompareSemantic(row),
+    });
   }
 
   return c.html(<ComparePage items={items} missingIds={missingIds} warning={warning} />);
