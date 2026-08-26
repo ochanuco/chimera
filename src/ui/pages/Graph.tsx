@@ -34,10 +34,15 @@ export interface GraphEdgeData {
   source_generation_short_id?: string;
 }
 
-/** Cubic bezier from a node's bottom edge down to another node's top edge. */
-function edgePath(sx: number, sy: number, tx: number, ty: number): string {
-  const pull = Math.max(Math.abs(ty - sy) / 2, 50);
-  return `M ${sx} ${sy} C ${sx} ${sy + pull}, ${tx} ${ty - pull}, ${tx} ${ty}`;
+/**
+ * Cubic bezier from a node's bottom edge down to another node's top edge.
+ * Edges that skip layers (span >= 2) would run straight through the boxes of
+ * intermediate layers, so they arc into the empty space right of the column
+ * with a bulge that grows with the number of layers skipped.
+ */
+function edgePath(sx: number, sy: number, tx: number, ty: number, bulge: number): string {
+  const pull = Math.max(Math.abs(ty - sy) / 3, 50);
+  return `M ${sx} ${sy} C ${sx + bulge} ${sy + pull}, ${tx + bulge} ${ty - pull}, ${tx} ${ty}`;
 }
 
 export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: GraphEdgeData[] }) {
@@ -104,6 +109,7 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
                 pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
               }
               const pairSeen = new Map<string, number>();
+              const targetSeen = new Map<string, number>();
               return edges.map((e) => {
                 const s = layout.positions.get(e.source_batch_id);
                 const t = layout.positions.get(e.target_batch_id);
@@ -138,12 +144,17 @@ export function GraphPage({ nodes, edges }: { nodes: GraphNodeData[]; edges: Gra
 
                 const tx = t.x + t.width / 2 + fan;
                 const ty = t.y;
-                const mx = (sx + tx) / 2;
-                const my = (sy + ty) / 2 + (index - (count - 1) / 2) * 18;
+                const span = Math.abs(t.layer - s.layer);
+                const bulge = span >= 2 ? 150 + 100 * (span - 2) + fan : 0;
+                // ラベルは target 枠の直上に置く。target が違えば重ならず、同一
+                // target へ入る複数エッジ（pair 違い含む）は到着順で縦にずらす。
+                const labelIndex = targetSeen.get(e.target_batch_id) ?? 0;
+                targetSeen.set(e.target_batch_id, labelIndex + 1);
+                const labelY = ty - 12 - labelIndex * 20;
                 return (
                   <g class={`graph-edge edge-${e.type}`}>
-                    <path d={edgePath(sx, sy, tx, ty)} />
-                    <text x={mx + 8} y={my} text-anchor="start">
+                    <path d={edgePath(sx, sy, tx, ty, bulge)} />
+                    <text x={tx + 10} y={labelY} text-anchor="start">
                       {e.label}
                     </text>
                   </g>
