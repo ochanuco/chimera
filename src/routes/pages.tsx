@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { app } from '../app';
+import { internalApiRequest } from '../lib/internal-api';
 import { getGenerationByIdOrShortId } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { generationImageUrl } from '../lib/serialize';
@@ -47,8 +47,8 @@ pages.get('/gallery', async (c) => {
   apiParams.set('offset', String(offset));
 
   const [genRes, charRes] = await Promise.all([
-    app.request(`/api/v1/generations?${apiParams.toString()}`, {}, c.env),
-    app.request('/api/v1/characters', {}, c.env),
+    internalApiRequest(c, `/api/v1/generations?${apiParams.toString()}`),
+    internalApiRequest(c, '/api/v1/characters'),
   ]);
   const genData = (await genRes.json()) as { items: GalleryItem[]; total: number };
   const charData = (await charRes.json()) as { items: { id: string; name: string }[] };
@@ -64,7 +64,7 @@ pages.get('/batches', async (c) => {
   if (bookmarkOnly) params.set('bookmark', 'true');
   params.set('limit', '100');
 
-  const res = await app.request(`/api/v1/batches?${params.toString()}`, {}, c.env);
+  const res = await internalApiRequest(c, `/api/v1/batches?${params.toString()}`);
   const data = (await res.json()) as { items: BatchRowData[] };
 
   return c.html(<BatchesPage items={data.items} bookmarkOnly={bookmarkOnly} />);
@@ -72,7 +72,7 @@ pages.get('/batches', async (c) => {
 
 pages.get('/b/:shortId', async (c) => {
   const shortId = c.req.param('shortId');
-  const res = await app.request(`/api/v1/batches/${shortId}`, {}, c.env);
+  const res = await internalApiRequest(c, `/api/v1/batches/${shortId}`);
   if (res.status === 404) {
     return c.html(<NotFoundPage what="Batch" />, 404);
   }
@@ -84,7 +84,7 @@ pages.get('/b/:shortId', async (c) => {
       const names: Record<string, string> = {};
       await Promise.all(
         storyIds.map(async (sid) => {
-          const sRes = await app.request(`/api/v1/stories/${sid}`, {}, c.env);
+          const sRes = await internalApiRequest(c, `/api/v1/stories/${sid}`);
           if (sRes.ok) {
             const sData = (await sRes.json()) as { name: string };
             names[sid] = sData.name;
@@ -105,14 +105,14 @@ pages.get('/b/:shortId', async (c) => {
 });
 
 pages.get('/stories', async (c) => {
-  const res = await app.request('/api/v1/stories', {}, c.env);
+  const res = await internalApiRequest(c, '/api/v1/stories');
   const data = (await res.json()) as { items: StoryListItem[] };
   return c.html(<StoriesPage items={data.items} />);
 });
 
 pages.get('/stories/:id', async (c) => {
   const id = c.req.param('id');
-  const res = await app.request(`/api/v1/stories/${id}`, {}, c.env);
+  const res = await internalApiRequest(c, `/api/v1/stories/${id}`);
   if (res.status === 404) {
     return c.html(<NotFoundPage what="Story" />, 404);
   }
@@ -122,8 +122,8 @@ pages.get('/stories/:id', async (c) => {
 
 pages.get('/bookmarks', async (c) => {
   const [genRes, batchRes, bookmarkedStories, bookmarkedExperiments] = await Promise.all([
-    app.request('/api/v1/generations?bookmark=true&limit=100', {}, c.env),
-    app.request('/api/v1/batches?bookmark=true&limit=100', {}, c.env),
+    internalApiRequest(c, '/api/v1/generations?bookmark=true&limit=100'),
+    internalApiRequest(c, '/api/v1/batches?bookmark=true&limit=100'),
     listBookmarkedStories(c.env.DB),
     listBookmarkedExperiments(c.env.DB),
   ]);

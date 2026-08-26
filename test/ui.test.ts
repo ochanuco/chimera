@@ -24,6 +24,14 @@ describe('Web GUI pages', () => {
     expect(body.length).toBeGreaterThan(0);
   });
 
+  it('gallery card image URLs keep the request origin (not localhost)', async () => {
+    const { generation } = await createGeneration();
+    const res = await req('/gallery?limit=200');
+    const html = await res.text();
+    expect(html).toContain(`https://chimera.test/g/${generation.short_id}/image`);
+    expect(html).not.toContain('http://localhost');
+  });
+
   it('GET /gallery returns 200 HTML including a registered generation short_id', async () => {
     const { generation } = await createGeneration();
     const res = await req('/gallery?limit=200');

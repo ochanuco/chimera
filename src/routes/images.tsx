@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { app } from '../app';
+import { internalApiRequest } from '../lib/internal-api';
 import { getGenerationByIdOrShortId } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
@@ -42,14 +42,14 @@ images.get('/:shortId', async (c) => {
   }
 
   const [detailRes, tagRows] = await Promise.all([
-    app.request(`/api/v1/generations/${generation.id}`, {}, c.env),
+    internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
   let storyLinks: { story_id: string; story_name: string; label: string | null }[] = [];
   if (data.batch) {
-    const batchRes = await app.request(`/api/v1/batches/${data.batch.id}`, {}, c.env);
+    const batchRes = await internalApiRequest(c, `/api/v1/batches/${data.batch.id}`);
     if (batchRes.ok) {
       const batchData = (await batchRes.json()) as {
         story_relations: { story_id: string; label: string | null }[];
@@ -58,7 +58,7 @@ images.get('/:shortId', async (c) => {
       const storyNames = new Map<string, string>();
       await Promise.all(
         storyIds.map(async (sid) => {
-          const sRes = await app.request(`/api/v1/stories/${sid}`, {}, c.env);
+          const sRes = await internalApiRequest(c, `/api/v1/stories/${sid}`);
           if (sRes.ok) {
             const sData = (await sRes.json()) as { name: string };
             storyNames.set(sid, sData.name);
