@@ -16,6 +16,7 @@ export const styleCss = `
   --graph-reference: #6fa8fd;
   --graph-relation: #e2914f;
   --graph-story: #4fd8a4;
+  --nav-h: 3.25rem;
 }
 
 * { box-sizing: border-box; }
@@ -32,10 +33,12 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .nav {
+  height: var(--nav-h);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 0.75rem 1.25rem;
+  padding: 0 1.25rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   position: sticky;
@@ -46,6 +49,7 @@ a:hover { text-decoration: underline; }
 .nav a.brand { color: var(--accent); margin-right: 0.5rem; }
 
 .container { padding: 1.25rem; max-width: 1600px; margin: 0 auto; }
+.container-full { max-width: none; }
 
 h1, h2, h3 { font-weight: 600; }
 h1 { font-size: 1.4rem; }
@@ -240,12 +244,35 @@ details.section {
 details.section summary { cursor: pointer; font-weight: 600; }
 details.section .section-body { margin-top: 0.6rem; }
 
+.section-sub { margin-top: 0.4rem; }
+.section-sub summary { cursor: pointer; color: var(--text-dim); font-size: 0.8rem; }
+
 .kv-table { border-collapse: collapse; width: 100%; }
 .kv-table td { padding: 0.2rem 0.5rem 0.2rem 0; vertical-align: top; font-size: 0.85rem; }
 .kv-table td:first-child { color: var(--text-dim); white-space: nowrap; }
 
 .gen-detail-hero { text-align: center; margin-bottom: 1rem; }
 .gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); }
+
+.detail-layout { display: block; }
+@media (min-width: 1100px) {
+  .detail-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.25rem;
+    height: calc(100vh - var(--nav-h) - 2.5rem);
+    overflow: hidden;
+  }
+  .detail-left { overflow-y: auto; min-height: 0; }
+  .detail-right { overflow-y: auto; min-height: 0; }
+
+  .detail-left .gen-detail-hero { height: 100%; }
+  .detail-left .gen-detail-hero img { max-height: 100%; max-width: 100%; object-fit: contain; }
+
+  .detail-right { font-size: 0.85rem; }
+  .detail-right h1 { font-size: 1.15rem; margin: 0 0 0.5rem; }
+  .detail-right details.section { padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; }
+}
 
 .note-form textarea {
   width: 100%;
