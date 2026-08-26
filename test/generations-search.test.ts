@@ -19,7 +19,7 @@ interface SearchResult {
 describe('Generation search', () => {
   it('filters by character name', async () => {
     const character = await postJson<{ id: string; name: string }>('/api/v1/characters', {
-      name: `hamakaze-${crypto.randomUUID().slice(0, 8)}`,
+      name: `yukari-${crypto.randomUUID().slice(0, 8)}`,
     });
     const { generation } = await createGeneration({ metadata: { character_id: character.body.id } });
 

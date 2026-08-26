@@ -77,7 +77,7 @@ good  🔖
 
 ``` text
 [img][img][img] | Batch B001
-[img][img][img] | "浜風をseed違いで9枚"
+[img][img][img] | "結月ゆかりをseed違いで9枚"
 [img][img][img] | 親 2 · 子 1 · 兄弟 0 · Story: yk-line
                 | Tags / 親 / 子 / 兄弟 / Prompt / ...
 ```
@@ -120,7 +120,7 @@ Generationごとに縦カラムで並べ、上から画像・short_idリンク�
 [IMAGE]        [IMAGE]
 abc123         xyz987
 good           neutral
-浜風           浜風
+ゆかり         ゆかり
 ```
 
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
@@ -157,7 +157,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 
 ``` text
 [ IMAGE ] | abc123
-[ IMAGE ] | 浜風
+[ IMAGE ] | 結月ゆかり
 [ IMAGE ] | good  🔖
 [ IMAGE ] | #pose-good #outfit-good
 ```

@@ -5,7 +5,7 @@
 人間:
 
 ``` text
-浜風をseed違いで9枚作って
+結月ゆかりをseed違いで9枚作って
 ```
 
 Claude Code は prompt を構築し `request.json` を作成します。
@@ -94,7 +94,7 @@ Claude自動再試行と同じ BatchRelation を使い、actor で区別しま�
 条件例:
 
 ``` text
-character = 浜風
+character = 結月ゆかり
 tag = outfit-good
 date = 2026-01..2026-05
 ```
