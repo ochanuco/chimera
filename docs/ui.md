@@ -79,10 +79,25 @@ Batch B001
 [img][img][img]
 [img][img][img]
 
-References: 2
-Refinement from: B000
-Story: yk-line
+親 2 · 子 1 · 兄弟 0 · Story: yk-line
 ```
+
+Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
+（CLAUDE.md の不変条件）ですが、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめ、各行に
+タイプバッジ（`Reference` / `Refinement` / `Story`）を付けて区別します。
+
+-   親: このBatchの材料になったGeneration（バッジ `Reference`、purpose/aspect
+    を表示）、このBatchをrefinementした元Batch（バッジ `Refinement`、reason
+    を表示）、StoryRelationで前段にあたるBatch（バッジ `Story`、Story名にリンク）
+-   子: このBatchのGenerationを材料に使ったBatch（バッジ `Reference`、どの
+    Generation経由かを表示）、このBatchをrefinement元とするBatch（バッジ
+    `Refinement`）、StoryRelationで後続にあたるBatch（バッジ `Story`）
+-   兄弟: 親を共有する他のBatch。BatchRelationで同じ親からrefinementされた
+    Batch、またはBatchReferenceで同じGenerationを材料に使ったBatch。共有の
+    親（Batch短縮IDまたはGeneration短縮ID）を表示
+
+各行のリンクはshort_id優先（Generation/Story RelationページのGraph凡例と同じ配色: Reference=青、
+Refinement=橙、Story=緑）。
 
 主な操作:
 
@@ -153,7 +168,8 @@ good  🔖
 ``` text
 Summary
 Semantic
-References
+親
+子
 Story
 Prompt
 Seed
@@ -161,6 +177,11 @@ ComfyUI Job
 Git
 Note
 ```
+
+親・子はBatch Detailと同じ family 表示の縮小版です（兄弟は同Batch内の他Generationに相当し表示不要）。
+
+-   親: このGenerationが属するBatch自身の材料（BatchReference、バッジ `Reference`）。purpose/aspectを表示
+-   子: このGenerationを材料に使ったBatch一覧（バッジ `Reference`）。purpose/aspectを表示
 
 ## Provenance View
 

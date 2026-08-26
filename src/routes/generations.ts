@@ -163,6 +163,18 @@ async function buildContext(db: D1Database, org: string, generation: GenerationR
       instruction: r.instruction,
       created_at: r.created_at,
     })),
+    // Batches that used this Generation as reference material ("children" via Reference).
+    // Same underlying batch_references rows as `references` above (both keyed by
+    // source_generation_id = this Generation), kept as a separate field so callers
+    // reading "who used me as material" don't have to infer it from `references`.
+    used_by: (references.results ?? []).map((r) => ({
+      id: r.id,
+      batch_id: r.target_batch_id,
+      purpose: r.purpose,
+      aspect: r.aspect,
+      instruction: r.instruction,
+      created_at: r.created_at,
+    })),
   };
 }
 

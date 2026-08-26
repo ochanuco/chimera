@@ -171,6 +171,19 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .tag-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.75rem; }
 
+/* Relation-type badges for 親/子/兄弟 rows (Batch/Generation Detail). Colors match the Graph legend. */
+.rel-badge {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rel-badge.rel-reference { background: color-mix(in srgb, var(--graph-reference) 22%, transparent); color: var(--graph-reference); }
+.rel-badge.rel-refinement { background: color-mix(in srgb, var(--graph-relation) 22%, transparent); color: var(--graph-relation); }
+.rel-badge.rel-story { background: color-mix(in srgb, var(--graph-story) 22%, transparent); color: var(--graph-story); }
+
 .tag-add-form { display: flex; gap: 0.3rem; }
 .tag-add-form input {
   background: var(--bg);

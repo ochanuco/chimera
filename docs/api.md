@@ -50,6 +50,34 @@ partial
 failed
 ```
 
+### Get Batch
+
+``` text
+GET /api/v1/batches/{id-or-short-id}
+```
+
+既存のフィールド（`references` / `relations.outgoing` / `relations.incoming` /
+`story_relations` など）に加え、GUIの「親・子・兄弟」表示向けに以下を追加で返します
+（Web GUI 専用ではなく通常のBatch取得レスポンスの一部です）:
+
+``` json
+{
+  "reference_children": [
+    { "batch_id": "...", "source_generation_id": "...", "purpose": "composition", "aspect": "pose" }
+  ],
+  "siblings": [
+    { "batch_id": "...", "via": "refinement", "shared_id": "..." },
+    { "batch_id": "...", "via": "reference", "shared_id": "..." }
+  ]
+}
+```
+
+-   `reference_children`: このBatchのGenerationを材料として使った他Batchの一覧
+-   `siblings`: 自分以外で親を共有するBatchの一覧。`via: "refinement"`
+    は同じrefinement元Batchを持つBatch（`shared_id` はそのBatchのid）、
+    `via: "reference"` は同じGenerationを材料に使ったBatch（`shared_id`
+    はそのGenerationのid）
+
 ## ComfyJob
 
 ### Create Job
@@ -189,9 +217,15 @@ GET /api/v1/generations/{id-or-short-id}/context
   "batch": {
     "id": "..."
   },
-  "references": []
+  "references": [],
+  "used_by": []
 }
 ```
+
+`references` はこのGenerationを材料として使ったBatch向けの
+BatchReferenceそのもの（`target_batch_id`
+を持つ）で、`used_by` は同じ行を `batch_id`
+キーで返す簡易版です（どちらもこのGenerationを材料に使ったBatchの一覧）。
 
 ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 
