@@ -51,5 +51,3 @@ npx wrangler dev         # http://localhost:8787
 npx wrangler d1 migrations apply chimera --remote   # スキーマ変更があるときのみ
 npx wrangler deploy
 ```
-
-リソースは D1 `chimera`、R2 `chimera-images`（`wrangler.jsonc` にバインド済み）。workers.dev ルートは Access を迂回させないため無効化してある。
