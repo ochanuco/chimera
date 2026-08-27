@@ -14,6 +14,7 @@ export const updateJobSchema = z
       .enum(['created', 'queued', 'running', 'completed', 'ingested', 'failed'])
       .optional(),
     comfy_prompt_id: z.string().optional(),
+    graph: z.record(z.string(), z.unknown()).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 

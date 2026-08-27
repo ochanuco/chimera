@@ -107,9 +107,13 @@ PATCH /api/v1/jobs/{job_id}
 ``` json
 {
   "status": "queued",
-  "comfy_prompt_id": "a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df"
+  "comfy_prompt_id": "a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df",
+  "graph": { "3": { "class_type": "KSampler", "inputs": { "...": "..." } } }
 }
 ```
+
+`graph` は ComfyUI に POST した prompt グラフ全体（`/prompt` にそのまま再投稿できる形）です。
+Job の記録単体で生成を再現できるようにするための保存であり、省略した場合は既存の値を保持します。
 
 Job status:
 

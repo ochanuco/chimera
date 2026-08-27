@@ -214,6 +214,7 @@ generations.get('/:id', async (c) => {
           seed: job.seed,
           comfy_prompt_id: job.comfy_prompt_id,
           status: job.status,
+          graph: job.graph ? JSON.parse(job.graph) : null,
         }
       : null,
     original_filename: generation.original_filename,

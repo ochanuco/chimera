@@ -414,6 +414,7 @@ batches.get('/:id', async (c) => {
       seed: j.seed,
       index: j.job_index,
       status: j.status,
+      graph: j.graph ? JSON.parse(j.graph) : null,
       created_at: j.created_at,
       updated_at: j.updated_at,
     })),

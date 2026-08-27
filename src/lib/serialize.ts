@@ -1,5 +1,5 @@
 import { toBool } from './db';
-import type { BatchRow, GenerationRow, StoryRow, StoryRelationRow } from '../types';
+import type { BatchRow, ComfyJobRow, GenerationRow, StoryRow, StoryRelationRow } from '../types';
 
 export function canonicalGenerationUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}`;
@@ -50,6 +50,20 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     bookmark: toBool(row.bookmark),
     character_id: row.character_id,
     created_at: row.created_at,
+  };
+}
+
+export function serializeJob(row: ComfyJobRow) {
+  return {
+    id: row.id,
+    batch_id: row.batch_id,
+    comfy_prompt_id: row.comfy_prompt_id,
+    seed: row.seed,
+    index: row.job_index,
+    status: row.status,
+    graph: row.graph ? JSON.parse(row.graph) : null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 
