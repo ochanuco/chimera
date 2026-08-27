@@ -1,11 +1,5 @@
 import { Layout } from '../layout';
-import {
-  computeGraphLayout,
-  THUMB_SIZE,
-  NODE_PADDING,
-  thumbnailSlotPosition,
-  MAX_VISIBLE_GENERATIONS,
-} from '../graph-layout';
+import { computeGraphLayout, THUMB_SIZE, NODE_PADDING, thumbnailSlotPosition } from '../graph-layout';
 
 export interface GraphGenerationData {
   short_id: string;
@@ -22,6 +16,20 @@ export interface GraphNodeData {
   generation_count: number;
   generations: GraphGenerationData[];
   thumbnail_generation_short_id: string | null;
+  /** Direct (undirected) neighbor Batches excluded by the current scope; 0 when nothing around this node is hidden. */
+  hidden_neighbor_count: number;
+}
+
+/** Picks the one Generation a Batch card represents: the designated thumbnail, else the first 'good' rating, else the first Generation. */
+export function representativeGeneration(node: GraphNodeData): GraphGenerationData | null {
+  if (node.generations.length === 0) return null;
+  if (node.thumbnail_generation_short_id) {
+    const designated = node.generations.find((g) => g.short_id === node.thumbnail_generation_short_id);
+    if (designated) return designated;
+  }
+  const good = node.generations.find((g) => g.rating === 'good');
+  if (good) return good;
+  return node.generations[0]!;
 }
 
 export type GraphEdgeType = 'reference' | 'relation' | 'story';
@@ -40,7 +48,7 @@ export interface GraphStoryOption {
   name: string;
 }
 
-/** Current scope selection: value is the <select> option value ("" / "all" / "story:<id>" / "root:<short_id>"); label is the human-readable text shown next to the selector. */
+/** Current scope selection: value is the <select> option value ("" / "active" / "all" / "story:<id>" / "root:<short_id>"); label is the human-readable text shown next to the selector. */
 export interface GraphScope {
   value: string;
   label: string;
@@ -74,6 +82,9 @@ export function GraphPage({
     <div class="graph-scope-bar">
       <select id="graph-scope">
         <option value="" selected={scope.value === ''}>
+          Recent
+        </option>
+        <option value="active" selected={scope.value === 'active'}>
           Active tree
         </option>
         <option value="all" selected={scope.value === 'all'}>
@@ -113,22 +124,14 @@ export function GraphPage({
   }
 
   const layout = computeGraphLayout(
-    nodes.map((n) => ({ id: n.id, createdAt: n.created_at, generationCount: n.generation_count })),
+    nodes.map((n) => ({ id: n.id, createdAt: n.created_at })),
     edges.map((e) => ({ source: e.source_batch_id, target: e.target_batch_id })),
   );
 
-  // Maps a Generation's short_id to where it renders on the graph, so reference
-  // edges can anchor at the specific thumbnail instead of the whole Batch frame.
-  // Index 8 (the 9th slot) is only a valid anchor when the Batch has <= 9
-  // Generations -- otherwise that slot is visually replaced by a "+n" overflow
-  // placeholder and isn't a real thumbnail to point at.
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const genLocation = new Map<string, { batchId: string; index: number }>();
-  for (const node of nodes) {
-    node.generations.forEach((g, index) => {
-      genLocation.set(g.short_id, { batchId: node.id, index });
-    });
-  }
+  // Batch cards show one representative Generation thumbnail (slot 0); reference
+  // edges anchor there only when they point at that exact Generation, otherwise
+  // they fall back to the Batch frame.
+  const representativeByBatch = new Map(nodes.map((n) => [n.id, representativeGeneration(n)]));
 
   return (
     <Layout title="Graph">
@@ -180,19 +183,10 @@ export function GraphPage({
 
                 let sx: number;
                 let sy: number;
-                const sourceGenLoc =
-                  e.type === 'reference' && e.source_generation_short_id
-                    ? genLocation.get(e.source_generation_short_id)
-                    : undefined;
-                const sourceNode = sourceGenLoc ? nodeById.get(sourceGenLoc.batchId) : undefined;
-                const lastVisibleIndex = MAX_VISIBLE_GENERATIONS - 1;
-                if (
-                  sourceGenLoc &&
-                  sourceNode &&
-                  (sourceGenLoc.index < lastVisibleIndex ||
-                    (sourceGenLoc.index === lastVisibleIndex && sourceNode.generation_count <= MAX_VISIBLE_GENERATIONS))
-                ) {
-                  const slot = thumbnailSlotPosition(sourceGenLoc.index);
+                const sourceRep =
+                  e.type === 'reference' ? representativeByBatch.get(e.source_batch_id) : undefined;
+                if (sourceRep && sourceRep.short_id === e.source_generation_short_id) {
+                  const slot = thumbnailSlotPosition(0);
                   sx = s.x + slot.x + THUMB_SIZE / 2 + fan;
                   sy = s.y + slot.y + THUMB_SIZE;
                 } else {
@@ -224,8 +218,10 @@ export function GraphPage({
             {nodes.map((n) => {
               const pos = layout.positions.get(n.id);
               if (!pos) return null;
-              const visibleCount = Math.min(n.generations.length, MAX_VISIBLE_GENERATIONS);
-              const overflow = n.generation_count > MAX_VISIBLE_GENERATIONS;
+              const rep = representativeByBatch.get(n.id) ?? null;
+              const thumbSlot = thumbnailSlotPosition(0);
+              const thumbX = pos.x + thumbSlot.x;
+              const thumbY = pos.y + thumbSlot.y;
               return (
                 <g class="graph-batch" data-batch-short-id={n.short_id} data-batch-id={n.id}>
                   <rect x={pos.x} y={pos.y} width={pos.width} height={pos.height} rx="10" class="graph-node-card" />
@@ -242,58 +238,44 @@ export function GraphPage({
                       {n.status} · {n.generation_count}
                     </text>
                   </g>
-                  {visibleCount === 0
-                    ? (() => {
-                        const slot = thumbnailSlotPosition(0);
-                        return (
-                          <rect
-                            x={pos.x + slot.x}
-                            y={pos.y + slot.y}
-                            width={THUMB_SIZE}
-                            height={THUMB_SIZE}
-                            class="graph-gen-empty"
-                          />
-                        );
-                      })()
-                    : Array.from({ length: visibleCount }, (_, i) => {
-                        const slot = thumbnailSlotPosition(i);
-                        const x = pos.x + slot.x;
-                        const y = pos.y + slot.y;
-                        if (overflow && i === MAX_VISIBLE_GENERATIONS - 1) {
-                          return (
-                            <g class="graph-gen-more">
-                              <rect x={x} y={y} width={THUMB_SIZE} height={THUMB_SIZE} class="graph-gen-more-rect" />
-                              <text
-                                x={x + THUMB_SIZE / 2}
-                                y={y + THUMB_SIZE / 2}
-                                text-anchor="middle"
-                                dominant-baseline="central"
-                              >
-                                +{n.generation_count - (MAX_VISIBLE_GENERATIONS - 1)}
-                              </text>
-                            </g>
-                          );
-                        }
-                        const g = n.generations[i]!;
-                        const ratingClass = g.rating === 'good' ? ' rating-good' : '';
-                        return (
-                          <g
-                            class={`graph-gen-thumb${ratingClass}`}
-                            data-gen-short-id={g.short_id}
-                            data-batch-short-id={n.short_id}
+                  {rep === null ? (
+                    <rect x={thumbX} y={thumbY} width={THUMB_SIZE} height={THUMB_SIZE} class="graph-gen-empty" />
+                  ) : (
+                    <g
+                      class={`graph-gen-thumb${rep.rating === 'good' ? ' rating-good' : ''}`}
+                      data-gen-short-id={rep.short_id}
+                      data-batch-short-id={n.short_id}
+                    >
+                      <rect x={thumbX} y={thumbY} width={THUMB_SIZE} height={THUMB_SIZE} class="graph-gen-ring" />
+                      <image
+                        href={`/g/${rep.short_id}/image`}
+                        x={thumbX}
+                        y={thumbY}
+                        width={THUMB_SIZE}
+                        height={THUMB_SIZE}
+                        preserveAspectRatio="xMidYMid slice"
+                      />
+                    </g>
+                  )}
+                  {n.hidden_neighbor_count > 0 &&
+                    (() => {
+                      const stubSlot = thumbnailSlotPosition(2);
+                      const stubX = pos.x + stubSlot.x;
+                      const stubY = pos.y + stubSlot.y;
+                      return (
+                        <g class="graph-node-stub" data-batch-short-id={n.short_id}>
+                          <rect x={stubX} y={stubY} width={THUMB_SIZE} height={THUMB_SIZE} rx="6" />
+                          <text
+                            x={stubX + THUMB_SIZE / 2}
+                            y={stubY + THUMB_SIZE / 2}
+                            text-anchor="middle"
+                            dominant-baseline="central"
                           >
-                            <rect x={x} y={y} width={THUMB_SIZE} height={THUMB_SIZE} class="graph-gen-ring" />
-                            <image
-                              href={`/g/${g.short_id}/image`}
-                              x={x}
-                              y={y}
-                              width={THUMB_SIZE}
-                              height={THUMB_SIZE}
-                              preserveAspectRatio="xMidYMid slice"
-                            />
-                          </g>
-                        );
-                      })}
+                            ⋯ +{n.hidden_neighbor_count}
+                          </text>
+                        </g>
+                      );
+                    })()}
                 </g>
               );
             })}

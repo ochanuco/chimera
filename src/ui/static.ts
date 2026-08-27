@@ -450,9 +450,12 @@ details.section .section-body { margin-top: 0.6rem; }
 .graph-gen-ring { fill: none; stroke: transparent; stroke-width: 2; }
 .graph-gen-thumb.rating-good .graph-gen-ring { stroke: var(--good); }
 .graph-gen-thumb.selected .graph-gen-ring { stroke: var(--accent); stroke-width: 3; }
-.graph-gen-more-rect { fill: var(--bg); stroke: var(--border); stroke-dasharray: 4 3; }
-.graph-gen-more text { fill: var(--text-dim); font-size: 12px; }
 .graph-gen-empty { fill: #000; stroke: var(--border); stroke-dasharray: 4 3; }
+
+.graph-node-stub { cursor: pointer; }
+.graph-node-stub rect { fill: var(--bg); stroke: var(--border); stroke-dasharray: 4 3; }
+.graph-node-stub:hover rect { stroke: var(--accent); }
+.graph-node-stub text { fill: var(--text-dim); font-size: 11px; }
 
 .graph-context-menu {
   position: fixed;
@@ -803,31 +806,9 @@ export const appJs = `
   }
 
   // --- Graph scope selector (filters which Batches /graph renders) ---
-  var GRAPH_SCOPE_KEY = 'chimera.graphScope';
-
+  // Scope lives only in the URL query string -- no localStorage persistence.
   function goToGraphScope(query) {
-    try {
-      if (query) {
-        localStorage.setItem(GRAPH_SCOPE_KEY, query);
-      } else {
-        localStorage.removeItem(GRAPH_SCOPE_KEY);
-      }
-    } catch (e) { /* localStorage unavailable */ }
     window.location.href = query ? '/graph?' + query : '/graph';
-  }
-
-  // Restores the last-used scope when /graph is opened with no query params.
-  // Runs before other init so the redirect happens as early as possible.
-  function restoreGraphScope() {
-    var select = document.getElementById('graph-scope');
-    if (!select || window.location.search) return;
-    var saved;
-    try {
-      saved = localStorage.getItem(GRAPH_SCOPE_KEY);
-    } catch (e) {
-      return;
-    }
-    if (saved) window.location.replace('/graph?' + saved);
   }
 
   function initGraphScope() {
@@ -836,10 +817,24 @@ export const appJs = `
     select.addEventListener('change', function () {
       var value = select.value;
       var query = '';
-      if (value === 'all') query = 'all=1';
+      if (value === 'active') query = 'active=1';
+      else if (value === 'all') query = 'all=1';
       else if (value.indexOf('story:') === 0) query = 'story=' + value.slice('story:'.length);
       else if (value.indexOf('root:') === 0) query = 'root=' + value.slice('root:'.length);
       goToGraphScope(query);
+    });
+  }
+
+  // --- Graph drill-down stub (hidden-neighbor placeholder) ---
+  function initGraphStubs() {
+    var svg = document.getElementById('graph-svg');
+    if (!svg) return;
+    svg.addEventListener('click', function (ev) {
+      var stub = ev.target.closest ? ev.target.closest('.graph-node-stub') : null;
+      if (!stub) return;
+      var shortId = stub.getAttribute('data-batch-short-id');
+      if (!shortId) return;
+      goToGraphScope('root=' + shortId + '&depth=3');
     });
   }
 
@@ -1240,7 +1235,6 @@ export const appJs = `
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    restoreGraphScope();
     initRating();
     initBookmark();
     initThumbPreview();
@@ -1253,6 +1247,7 @@ export const appJs = `
     initGraphScope();
     initGraphPanZoom();
     initGraphSelection();
+    initGraphStubs();
     initGraphContextMenu();
   });
 })();
