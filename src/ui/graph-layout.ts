@@ -18,11 +18,11 @@
 // Isolated nodes (no edges at all) default to layer 0, same as any other
 // zero-indegree root.
 //
-// Node sizing: each node is a Batch group frame containing a 3-column grid of
-// Generation thumbnails (docs/ui.md), so node width is fixed but height
-// depends on how many thumbnail rows the Batch needs. Because node height is
-// now variable, a layer's y position depends on the tallest node placed in
-// the *previous* layer (see computeGraphLayout below), not a fixed row pitch.
+// Node sizing: each node is a Batch group frame showing one representative
+// Generation thumbnail plus, when neighbors are hidden by the current scope,
+// a drill-down stub (docs/ui.md) -- both fit in a single thumbnail row, so
+// node height is fixed. The thumbnail grid geometry (3 columns) is kept for
+// slot positioning even though only slots 0 and 2 are ever drawn.
 export interface LayoutEdgeInput {
   source: string;
   target: string;
@@ -31,8 +31,6 @@ export interface LayoutEdgeInput {
 export interface LayoutNodeInput {
   id: string;
   createdAt: string;
-  /** Generation count for the Batch, used to size the thumbnail grid. */
-  generationCount: number;
 }
 
 export interface NodePosition {
@@ -57,7 +55,6 @@ export const THUMB_GAP = 6;
 export const NODE_PADDING = 10;
 export const HEADER_HEIGHT = 28;
 export const THUMBS_PER_ROW = 3;
-export const MAX_VISIBLE_GENERATIONS = 9;
 
 export const NODE_WIDTH = THUMBS_PER_ROW * THUMB_SIZE + (THUMBS_PER_ROW - 1) * THUMB_GAP + NODE_PADDING * 2;
 
@@ -66,10 +63,9 @@ export const NODE_GAP_X = NODE_WIDTH + 40;
 export const LAYER_GAP_Y = 90;
 export const MARGIN = 40;
 
-/** Node height for a Batch with `generationCount` Generations (docs/ui.md thumbnail grid + "+n" overflow slot). */
-export function computeNodeHeight(generationCount: number): number {
-  const rows = Math.max(1, Math.ceil(Math.min(generationCount, MAX_VISIBLE_GENERATIONS) / THUMBS_PER_ROW));
-  return HEADER_HEIGHT + NODE_PADDING + rows * THUMB_SIZE + (rows - 1) * THUMB_GAP + NODE_PADDING;
+/** Node height for a Batch card: header + a single thumbnail row (docs/ui.md). */
+export function computeNodeHeight(): number {
+  return HEADER_HEIGHT + NODE_PADDING + THUMB_SIZE + NODE_PADDING;
 }
 
 /** Local (node-relative) top-left position of thumbnail grid slot `index` (0-based, row-major). */
@@ -157,15 +153,15 @@ function computeLayers(nodeIds: string[], edges: LayoutEdgeInput[], backEdgeIndi
 
 /**
  * Computes x/y/width/height for every node: x by layer, y by created_at order
- * within the layer. Node width is fixed; height depends on generationCount.
- * A layer's y position is offset by the tallest node height among all
- * *previous* layers (each layer stacks below the previous one's tallest row).
+ * within the layer. Node width and height are both fixed (a single thumbnail
+ * row per card). A layer's y position is offset by the node height plus gap
+ * of every *previous* layer.
  */
 export function computeGraphLayout(nodes: LayoutNodeInput[], edges: LayoutEdgeInput[]): GraphLayout {
   const nodeIds = nodes.map((n) => n.id);
   const backEdgeIndices = findBackEdgeIndices(nodeIds, edges);
   const layerById = computeLayers(nodeIds, edges, backEdgeIndices);
-  const heightById = new Map(nodes.map((n) => [n.id, computeNodeHeight(n.generationCount)]));
+  const nodeHeight = computeNodeHeight();
 
   const byLayer = new Map<number, LayoutNodeInput[]>();
   for (const node of nodes) {
@@ -184,7 +180,7 @@ export function computeGraphLayout(nodes: LayoutNodeInput[], edges: LayoutEdgeIn
   for (let layer = 0; layer <= maxLayer; layer += 1) {
     layerY.set(layer, runningY);
     const layerNodes = byLayer.get(layer) ?? [];
-    const maxHeight = layerNodes.reduce((max, n) => Math.max(max, heightById.get(n.id) ?? 0), 0);
+    const maxHeight = layerNodes.length > 0 ? nodeHeight : 0;
     layerMaxHeight.set(layer, maxHeight);
     runningY += maxHeight + LAYER_GAP_Y;
   }
@@ -201,7 +197,7 @@ export function computeGraphLayout(nodes: LayoutNodeInput[], edges: LayoutEdgeIn
         x: MARGIN + order * NODE_GAP_X,
         y: layerY.get(layer) ?? MARGIN,
         width: NODE_WIDTH,
-        height: heightById.get(node.id) ?? computeNodeHeight(0),
+        height: nodeHeight,
       });
       maxOrder = Math.max(maxOrder, order);
     });

@@ -251,10 +251,12 @@ Story       実線・緑系   作品上の続き
 
 左上に凡例（3種の線種と意味）を固定表示します。
 
-ノードはBatchの「グループ枠」（角丸の矩形）です。中にGenerationのサムネイルを3列グリッドで並べ（最大9枚まで表示、10枚目以降は9枚目の枠を「+n」のプレースホルダーに置き換えます）、上部のヘッダー行にBatchのshort_id（monospace）と`status
-· count`を表示します。ノードの高さはサムネイル行数（3列グリッド）に応じて可変で、layerのy位置はその上のlayerで最も高いノードに合わせて決まります。
+ノードはBatchの「グループ枠」（角丸の矩形）です。中には代表Generation1枚のサムネイルのみを表示します（選定順:
+`thumbnail_generation_short_id`が指すGeneration →
+最初の`rating === 'good'`のGeneration → 先頭のGeneration。Generationが1件も無ければ空枠）。件数はサムネイルでは示さず、上部のヘッダー行にBatchのshort_id（monospace）と`status
+· count`で表示します。ノードの高さは常に1行分の固定値です。
 
-Reference（青）エッジは、参照元Generationのサムネイルが画面上に実在する場合はそのサムネイル下端から、実在しない場合（Batchが9枚を超えて保持しており、参照元がoverflow枠に落ちた場合）はBatch枠の下端にフォールバックして描画します。Relation（橙・破線）とStory（緑）のエッジは従来どおりBatch枠の下端→Batch枠の上端です。
+Reference（青）エッジは、参照元Generationが表示中の代表サムネイルと一致する場合はそのサムネイル下端から、一致しない場合（参照元が代表サムネイルとして選ばれていない、またはそのBatch自体が非表示スコープの場合）はBatch枠の下端にフォールバックして描画します。Relation（橙・破線）とStory（緑）のエッジは従来どおりBatch枠の下端→Batch枠の上端です。
 
 ナビゲーションはコンテキストメニュー経由のみです。Batchヘッダーの左クリックは何も起きません（ページ遷移なし）。Generationサムネイルの左クリックはCompare選択のトグルです（こちらもページ遷移なし）。1件以上選択すると画面下部にCompareバーが現れ、`/compare?ids=...`
 へリンクします（Galleryのcompareバーと同じ仕組み）。Generationサムネイル、またはBatchヘッダー/枠を右クリックするとコンテキストメニューが開き、「Copy
@@ -271,23 +273,31 @@ from compare」のトグルを提供します。
 
 Batch数が増えるとレイアウト計算・レンダリングが重くなるため、表示範囲を絞るスコープを持ちます。白紙スタートは作らず、無指定でも必ず何かを表示します。
 
-決定優先順はURLクエリパラメータ、localStorageの復元値、サーバー側デフォルトの順です。
+スコープはURLクエリパラメータのみが状態を持ちます（localStorage等での永続化はしません）。
 
 ``` text
-?story=<story_id>  そのStoryのStoryRelationに現れるBatchのみ
-?root=<short_id>   指定Batchの祖先+子孫（3種エッジすべてを辿り、有向に到達可能な集合）+自身
-?all=1             全Batch（従来表示）
-（無指定）          Active tree: created_atが最新のBatchを含む連結成分（エッジを無向として辿る）
+（無指定）                 Recent: created_atが最新のBatchを起点に、エッジを無向として辿った距離3以内のBatch
+?depth=N                  （root省略時）Recentの距離をNへ上書き
+?active=1                 Active tree: created_atが最新のBatchを含む連結成分（エッジを無向として辿る）
+?story=<story_id>         そのStoryのStoryRelationに現れるBatchのみ
+?root=<short_id>          指定Batchの祖先+子孫（3種エッジすべてを辿り、有向に到達可能な集合）+自身
+?root=<short_id>&depth=N  rootを起点に、エッジを無向として辿った距離N以内のBatch
+?all=1                    全Batch（従来表示）
 ```
 
-凡例の近くにセレクタ（`Active tree` / `All` / Story一覧 /
+`depth`は1〜10の整数にclampし、パース不能な値は3として扱います。
+
+凡例の近くにセレクタ（`Recent` / `Active tree` / `All` / Story一覧 /
 root絞り込み中のみ動的に現れる`Subgraph: <short_id>`）と、現在のスコープ名と表示件数（例:
-`Active tree · 12 batches`）を表示します。セレクタの変更・コンテキストメニューの「Show subgraph
-from here」はどちらも遷移前にlocalStorage（キー`chimera.graphScope`）へ選択したクエリ文字列を保存し、次回`/graph`をクエリ無しで開いたときにその保存値へ自動的にリダイレクトします（`Active
-tree`を選び直すと保存値は削除されます）。
+`Recent · 12 batches`）を表示します。
 
 `root`で指定したBatchが存在しない場合はempty-stateに「Batch not found:
 <値>」を表示します。Batchが1件も無い場合も同様にempty-stateを表示します。
+
+### ドリルダウン（隠れた隣接Batch）
+
+スコープによって除外されたBatchがある場合、表示中のBatchのうち除外されたBatchへ直接（無向で）隣接しているものは、サムネイルグリッドの3列目に「⋯
++N」スタブを表示します（Nはそのカードから見た、非表示になっている直接隣接Batchの数）。スタブをクリックすると、そのBatchを起点に`?root=<short_id>&depth=3`へ遷移し、隠れていた周辺を表示します。
 
 ## Bookmarks
 

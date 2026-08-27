@@ -220,6 +220,37 @@ function activeComponentIds(nodes: GraphNodeData[], edges: GraphEdgeData[]): Set
   return reachableIds(latest.id, undirected);
 }
 
+/** Ids within `maxDepth` undirected hops of rootId, rootId itself included at depth 0. */
+function depthLimitedIds(edges: GraphEdgeData[], rootId: string, maxDepth: number): Set<string> {
+  const undirected = new Map<string, Set<string>>();
+  for (const e of edges) {
+    addEdge(undirected, e.source_batch_id, e.target_batch_id);
+    addEdge(undirected, e.target_batch_id, e.source_batch_id);
+  }
+  const visited = new Set<string>([rootId]);
+  let frontier = [rootId];
+  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth += 1) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const neighbor of undirected.get(id) ?? []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          next.push(neighbor);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return visited;
+}
+
+/** Clamps a `?depth=` query value to 1..10, falling back to 3 when it's missing or unparseable. */
+function clampDepth(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 10) return 3;
+  return n;
+}
+
 function filterGraph(
   nodes: GraphNodeData[],
   edges: GraphEdgeData[],
@@ -229,6 +260,27 @@ function filterGraph(
     nodes: nodes.filter((n) => ids.has(n.id)),
     edges: edges.filter((e) => ids.has(e.source_batch_id) && ids.has(e.target_batch_id)),
   };
+}
+
+/** Annotates each node with how many of its direct (undirected) neighbors, across the whole graph, are missing from the current scope. */
+function withHiddenNeighborCounts(
+  nodes: GraphNodeData[],
+  allEdges: GraphEdgeData[],
+  visibleIds: Set<string>,
+): GraphNodeData[] {
+  const undirected = new Map<string, Set<string>>();
+  for (const e of allEdges) {
+    addEdge(undirected, e.source_batch_id, e.target_batch_id);
+    addEdge(undirected, e.target_batch_id, e.source_batch_id);
+  }
+  return nodes.map((n) => {
+    const neighbors = undirected.get(n.id) ?? new Set<string>();
+    let hidden = 0;
+    for (const neighborId of neighbors) {
+      if (!visibleIds.has(neighborId)) hidden += 1;
+    }
+    return { ...n, hidden_neighbor_count: hidden };
+  });
 }
 
 pages.get('/graph', async (c) => {
@@ -243,6 +295,7 @@ pages.get('/graph', async (c) => {
   let filtered: { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
   let scope: GraphScope;
   let emptyMessage: string | undefined;
+  const hasDepthParam = q.depth !== undefined;
 
   if (q.all === '1') {
     filtered = { nodes: data.nodes, edges: data.edges };
@@ -265,17 +318,31 @@ pages.get('/graph', async (c) => {
       scope = { value: `root:${q.root}`, label: `Subgraph: ${q.root}` };
       emptyMessage = `Batch not found: ${q.root}`;
     } else {
-      filtered = filterGraph(data.nodes, data.edges, subgraphIds(data.edges, batch.id));
+      const ids = hasDepthParam
+        ? depthLimitedIds(data.edges, batch.id, clampDepth(q.depth))
+        : subgraphIds(data.edges, batch.id);
+      filtered = filterGraph(data.nodes, data.edges, ids);
       scope = { value: `root:${batch.short_id}`, label: `Subgraph: ${batch.short_id}` };
     }
-  } else {
+  } else if (q.active === '1') {
     filtered = filterGraph(data.nodes, data.edges, activeComponentIds(data.nodes, data.edges));
-    scope = { value: '', label: 'Active tree' };
+    scope = { value: 'active', label: 'Active tree' };
+  } else if (data.nodes.length === 0) {
+    filtered = { nodes: [], edges: [] };
+    scope = { value: '', label: 'Recent' };
+  } else {
+    const latest = data.nodes[data.nodes.length - 1]!;
+    const depth = hasDepthParam ? clampDepth(q.depth) : 3;
+    filtered = filterGraph(data.nodes, data.edges, depthLimitedIds(data.edges, latest.id, depth));
+    scope = { value: '', label: 'Recent' };
   }
+
+  const visibleIds = new Set(filtered.nodes.map((n) => n.id));
+  const nodesWithHidden = withHiddenNeighborCounts(filtered.nodes, data.edges, visibleIds);
 
   return c.html(
     <GraphPage
-      nodes={filtered.nodes}
+      nodes={nodesWithHidden}
       edges={filtered.edges}
       stories={storiesData.items}
       scope={scope}

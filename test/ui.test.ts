@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, postJson, req } from './helpers';
+import { createBatch, createGeneration, createJob, ingestGeneration, postJson, req } from './helpers';
+import { representativeGeneration, type GraphNodeData } from '../src/ui/pages/Graph';
 
 describe('Web GUI pages', () => {
   it('GET / redirects to /gallery', async () => {
@@ -331,7 +332,7 @@ describe('Web GUI pages', () => {
     expect(body).toContain(isolatedNew.body.short_id);
   });
 
-  it('GET /graph with no query params defaults to the Active tree (connected component of the newest Batch)', async () => {
+  it('GET /graph with no query params defaults to Recent (distance-limited from the newest Batch)', async () => {
     const isolatedOld = await createBatch();
     const isolatedNew = await createBatch();
 
@@ -340,5 +341,114 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     expect(body).toContain(isolatedNew.body.short_id);
     expect(body).not.toContain(isolatedOld.body.short_id);
+  });
+
+  it('GET /graph?active=1 shows the whole connected component regardless of distance', async () => {
+    const isolated = await createBatch();
+    const b0 = await createBatch();
+    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
+    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
+    const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
+    const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
+
+    const res = await req('/graph?active=1');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain(b0.body.short_id);
+    expect(body).toContain(b4.body.short_id);
+    expect(body).not.toContain(isolated.body.short_id);
+  });
+
+  it('GET /graph with no query params limits to distance 3 and stubs the boundary Batch', async () => {
+    const b0 = await createBatch();
+    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
+    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
+    const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
+    const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
+
+    const res = await req('/graph');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    // b0 is 4 hops from the newest Batch (b4) -- outside the default depth-3 window.
+    expect(body).not.toContain(b0.body.short_id);
+    expect(body).toContain(b1.body.short_id);
+    expect(body).toContain(b2.body.short_id);
+    expect(body).toContain(b3.body.short_id);
+    expect(body).toContain(b4.body.short_id);
+    // b1 sits at the boundary and has one hidden neighbor (b0) -> drill-down stub.
+    expect(body).toContain('graph-node-stub');
+    expect(body).toContain('⋯ +1');
+  });
+
+  it('GET /graph?root=X&depth=1 limits to immediate neighbors of X only', async () => {
+    const a = await createBatch();
+    const b = await createBatch({ refinement: { source_batch_id: a.body.id, actor: 'human', reason: 'retry' } });
+    const c = await createBatch({ refinement: { source_batch_id: b.body.id, actor: 'human', reason: 'retry' } });
+    const d = await createBatch({ refinement: { source_batch_id: c.body.id, actor: 'human', reason: 'retry' } });
+
+    const res = await req(`/graph?root=${c.body.short_id}&depth=1`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).not.toContain(a.body.short_id);
+    expect(body).toContain(b.body.short_id);
+    expect(body).toContain(c.body.short_id);
+    expect(body).toContain(d.body.short_id);
+  });
+
+  it('GET /graph renders at most one <image> per Batch card even with many Generations', async () => {
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    await ingestGeneration(job.body.id, { seed: 1, original_filename: 'multi-a.png', comfy_output_index: 0 });
+    await ingestGeneration(job.body.id, { seed: 2, original_filename: 'multi-b.png', comfy_output_index: 1 });
+    await ingestGeneration(job.body.id, { seed: 3, original_filename: 'multi-c.png', comfy_output_index: 2 });
+
+    const res = await req(`/graph?root=${batch.body.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    const imageCount = (body.match(/<image /g) ?? []).length;
+    expect(imageCount).toBe(1);
+  });
+});
+
+describe('representativeGeneration (Graph View thumbnail selection)', () => {
+  function makeNode(overrides: Partial<GraphNodeData> = {}): GraphNodeData {
+    return {
+      id: 'batch-1',
+      short_id: 'b1',
+      raw_instruction: null,
+      status: 'completed',
+      created_at: '2024-01-01T00:00:00Z',
+      generation_count: 0,
+      generations: [],
+      thumbnail_generation_short_id: null,
+      hidden_neighbor_count: 0,
+      ...overrides,
+    };
+  }
+
+  it('returns null when the Batch has no Generations', () => {
+    expect(representativeGeneration(makeNode())).toBeNull();
+  });
+
+  it('① picks the Generation matching thumbnail_generation_short_id first', () => {
+    const g1 = { short_id: 'g1', rating: null, bookmark: false } as const;
+    const g2 = { short_id: 'g2', rating: 'good', bookmark: false } as const;
+    const node = makeNode({ generations: [g1, g2], thumbnail_generation_short_id: 'g1' });
+    expect(representativeGeneration(node)?.short_id).toBe('g1');
+  });
+
+  it('② falls back to the first "good"-rated Generation when there is no thumbnail match', () => {
+    const g1 = { short_id: 'g1', rating: null, bookmark: false } as const;
+    const g2 = { short_id: 'g2', rating: 'good', bookmark: false } as const;
+    const g3 = { short_id: 'g3', rating: 'good', bookmark: false } as const;
+    const node = makeNode({ generations: [g1, g2, g3], thumbnail_generation_short_id: 'does-not-exist' });
+    expect(representativeGeneration(node)?.short_id).toBe('g2');
+  });
+
+  it('③ falls back to the first Generation when neither a thumbnail match nor a "good" rating exists', () => {
+    const g1 = { short_id: 'g1', rating: 'bad', bookmark: false } as const;
+    const g2 = { short_id: 'g2', rating: 'neutral', bookmark: false } as const;
+    const node = makeNode({ generations: [g1, g2], thumbnail_generation_short_id: null });
+    expect(representativeGeneration(node)?.short_id).toBe('g1');
   });
 });
