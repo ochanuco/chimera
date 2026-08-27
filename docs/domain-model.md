@@ -101,9 +101,13 @@ comfy_prompt_id
 seed
 index
 status
+graph
 created_at
 updated_at
 ```
+
+`graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
+`/prompt` へ再投稿して生成を再現できるようにするために保存します。
 
 ## Generation
 

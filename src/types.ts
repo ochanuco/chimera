@@ -46,6 +46,7 @@ export interface ComfyJobRow {
   job_index: number | null;
   status: JobStatus;
   idempotency_key: string;
+  graph: string | null;
   created_at: string;
   updated_at: string;
 }

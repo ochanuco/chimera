@@ -4,7 +4,7 @@ import { uuidv7 } from '../lib/uuidv7';
 import { createUniqueShortId } from '../lib/shortid';
 import { nowIso } from '../lib/db';
 import { badRequest, notFound } from '../lib/errors';
-import { canonicalGenerationUrl } from '../lib/serialize';
+import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
 export const jobs = new Hono<AppEnv>();
@@ -30,6 +30,10 @@ jobs.patch('/:jobId', async (c) => {
     sets.push('comfy_prompt_id = ?');
     binds.push(body.comfy_prompt_id);
   }
+  if (body.graph !== undefined) {
+    sets.push('graph = ?');
+    binds.push(JSON.stringify(body.graph));
+  }
   sets.push('updated_at = ?');
   const now = nowIso();
   binds.push(now, job.id);
@@ -37,15 +41,7 @@ jobs.patch('/:jobId', async (c) => {
   await db.prepare(`UPDATE comfy_jobs SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
 
   const updated = await getJobOr404(db, job.id);
-  return c.json({
-    id: updated.id,
-    batch_id: updated.batch_id,
-    comfy_prompt_id: updated.comfy_prompt_id,
-    seed: updated.seed,
-    index: updated.job_index,
-    status: updated.status,
-    updated_at: updated.updated_at,
-  });
+  return c.json(serializeJob(updated));
 });
 
 jobs.post('/:jobId/generations', async (c) => {
