@@ -143,15 +143,14 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   display: none;
   pointer-events: none;
   z-index: 100;
-  max-width: min(40vw, 640px);
-  max-height: 80vh;
   padding: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-#thumb-preview img { display: block; max-width: 100%; max-height: 100%; border-radius: 6px; }
+/* 親の高さが auto だと max-height: 100% は効かないため、img に直接ビューポート基準の上限を課す */
+#thumb-preview img { display: block; max-width: min(40vw, 640px); max-height: calc(80vh - 26px); border-radius: 6px; }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .card-image-meta { margin: 0; text-align: left; }
