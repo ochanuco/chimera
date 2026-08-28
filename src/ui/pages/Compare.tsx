@@ -1,6 +1,6 @@
 import { Layout } from '../layout';
 import { CopyIdButton } from '../components/CopyIdButton';
-import { diffList, diffTokens, tokenize, type DiffSeg } from '../diff';
+import { addOnlySegments, delMask, maskToSegments, tokenize, type DiffSeg } from '../diff';
 
 const NOT_ANALYZED = '(not analyzed)';
 const NO_VALUE = '—';
@@ -34,7 +34,13 @@ interface CompareRow {
   label: string;
   values: string[];
   diff: boolean;
-  /** Per-column token diff segments against the row's base (first real value); undefined for basic rows, null for cells rendered plain. */
+  /**
+   * Per-column diff segments, each lane highlighting only its own text (WinMerge-style, not a
+   * merged word-diff): undefined for basic rows; null for a cell rendered plain (no value, only
+   * one real value in the row, or nothing differs). The base cell (first real value) highlights
+   * parts lost in every other column as 'del'; every other real cell highlights its own parts the
+   * base lacks as 'add'. A cell never shows another cell's text.
+   */
   segments?: (DiffSeg[] | null)[];
 }
 
@@ -78,10 +84,53 @@ function listRaw(values: string[] | undefined): SemanticRaw {
   return !values || values.length === 0 ? null : { kind: 'list', raw: values };
 }
 
+/** Appends a line-separator marker to every item, so list items merged into one segment by adjacent same-type runs still land one per line. */
+function withLineSep(items: string[]): string[] {
+  return items.map((it) => `${it}\n`);
+}
+
+/** Strips the trailing line-separator marker left by withLineSep on the last segment. */
+function stripTrailingNewline(segs: DiffSeg[]): DiffSeg[] {
+  if (segs.length === 0) return segs;
+  const last = segs[segs.length - 1]!;
+  if (!last.text.endsWith('\n')) return segs;
+  return [...segs.slice(0, -1), { ...last, text: last.text.slice(0, -1) }];
+}
+
+/**
+ * Base-cell segments: the OR of delMask(base, other) across every other real cell in the row, so
+ * the base highlights (as 'del') any of its own parts that some other column lost. Null when
+ * nothing differs anywhere.
+ */
+function computeBaseSegments(baseItems: string[], otherItemsList: string[][], isList: boolean): DiffSeg[] | null {
+  if (otherItemsList.length === 0) return null;
+  const tokens = isList ? withLineSep(baseItems) : baseItems;
+  const mask = tokens.map(() => false);
+  for (const other of otherItemsList) {
+    const otherTokens = isList ? withLineSep(other) : other;
+    const m = delMask(tokens, otherTokens);
+    for (let i = 0; i < mask.length; i++) mask[i] = mask[i] || m[i]!;
+  }
+  if (!mask.some(Boolean)) return null;
+  const segs = maskToSegments(tokens, mask);
+  return isList ? stripTrailingNewline(segs) : segs;
+}
+
+/** Non-base cell segments: this cell's own text, with parts the base lacks highlighted as 'add'. Null when identical to base. */
+function computeTargetSegments(baseItems: string[], cellItems: string[], isList: boolean): DiffSeg[] | null {
+  const baseTokens = isList ? withLineSep(baseItems) : baseItems;
+  const cellTokens = isList ? withLineSep(cellItems) : cellItems;
+  const segs = addOnlySegments(baseTokens, cellTokens);
+  if (segs.every((s) => s.type === 'same')) return null;
+  return isList ? stripTrailingNewline(segs) : segs;
+}
+
 /**
  * Builds one semantic comparison row. Each cell's raw value feeds display text (via joinList for
- * lists), the "all differ" row-level diff flag, and — for cells beyond the row's base (the first
- * item with a real value) — a token/item diff against that base.
+ * lists) and the "all differ" row-level diff flag. Beyond that, each cell is diffed independently
+ * against the row's base (the first item with a real value): the base highlights parts lost in any
+ * other column, every other cell highlights its own parts the base lacks — no cell ever renders
+ * another cell's text.
  */
 function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: CompareSemantic) => SemanticRaw): CompareRow {
   const cells: SemanticCell[] = items.map((item) => {
@@ -96,17 +145,23 @@ function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: C
   const diff = new Set(values).size > 1;
 
   const baseIndex = cells.findIndex((c) => c.raw !== null);
-  const realCount = cells.filter((c) => c.raw !== null).length;
+  const realIndexes = cells.reduce<number[]>((acc, c, i) => (c.raw !== null ? [...acc, i] : acc), []);
+  // Mixed text/list kinds in the same row (e.g. an attribute that's a scalar for one generation
+  // and an array for another) fall back to item-granularity diffing for the whole row.
+  const isListRow = realIndexes.some((i) => cells[i]!.kind === 'list');
+  const toItems = (cell: SemanticCell): string[] => {
+    if (isListRow) return cell.kind === 'list' ? (cell.raw as string[]) : [cell.raw as string];
+    return tokenize(cell.raw as string);
+  };
 
   const segments: (DiffSeg[] | null)[] = cells.map((cell, i) => {
-    if (cell.raw === null || i === baseIndex || realCount <= 1) return null;
-    const base = cells[baseIndex];
-    if (!base || base.raw === null) return null;
-    if (cell.kind === 'list' || base.kind === 'list') {
-      const toList = (raw: string | string[]) => (Array.isArray(raw) ? raw : [raw]);
-      return diffList(toList(base.raw), toList(cell.raw));
+    if (cell.raw === null || realIndexes.length <= 1) return null;
+    const base = cells[baseIndex]!;
+    if (i === baseIndex) {
+      const others = realIndexes.filter((idx) => idx !== baseIndex).map((idx) => toItems(cells[idx]!));
+      return computeBaseSegments(toItems(base), others, isListRow);
     }
-    return diffTokens(tokenize(base.raw as string), tokenize(cell.raw as string));
+    return computeTargetSegments(toItems(base), toItems(cell), isListRow);
   });
 
   return { label, values, diff, segments };
@@ -194,7 +249,8 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
 
           {showLegend ? (
             <p class="compare-legend">
-              各行の最初の値を基準に<span class="tok-add">追加</span>/<span class="tok-del">削除</span>を表示します。
+              各行の最初の値を基準に、基準側で変わった部分を<span class="tok-del">赤</span>、他の列で追加・変更された部分を
+              <span class="tok-add">緑</span>で表示します。
             </p>
           ) : null}
 

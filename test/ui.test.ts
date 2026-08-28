@@ -346,13 +346,25 @@ describe('Web GUI pages', () => {
     expect(body).toContain(g2.short_id);
     expect(body).toContain('standing');
     expect(body).toContain('class="diff"');
-    // g1's pose ("standing") is the row base and renders plain. g2's cell is diffed against that
-    // base: the base's word ("standing") shows as tok-del, g2's own word ("sitting") as tok-add.
+    // g1's pose ("standing") is the row base: its own cell highlights "standing" as tok-del since
+    // g2's column lost it. g2's cell shows only its own text, with "sitting" as tok-add — it never
+    // renders g1's "standing".
     expect(body).toContain('class="tok-add"');
     expect(body).toContain('class="tok-del"');
     expect(body).toMatch(/<span class="tok-del">[^<]*standing[^<]*<\/span>/);
     expect(body).toMatch(/<span class="tok-add">[^<]*sitting[^<]*<\/span>/);
     expect(body).toContain('class="compare-legend"');
+
+    // Locate the pose row and check each cell's own <td>...</td> in isolation: the base cell must
+    // not contain "sitting", and g2's cell must not contain "standing".
+    const poseRowMatch = body.match(/<tr><td>pose<\/td>(.*?)<\/tr>/s);
+    expect(poseRowMatch).not.toBeNull();
+    const poseCells = [...poseRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
+    expect(poseCells).toHaveLength(2);
+    expect(poseCells[0]).toContain('standing');
+    expect(poseCells[0]).not.toContain('sitting');
+    expect(poseCells[1]).toContain('sitting');
+    expect(poseCells[1]).not.toContain('standing');
   });
 
   it('GET /compare token-diffs a long summary line, highlighting the changed word as add/del', async () => {
@@ -378,6 +390,21 @@ describe('Web GUI pages', () => {
     expect(body).toContain('class="tok-del"');
     expect(body).toMatch(/<span class="tok-add">[^<]*sleeping[^<]*<\/span>/);
     expect(body).toMatch(/<span class="tok-del">[^<]*sitting[^<]*<\/span>/);
+
+    // Each lane shows only its own text: g1's summary cell (the base) never shows "sleeping"/"sofa",
+    // and g2's cell never shows "sitting"/"chair".
+    const summaryRowMatch = body.match(/<tr><td>summary<\/td>(.*?)<\/tr>/s);
+    expect(summaryRowMatch).not.toBeNull();
+    const summaryCells = [...summaryRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
+    expect(summaryCells).toHaveLength(2);
+    expect(summaryCells[0]).toContain('sitting');
+    expect(summaryCells[0]).toContain('chair');
+    expect(summaryCells[0]).not.toContain('sleeping');
+    expect(summaryCells[0]).not.toContain('sofa');
+    expect(summaryCells[1]).toContain('sleeping');
+    expect(summaryCells[1]).toContain('sofa');
+    expect(summaryCells[1]).not.toContain('sitting');
+    expect(summaryCells[1]).not.toContain('chair');
   });
 
   it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {
