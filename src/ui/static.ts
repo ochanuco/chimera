@@ -687,7 +687,7 @@ export const appJs = `
     }
 
     document.addEventListener('mouseover', function (ev) {
-      const link = ev.target.closest ? ev.target.closest('.card .thumb-link') : null;
+      const link = ev.target.closest ? ev.target.closest('.thumb-link') : null;
       if (!link || link === currentLink) return;
       if (timer) clearTimeout(timer);
       currentLink = link;
@@ -698,7 +698,7 @@ export const appJs = `
     });
 
     document.addEventListener('mouseout', function (ev) {
-      const link = ev.target.closest ? ev.target.closest('.card .thumb-link') : null;
+      const link = ev.target.closest ? ev.target.closest('.thumb-link') : null;
       if (!link) return;
       const related = ev.relatedTarget;
       if (related && link.contains(related)) return;

@@ -114,8 +114,8 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
           <div class="compare-columns">
             {items.map((item) => (
               <div class="compare-col">
-                <a href={`/g/${item.short_id}`}>
-                  <img src={item.image_url} alt={item.short_id} />
+                <a class="thumb-link" href={`/g/${item.short_id}`}>
+                  <img class="thumb-fg" src={item.image_url} alt={item.short_id} />
                 </a>
                 <a class="short-id-link" href={`/g/${item.short_id}`}>
                   {item.short_id}
