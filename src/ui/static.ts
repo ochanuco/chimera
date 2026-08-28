@@ -283,10 +283,12 @@ details.section .section-body { margin-top: 0.6rem; }
     height: calc(100vh - var(--nav-h) - 2.5rem);
     overflow: hidden;
   }
-  .detail-left { overflow-y: auto; min-height: 0; }
+  /* 縦 flex にして画像へ残り全高を割り当てる。hero を height: 100% にすると
+     直後の .image-meta がスクロール下に押し出されて見えなくなる */
+  .detail-left { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
   .detail-right { overflow-y: auto; min-height: 0; }
 
-  .detail-left .gen-detail-hero { height: 100%; }
+  .detail-left .gen-detail-hero { flex: 1; min-height: 0; margin-bottom: 0; }
   .detail-left .gen-detail-hero img { max-height: 100%; max-width: 100%; object-fit: contain; }
 
   .detail-right { font-size: 0.85rem; }
