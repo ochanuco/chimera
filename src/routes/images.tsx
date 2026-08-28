@@ -7,7 +7,7 @@ import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { GenerationDetailPage, type GenerationDetailData } from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { getImageMeta } from '../lib/image-meta';
-import type { AppEnv } from '../types';
+import type { AppEnv, GenerationAssetRow } from '../types';
 import type { Context } from 'hono';
 
 export const images = new Hono<AppEnv>();
@@ -116,6 +116,35 @@ images.get('/:shortId/image', async (c) => {
   return new Response(object.body, {
     headers: {
       'Content-Type': object.httpMetadata?.contentType ?? 'image/png',
+      'Cache-Control': 'private, max-age=3600',
+    },
+  });
+});
+
+// GET /g/{short_id}/assets/{role}[?region=] — streams a layered asset
+// (lineart / mask / decomposed layer / PSD / ...) for a Generation.
+// region omitted means '' (the "whole image, no region" row).
+images.get('/:shortId/assets/:role', async (c) => {
+  const db = c.env.DB;
+  const shortId = c.req.param('shortId');
+  const role = c.req.param('role');
+  const region = c.req.query('region') ?? '';
+
+  const generation = await getGenerationByIdOrShortId(db, shortId);
+  if (!generation) throw notFound('generation');
+
+  const asset = await db
+    .prepare('SELECT * FROM generation_assets WHERE generation_id = ? AND role = ? AND region = ?')
+    .bind(generation.id, role, region)
+    .first<GenerationAssetRow>();
+  if (!asset) throw notFound('asset');
+
+  const object = await c.env.IMAGES.get(asset.r2_object_key);
+  if (!object) throw notFound('asset');
+
+  return new Response(object.body, {
+    headers: {
+      'Content-Type': asset.content_type,
       'Cache-Control': 'private, max-age=3600',
     },
   });

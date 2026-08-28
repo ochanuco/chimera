@@ -178,6 +178,72 @@ Management API がR2へ保存し、D1へGenerationを登録します。
 }
 ```
 
+## Generation Assets
+
+線画・マスク・分解レイヤー・PSD 等のレイヤーアセットを Generation
+に紐付けます（詳細は `domain-model.md` の GenerationAsset 参照）。
+
+### Ingest Asset
+
+``` text
+POST /api/v1/generations/{id}/assets
+Content-Type: multipart/form-data
+```
+
+フィールド:
+
+``` text
+metadata  JSON文字列 { "role": "...", "region": "..."? }
+file      アセット本体（バイナリ、1ファイル）
+```
+
+`content_type` は `file` パートの type を採用しますが、`metadata.content_type`
+があればそれで上書きできます。
+
+`region` はキー省略・明示 `null` のどちらも「部位区分のない全体アセット」として受理します。
+
+`(generation_id, role, region)` は一意です。同じ組み合わせへの再投稿は既存行を**置換**し（id
+は変わらず、`content_type` / `size` / `updated_at` を更新して R2 も同じ key
+へ上書き）200 を返します。初回投稿は 201 です。
+
+レスポンス例:
+
+``` json
+{
+  "id": "uuidv7",
+  "generation_id": "...",
+  "role": "lineart-inked",
+  "region": null,
+  "content_type": "image/png",
+  "size": 123456,
+  "url": "https://example/g/abc123/assets/lineart-inked",
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+### List Assets
+
+``` text
+GET /api/v1/generations/{id}/assets
+```
+
+``` json
+{
+  "assets": [ /* Ingest Asset と同じレスポンス形の配列。role, region順 */ ]
+}
+```
+
+### Serve Asset
+
+``` text
+GET /g/{short_id}/assets/{role}
+GET /g/{short_id}/assets/{role}?region={region}
+```
+
+`region` 省略時は `''`（全体アセット）を引きます。未知の `role` / `region`
+の組み合わせは404です。
+
 ## Generation Context
 
 Claude向けの軽量semantic representationです。

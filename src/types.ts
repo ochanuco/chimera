@@ -79,6 +79,18 @@ export interface GenerationRow {
   created_at: string;
 }
 
+export interface GenerationAssetRow {
+  id: string;
+  generation_id: string;
+  role: string;
+  region: string;
+  r2_object_key: string;
+  content_type: string;
+  size: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StoryRow {
   id: string;
   name: string;
