@@ -306,6 +306,9 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     expect(body).toContain(g1.short_id);
     expect(body).toContain(g2.short_id);
+    // Compare images opt into the shared hover preview via .thumb-link / .thumb-fg.
+    expect(body).toContain('class="thumb-link"');
+    expect(body).toContain('class="thumb-fg"');
   });
 
   it('GET /compare shows a semantic diff table with per-row highlighting for differing values', async () => {
