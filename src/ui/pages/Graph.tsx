@@ -18,6 +18,10 @@ export interface GraphNodeData {
   thumbnail_generation_short_id: string | null;
   /** Direct (undirected) neighbor Batches excluded by the current scope; 0 when nothing around this node is hidden. */
   hidden_neighbor_count: number;
+  /** Set on a chain's representative node when its retry chain is collapsed; the total number of Batches folded into it. */
+  collapsed_count?: number;
+  /** Set on a chain's representative node when its retry chain is shown expanded (via `?expand=` or root membership). */
+  expanded_chain?: boolean;
 }
 
 /** Picks the one Generation a Batch card represents: the designated thumbnail, else the first 'good' rating, else the first Generation. */
@@ -276,6 +280,33 @@ export function GraphPage({
                         </g>
                       );
                     })()}
+                  {n.collapsed_count !== undefined &&
+                    (() => {
+                      const chainSlot = thumbnailSlotPosition(1);
+                      const chainX = pos.x + chainSlot.x;
+                      const chainY = pos.y + chainSlot.y;
+                      return (
+                        <g class="graph-node-chain" data-batch-short-id={n.short_id}>
+                          <rect x={chainX} y={chainY} width={THUMB_SIZE} height={THUMB_SIZE} rx="6" />
+                          <text
+                            x={chainX + THUMB_SIZE / 2}
+                            y={chainY + THUMB_SIZE / 2}
+                            text-anchor="middle"
+                            dominant-baseline="central"
+                          >
+                            ⟳{n.collapsed_count}
+                          </text>
+                        </g>
+                      );
+                    })()}
+                  {n.expanded_chain === true && (
+                    <g class="graph-node-recollapse" data-batch-short-id={n.short_id}>
+                      <circle cx={pos.x + pos.width - 12} cy={pos.y + 2} r="10" />
+                      <text x={pos.x + pos.width - 12} y={pos.y + 2} text-anchor="middle" dominant-baseline="central">
+                        ⟲
+                      </text>
+                    </g>
+                  )}
                 </g>
               );
             })}

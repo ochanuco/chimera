@@ -486,6 +486,18 @@ details.section .section-body { margin-top: 0.6rem; }
 .graph-node-stub:hover rect { stroke: var(--accent); }
 .graph-node-stub text { fill: var(--text-dim); font-size: 11px; }
 
+/* Retry-chain collapse badge ("⟳N" -- expand) and re-collapse badge ("⟲" -- collapse back). */
+.graph-node-chain { cursor: pointer; }
+.graph-node-chain rect { fill: var(--accent); stroke: var(--accent); }
+.graph-node-chain:hover rect { opacity: 0.85; }
+.graph-node-chain text { fill: var(--bg); font-size: 11px; font-weight: 600; }
+
+.graph-node-recollapse { cursor: pointer; }
+.graph-node-recollapse circle { fill: var(--bg-elevated); stroke: var(--accent); stroke-width: 1.5; }
+.graph-node-recollapse:hover circle { fill: var(--accent); }
+.graph-node-recollapse text { fill: var(--accent); font-size: 11px; }
+.graph-node-recollapse:hover text { fill: var(--bg); }
+
 .graph-context-menu {
   position: fixed;
   z-index: 30;
@@ -924,6 +936,40 @@ export const appJs = `
     });
   }
 
+  // --- Graph chain-collapse badges ("⟳N" expand / "⟲" re-collapse) ---
+  // Unlike the scope selector, these preserve every other query param -- only expand changes.
+  function withExpandParam(shortId, add) {
+    var params = new URLSearchParams(window.location.search);
+    var ids = (params.get('expand') || '').split(',').filter(Boolean);
+    if (add) {
+      if (ids.indexOf(shortId) === -1) ids.push(shortId);
+    } else {
+      ids = ids.filter(function (id) { return id !== shortId; });
+    }
+    if (ids.length > 0) params.set('expand', ids.join(','));
+    else params.delete('expand');
+    var qs = params.toString();
+    window.location.href = qs ? '/graph?' + qs : '/graph';
+  }
+
+  function initGraphChainBadges() {
+    var svg = document.getElementById('graph-svg');
+    if (!svg) return;
+    svg.addEventListener('click', function (ev) {
+      var chainBadge = ev.target.closest ? ev.target.closest('.graph-node-chain') : null;
+      if (chainBadge) {
+        var expandShortId = chainBadge.getAttribute('data-batch-short-id');
+        if (expandShortId) withExpandParam(expandShortId, true);
+        return;
+      }
+      var recollapseBadge = ev.target.closest ? ev.target.closest('.graph-node-recollapse') : null;
+      if (recollapseBadge) {
+        var collapseShortId = recollapseBadge.getAttribute('data-batch-short-id');
+        if (collapseShortId) withExpandParam(collapseShortId, false);
+      }
+    });
+  }
+
   // --- Graph right-click context menu ---
   function initGraphContextMenu() {
     const svg = document.getElementById('graph-svg');
@@ -1320,6 +1366,7 @@ export const appJs = `
     initGraphPanZoom();
     initGraphSelection();
     initGraphStubs();
+    initGraphChainBadges();
     initGraphContextMenu();
     initCopyIdButtons();
     initCompareCols();
