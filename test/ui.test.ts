@@ -345,8 +345,39 @@ describe('Web GUI pages', () => {
     expect(body).toContain(g1.short_id);
     expect(body).toContain(g2.short_id);
     expect(body).toContain('standing');
-    expect(body).toContain('sitting');
     expect(body).toContain('class="diff"');
+    // g1's pose ("standing") is the row base and renders plain. g2's cell is diffed against that
+    // base: the base's word ("standing") shows as tok-del, g2's own word ("sitting") as tok-add.
+    expect(body).toContain('class="tok-add"');
+    expect(body).toContain('class="tok-del"');
+    expect(body).toMatch(/<span class="tok-del">[^<]*standing[^<]*<\/span>/);
+    expect(body).toMatch(/<span class="tok-add">[^<]*sitting[^<]*<\/span>/);
+    expect(body).toContain('class="compare-legend"');
+  });
+
+  it('GET /compare token-diffs a long summary line, highlighting the changed word as add/del', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+
+    await postJson(
+      `/api/v1/generations/${g1.id}/semantic`,
+      { schema_version: 1, summary: 'a cat sitting on a chair', core: {}, strengths: [], defects: [] },
+      'PUT',
+    );
+    await postJson(
+      `/api/v1/generations/${g2.id}/semantic`,
+      { schema_version: 1, summary: 'a cat sleeping on a sofa', core: {}, strengths: [], defects: [] },
+      'PUT',
+    );
+
+    const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    expect(body).toContain('class="tok-add"');
+    expect(body).toContain('class="tok-del"');
+    expect(body).toMatch(/<span class="tok-add">[^<]*sleeping[^<]*<\/span>/);
+    expect(body).toMatch(/<span class="tok-del">[^<]*sitting[^<]*<\/span>/);
   });
 
   it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {

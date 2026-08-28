@@ -140,11 +140,19 @@ defects       —               —
 lighting      backlit         —
 ```
 
-同じ行で全カラムの値が一致しない場合、その行の値セルを軽く強調表示（diff）します。
+同じ行で全カラムの値が一致しない場合、その行を黄系ハイライトで軽く強調表示（diff）します。
 semantic未解析（semantic_jsonがNULL）のGenerationは列全体が `(not analyzed)`
 になります。値がnullの項目は `—` と表示し、attributes行はすべてのGeneration
 で値なしの場合は行ごと表示しません（summary / core / strengths / defects の
 固定行は常に表示）。
+
+summary・core 5項目・strengths・defects・attributesの各セマンティック行では、
+行内で最初に実値を持つ列を基準（base）とし、他の列をbaseとのトークン単位diff
+で表示します（GitHub word-diff相当）。追加されたトークンは緑、baseにのみ存在し
+削除されたトークンは赤の取り消し線で示します。strengths / defects / 配列形式の
+attributesは項目単位でdiffし、1行1項目で追加・削除を表示します。基準セル自身、
+`(not analyzed)`、`—` のセル、および行内の実値が1個以下の場合はdiff装飾なしの
+プレーン表示です。テーブル上部にはこの基準・凡例を説明する注記を表示します。
 
 テーブルは横スクロール可能なコンテナに収め、列数が多くても崩れないようにします。
 

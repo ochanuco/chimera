@@ -1,5 +1,6 @@
 import { Layout } from '../layout';
 import { CopyIdButton } from '../components/CopyIdButton';
+import { diffList, diffTokens, tokenize, type DiffSeg } from '../diff';
 
 const NOT_ANALYZED = '(not analyzed)';
 const NO_VALUE = '—';
@@ -33,7 +34,12 @@ interface CompareRow {
   label: string;
   values: string[];
   diff: boolean;
+  /** Per-column token diff segments against the row's base (first real value); undefined for basic rows, null for cells rendered plain. */
+  segments?: (DiffSeg[] | null)[];
 }
+
+/** A row's per-item raw value ahead of diffing: null means "no value to diff" (not analyzed, or value itself absent). */
+type SemanticCell = { display: string; raw: string | string[] | null; kind: 'text' | 'list' };
 
 /** Renders an array field ("strengths"/"defects"/list-shaped attributes) as a comma-joined string, or null if empty. */
 function joinList(values: string[] | undefined): string | null {
@@ -49,11 +55,61 @@ function attributeText(value: unknown): string | null {
   return String(value);
 }
 
-/** Builds one comparison row: per-item raw values, feeding both display text and the "all value-less" check. */
-function buildRow(label: string, items: CompareItem[], extract: (s: CompareSemantic) => string | null): CompareRow {
-  const values = items.map((item) => (item.semantic ? (extract(item.semantic) ?? NO_VALUE) : NOT_ANALYZED));
+type SemanticRaw = { kind: 'text'; raw: string } | { kind: 'list'; raw: string[] } | null;
+
+/** Normalizes an arbitrary attribute value to a diffable raw value: a list for arrays, text otherwise. */
+function attributeRaw(value: unknown): SemanticRaw {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const list = value.map(String);
+    return list.length === 0 ? null : { kind: 'list', raw: list };
+  }
+  if (typeof value === 'object') return { kind: 'text', raw: JSON.stringify(value) };
+  return { kind: 'text', raw: String(value) };
+}
+
+/** Wraps a plain text extractor as a diffable raw value ("no value" when null). */
+function textRaw(value: string | null): SemanticRaw {
+  return value === null ? null : { kind: 'text', raw: value };
+}
+
+/** Wraps a list extractor as a diffable raw value ("no value" when absent or empty). */
+function listRaw(values: string[] | undefined): SemanticRaw {
+  return !values || values.length === 0 ? null : { kind: 'list', raw: values };
+}
+
+/**
+ * Builds one semantic comparison row. Each cell's raw value feeds display text (via joinList for
+ * lists), the "all differ" row-level diff flag, and — for cells beyond the row's base (the first
+ * item with a real value) — a token/item diff against that base.
+ */
+function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: CompareSemantic) => SemanticRaw): CompareRow {
+  const cells: SemanticCell[] = items.map((item) => {
+    if (!item.semantic) return { display: NOT_ANALYZED, raw: null, kind: 'text' };
+    const r = extractRaw(item.semantic);
+    if (r === null) return { display: NO_VALUE, raw: null, kind: 'text' };
+    if (r.kind === 'list') return { display: joinList(r.raw) ?? NO_VALUE, raw: r.raw, kind: 'list' };
+    return { display: r.raw, raw: r.raw, kind: 'text' };
+  });
+
+  const values = cells.map((c) => c.display);
   const diff = new Set(values).size > 1;
-  return { label, values, diff };
+
+  const baseIndex = cells.findIndex((c) => c.raw !== null);
+  const realCount = cells.filter((c) => c.raw !== null).length;
+
+  const segments: (DiffSeg[] | null)[] = cells.map((cell, i) => {
+    if (cell.raw === null || i === baseIndex || realCount <= 1) return null;
+    const base = cells[baseIndex];
+    if (!base || base.raw === null) return null;
+    if (cell.kind === 'list' || base.kind === 'list') {
+      const toList = (raw: string | string[]) => (Array.isArray(raw) ? raw : [raw]);
+      return diffList(toList(base.raw), toList(cell.raw));
+    }
+    return diffTokens(tokenize(base.raw as string), tokenize(cell.raw as string));
+  });
+
+  return { label, values, diff, segments };
 }
 
 /** Builds a row from generation-level facts, available regardless of semantic analysis. */
@@ -71,12 +127,12 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
     rows.push(buildBasicRow('batch', items, (i) => i.batch_short_id));
     rows.push(buildBasicRow('seed', items, (i) => (i.seed != null ? String(i.seed) : null)));
     rows.push(buildBasicRow('created', items, (i) => i.created_at.slice(0, 10)));
-    rows.push(buildRow('summary', items, (s) => s.summary));
+    rows.push(buildSemanticRow('summary', items, (s) => textRaw(s.summary)));
     for (const field of CORE_FIELDS) {
-      rows.push(buildRow(field, items, (s) => s.core[field]));
+      rows.push(buildSemanticRow(field, items, (s) => textRaw(s.core[field])));
     }
-    rows.push(buildRow('strengths', items, (s) => joinList(s.strengths)));
-    rows.push(buildRow('defects', items, (s) => joinList(s.defects)));
+    rows.push(buildSemanticRow('strengths', items, (s) => listRaw(s.strengths)));
+    rows.push(buildSemanticRow('defects', items, (s) => listRaw(s.defects)));
 
     const attributeKeys = new Set<string>();
     for (const item of items) {
@@ -88,9 +144,11 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
       const analyzedItems = items.filter((item) => item.semantic);
       const allValueLess = analyzedItems.every((item) => attributeText(item.semantic!.attributes[key]) === null);
       if (allValueLess) continue;
-      rows.push(buildRow(key, items, (s) => attributeText(s.attributes[key])));
+      rows.push(buildSemanticRow(key, items, (s) => attributeRaw(s.attributes[key])));
     }
   }
+
+  const showLegend = rows.some((row) => row.segments !== undefined);
 
   return (
     <Layout title="Compare">
@@ -134,6 +192,12 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
             </p>
           ) : null}
 
+          {showLegend ? (
+            <p class="compare-legend">
+              各行の最初の値を基準に<span class="tok-add">追加</span>/<span class="tok-del">削除</span>を表示します。
+            </p>
+          ) : null}
+
           <div class="compare-table-wrap">
             <table class="compare-table">
               <thead>
@@ -148,9 +212,22 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
                 {rows.map((row) => (
                   <tr>
                     <td>{row.label}</td>
-                    {row.values.map((v) => (
-                      <td class={row.diff ? 'diff' : undefined}>{v}</td>
-                    ))}
+                    {row.values.map((v, i) => {
+                      const segs = row.segments?.[i] ?? null;
+                      return (
+                        <td class={row.diff ? 'diff' : undefined}>
+                          {segs
+                            ? segs.map((seg) =>
+                                seg.type === 'same' ? (
+                                  seg.text
+                                ) : (
+                                  <span class={seg.type === 'add' ? 'tok-add' : 'tok-del'}>{seg.text}</span>
+                                ),
+                              )
+                            : v}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
