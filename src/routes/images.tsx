@@ -6,6 +6,7 @@ import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { GenerationDetailPage, type GenerationDetailData } from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
+import { getImageMeta } from '../lib/image-meta';
 import type { AppEnv } from '../types';
 import type { Context } from 'hono';
 
@@ -41,9 +42,10 @@ images.get('/:shortId', async (c) => {
     });
   }
 
-  const [detailRes, tagRows] = await Promise.all([
+  const [detailRes, tagRows, imageMeta] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
+    getImageMeta(c.env.IMAGES, generation.r2_object_key),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
@@ -97,6 +99,7 @@ images.get('/:shortId', async (c) => {
       batchShortIds={batchShortIds}
       generationShortIds={generationShortIds}
       parentReferences={parentReferences}
+      imageMeta={imageMeta}
     />,
   );
 });

@@ -1,4 +1,5 @@
 import { Layout } from '../layout';
+import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 
 export interface GenerationDetailData {
   id: string;
@@ -54,6 +55,7 @@ export function GenerationDetailPage({
   batchShortIds,
   generationShortIds,
   parentReferences,
+  imageMeta,
 }: {
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
@@ -62,6 +64,7 @@ export function GenerationDetailPage({
   generationShortIds: Map<string, string>;
   /** The owning Batch's own reference material (its "parents"), fetched from that Batch's detail. */
   parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
+  imageMeta: ImageMeta | null;
 }) {
   return (
     <Layout title={`Generation ${data.short_id}`} fullBleed>
@@ -70,6 +73,13 @@ export function GenerationDetailPage({
           <div class="gen-detail-hero">
             <img src={data.image.url} alt={data.short_id} />
           </div>
+          {imageMeta ? (
+            <p class="image-meta">
+              {imageMeta.width !== null && imageMeta.height !== null
+                ? `${imageMeta.width}×${imageMeta.height} · ${formatBytes(imageMeta.size)}`
+                : formatBytes(imageMeta.size)}
+            </p>
+          ) : null}
         </div>
         <div class="detail-right">
           <h1>{data.short_id}</h1>

@@ -272,6 +272,7 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .gen-detail-hero { text-align: center; margin-bottom: 1rem; }
 .gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); }
+.image-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--text-dim); text-align: center; }
 
 .detail-layout { display: block; }
 @media (min-width: 1100px) {
