@@ -838,3 +838,63 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(graphRes.status).toBe(200);
   });
 });
+
+describe('系譜ミニマップ (MiniMap)', () => {
+  it('GET /g/{short_id} for the middle Batch of a 3-Batch retry chain lists all three short_ids in order, current bracketed and unlinked', async () => {
+    const { batch: batchA } = await createGeneration();
+    const { generation: genB, batch: batchB } = await createGeneration({
+      batchOverrides: { refinement: { source_batch_id: batchA.id, actor: 'human', reason: 'retry' } },
+    });
+    const batchC = await createBatch({
+      refinement: { source_batch_id: batchB.id, actor: 'human', reason: 'retry again' },
+    });
+
+    const res = await req(`/g/${genB.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('class="mini-map"');
+    const chainStart = html.indexOf('mini-map-chain');
+    expect(chainStart).toBeGreaterThan(-1);
+    const idxA = html.indexOf(batchA.short_id, chainStart);
+    const idxB = html.indexOf(`[${batchB.short_id}]`, chainStart);
+    const idxC = html.indexOf(batchC.body.short_id, chainStart);
+    expect(idxA).toBeGreaterThan(-1);
+    expect(idxB).toBeGreaterThan(idxA);
+    expect(idxC).toBeGreaterThan(idxB);
+
+    // Current (owning) Batch is bracket-highlighted and not a link; the others are.
+    expect(html).toContain(`href="/b/${batchA.short_id}"`);
+    expect(html).toContain(`href="/b/${batchC.body.short_id}"`);
+    expect(html).not.toContain(`href="/b/${batchB.short_id}"`);
+  });
+
+  it('GET /g/{short_id} shows no Map section for a Batch with no relation and no Story', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/g/${generation.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).not.toContain('class="mini-map"');
+    expect(html).not.toContain('>Map<');
+  });
+
+  it('GET /b/{short_id} for a Batch in a Story shows a Story-labeled mini-map row', async () => {
+    const storyName = `mini-map-story-${crypto.randomUUID().slice(0, 8)}`;
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: storyName });
+    const { batch: batchX } = await createGeneration();
+    const batchY = await createBatch();
+    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
+      source_batch_id: batchX.id,
+      target_batch_id: batchY.body.id,
+    });
+
+    const res = await req(`/b/${batchY.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('class="mini-map"');
+    expect(html).toContain(`>${storyName}<`);
+    expect(html).toContain(`href="/b/${batchX.short_id}"`);
+    expect(html).toContain(`[${batchY.body.short_id}]`);
+  });
+});

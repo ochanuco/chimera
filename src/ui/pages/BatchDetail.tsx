@@ -2,6 +2,7 @@ import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData, type RelKind } from '../components/FamilyCard';
+import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 
 export interface BatchDetailData {
   id: string;
@@ -40,12 +41,15 @@ function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string
 export function BatchDetailPage({
   batch,
   storyNames,
+  miniMapRows,
   batchShortIds,
   generationShortIds,
   batchThumbnails,
 }: {
   batch: BatchDetailData;
   storyNames: Record<string, string>;
+  /** 系譜ミニマップ: 自Batchの再試行連結成分 + 自Batchが属する各Storyの全Batch。 */
+  miniMapRows: MiniMapRow[];
   batchShortIds: Map<string, string>;
   generationShortIds: Map<string, string>;
   /** Batch id -> representative Generation short_id, for family-card thumbnails. */
@@ -211,6 +215,15 @@ export function BatchDetailPage({
               </form>
             </div>
           </details>
+
+          {hasMiniMapContent(miniMapRows) ? (
+            <details class="section" open>
+              <summary>Map</summary>
+              <div class="section-body">
+                <MiniMap rows={miniMapRows} />
+              </div>
+            </details>
+          ) : null}
 
           <details class="section" open>
             <summary>親 ({parentCount})</summary>

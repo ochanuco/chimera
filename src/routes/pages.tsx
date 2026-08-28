@@ -3,10 +3,13 @@ import { internalApiRequest } from '../lib/internal-api';
 import {
   getBatchByIdOrShortId,
   getGenerationByIdOrShortId,
+  getRelationChainBatches,
+  getStoryChainBatches,
   resolveBatchShortIds,
   resolveBatchThumbnails,
   resolveGenerationShortIds,
 } from '../lib/db';
+import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { generationImageUrl } from '../lib/serialize';
 import { listBookmarkedExperiments, listBookmarkedStories } from '../lib/ui-queries';
@@ -104,36 +107,53 @@ pages.get('/b/:shortId', async (c) => {
     ...data.siblings.filter((s) => s.via === 'reference').map((s) => s.shared_id),
   ];
 
-  const [storyNames, generationTags, batchShortIds, generationShortIds, batchThumbnails] = await Promise.all([
-    (async () => {
-      const storyIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
-      const names: Record<string, string> = {};
-      await Promise.all(
-        storyIds.map(async (sid) => {
-          const sRes = await internalApiRequest(c, `/api/v1/stories/${sid}`);
-          if (sRes.ok) {
-            const sData = (await sRes.json()) as { name: string };
-            names[sid] = sData.name;
-          }
-        }),
-      );
-      return names;
-    })(),
-    Promise.all(data.generations.map((g) => listTagsForTarget(c.env.DB, 'generation_tags', g.id))),
-    resolveBatchShortIds(c.env.DB, referencedBatchIds),
-    resolveGenerationShortIds(c.env.DB, referencedGenerationIds),
-    resolveBatchThumbnails(c.env.DB, referencedBatchIds),
-  ]);
+  const miniMapStoryIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
+
+  const [storyNames, generationTags, batchShortIds, generationShortIds, batchThumbnails, relationChainBatches, storyChainBatchesList] =
+    await Promise.all([
+      (async () => {
+        const names: Record<string, string> = {};
+        await Promise.all(
+          miniMapStoryIds.map(async (sid) => {
+            const sRes = await internalApiRequest(c, `/api/v1/stories/${sid}`);
+            if (sRes.ok) {
+              const sData = (await sRes.json()) as { name: string };
+              names[sid] = sData.name;
+            }
+          }),
+        );
+        return names;
+      })(),
+      Promise.all(data.generations.map((g) => listTagsForTarget(c.env.DB, 'generation_tags', g.id))),
+      resolveBatchShortIds(c.env.DB, referencedBatchIds),
+      resolveGenerationShortIds(c.env.DB, referencedGenerationIds),
+      resolveBatchThumbnails(c.env.DB, referencedBatchIds),
+      getRelationChainBatches(c.env.DB, data.id),
+      Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(c.env.DB, sid))),
+    ]);
 
   const generationsWithTags = data.generations.map((g, i) => ({
     ...g,
     tags: (generationTags[i] ?? []).map((t) => t.name),
   }));
 
+  // 系譜ミニマップ: 自Batchの再試行連結成分と、自Batchが属する各Storyの全Batch。
+  const miniMapRows: MiniMapRow[] = [
+    {
+      label: 'Retries',
+      items: relationChainBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),
+    },
+    ...miniMapStoryIds.map((sid, i) => ({
+      label: storyNames[sid] ?? sid,
+      items: storyChainBatchesList[i]!.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),
+    })),
+  ];
+
   return c.html(
     <BatchDetailPage
       batch={{ ...data, generations: generationsWithTags }}
       storyNames={storyNames}
+      miniMapRows={miniMapRows}
       batchShortIds={batchShortIds}
       generationShortIds={generationShortIds}
       batchThumbnails={batchThumbnails}

@@ -1,6 +1,14 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getGenerationByIdOrShortId, resolveBatchShortIds, resolveBatchThumbnails, resolveGenerationShortIds } from '../lib/db';
+import {
+  getGenerationByIdOrShortId,
+  getRelationChainBatches,
+  getStoryChainBatches,
+  resolveBatchShortIds,
+  resolveBatchThumbnails,
+  resolveGenerationShortIds,
+} from '../lib/db';
+import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
@@ -104,6 +112,26 @@ images.get('/:shortId', async (c) => {
     }
   }
 
+  // 系譜ミニマップ: 所属Batchの再試行連結成分と、所属Batchが属する各Storyの全Batch。
+  const ownBatchId = data.batch?.id;
+  const miniMapStoryIds = Array.from(new Set(storyLinks.map((s) => s.story_id)));
+  const [relationChainBatches, storyChainBatchesList] = await Promise.all([
+    ownBatchId ? getRelationChainBatches(db, ownBatchId) : Promise.resolve([]),
+    Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(db, sid))),
+  ]);
+  const miniMapRows: MiniMapRow[] = ownBatchId
+    ? [
+        {
+          label: 'Retries',
+          items: relationChainBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),
+        },
+        ...miniMapStoryIds.map((sid, i) => ({
+          label: storyLinks.find((s) => s.story_id === sid)?.story_name ?? sid,
+          items: storyChainBatchesList[i]!.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),
+        })),
+      ]
+    : [];
+
   // Every Batch referenced by a family card (used_by / relation retries / Story neighbors)
   // needs both its short_id (for the link) and its representative Generation (for the thumbnail).
   const relatedBatchIds = [
@@ -128,6 +156,7 @@ images.get('/:shortId', async (c) => {
       data={data}
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
       storyLinks={storyLinks}
+      miniMapRows={miniMapRows}
       batchShortIds={batchShortIds}
       generationShortIds={generationShortIds}
       batchThumbnails={batchThumbnails}

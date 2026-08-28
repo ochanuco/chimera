@@ -104,6 +104,13 @@ GenerationそのものをFamilyCardリンク先にします。
 各カードのリンク先・short_idはshort_id優先（Generation/Story RelationページのGraph凡例と同じ配色: Reference=青、
 Refinement=橙、Story=緑）。
 
+親セクションの直前には系譜ミニマップ（Mapセクション）を表示します。画像なし・short_idのみで、このBatch
+自身のBatchRelation連結成分（無向、created_at昇順で1行）と、このBatchが属するStoryごとの全Batch（同じく
+created_at昇順で1行、行ラベルはStory名）を、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの一列で
+並べます。現在地（このBatch自身）は角括弧付きで強調しリンクなし、それ以外はBatch Detailへのリンクです。要素
+が2件未満の行は表示せず、全行が該当する場合はMapセクション自体を表示しません。Generation Detailの
+Mapと仕様は共通です。
+
 主な操作:
 
 -   Generation rating
@@ -185,6 +192,7 @@ Batch Detail の Parameters）のみ既定で畳みます。
 ``` text
 Summary
 Semantic
+Map
 親
 子
 Story
@@ -205,6 +213,13 @@ Detailと異なり、このGenerationが属するBatch自体のRefinement/Story�
 -   子: ①このGenerationを材料に使ったBatch一覧（バッジ `Reference`、Batchカード。purpose/aspectを表示）
     ②このGenerationが属するBatchをrefinement元とするBatch（バッジ `Refinement`、Batchカード）
     ③StoryRelationで後続にあたるBatch（バッジ `Story`、Batchカード）
+
+Mapセクションは「Map」の直下、親の直前に表示する系譜ミニマップです。画像なし・short_idのみで、このGenerationが
+属するBatchのBatchRelation連結成分（無向、created_at昇順で1行）と、そのBatchが属するStoryごとの全Batch
+（同じくcreated_at昇順で1行、行ラベルはStory名）を、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの
+一列で並べます。現在地（このGenerationが属するBatch）は角括弧付きで強調しリンクなし、それ以外はBatch
+Detailへのリンクです。要素が2件未満の行（関連Batchなしの行）は表示せず、全行が該当する場合はMapセクション
+自体を表示しません。
 
 ## Provenance View
 

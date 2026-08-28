@@ -261,6 +261,16 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   white-space: nowrap;
 }
 
+/* 系譜ミニマップ（MiniMap）。画像なし・short_idのみの一列表示で「今どこにいるか」を一目で示す。 */
+.mini-map { display: flex; flex-direction: column; gap: 0.4rem; }
+.mini-map-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-size: 0.78rem; }
+.mini-map-label { color: var(--text-dim); flex: none; }
+.mini-map-chain { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mini-map-sep { color: var(--text-dim); }
+.mini-map-item { color: var(--text-dim); }
+.mini-map-item:hover { color: var(--accent); }
+.mini-map-current { color: var(--accent); font-weight: 600; }
+
 .tag-add-form { display: flex; gap: 0.3rem; }
 .tag-add-form input {
   background: var(--bg);
