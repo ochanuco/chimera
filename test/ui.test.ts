@@ -472,7 +472,9 @@ describe('Web GUI pages', () => {
       label: 'continues the scene',
     });
 
-    const res = await req('/graph');
+    // sourceBatch/targetBatch form a size-2 retry chain (the refinement relation edge), which
+    // collapses by default -- expand it so both Batches and the relation edge itself render.
+    const res = await req(`/graph?expand=${targetBatch.body.short_id}`);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     const body = await res.text();
@@ -575,7 +577,9 @@ describe('Web GUI pages', () => {
     const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
     const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
 
-    const res = await req('/graph?active=1');
+    // b0..b4 form one size-5 retry chain; expand it so this test still exercises
+    // per-Batch reachability rather than the (separately tested) chain collapse.
+    const res = await req(`/graph?active=1&expand=${b4.body.short_id}`);
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain(b0.body.short_id);
@@ -590,7 +594,9 @@ describe('Web GUI pages', () => {
     const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
     const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
 
-    const res = await req('/graph');
+    // b0..b4 form one size-5 retry chain; expand it so depth-limiting is exercised
+    // per-Batch rather than collapsing the whole chain to a single node.
+    const res = await req(`/graph?expand=${b4.body.short_id}`);
     expect(res.status).toBe(200);
     const body = await res.text();
     // b0 is 4 hops from the newest Batch (b4) -- outside the default depth-3 window.
@@ -631,6 +637,81 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     const imageCount = (body.match(/<image /g) ?? []).length;
     expect(imageCount).toBe(1);
+  });
+});
+
+describe('Graph View retry-chain collapse', () => {
+  /** Builds a size-3 relation chain b0 -> b1 -> b2 (each a refinement retry of the previous). */
+  async function createChain() {
+    const b0 = await createBatch();
+    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
+    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
+    return { b0, b1, b2 };
+  }
+
+  it('collapses a 3-Batch relation chain into its representative, with a ⟳3 badge', async () => {
+    const { b0, b1, b2 } = await createChain();
+
+    // active=1 isolates this test's own connected component (rooted at the newest Batch,
+    // b2) from unrelated Batches left behind by other tests sharing the same D1 instance.
+    const res = await req('/graph?active=1');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    // b2 is the most recently created member, so it is the chain's representative.
+    expect(body).toContain(b2.body.short_id);
+    expect(body).not.toContain(b0.body.short_id);
+    expect(body).not.toContain(b1.body.short_id);
+    expect(body).toContain('graph-node-chain');
+    expect(body).toContain('⟳3');
+  });
+
+  it('?expand=<representative short_id> shows all 3 chain members', async () => {
+    const { b0, b1, b2 } = await createChain();
+
+    const res = await req(`/graph?active=1&expand=${b2.body.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    expect(body).toContain(b0.body.short_id);
+    expect(body).toContain(b1.body.short_id);
+    expect(body).toContain(b2.body.short_id);
+    expect(body).not.toContain('⟳3');
+    expect(body).toContain('graph-node-recollapse');
+  });
+
+  it('?root=<middle chain member> auto-expands the chain so the root stays visible', async () => {
+    const { b0, b1, b2 } = await createChain();
+
+    const res = await req(`/graph?root=${b1.body.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    expect(body).toContain(b0.body.short_id);
+    expect(body).toContain(b1.body.short_id);
+    expect(body).toContain(b2.body.short_id);
+  });
+
+  it('redirects a reference edge from outside the chain, into a middle member, onto the representative', async () => {
+    const { generation: extGeneration } = await createGeneration();
+    const b0 = await createBatch();
+    const b1 = await createBatch({
+      refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' },
+      references: [{ source_generation_id: extGeneration.id, purpose: 'composition', aspect: 'pose' }],
+    });
+    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
+
+    // active=1 isolates this test's own connected component from unrelated Batches left
+    // behind by other tests sharing the same D1 instance.
+    const res = await req('/graph?active=1');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    // b1 (the reference edge's original target) is collapsed away -- if the edge still pointed
+    // at it, the SSR layout would drop the edge entirely rather than render it dangling.
+    expect(body).not.toContain(b1.body.short_id);
+    const referenceEdgeCount = (body.match(/class="graph-edge edge-reference"/g) ?? []).length;
+    expect(referenceEdgeCount).toBe(1);
   });
 });
 

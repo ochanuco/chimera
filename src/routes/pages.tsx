@@ -283,6 +283,107 @@ function withHiddenNeighborCounts(
   });
 }
 
+/** A retry chain: a connected component of 'relation' edges (undirected), size >= 2. */
+interface RelationChain {
+  memberIds: string[];
+  representativeId: string;
+}
+
+/**
+ * Groups Batches into retry chains: undirected connected components formed by
+ * 'relation' edges only (BatchRelation retries), excluding reference/story
+ * edges. A component of size 1 (a Batch with no relation edges at all) is not
+ * a chain and is left out.
+ */
+function computeRelationChains(nodes: GraphNodeData[], edges: GraphEdgeData[]): RelationChain[] {
+  const undirected = new Map<string, Set<string>>();
+  const relationNodeIds = new Set<string>();
+  for (const e of edges) {
+    if (e.type !== 'relation') continue;
+    addEdge(undirected, e.source_batch_id, e.target_batch_id);
+    addEdge(undirected, e.target_batch_id, e.source_batch_id);
+    relationNodeIds.add(e.source_batch_id);
+    relationNodeIds.add(e.target_batch_id);
+  }
+
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const visited = new Set<string>();
+  const chains: RelationChain[] = [];
+  for (const id of relationNodeIds) {
+    if (visited.has(id)) continue;
+    const memberIds = Array.from(reachableIds(id, undirected));
+    for (const memberId of memberIds) visited.add(memberId);
+    if (memberIds.length < 2) continue;
+
+    // Representative = most recently created member; ties broken by id (last in id order).
+    let representativeId = memberIds[0]!;
+    for (const memberId of memberIds) {
+      const candidate = nodeById.get(memberId);
+      const current = nodeById.get(representativeId);
+      if (!candidate || !current) continue;
+      if (
+        candidate.created_at > current.created_at ||
+        (candidate.created_at === current.created_at && candidate.id > current.id)
+      ) {
+        representativeId = memberId;
+      }
+    }
+    chains.push({ memberIds, representativeId });
+  }
+  return chains;
+}
+
+/**
+ * Collapses every chain not in `expandedRepresentativeIds` down to its
+ * representative node (annotated with `collapsed_count`). Edges are rewritten
+ * through the member -> representative mapping; an edge that becomes a
+ * self-loop this way (both endpoints inside the same collapsed chain -- every
+ * 'relation' edge of that chain, plus any reference/story edge entirely
+ * inside it) is dropped, and edges that collide after rewriting are
+ * deduplicated by (type, source, target, story_id).
+ *
+ * GraphEdgeData carries no per-edge aggregation-count field, so a collision
+ * simply keeps the first edge seen rather than summing anything.
+ */
+function collapseChains(
+  nodes: GraphNodeData[],
+  edges: GraphEdgeData[],
+  chains: RelationChain[],
+  expandedRepresentativeIds: Set<string>,
+  recollapsibleRepIds: Set<string>,
+): { nodes: GraphNodeData[]; edges: GraphEdgeData[] } {
+  const collapsedCountByRepId = new Map<string, number>();
+  const memberToRepId = new Map<string, string>();
+
+  for (const chain of chains) {
+    if (expandedRepresentativeIds.has(chain.representativeId)) continue;
+    for (const memberId of chain.memberIds) memberToRepId.set(memberId, chain.representativeId);
+    collapsedCountByRepId.set(chain.representativeId, chain.memberIds.length);
+  }
+
+  const mapId = (id: string): string => memberToRepId.get(id) ?? id;
+
+  const newNodes = nodes
+    .filter((n) => mapId(n.id) === n.id)
+    .map((n) => {
+      const collapsedCount = collapsedCountByRepId.get(n.id);
+      if (collapsedCount !== undefined) return { ...n, collapsed_count: collapsedCount };
+      if (recollapsibleRepIds.has(n.id)) return { ...n, expanded_chain: true };
+      return n;
+    });
+
+  const seenEdges = new Map<string, GraphEdgeData>();
+  for (const e of edges) {
+    const source_batch_id = mapId(e.source_batch_id);
+    const target_batch_id = mapId(e.target_batch_id);
+    if (source_batch_id === target_batch_id) continue;
+    const key = `${e.type} ${source_batch_id} ${target_batch_id} ${e.story_id ?? ''}`;
+    if (!seenEdges.has(key)) seenEdges.set(key, { ...e, source_batch_id, target_batch_id });
+  }
+
+  return { nodes: newNodes, edges: Array.from(seenEdges.values()) };
+}
+
 pages.get('/graph', async (c) => {
   const q = c.req.query();
   const [graphRes, storiesRes] = await Promise.all([
@@ -292,53 +393,84 @@ pages.get('/graph', async (c) => {
   const data = (await graphRes.json()) as { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
   const storiesData = (await storiesRes.json()) as { items: GraphStoryOption[] };
 
+  const chains = computeRelationChains(data.nodes, data.edges);
+  const chainByMemberId = new Map<string, RelationChain>();
+  for (const chain of chains) {
+    for (const memberId of chain.memberIds) chainByMemberId.set(memberId, chain);
+  }
+
+  const expandedRepresentativeIds = new Set<string>();
+  if (q.expand) {
+    const idByShortId = new Map(data.nodes.map((n) => [n.short_id, n.id]));
+    for (const shortId of q.expand.split(',').map((s) => s.trim()).filter(Boolean)) {
+      const id = idByShortId.get(shortId);
+      const chain = id ? chainByMemberId.get(id) : undefined;
+      if (chain) expandedRepresentativeIds.add(chain.representativeId);
+    }
+  }
+  // Only param-driven expansions get the "⟲" re-collapse badge: a root-driven
+  // auto-expansion (below) would just re-expand on reload, so offering the
+  // badge there would be a no-op control.
+  const recollapsibleRepIds = new Set(expandedRepresentativeIds);
+
+  // Resolved once up front so the root-membership auto-expand (below) and the
+  // `root` scope branch (further down) don't re-run the same lookup.
+  const rootBatch = q.root ? await getBatchByIdOrShortId(c.env.DB, q.root) : null;
+  if (rootBatch) {
+    // A collapsed root would vanish from its own subgraph view, so a chain the
+    // root belongs to is always shown expanded regardless of `?expand=`.
+    const chain = chainByMemberId.get(rootBatch.id);
+    if (chain) expandedRepresentativeIds.add(chain.representativeId);
+  }
+
+  const collapsed = collapseChains(data.nodes, data.edges, chains, expandedRepresentativeIds, recollapsibleRepIds);
+
   let filtered: { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
   let scope: GraphScope;
   let emptyMessage: string | undefined;
   const hasDepthParam = q.depth !== undefined;
 
   if (q.all === '1') {
-    filtered = { nodes: data.nodes, edges: data.edges };
+    filtered = { nodes: collapsed.nodes, edges: collapsed.edges };
     scope = { value: 'all', label: 'All' };
   } else if (q.story) {
     const story = storiesData.items.find((s) => s.id === q.story);
     const ids = new Set<string>();
-    for (const e of data.edges) {
+    for (const e of collapsed.edges) {
       if (e.type === 'story' && e.story_id === q.story) {
         ids.add(e.source_batch_id);
         ids.add(e.target_batch_id);
       }
     }
-    filtered = filterGraph(data.nodes, data.edges, ids);
+    filtered = filterGraph(collapsed.nodes, collapsed.edges, ids);
     scope = { value: `story:${q.story}`, label: story ? story.name : 'Story' };
   } else if (q.root) {
-    const batch = await getBatchByIdOrShortId(c.env.DB, q.root);
-    if (!batch) {
+    if (!rootBatch) {
       filtered = { nodes: [], edges: [] };
       scope = { value: `root:${q.root}`, label: `Subgraph: ${q.root}` };
       emptyMessage = `Batch not found: ${q.root}`;
     } else {
       const ids = hasDepthParam
-        ? depthLimitedIds(data.edges, batch.id, clampDepth(q.depth))
-        : subgraphIds(data.edges, batch.id);
-      filtered = filterGraph(data.nodes, data.edges, ids);
-      scope = { value: `root:${batch.short_id}`, label: `Subgraph: ${batch.short_id}` };
+        ? depthLimitedIds(collapsed.edges, rootBatch.id, clampDepth(q.depth))
+        : subgraphIds(collapsed.edges, rootBatch.id);
+      filtered = filterGraph(collapsed.nodes, collapsed.edges, ids);
+      scope = { value: `root:${rootBatch.short_id}`, label: `Subgraph: ${rootBatch.short_id}` };
     }
   } else if (q.active === '1') {
-    filtered = filterGraph(data.nodes, data.edges, activeComponentIds(data.nodes, data.edges));
+    filtered = filterGraph(collapsed.nodes, collapsed.edges, activeComponentIds(collapsed.nodes, collapsed.edges));
     scope = { value: 'active', label: 'Active tree' };
-  } else if (data.nodes.length === 0) {
+  } else if (collapsed.nodes.length === 0) {
     filtered = { nodes: [], edges: [] };
     scope = { value: '', label: 'Recent' };
   } else {
-    const latest = data.nodes[data.nodes.length - 1]!;
+    const latest = collapsed.nodes[collapsed.nodes.length - 1]!;
     const depth = hasDepthParam ? clampDepth(q.depth) : 3;
-    filtered = filterGraph(data.nodes, data.edges, depthLimitedIds(data.edges, latest.id, depth));
+    filtered = filterGraph(collapsed.nodes, collapsed.edges, depthLimitedIds(collapsed.edges, latest.id, depth));
     scope = { value: '', label: 'Recent' };
   }
 
   const visibleIds = new Set(filtered.nodes.map((n) => n.id));
-  const nodesWithHidden = withHiddenNeighborCounts(filtered.nodes, data.edges, visibleIds);
+  const nodesWithHidden = withHiddenNeighborCounts(filtered.nodes, collapsed.edges, visibleIds);
 
   return c.html(
     <GraphPage
