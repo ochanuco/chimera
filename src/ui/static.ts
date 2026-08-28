@@ -649,6 +649,8 @@ export const appJs = `
 
     let timer = null;
     let currentLink = null;
+    let mouseX = 0;
+    let mouseY = 0;
 
     function hide() {
       if (timer) {
@@ -664,27 +666,33 @@ export const appJs = `
       if (!fg || !fg.src) return;
       previewImg.src = fg.src;
       preview.classList.add('visible');
-      position(link);
+      position();
       // 未キャッシュ画像は load 後にサイズが確定するため再配置する
       previewImg.onload = function () {
-        if (currentLink === link) position(link);
+        if (currentLink === link) position();
       };
     }
 
-    function position(link) {
+    function position() {
       const margin = 8;
-      const rect = link.getBoundingClientRect();
+      const offset = 16;
       const pw = preview.offsetWidth;
       const ph = preview.offsetHeight;
-      let left = rect.right + margin;
-      if (left + pw > window.innerWidth) left = rect.left - margin - pw;
+      let left = mouseX + offset;
+      if (left + pw > window.innerWidth - margin) left = mouseX - offset - pw;
       if (left < margin) left = margin;
-      let top = rect.top;
-      if (top + ph > window.innerHeight - margin) top = window.innerHeight - margin - ph;
+      let top = mouseY + offset;
+      if (top + ph > window.innerHeight - margin) top = mouseY - offset - ph;
       if (top < margin) top = margin;
       preview.style.left = left + 'px';
       preview.style.top = top + 'px';
     }
+
+    document.addEventListener('mousemove', function (ev) {
+      mouseX = ev.clientX;
+      mouseY = ev.clientY;
+      if (preview.classList.contains('visible')) position();
+    });
 
     document.addEventListener('mouseover', function (ev) {
       const link = ev.target.closest ? ev.target.closest('.thumb-link') : null;
