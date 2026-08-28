@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
 import {
   getGenerationByIdOrShortId,
+  getReferenceLineageBatches,
   getRelationChainBatches,
   getStoryChainBatches,
   resolveBatchShortIds,
@@ -112,15 +113,20 @@ images.get('/:shortId', async (c) => {
     }
   }
 
-  // 系譜ミニマップ: 所属Batchの再試行連結成分と、所属Batchが属する各Storyの全Batch。
+  // 系譜ミニマップ: 所属Batchの参照系譜・再試行連結成分と、所属Batchが属する各Storyの全Batch。
   const ownBatchId = data.batch?.id;
   const miniMapStoryIds = Array.from(new Set(storyLinks.map((s) => s.story_id)));
-  const [relationChainBatches, storyChainBatchesList] = await Promise.all([
+  const [referenceLineageBatches, relationChainBatches, storyChainBatchesList] = await Promise.all([
+    ownBatchId ? getReferenceLineageBatches(db, ownBatchId) : Promise.resolve([]),
     ownBatchId ? getRelationChainBatches(db, ownBatchId) : Promise.resolve([]),
     Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(db, sid))),
   ]);
   const miniMapRows: MiniMapRow[] = ownBatchId
     ? [
+        {
+          label: 'References',
+          items: referenceLineageBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),
+        },
         {
           label: 'Retries',
           items: relationChainBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),

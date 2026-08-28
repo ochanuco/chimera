@@ -3,6 +3,7 @@ import { internalApiRequest } from '../lib/internal-api';
 import {
   getBatchByIdOrShortId,
   getGenerationByIdOrShortId,
+  getReferenceLineageBatches,
   getRelationChainBatches,
   getStoryChainBatches,
   resolveBatchShortIds,
@@ -109,8 +110,16 @@ pages.get('/b/:shortId', async (c) => {
 
   const miniMapStoryIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
 
-  const [storyNames, generationTags, batchShortIds, generationShortIds, batchThumbnails, relationChainBatches, storyChainBatchesList] =
-    await Promise.all([
+  const [
+    storyNames,
+    generationTags,
+    batchShortIds,
+    generationShortIds,
+    batchThumbnails,
+    referenceLineageBatches,
+    relationChainBatches,
+    storyChainBatchesList,
+  ] = await Promise.all([
       (async () => {
         const names: Record<string, string> = {};
         await Promise.all(
@@ -128,6 +137,7 @@ pages.get('/b/:shortId', async (c) => {
       resolveBatchShortIds(c.env.DB, referencedBatchIds),
       resolveGenerationShortIds(c.env.DB, referencedGenerationIds),
       resolveBatchThumbnails(c.env.DB, referencedBatchIds),
+      getReferenceLineageBatches(c.env.DB, data.id),
       getRelationChainBatches(c.env.DB, data.id),
       Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(c.env.DB, sid))),
     ]);
@@ -137,8 +147,12 @@ pages.get('/b/:shortId', async (c) => {
     tags: (generationTags[i] ?? []).map((t) => t.name),
   }));
 
-  // 系譜ミニマップ: 自Batchの再試行連結成分と、自Batchが属する各Storyの全Batch。
+  // 系譜ミニマップ: 自Batchの参照系譜・再試行連結成分と、自Batchが属する各Storyの全Batch。
   const miniMapRows: MiniMapRow[] = [
+    {
+      label: 'References',
+      items: referenceLineageBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),
+    },
     {
       label: 'Retries',
       items: relationChainBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),

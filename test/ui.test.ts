@@ -869,6 +869,28 @@ describe('系譜ミニマップ (MiniMap)', () => {
     expect(html).not.toContain(`href="/b/${batchB.short_id}"`);
   });
 
+  it('GET /g/{short_id} shows a References row spanning material ancestors and descendants', async () => {
+    // Reference lineage A -> B -> C (B uses A's Generation as material, C uses B's).
+    const { generation: genA, batch: batchA } = await createGeneration();
+    const { generation: genB, batch: batchB } = await createGeneration();
+    const { batch: batchC } = await createGeneration();
+    await postJson(`/api/v1/batches/${batchB.id}/references`, { source_generation_id: genA.id });
+    await postJson(`/api/v1/batches/${batchC.id}/references`, { source_generation_id: genB.id });
+
+    const res = await req(`/g/${genB.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('>References<');
+    const chainStart = html.indexOf('mini-map-chain');
+    const idxA = html.indexOf(batchA.short_id, chainStart);
+    const idxB = html.indexOf(`[${batchB.short_id}]`, chainStart);
+    const idxC = html.indexOf(batchC.short_id, chainStart);
+    expect(idxA).toBeGreaterThan(-1);
+    expect(idxB).toBeGreaterThan(idxA);
+    expect(idxC).toBeGreaterThan(idxB);
+  });
+
   it('GET /g/{short_id} shows no Map section for a Batch with no relation and no Story', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}`);
