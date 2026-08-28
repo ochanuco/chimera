@@ -95,6 +95,21 @@ export interface ChainBatch {
   created_at: string;
 }
 
+/** Resolves prompt / negative_prompt for a set of Batch UUIDs (retry-parent diff base lookup). Missing ids are simply absent from the result. */
+export async function resolveBatchPrompts(
+  db: D1Database,
+  ids: string[],
+): Promise<Map<string, { prompt: string | null; negative_prompt: string | null }>> {
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return new Map();
+  const placeholders = unique.map(() => '?').join(', ');
+  const { results } = await db
+    .prepare(`SELECT id, prompt, negative_prompt FROM batches WHERE id IN (${placeholders})`)
+    .bind(...unique)
+    .all<{ id: string; prompt: string | null; negative_prompt: string | null }>();
+  return new Map((results ?? []).map((r) => [r.id, { prompt: r.prompt, negative_prompt: r.negative_prompt }]));
+}
+
 /**
  * Batches reachable from `batchId` by walking BatchRelation edges as an undirected graph
  * (i.e. the retry-chain connected component containing `batchId`), including `batchId` itself.

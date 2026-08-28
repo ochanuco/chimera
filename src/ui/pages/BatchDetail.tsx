@@ -3,6 +3,7 @@ import { GenerationCard, type GenerationCardData } from '../components/Generatio
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData, type RelKind } from '../components/FamilyCard';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
+import { PromptChips } from '../components/PromptChips';
 
 export interface BatchDetailData {
   id: string;
@@ -45,6 +46,7 @@ export function BatchDetailPage({
   batchShortIds,
   generationShortIds,
   batchThumbnails,
+  diffParent,
 }: {
   batch: BatchDetailData;
   storyNames: Record<string, string>;
@@ -54,6 +56,8 @@ export function BatchDetailPage({
   generationShortIds: Map<string, string>;
   /** Batch id -> representative Generation short_id, for family-card thumbnails. */
   batchThumbnails: Map<string, string>;
+  /** retry 元(親)Batchのprompt。Prompt セクションのチップdiff基準。retry元がなければnull。 */
+  diffParent?: { shortId: string; prompt: string | null; negative_prompt: string | null } | null;
 }) {
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
   const storyParents = batch.story_relations.filter((r) => r.target_batch_id === batch.id);
@@ -249,15 +253,22 @@ export function BatchDetailPage({
           <details class="section" open>
             <summary>Prompt</summary>
             <div class="section-body">
+              {diffParent ? (
+                <p class="prompt-diff-base">
+                  diff base: <a href={`/b/${diffParent.shortId}`}>{diffParent.shortId}</a>
+                </p>
+              ) : null}
+              <div class="prompt-field">
+                <div class="prompt-field-label">prompt {batch.prompt ? <CopyIdButton value={batch.prompt} /> : null}</div>
+                <PromptChips text={batch.prompt} parentText={diffParent?.prompt} variant="positive" />
+              </div>
+              <div class="prompt-field">
+                <div class="prompt-field-label">
+                  negative {batch.negative_prompt ? <CopyIdButton value={batch.negative_prompt} /> : null}
+                </div>
+                <PromptChips text={batch.negative_prompt} parentText={diffParent?.negative_prompt} variant="negative" />
+              </div>
               <table class="kv-table">
-                <tr>
-                  <td>prompt</td>
-                  <td>{batch.prompt ?? '-'}</td>
-                </tr>
-                <tr>
-                  <td>negative</td>
-                  <td>{batch.negative_prompt ?? '-'}</td>
-                </tr>
                 <tr>
                   <td>recipe</td>
                   <td>{batch.recipe ?? '-'}</td>

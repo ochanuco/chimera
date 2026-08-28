@@ -6,6 +6,7 @@ import {
   getReferenceLineageBatches,
   getRelationChainBatches,
   getStoryChainBatches,
+  resolveBatchPrompts,
   resolveBatchShortIds,
   resolveBatchThumbnails,
   resolveGenerationShortIds,
@@ -109,6 +110,8 @@ pages.get('/b/:shortId', async (c) => {
   ];
 
   const miniMapStoryIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
+  // retry 元(親)の先頭を diff 基準にする。incoming は created_at ASC で並ぶ(routes/batches.ts)。
+  const diffParentId = data.relations.incoming[0]?.source_batch_id ?? null;
 
   const [
     storyNames,
@@ -119,6 +122,7 @@ pages.get('/b/:shortId', async (c) => {
     referenceLineageBatches,
     relationChainBatches,
     storyChainBatchesList,
+    diffParentPrompts,
   ] = await Promise.all([
       (async () => {
         const names: Record<string, string> = {};
@@ -140,7 +144,17 @@ pages.get('/b/:shortId', async (c) => {
       getReferenceLineageBatches(c.env.DB, data.id),
       getRelationChainBatches(c.env.DB, data.id),
       Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(c.env.DB, sid))),
+      resolveBatchPrompts(c.env.DB, diffParentId ? [diffParentId] : []),
     ]);
+
+  const diffParentPrompt = diffParentId ? diffParentPrompts.get(diffParentId) ?? null : null;
+  const diffParent = diffParentId && diffParentPrompt
+    ? {
+        shortId: batchShortIds.get(diffParentId) ?? diffParentId,
+        prompt: diffParentPrompt.prompt,
+        negative_prompt: diffParentPrompt.negative_prompt,
+      }
+    : null;
 
   const generationsWithTags = data.generations.map((g, i) => ({
     ...g,
@@ -171,6 +185,7 @@ pages.get('/b/:shortId', async (c) => {
       batchShortIds={batchShortIds}
       generationShortIds={generationShortIds}
       batchThumbnails={batchThumbnails}
+      diffParent={diffParent}
     />,
   );
 });
