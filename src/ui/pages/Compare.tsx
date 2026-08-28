@@ -102,6 +102,15 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
         <p class="empty-state">Select 2–9 generations from the Gallery to compare.</p>
       ) : (
         <div id="compare-page">
+          <div class="compare-cols-picker">
+            <label for="compare-cols">Columns:</label>
+            <select id="compare-cols">
+              <option value="auto">Auto</option>
+              {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option value={String(n)}>{n}</option>
+              ))}
+            </select>
+          </div>
           <div class="compare-columns">
             {items.map((item) => (
               <div class="compare-col">
