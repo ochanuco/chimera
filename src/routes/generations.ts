@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
+import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
 import {
   nowIso,
   parsePagination,
@@ -8,15 +9,25 @@ import {
   toBool,
   getGenerationByIdOrShortId,
 } from '../lib/db';
-import { isUuid } from '../lib/uuidv7';
+import { isUuid, uuidv7 } from '../lib/uuidv7';
 import { assignTag, listTagsForTarget, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
-import { notFound } from '../lib/errors';
+import { badRequest, notFound } from '../lib/errors';
 import {
   canonicalGenerationUrl,
   generationImageUrl,
+  serializeGenerationAsset,
 } from '../lib/serialize';
-import type { AppEnv, BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow } from '../types';
+import { generationAssetR2Key } from '../lib/generation-assets';
+import type {
+  AppEnv,
+  BatchReferenceRow,
+  BatchRow,
+  CharacterRow,
+  ComfyJobRow,
+  GenerationAssetRow,
+  GenerationRow,
+} from '../types';
 
 export const generations = new Hono<AppEnv>();
 
@@ -315,4 +326,129 @@ generations.delete('/:id/tags/:tagId', async (c) => {
   const generation = await getGenerationOr404(db, c.req.param('id'));
   await removeTag(db, 'generation_tags', generation.id, c.req.param('tagId'));
   return c.body(null, 204);
+});
+
+async function getGenerationAsset(
+  db: D1Database,
+  generationId: string,
+  role: string,
+  region: string,
+): Promise<GenerationAssetRow | null> {
+  return db
+    .prepare('SELECT * FROM generation_assets WHERE generation_id = ? AND role = ? AND region = ?')
+    .bind(generationId, role, region)
+    .first<GenerationAssetRow>();
+}
+
+async function upsertGenerationAsset(
+  db: D1Database,
+  existing: GenerationAssetRow,
+  contentType: string,
+  size: number,
+  r2Key: string,
+  now: string,
+): Promise<GenerationAssetRow> {
+  await db
+    .prepare('UPDATE generation_assets SET content_type = ?, size = ?, r2_object_key = ?, updated_at = ? WHERE id = ?')
+    .bind(contentType, size, r2Key, now, existing.id)
+    .run();
+  return { ...existing, content_type: contentType, size, r2_object_key: r2Key, updated_at: now };
+}
+
+// POST /api/v1/generations/{id}/assets — upsert (replace) a layered asset
+// (lineart / mask / decomposed layer / PSD / ...) for a Generation, keyed by
+// (generation_id, role, region). See docs/domain-model.md.
+generations.post('/:id/assets', async (c) => {
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const org = origin(c);
+
+  const form = await c.req.parseBody();
+  const metadataRaw = form['metadata'];
+  const file = form['file'];
+
+  if (typeof metadataRaw !== 'string') throw badRequest('metadata field is required and must be a JSON string');
+  if (!(file instanceof File)) throw badRequest('file field is required and must be binary');
+
+  let metadataJson: unknown;
+  try {
+    metadataJson = JSON.parse(metadataRaw);
+  } catch {
+    throw badRequest('metadata is not valid JSON');
+  }
+  const metadata = ingestGenerationAssetMetadataSchema.parse(metadataJson);
+
+  // '' is the "whole image, no region" sentinel: omitted key and explicit
+  // null both normalize to it (see docs/domain-model.md).
+  const region = metadata.region ?? '';
+  // File#type is '' (not undefined) when the part carries no content type.
+  const contentType = metadata.content_type ?? (file.type || 'application/octet-stream');
+  const buffer = await file.arrayBuffer();
+  const size = buffer.byteLength;
+  const r2Key = generationAssetR2Key(generation.id, metadata.role, region, contentType);
+  const now = nowIso();
+
+  const putObject = () => c.env.IMAGES.put(r2Key, buffer, { httpMetadata: { contentType } });
+  // Replace semantics: only the latest version is kept. A content_type change
+  // moves the deterministic key (extension), so drop the superseded object.
+  const replaceAsset = async (row: GenerationAssetRow) => {
+    const updated = await upsertGenerationAsset(db, row, contentType, size, r2Key, now);
+    await putObject();
+    if (row.r2_object_key !== r2Key) await c.env.IMAGES.delete(row.r2_object_key);
+    return updated;
+  };
+
+  const existing = await getGenerationAsset(db, generation.id, metadata.role, region);
+  if (existing) {
+    const updated = await replaceAsset(existing);
+    return c.json(serializeGenerationAsset(updated, org, generation.short_id), 200);
+  }
+
+  const id = uuidv7();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO generation_assets (id, generation_id, role, region, r2_object_key, content_type, size, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(id, generation.id, metadata.role, region, r2Key, contentType, size, now, now)
+      .run();
+  } catch (err) {
+    // Concurrent ingest raced us on the (generation_id, role, region) unique
+    // constraint; fall back to the update path for the row the winner created.
+    const raced = await getGenerationAsset(db, generation.id, metadata.role, region);
+    if (!raced) throw err;
+    const updated = await replaceAsset(raced);
+    return c.json(serializeGenerationAsset(updated, org, generation.short_id), 200);
+  }
+
+  await putObject();
+  const created: GenerationAssetRow = {
+    id,
+    generation_id: generation.id,
+    role: metadata.role,
+    region,
+    r2_object_key: r2Key,
+    content_type: contentType,
+    size,
+    created_at: now,
+    updated_at: now,
+  };
+  return c.json(serializeGenerationAsset(created, org, generation.short_id), 201);
+});
+
+// GET /api/v1/generations/{id}/assets — list every layered asset for a Generation.
+generations.get('/:id/assets', async (c) => {
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const org = origin(c);
+
+  const { results } = await db
+    .prepare('SELECT * FROM generation_assets WHERE generation_id = ? ORDER BY role ASC, region ASC')
+    .bind(generation.id)
+    .all<GenerationAssetRow>();
+
+  return c.json({
+    assets: (results ?? []).map((r) => serializeGenerationAsset(r, org, generation.short_id)),
+  });
 });

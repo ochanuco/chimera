@@ -144,6 +144,75 @@ created_at
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
 status 等で扱います。
 
+## GenerationAsset
+
+Generation 本体（`r2_object_key` が指す完成画像 = composite）に対して、線画・マスク・分解レイヤー・PSD
+等の**レイヤーアセット**を追加で紐付けます。
+
+``` text
+Generation 1:N GenerationAsset
+```
+
+主な属性:
+
+``` text
+id
+generation_id
+role
+region
+r2_object_key
+content_type
+size
+created_at
+updated_at
+```
+
+`role` はアセットの種類、`region` は体のどの部位かを表す任意区分です。両方とも自由文字列（enum
+にしない）ですが、以下を推奨語彙とします。
+
+role:
+
+``` text
+composite       完成画像。generations.r2_object_key が正であり、
+                GenerationAsset には入れない
+lineart-draft
+lineart-inked
+mask
+layer
+base
+shadow
+highlight
+part
+depth
+meta
+psd
+```
+
+region:
+
+``` text
+skin
+hair
+clothes
+legs
+tights
+socks
+shoes
+face
+```
+
+region は自由文字列で、絵ごとに増えて構いません。
+
+`region` が空文字（`''`）のとき「部位区分のない全体アセット」を表します。NULL
+は使いません（SQLite の `UNIQUE` は NULL 同士を別値として扱うため、`region`
+込みの一意性が壊れます）。API 境界ではキー省略・明示 `null`
+のどちらも受理し、いずれも `''` に正規化します。レスポンスでは逆に `''` を
+`null` に戻します。
+
+`(generation_id, role, region)` は一意です。同じ組み合わせへの再投稿は新しい行を追加せず、既存行を**置換**します（最新版のみ保持）。Generation
+本体に適用される「物理削除しない」不変条件は GenerationAsset
+には適用しません — 置換は明示的な仕様です。
+
 ## Character
 
 検索の第一級属性です。

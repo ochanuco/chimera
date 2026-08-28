@@ -1,5 +1,5 @@
 import { toBool } from './db';
-import type { BatchRow, ComfyJobRow, GenerationRow, StoryRow, StoryRelationRow } from '../types';
+import type { BatchRow, ComfyJobRow, GenerationAssetRow, GenerationRow, StoryRow, StoryRelationRow } from '../types';
 
 export function canonicalGenerationUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}`;
@@ -50,6 +50,26 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     bookmark: toBool(row.bookmark),
     character_id: row.character_id,
     created_at: row.created_at,
+  };
+}
+
+export function generationAssetUrl(origin: string, shortId: string, role: string, region: string): string {
+  const base = `${origin}/g/${shortId}/assets/${encodeURIComponent(role)}`;
+  return region ? `${base}?region=${encodeURIComponent(region)}` : base;
+}
+
+/** `generationShortId` is looked up separately: the row itself only carries generation_id. */
+export function serializeGenerationAsset(row: GenerationAssetRow, origin: string, generationShortId: string) {
+  return {
+    id: row.id,
+    generation_id: row.generation_id,
+    role: row.role,
+    region: row.region === '' ? null : row.region,
+    content_type: row.content_type,
+    size: row.size,
+    url: generationAssetUrl(origin, generationShortId, row.role, row.region),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 
