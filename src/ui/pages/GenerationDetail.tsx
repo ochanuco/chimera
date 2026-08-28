@@ -2,6 +2,7 @@ import { Layout } from '../layout';
 import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
+import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 
 export interface GenerationDetailData {
   id: string;
@@ -48,6 +49,7 @@ export function GenerationDetailPage({
   data,
   tags,
   storyLinks,
+  miniMapRows,
   batchShortIds,
   generationShortIds,
   batchThumbnails,
@@ -60,6 +62,8 @@ export function GenerationDetailPage({
   tags: { id: string; name: string }[];
   /** Story neighbors of the owning Batch (both directions; filtered by data.batch.id below). */
   storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[];
+  /** 系譜ミニマップ: 所属Batchの再試行連結成分 + 所属Batchが属する各Storyの全Batch。 */
+  miniMapRows: MiniMapRow[];
   batchShortIds: Map<string, string>;
   generationShortIds: Map<string, string>;
   /** Batch id -> representative Generation short_id, for family-card thumbnails of Batch-level relations. */
@@ -252,6 +256,15 @@ export function GenerationDetailPage({
               )}
             </div>
           </details>
+
+          {hasMiniMapContent(miniMapRows) ? (
+            <details class="section" open>
+              <summary>Map</summary>
+              <div class="section-body">
+                <MiniMap rows={miniMapRows} />
+              </div>
+            </details>
+          ) : null}
 
           <details class="section" open>
             <summary>親 ({parentCards.length})</summary>

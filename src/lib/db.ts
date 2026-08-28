@@ -89,6 +89,63 @@ export async function resolveBatchThumbnails(db: D1Database, batchIds: string[])
   return new Map((results ?? []).map((r) => [r.batch_id, r.short_id]));
 }
 
+export interface ChainBatch {
+  id: string;
+  short_id: string;
+  created_at: string;
+}
+
+/**
+ * Batches reachable from `batchId` by walking BatchRelation edges as an undirected graph
+ * (i.e. the retry-chain connected component containing `batchId`), including `batchId` itself.
+ * A Batch with no relation edges at all still comes back as its own 1-element component --
+ * callers that only want to render a chain of >=2 should check the result length themselves.
+ * Capped at 100 members as a runaway-recursion safety net; real retry chains are far shorter.
+ */
+export async function getRelationChainBatches(db: D1Database, batchId: string): Promise<ChainBatch[]> {
+  const { results } = await db
+    .prepare(
+      `WITH RECURSIVE chain(id) AS (
+         SELECT ?
+         UNION
+         SELECT br.target_batch_id FROM chain JOIN batch_relations br ON br.source_batch_id = chain.id
+         UNION
+         SELECT br.source_batch_id FROM chain JOIN batch_relations br ON br.target_batch_id = chain.id
+       )
+       SELECT b.id, b.short_id, b.created_at
+       FROM batches b
+       JOIN chain c ON c.id = b.id
+       ORDER BY b.created_at ASC, b.id ASC
+       LIMIT 100`,
+    )
+    .bind(batchId)
+    .all<ChainBatch>();
+  return results ?? [];
+}
+
+/**
+ * Every Batch that appears (as source or target) in `storyId`'s StoryRelation rows, i.e. the
+ * Story's full lineage of Batches. Unlike getRelationChainBatches this isn't a graph walk --
+ * StoryRelation rows already name every Batch on the Story's timeline directly.
+ */
+export async function getStoryChainBatches(db: D1Database, storyId: string): Promise<ChainBatch[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT b.id, b.short_id, b.created_at
+       FROM batches b
+       WHERE b.id IN (
+         SELECT source_batch_id FROM story_relations WHERE story_id = ?
+         UNION
+         SELECT target_batch_id FROM story_relations WHERE story_id = ?
+       )
+       ORDER BY b.created_at ASC, b.id ASC
+       LIMIT 100`,
+    )
+    .bind(storyId, storyId)
+    .all<ChainBatch>();
+  return results ?? [];
+}
+
 export interface Pagination {
   limit: number;
   offset: number;
