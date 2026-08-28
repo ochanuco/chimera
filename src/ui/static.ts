@@ -364,7 +364,17 @@ details.section .section-body { margin-top: 0.6rem; }
   font-size: 0.78rem;
 }
 
-/* grid の auto-fill で列幅を全行共通にする（flex-wrap だと折り返し後の行だけカードが伸びる） */
+.compare-cols-picker { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-dim); }
+.compare-cols-picker select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
+/* grid の auto-fill で列幅を全行共通にする（flex-wrap だと折り返し後の行だけカードが伸びる）。
+   列数指定時は initCompareCols が grid-template-columns をインラインで上書きする */
 .compare-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); gap: 1rem; }
 .compare-col { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
 .compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; }
@@ -563,6 +573,27 @@ export const appJs = `
       const value = btn.getAttribute('data-copy-id');
       if (!value) return;
       copyText(value, btn, '✓');
+    });
+  }
+
+  // --- Compare column-count picker ---
+  function initCompareCols() {
+    const select = document.getElementById('compare-cols');
+    const grid = document.querySelector('.compare-columns');
+    if (!select || !grid) return;
+    const STORE_KEY = 'chimera-compare-cols';
+    function apply(value) {
+      grid.style.gridTemplateColumns = value === 'auto' ? '' : 'repeat(' + value + ', minmax(0, 1fr))';
+    }
+    let stored = null;
+    try { stored = localStorage.getItem(STORE_KEY); } catch (e) { /* localStorage unavailable */ }
+    if (stored && select.querySelector('option[value="' + stored + '"]')) {
+      select.value = stored;
+      apply(stored);
+    }
+    select.addEventListener('change', function () {
+      apply(select.value);
+      try { localStorage.setItem(STORE_KEY, select.value); } catch (e) { /* localStorage unavailable */ }
     });
   }
 
@@ -1279,6 +1310,7 @@ export const appJs = `
     initGraphStubs();
     initGraphContextMenu();
     initCopyIdButtons();
+    initCompareCols();
   });
 })();
 `;
