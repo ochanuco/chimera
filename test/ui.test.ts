@@ -278,6 +278,46 @@ describe('Web GUI pages', () => {
     expect(html).toContain('rel-badge rel-reference');
   });
 
+  it('GET /b/{short_id} shows prompt tokens as chips, including weight and lora badges', async () => {
+    const batch = await createBatch({ prompt: '1girl, (masterpiece:1.3), <lora:add_detail:0.8>' });
+
+    const res = await req(`/b/${batch.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('prompt-chip');
+    expect(html).toContain('w-badge');
+    expect(html).toContain('chip-lora');
+    expect(html).not.toContain('prompt-raw');
+  });
+
+  it('GET /b/{short_id} shows a comma-less long prompt as raw text, not chips', async () => {
+    const longSentence = 'a'.repeat(90);
+    const batch = await createBatch({ prompt: longSentence });
+
+    const res = await req(`/b/${batch.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('prompt-raw');
+    expect(html).not.toContain('prompt-chip');
+  });
+
+  it('GET /b/{short_id} highlights added/removed/weight-changed prompt tokens against the retry parent', async () => {
+    const parent = await createBatch({ prompt: '1girl, (outdoors:1.2), old_tag' });
+    const child = await createBatch({
+      prompt: '1girl, (outdoors:1.5), new_tag',
+      refinement: { source_batch_id: parent.body.id, actor: 'human', reason: 'retry' },
+    });
+
+    const res = await req(`/b/${child.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(`diff base: `);
+    expect(html).toContain(parent.body.short_id);
+    expect(html).toContain('diff-added');
+    expect(html).toContain('diff-removed');
+    expect(html).toContain('diff-weight');
+  });
+
   it('GET /g/{short_id} shows 親 (own Batch material) and 子 (downstream usage) separately', async () => {
     const { generation: material } = await createGeneration();
     const { generation: middleGen } = await createGeneration({

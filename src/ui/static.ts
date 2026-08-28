@@ -334,6 +334,42 @@ details.section .section-body { margin-top: 0.6rem; }
 .kv-table td { padding: 0.2rem 0.5rem 0.2rem 0; vertical-align: top; font-size: 0.85rem; }
 .kv-table td:first-child { color: var(--text-dim); white-space: nowrap; }
 
+/* Batch Detail の Prompt セクション: 生文字列テーブルの代わりにトークンチップで表示する。 */
+.prompt-diff-base { font-size: 0.75rem; color: var(--text-dim); margin: 0 0 0.5rem; }
+.prompt-field { margin-bottom: 0.7rem; }
+.prompt-field:last-of-type { margin-bottom: 0; }
+.prompt-field-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+.prompt-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.prompt-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.prompt-chips.negative .prompt-chip { color: var(--text-dim); border-color: var(--border); background: color-mix(in srgb, var(--bg-elevated) 60%, transparent); }
+.prompt-chip.chip-lora { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); color: var(--accent); }
+.prompt-chip.chip-break { border-style: dashed; color: var(--text-dim); }
+.prompt-chip.diff-added { border-color: var(--good); box-shadow: inset 0 0 0 1px var(--good); }
+.prompt-chip.diff-weight { border-color: var(--neutral); box-shadow: inset 0 0 0 1px var(--neutral); }
+.prompt-chip.diff-removed { border-color: var(--bad); color: var(--text-dim); text-decoration: line-through; }
+.prompt-removed { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+.w-badge { font-size: 0.65rem; border-radius: 4px; padding: 0 0.3rem; background: var(--bg-elevated); color: var(--text-dim); }
+.w-badge.w-up { color: var(--good); background: color-mix(in srgb, var(--good) 18%, transparent); }
+.w-badge.w-down { color: var(--text-dim); background: color-mix(in srgb, var(--border) 60%, transparent); }
+.prompt-raw { white-space: pre-wrap; font-size: 0.85rem; margin: 0; }
+
 .gen-detail-hero { text-align: center; margin-bottom: 1rem; }
 .gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); }
 .image-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--text-dim); text-align: center; }

@@ -113,6 +113,14 @@ Refinement=橙、Story=緑）。
 が2件未満の行は表示せず、全行が該当する場合はMapセクション自体を表示しません。Generation Detailの
 Mapと仕様は共通です。
 
+Promptセクションはprompt / negative_promptをカンマ区切りのトークンチップで表示します（重み記法
+`(foo:1.3)` `((foo))` `[foo]`、`<lora:name:0.8>`、`BREAK`をそれぞれ解釈し、weight!=1のトークンには
+数値バッジ、loraは専用の色、BREAKは区切り表示にします）。カンマを含まない80文字超の自然文はチップ化せず
+生テキストのまま表示します。このBatchがBatchRelationで再試行(retry)された側（incoming）を持つ場合、その
+retry元Batchのprompt / negative_promptを基準にトークン単位でdiffし、追加されたトークンを緑枠、weightが
+変化したトークンを黄枠（`0.8→1.3`のように基準値→現在値のバッジ）、削除されたトークンを取り消し線付きの
+別行で表示します。基準にしたBatchのshort_idはセクション内に`diff base: <short_id>`として明示します。
+
 主な操作:
 
 -   Generation rating
