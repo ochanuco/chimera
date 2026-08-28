@@ -396,13 +396,10 @@ details.section .section-body { margin-top: 0.6rem; }
   border-left: 3px solid var(--neutral);
   background: rgba(184, 171, 95, 0.07);
 }
-.compare-table .tok-add { background: rgba(95, 191, 123, 0.3); border-radius: 2px; }
-.compare-table .tok-del {
-  background: rgba(212, 105, 95, 0.3);
-  border-radius: 2px;
-}
+.compare-table .tok-uniq { background: rgba(95, 191, 123, 0.3); border-radius: 2px; }
+.compare-table .tok-partial { background: rgba(184, 171, 95, 0.35); border-radius: 2px; }
 .compare-legend { font-size: 0.75rem; color: var(--text-dim); margin: 0.75rem 0 0.25rem; }
-.compare-legend .tok-add, .compare-legend .tok-del { padding: 0 0.25rem; }
+.compare-legend .tok-uniq, .compare-legend .tok-partial { padding: 0 0.25rem; }
 
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
 .bookmark-section { margin-bottom: 2rem; }

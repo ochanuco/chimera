@@ -346,17 +346,19 @@ describe('Web GUI pages', () => {
     expect(body).toContain(g2.short_id);
     expect(body).toContain('standing');
     expect(body).toContain('class="diff"');
-    // g1's pose ("standing") is the row base: its own cell highlights "standing" as tok-del since
-    // g2's column lost it. g2's cell shows only its own text, with "sitting" as tok-add — it never
-    // renders g1's "standing".
-    expect(body).toContain('class="tok-add"');
-    expect(body).toContain('class="tok-del"');
-    expect(body).toMatch(/<span class="tok-del">[^<]*standing[^<]*<\/span>/);
-    expect(body).toMatch(/<span class="tok-add">[^<]*sitting[^<]*<\/span>/);
+    // With only 2 real-value lanes, the consensus 3-step degenerates to same/uniq (no partial):
+    // g1's "standing" matches no other lane, g2's "sitting" matches no other lane, so both render
+    // as tok-uniq — each cell shows only its own text, never the other lane's. (The legend itself
+    // carries a sample tok-partial span, so scope the "no partial" check to the table body.)
+    const tableBody = body.slice(body.indexOf('<tbody>'));
+    expect(tableBody).toContain('class="tok-uniq"');
+    expect(tableBody).not.toContain('class="tok-partial"');
+    expect(body).toMatch(/<span class="tok-uniq">[^<]*standing[^<]*<\/span>/);
+    expect(body).toMatch(/<span class="tok-uniq">[^<]*sitting[^<]*<\/span>/);
     expect(body).toContain('class="compare-legend"');
 
-    // Locate the pose row and check each cell's own <td>...</td> in isolation: the base cell must
-    // not contain "sitting", and g2's cell must not contain "standing".
+    // Locate the pose row and check each cell's own <td>...</td> in isolation: g1's cell must not
+    // contain "sitting", and g2's cell must not contain "standing".
     const poseRowMatch = body.match(/<tr><td>pose<\/td>(.*?)<\/tr>/s);
     expect(poseRowMatch).not.toBeNull();
     const poseCells = [...poseRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
@@ -367,7 +369,51 @@ describe('Web GUI pages', () => {
     expect(poseCells[1]).not.toContain('standing');
   });
 
-  it('GET /compare token-diffs a long summary line, highlighting the changed word as add/del', async () => {
+  it('GET /compare shows a 3-way consensus diff table: shared parts plain, majority-shared parts partial, lane-unique parts uniq', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+    const { generation: g3 } = await createGeneration();
+
+    await postJson(
+      `/api/v1/generations/${g1.id}/semantic`,
+      { schema_version: 1, core: { pose: 'standing on grass' }, strengths: [], defects: [] },
+      'PUT',
+    );
+    await postJson(
+      `/api/v1/generations/${g2.id}/semantic`,
+      { schema_version: 1, core: { pose: 'sitting on grass' }, strengths: [], defects: [] },
+      'PUT',
+    );
+    await postJson(
+      `/api/v1/generations/${g3.id}/semantic`,
+      { schema_version: 1, core: { pose: 'sitting on sand' }, strengths: [], defects: [] },
+      'PUT',
+    );
+
+    const res = await req(`/compare?ids=${g1.short_id},${g2.short_id},${g3.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+
+    const poseRowMatch = body.match(/<tr><td>pose<\/td>(.*?)<\/tr>/s);
+    expect(poseRowMatch).not.toBeNull();
+    const poseCells = [...poseRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
+    expect(poseCells).toHaveLength(3);
+
+    // g1 "standing on grass": "standing" matches neither other lane (uniq); " on " matches both
+    // (plain, no span); "grass" matches g2 only, not g3 (partial). Never shows "sitting"/"sand".
+    expect(poseCells[0]).toBe('<span class="tok-uniq">standing</span> on <span class="tok-partial">grass</span>');
+
+    // g2 "sitting on grass": "sitting" matches g3 only (partial); " on " matches both (plain);
+    // "grass" matches g1 only (partial). Nothing in this row is g2-unique.
+    expect(poseCells[1]).toBe('<span class="tok-partial">sitting</span> on <span class="tok-partial">grass</span>');
+    expect(poseCells[1]).not.toContain('tok-uniq');
+
+    // g3 "sitting on sand": "sitting" matches g2 only (partial); " on " matches both (plain);
+    // "sand" matches neither other lane (uniq).
+    expect(poseCells[2]).toBe('<span class="tok-partial">sitting</span> on <span class="tok-uniq">sand</span>');
+  });
+
+  it('GET /compare token-diffs a long summary line, highlighting each lane-unique word as tok-uniq', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
 
@@ -386,13 +432,16 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const body = await res.text();
 
-    expect(body).toContain('class="tok-add"');
-    expect(body).toContain('class="tok-del"');
-    expect(body).toMatch(/<span class="tok-add">[^<]*sleeping[^<]*<\/span>/);
-    expect(body).toMatch(/<span class="tok-del">[^<]*sitting[^<]*<\/span>/);
+    // With only 2 real-value lanes, consensus degenerates to same/uniq (no partial). (The legend
+    // carries a sample tok-partial span, so scope the "no partial" check to the table body.)
+    const tableBody = body.slice(body.indexOf('<tbody>'));
+    expect(tableBody).toContain('class="tok-uniq"');
+    expect(tableBody).not.toContain('class="tok-partial"');
+    expect(body).toMatch(/<span class="tok-uniq">[^<]*sleeping[^<]*<\/span>/);
+    expect(body).toMatch(/<span class="tok-uniq">[^<]*sitting[^<]*<\/span>/);
 
-    // Each lane shows only its own text: g1's summary cell (the base) never shows "sleeping"/"sofa",
-    // and g2's cell never shows "sitting"/"chair".
+    // Each lane shows only its own text: g1's summary cell never shows "sleeping"/"sofa", and
+    // g2's cell never shows "sitting"/"chair".
     const summaryRowMatch = body.match(/<tr><td>summary<\/td>(.*?)<\/tr>/s);
     expect(summaryRowMatch).not.toBeNull();
     const summaryCells = [...summaryRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
