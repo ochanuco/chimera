@@ -75,6 +75,32 @@ describe('Web GUI pages', () => {
     expect(body).toContain(`/g/${generation.short_id}/image`);
   });
 
+  it('GET /g/{short_id} shows the image resolution and formatted file size read from R2', async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
+      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
+      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x00, 0x00, 0x02, 0x80, // width = 640
+      0x00, 0x00, 0x01, 0xe0, // height = 480
+      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
+      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+    ]);
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const ingest = await ingestGeneration(
+      job.body.id,
+      { seed: 1, original_filename: 'sized.png', comfy_output_index: 0 },
+      png,
+    );
+    expect(ingest.status).toBe(201);
+
+    const res = await req(`/g/${ingest.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('640×480');
+    expect(html).toContain(`${png.byteLength} B`);
+  });
+
   it('GET /g/xxxxxx 404s for an unknown short_id', async () => {
     const res = await req('/g/xxxxxx');
     expect(res.status).toBe(404);
