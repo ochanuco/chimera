@@ -28,6 +28,9 @@ Bookmarks
 
 Experimentは主要導線にせず、Batch等から辿れる程度でも構いません。
 
+Graph View（`/graph`）はグローバルナビに含めません。Batch Detail / Generation
+Detailの見出し横にある「Graph」リンク（`/graph?root=<short_id>&depth=3`、そのBatch起点のスコープ付き）または直接URLからのみ到達します。
+
 ## Gallery
 
 目的:
@@ -83,20 +86,22 @@ good  🔖
 ```
 
 Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
-（CLAUDE.md の不変条件）ですが、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめ、各行に
-タイプバッジ（`Reference` / `Refinement` / `Story`）を付けて区別します。
+（CLAUDE.md の不変条件）ですが、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめ、各関係を
+FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、`family-strip`）で表示します。
+サムネイルは相手Batchの代表Generation（Graph Viewの`representativeGeneration()`と同じ選定順）、または相手
+GenerationそのものをFamilyCardリンク先にします。
 
 -   親: このBatchの材料になったGeneration（バッジ `Reference`、purpose/aspect
     を表示）、このBatchをrefinementした元Batch（バッジ `Refinement`、reason
-    を表示）、StoryRelationで前段にあたるBatch（バッジ `Story`、Story名にリンク）
+    を表示）、StoryRelationで前段にあたるBatch（バッジ `Story`、Story名/labelを表示）
 -   子: このBatchのGenerationを材料に使ったBatch（バッジ `Reference`、どの
     Generation経由かを表示）、このBatchをrefinement元とするBatch（バッジ
     `Refinement`）、StoryRelationで後続にあたるBatch（バッジ `Story`）
 -   兄弟: 親を共有する他のBatch。BatchRelationで同じ親からrefinementされた
     Batch、またはBatchReferenceで同じGenerationを材料に使ったBatch。共有の
-    親（Batch短縮IDまたはGeneration短縮ID）を表示
+    親（Batch短縮IDまたはGeneration短縮ID）をカード補足テキストに表示
 
-各行のリンクはshort_id優先（Generation/Story RelationページのGraph凡例と同じ配色: Reference=青、
+各カードのリンク先・short_idはshort_id優先（Generation/Story RelationページのGraph凡例と同じ配色: Reference=青、
 Refinement=橙、Story=緑）。
 
 主な操作:
@@ -190,10 +195,16 @@ Git
 Note
 ```
 
-親・子はBatch Detailと同じ family 表示の縮小版です（兄弟は同Batch内の他Generationに相当し表示不要）。
+親・子はBatch Detailと同じFamilyCard表示です（兄弟は同Batch内の他Generationに相当し表示不要）。Batch
+Detailと異なり、このGenerationが属するBatch自体のRefinement/Story関係も合わせて表示するため、
+それらのカードには「via batch」という補足を添えて、Generation自身の材料関係（Reference）と区別します。
 
--   親: このGenerationが属するBatch自身の材料（BatchReference、バッジ `Reference`）。purpose/aspectを表示
--   子: このGenerationを材料に使ったBatch一覧（バッジ `Reference`）。purpose/aspectを表示
+-   親: ①このGenerationが属するBatch自身の材料（BatchReference、バッジ `Reference`、Generationカード。
+    purpose/aspectを表示） ②そのBatchをrefinementした元Batch（バッジ `Refinement`、Batchカード＝代表
+    サムネイル、reasonを表示） ③StoryRelationで前段にあたるBatch（バッジ `Story`、Batchカード）
+-   子: ①このGenerationを材料に使ったBatch一覧（バッジ `Reference`、Batchカード。purpose/aspectを表示）
+    ②このGenerationが属するBatchをrefinement元とするBatch（バッジ `Refinement`、Batchカード）
+    ③StoryRelationで後続にあたるBatch（バッジ `Story`、Batchカード）
 
 ## Provenance View
 
@@ -239,6 +250,9 @@ Graph全体を常時表示せず、Storyを閲覧するときのみ使用しま�
 とは別の高度な表示です。Provenance View が選択
 Generation/Batch周辺の1 hopに留めるのに対し、Graph
 Viewは全Batchを一度にレイアウトします。
+
+グローバルナビには含まれません（[Navigation](#navigation)参照）。Batch Detailのコンテキストメニュー
+「Show subgraph from here」、または直接URL（`/graph`、`/graph?root=<short_id>`等）から到達します。
 
 サーバーサイドでレイヤード DAG レイアウトを計算し、SVG として SSR
 します。

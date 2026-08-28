@@ -1,12 +1,13 @@
 import type { FC, PropsWithChildren } from 'hono/jsx';
 import { assetVersion } from './static';
 
+// Graph (/graph) is intentionally not linked here — see docs/ui.md "Graph View": it's reached via
+// the "Graph" link on Batch/Generation detail pages (root-scoped) or a direct URL, not the global nav.
 const NAV_ITEMS = [
   { href: '/gallery', label: 'Gallery' },
   { href: '/batches', label: 'Batches' },
   { href: '/stories', label: 'Stories' },
   { href: '/bookmarks', label: 'Bookmarks' },
-  { href: '/graph', label: 'Graph' },
 ];
 
 export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean }>> = ({

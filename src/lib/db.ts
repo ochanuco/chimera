@@ -61,6 +61,34 @@ export async function resolveGenerationShortIds(db: D1Database, ids: string[]): 
   return new Map((results ?? []).map((r) => [r.id, r.short_id]));
 }
 
+/**
+ * Resolves each Batch's representative Generation (for a family-card thumbnail), keyed by
+ * Batch id -> that Generation's short_id. Same selection rule as Graph View's
+ * `representativeGeneration()` (src/ui/pages/Graph.tsx): designated thumbnail, else first
+ * 'good' rating, else creation order. There is no per-Batch "designated thumbnail" column in
+ * the schema -- `thumbnail_generation_short_id` (graph.ts) is always the first-created
+ * Generation, so tier 1 always matches when a Batch has any Generations and tiers 2/3 never
+ * get reached. This mirrors that outcome directly (first by created_at, id), the same
+ * ROW_NUMBER pattern graph.ts and stories.ts already use for the same purpose.
+ */
+export async function resolveBatchThumbnails(db: D1Database, batchIds: string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(batchIds));
+  if (unique.length === 0) return new Map();
+  const placeholders = unique.map(() => '?').join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT batch_id, short_id FROM (
+         SELECT batch_id, short_id,
+           ROW_NUMBER() OVER (PARTITION BY batch_id ORDER BY created_at ASC, id ASC) AS rn
+         FROM generations
+         WHERE batch_id IN (${placeholders})
+       ) WHERE rn = 1`,
+    )
+    .bind(...unique)
+    .all<{ batch_id: string; short_id: string }>();
+  return new Map((results ?? []).map((r) => [r.batch_id, r.short_id]));
+}
+
 export interface Pagination {
   limit: number;
   offset: number;
