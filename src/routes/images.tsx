@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getGenerationByIdOrShortId, resolveBatchShortIds, resolveGenerationShortIds } from '../lib/db';
+import { getGenerationByIdOrShortId, resolveBatchShortIds, resolveBatchThumbnails, resolveGenerationShortIds } from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
@@ -57,20 +57,31 @@ images.get('/:shortId', async (c) => {
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
-  let storyLinks: { story_id: string; story_name: string; label: string | null }[] = [];
   // "親" (parent) material for a Generation is its own Batch's reference material
   // (batch_references where target_batch_id = the owning Batch), not `data.references`
   // (which is the reverse: Batches downstream that used *this* Generation as material,
   // i.e. this Generation's "子" — see `used_by` below).
   let parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[] = [];
+  // Batch-level relations of the owning Batch (retries / Story continuation), surfaced on the
+  // Generation page as "via batch" family cards alongside the Generation-level material relations.
+  let relationsIncoming: { source_batch_id: string; reason: string | null }[] = [];
+  let relationsOutgoing: { target_batch_id: string; reason: string | null }[] = [];
+  let storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[] =
+    [];
   if (data.batch) {
     const batchRes = await internalApiRequest(c, `/api/v1/batches/${data.batch.id}`);
     if (batchRes.ok) {
       const batchData = (await batchRes.json()) as {
         references: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
-        story_relations: { story_id: string; label: string | null }[];
+        relations: {
+          outgoing: { target_batch_id: string; reason: string | null }[];
+          incoming: { source_batch_id: string; reason: string | null }[];
+        };
+        story_relations: { story_id: string; label: string | null; source_batch_id: string; target_batch_id: string }[];
       };
       parentReferences = batchData.references;
+      relationsIncoming = batchData.relations.incoming;
+      relationsOutgoing = batchData.relations.outgoing;
 
       const storyIds = Array.from(new Set(batchData.story_relations.map((r) => r.story_id)));
       const storyNames = new Map<string, string>();
@@ -87,16 +98,29 @@ images.get('/:shortId', async (c) => {
         story_id: r.story_id,
         story_name: storyNames.get(r.story_id) ?? r.story_id,
         label: r.label,
+        source_batch_id: r.source_batch_id,
+        target_batch_id: r.target_batch_id,
       }));
     }
   }
 
-  const [batchShortIds, generationShortIds] = await Promise.all([
-    resolveBatchShortIds(db, data.used_by.map((r) => r.batch_id)),
+  // Every Batch referenced by a family card (used_by / relation retries / Story neighbors)
+  // needs both its short_id (for the link) and its representative Generation (for the thumbnail).
+  const relatedBatchIds = [
+    ...data.used_by.map((r) => r.batch_id),
+    ...relationsIncoming.map((r) => r.source_batch_id),
+    ...relationsOutgoing.map((r) => r.target_batch_id),
+    ...storyLinks.map((r) => r.source_batch_id),
+    ...storyLinks.map((r) => r.target_batch_id),
+  ];
+
+  const [batchShortIds, generationShortIds, batchThumbnails] = await Promise.all([
+    resolveBatchShortIds(db, relatedBatchIds),
     resolveGenerationShortIds(
       db,
       parentReferences.map((r) => r.source_generation_id),
     ),
+    resolveBatchThumbnails(db, relatedBatchIds),
   ]);
 
   return c.html(
@@ -106,7 +130,10 @@ images.get('/:shortId', async (c) => {
       storyLinks={storyLinks}
       batchShortIds={batchShortIds}
       generationShortIds={generationShortIds}
+      batchThumbnails={batchThumbnails}
       parentReferences={parentReferences}
+      relationsIncoming={relationsIncoming}
+      relationsOutgoing={relationsOutgoing}
       imageMeta={imageMeta}
     />,
   );

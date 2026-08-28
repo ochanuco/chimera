@@ -1,6 +1,7 @@
 import { Layout } from '../layout';
 import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
+import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 
 export interface GenerationDetailData {
   id: string;
@@ -43,30 +44,115 @@ function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
 }
 
-/** Small rounded label distinguishing which of the three Relation types (see CLAUDE.md invariants) a row comes from. */
-function RelBadge({ kind }: { kind: 'reference' | 'refinement' | 'story' }) {
-  const label = kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : 'Story';
-  return <span class={`rel-badge rel-${kind}`}>{label}</span>;
-}
-
 export function GenerationDetailPage({
   data,
   tags,
   storyLinks,
   batchShortIds,
   generationShortIds,
+  batchThumbnails,
   parentReferences,
+  relationsIncoming,
+  relationsOutgoing,
   imageMeta,
 }: {
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
-  storyLinks: { story_id: string; story_name: string; label: string | null }[];
+  /** Story neighbors of the owning Batch (both directions; filtered by data.batch.id below). */
+  storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[];
   batchShortIds: Map<string, string>;
   generationShortIds: Map<string, string>;
+  /** Batch id -> representative Generation short_id, for family-card thumbnails of Batch-level relations. */
+  batchThumbnails: Map<string, string>;
   /** The owning Batch's own reference material (its "parents"), fetched from that Batch's detail. */
   parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
+  /** Retry relations of the owning Batch (source_batch_id = the Batch that was refined into this one). */
+  relationsIncoming: { source_batch_id: string; reason: string | null }[];
+  /** Retry relations of the owning Batch (target_batch_id = the Batch this one was refined into). */
+  relationsOutgoing: { target_batch_id: string; reason: string | null }[];
   imageMeta: ImageMeta | null;
 }) {
+  const ownBatchId = data.batch?.id;
+
+  const parentCards: FamilyCardData[] = [
+    ...parentReferences.map((r): FamilyCardData => {
+      const link = refLink('/g/', r.source_generation_id, generationShortIds);
+      return {
+        kind: 'reference',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: `/g/${link.label}/image`,
+        detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
+      };
+    }),
+    ...relationsIncoming.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.source_batch_id, batchShortIds);
+      const genShortId = batchThumbnails.get(r.source_batch_id);
+      return {
+        kind: 'refinement',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        caption: 'via batch',
+        detail: `reason: ${r.reason ?? '-'}`,
+      };
+    }),
+    ...storyLinks
+      .filter((s) => s.target_batch_id === ownBatchId)
+      .map((s): FamilyCardData => {
+        const link = refLink('/b/', s.source_batch_id, batchShortIds);
+        const genShortId = batchThumbnails.get(s.source_batch_id);
+        return {
+          kind: 'story',
+          href: link.href,
+          shortId: link.label,
+          imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+          caption: 'via batch',
+          detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
+        };
+      }),
+  ];
+
+  const childCards: FamilyCardData[] = [
+    ...data.used_by.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.batch_id, batchShortIds);
+      const genShortId = batchThumbnails.get(r.batch_id);
+      return {
+        kind: 'reference',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
+      };
+    }),
+    ...relationsOutgoing.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.target_batch_id, batchShortIds);
+      const genShortId = batchThumbnails.get(r.target_batch_id);
+      return {
+        kind: 'refinement',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        caption: 'via batch',
+        detail: `reason: ${r.reason ?? '-'}`,
+      };
+    }),
+    ...storyLinks
+      .filter((s) => s.source_batch_id === ownBatchId)
+      .map((s): FamilyCardData => {
+        const link = refLink('/b/', s.target_batch_id, batchShortIds);
+        const genShortId = batchThumbnails.get(s.target_batch_id);
+        return {
+          kind: 'story',
+          href: link.href,
+          shortId: link.label,
+          imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+          caption: 'via batch',
+          detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
+        };
+      }),
+  ];
+
   return (
     <Layout title={`Generation ${data.short_id}`} fullBleed>
       <div class="detail-layout">
@@ -85,6 +171,14 @@ export function GenerationDetailPage({
         <div class="detail-right">
           <h1>
             {data.short_id} <CopyIdButton value={data.short_id} />
+            {data.batch ? (
+              <>
+                {' '}
+                <a class="graph-jump" href={`/graph?root=${data.batch.short_id}&depth=3`}>
+                  Graph
+                </a>
+              </>
+            ) : null}
           </h1>
           {data.character ? <p>{data.character.name}</p> : null}
           <div class="card-top-row">
@@ -160,56 +254,16 @@ export function GenerationDetailPage({
           </details>
 
           <details class="section" open>
-            <summary>親 ({parentReferences.length})</summary>
+            <summary>親 ({parentCards.length})</summary>
             <div class="section-body">
-              {parentReferences.length === 0 ? (
-                <p>None.</p>
-              ) : (
-                <table class="kv-table">
-                  {parentReferences.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="reference" />
-                      </td>
-                      <td>
-                        <a href={refLink('/g/', r.source_generation_id, generationShortIds).href}>
-                          {refLink('/g/', r.source_generation_id, generationShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </table>
-              )}
+              <FamilyStrip items={parentCards} />
             </div>
           </details>
 
           <details class="section" open>
-            <summary>子 ({data.used_by.length})</summary>
+            <summary>子 ({childCards.length})</summary>
             <div class="section-body">
-              {data.used_by.length === 0 ? (
-                <p>None.</p>
-              ) : (
-                <table class="kv-table">
-                  {data.used_by.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="reference" />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', r.batch_id, batchShortIds).href}>
-                          {refLink('/b/', r.batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </table>
-              )}
+              <FamilyStrip items={childCards} />
             </div>
           </details>
 

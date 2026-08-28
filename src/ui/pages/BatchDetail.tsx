@@ -1,6 +1,7 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { CopyIdButton } from '../components/CopyIdButton';
+import { FamilyStrip, type FamilyCardData, type RelKind } from '../components/FamilyCard';
 
 export interface BatchDetailData {
   id: string;
@@ -36,32 +37,112 @@ function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
 }
 
-type RelBadgeKind = 'reference' | 'refinement' | 'story';
-
-/** Small rounded label distinguishing which of the three Relation types (see CLAUDE.md invariants) a row comes from. */
-function RelBadge({ kind }: { kind: RelBadgeKind }) {
-  const label = kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : 'Story';
-  return <span class={`rel-badge rel-${kind}`}>{label}</span>;
-}
-
 export function BatchDetailPage({
   batch,
   storyNames,
   batchShortIds,
   generationShortIds,
+  batchThumbnails,
 }: {
   batch: BatchDetailData;
   storyNames: Record<string, string>;
   batchShortIds: Map<string, string>;
   generationShortIds: Map<string, string>;
+  /** Batch id -> representative Generation short_id, for family-card thumbnails. */
+  batchThumbnails: Map<string, string>;
 }) {
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
   const storyParents = batch.story_relations.filter((r) => r.target_batch_id === batch.id);
   const storyChildren = batch.story_relations.filter((r) => r.source_batch_id === batch.id);
 
-  const parentCount = batch.references.length + batch.relations.incoming.length + storyParents.length;
-  const childCount = batch.reference_children.length + batch.relations.outgoing.length + storyChildren.length;
-  const siblingCount = batch.siblings.length;
+  const batchThumb = (batchId: string): string | null => {
+    const genShortId = batchThumbnails.get(batchId);
+    return genShortId ? `/g/${genShortId}/image` : null;
+  };
+
+  const parentCards: FamilyCardData[] = [
+    ...batch.references.map((r): FamilyCardData => {
+      const link = refLink('/g/', r.source_generation_id, generationShortIds);
+      return {
+        kind: 'reference',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: `/g/${link.label}/image`,
+        detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
+      };
+    }),
+    ...batch.relations.incoming.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.source_batch_id, batchShortIds);
+      return {
+        kind: 'refinement',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(r.source_batch_id),
+        detail: `reason: ${r.reason ?? '-'}`,
+      };
+    }),
+    ...storyParents.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.source_batch_id, batchShortIds);
+      return {
+        kind: 'story',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(r.source_batch_id),
+        detail: `${storyNames[r.story_id] ?? r.story_id}${r.label ? ` — ${r.label}` : ''}`,
+      };
+    }),
+  ];
+
+  const childCards: FamilyCardData[] = [
+    ...batch.reference_children.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.batch_id, batchShortIds);
+      const viaLink = refLink('/g/', r.source_generation_id, generationShortIds);
+      return {
+        kind: 'reference',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(r.batch_id),
+        detail: `via ${viaLink.label}`,
+      };
+    }),
+    ...batch.relations.outgoing.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.target_batch_id, batchShortIds);
+      return {
+        kind: 'refinement',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(r.target_batch_id),
+        detail: `reason: ${r.reason ?? '-'}`,
+      };
+    }),
+    ...storyChildren.map((r): FamilyCardData => {
+      const link = refLink('/b/', r.target_batch_id, batchShortIds);
+      return {
+        kind: 'story',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(r.target_batch_id),
+        detail: `${storyNames[r.story_id] ?? r.story_id}${r.label ? ` — ${r.label}` : ''}`,
+      };
+    }),
+  ];
+
+  const siblingCards: FamilyCardData[] = batch.siblings.map((s): FamilyCardData => {
+    const link = refLink('/b/', s.batch_id, batchShortIds);
+    const sharedLink =
+      s.via === 'refinement' ? refLink('/b/', s.shared_id, batchShortIds) : refLink('/g/', s.shared_id, generationShortIds);
+    return {
+      kind: s.via as RelKind,
+      href: link.href,
+      shortId: link.label,
+      imageUrl: batchThumb(s.batch_id),
+      detail: `shared parent: ${sharedLink.label}`,
+    };
+  });
+
+  const parentCount = parentCards.length;
+  const childCount = childCards.length;
+  const siblingCount = siblingCards.length;
 
   return (
     <Layout title={`Batch ${batch.short_id}`} fullBleed>
@@ -79,7 +160,10 @@ export function BatchDetailPage({
         </div>
         <div class="detail-right">
           <h1>
-            Batch {batch.short_id} <CopyIdButton value={batch.short_id} />
+            Batch {batch.short_id} <CopyIdButton value={batch.short_id} />{' '}
+            <a class="graph-jump" href={`/graph?root=${batch.short_id}&depth=3`}>
+              Graph
+            </a>
           </h1>
           <div class="card-top-row">
             <button
@@ -131,151 +215,21 @@ export function BatchDetailPage({
           <details class="section" open>
             <summary>親 ({parentCount})</summary>
             <div class="section-body">
-              {parentCount === 0 ? (
-                <p>None.</p>
-              ) : (
-                <table class="kv-table">
-                  {batch.references.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="reference" />
-                      </td>
-                      <td>
-                        <a href={refLink('/g/', r.source_generation_id, generationShortIds).href}>
-                          {refLink('/g/', r.source_generation_id, generationShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        purpose: {r.purpose ?? '-'} / aspect: {r.aspect ?? '-'}
-                      </td>
-                    </tr>
-                  ))}
-                  {batch.relations.incoming.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="refinement" />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', r.source_batch_id, batchShortIds).href}>
-                          {refLink('/b/', r.source_batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>reason: {r.reason ?? '-'}</td>
-                    </tr>
-                  ))}
-                  {storyParents.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="story" />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', r.source_batch_id, batchShortIds).href}>
-                          {refLink('/b/', r.source_batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        <a href={`/stories/${r.story_id}`}>{storyNames[r.story_id] ?? r.story_id}</a>
-                        {r.label ? ` — ${r.label}` : ''}
-                      </td>
-                    </tr>
-                  ))}
-                </table>
-              )}
+              <FamilyStrip items={parentCards} />
             </div>
           </details>
 
           <details class="section" open>
             <summary>子 ({childCount})</summary>
             <div class="section-body">
-              {childCount === 0 ? (
-                <p>None.</p>
-              ) : (
-                <table class="kv-table">
-                  {batch.reference_children.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="reference" />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', r.batch_id, batchShortIds).href}>
-                          {refLink('/b/', r.batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        via{' '}
-                        <a href={refLink('/g/', r.source_generation_id, generationShortIds).href}>
-                          {refLink('/g/', r.source_generation_id, generationShortIds).label}
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                  {batch.relations.outgoing.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="refinement" />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', r.target_batch_id, batchShortIds).href}>
-                          {refLink('/b/', r.target_batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>reason: {r.reason ?? '-'}</td>
-                    </tr>
-                  ))}
-                  {storyChildren.map((r) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind="story" />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', r.target_batch_id, batchShortIds).href}>
-                          {refLink('/b/', r.target_batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        <a href={`/stories/${r.story_id}`}>{storyNames[r.story_id] ?? r.story_id}</a>
-                        {r.label ? ` — ${r.label}` : ''}
-                      </td>
-                    </tr>
-                  ))}
-                </table>
-              )}
+              <FamilyStrip items={childCards} />
             </div>
           </details>
 
           <details class="section" open>
             <summary>兄弟 ({siblingCount})</summary>
             <div class="section-body">
-              {siblingCount === 0 ? (
-                <p>None.</p>
-              ) : (
-                <table class="kv-table">
-                  {batch.siblings.map((s) => (
-                    <tr>
-                      <td>
-                        <RelBadge kind={s.via} />
-                      </td>
-                      <td>
-                        <a href={refLink('/b/', s.batch_id, batchShortIds).href}>
-                          {refLink('/b/', s.batch_id, batchShortIds).label}
-                        </a>
-                      </td>
-                      <td>
-                        shared parent:{' '}
-                        {s.via === 'refinement' ? (
-                          <a href={refLink('/b/', s.shared_id, batchShortIds).href}>
-                            {refLink('/b/', s.shared_id, batchShortIds).label}
-                          </a>
-                        ) : (
-                          <a href={refLink('/g/', s.shared_id, generationShortIds).href}>
-                            {refLink('/g/', s.shared_id, generationShortIds).label}
-                          </a>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </table>
-              )}
+              <FamilyStrip items={siblingCards} />
             </div>
           </details>
 

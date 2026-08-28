@@ -757,3 +757,84 @@ describe('representativeGeneration (Graph View thumbnail selection)', () => {
     expect(representativeGeneration(node)?.short_id).toBe('g1');
   });
 });
+
+describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
+  it('GET /g/{short_id} shows parent material and child used_by as thumbnail family cards', async () => {
+    const { generation: material } = await createGeneration();
+    const { generation: middleGen } = await createGeneration({
+      batchOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition', aspect: 'pose' }] },
+    });
+    const consumer = await createBatch();
+    await postJson(`/api/v1/batches/${consumer.body.id}/references`, {
+      source_generation_id: middleGen.id,
+      purpose: 'outfit',
+    });
+
+    const res = await req(`/g/${middleGen.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('class="family-strip"');
+    // 親: the owning Batch's own reference material, rendered as a Generation thumbnail card.
+    expect(html).toContain(`src="/g/${material.short_id}/image"`);
+    expect(html).toContain(`href="/g/${material.short_id}"`);
+    // 子: the Batch that used this Generation as material, rendered as a Batch card.
+    expect(html).toContain(`href="/b/${consumer.body.short_id}"`);
+    expect(html).toContain('rel-badge rel-reference');
+  });
+
+  it('GET /g/{short_id} shows retry (refinement) Batch cards for the owning Batch\'s incoming/outgoing relations', async () => {
+    const { batch: batchA } = await createGeneration();
+    const { generation: genB, batch: batchB } = await createGeneration({
+      batchOverrides: { refinement: { source_batch_id: batchA.id, actor: 'human', reason: 'retry composition' } },
+    });
+    const batchC = await createBatch({
+      refinement: { source_batch_id: batchB.id, actor: 'human', reason: 'retry lighting' },
+    });
+
+    const res = await req(`/g/${genB.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // 親: batchA is the retry source of the owning Batch (batchB) -- a Batch-level relation, so
+    // the card is annotated "via batch" to distinguish it from the Generation-level material cards.
+    expect(html).toContain(`href="/b/${batchA.short_id}"`);
+    expect(html).toContain('via batch');
+    expect(html).toContain('reason: retry composition');
+    expect(html).toContain('rel-badge rel-refinement');
+
+    // 子: batchC is the retry target of the owning Batch.
+    expect(html).toContain(`href="/b/${batchC.body.short_id}"`);
+    expect(html).toContain('reason: retry lighting');
+  });
+
+  it('GET /b/{short_id} shows the representative (first-created) Generation as the thumbnail on parent/child Batch cards', async () => {
+    const { generation: firstGen, batch: parentBatch } = await createGeneration();
+    const parentJob = await createJob(parentBatch.id);
+    // Ingested after firstGen -- proves the card picks creation order, not this later Generation.
+    await ingestGeneration(parentJob.body.id, { seed: 2, original_filename: 'second-gen.png', comfy_output_index: 0 });
+
+    const childBatch = await createBatch({
+      refinement: { source_batch_id: parentBatch.id, actor: 'human', reason: 'retry' },
+    });
+
+    const res = await req(`/b/${childBatch.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain(`href="/b/${parentBatch.short_id}"`);
+    expect(html).toContain(`src="/g/${firstGen.short_id}/image"`);
+    expect(html).toContain('rel-badge rel-refinement');
+  });
+
+  it('GET /gallery nav does not include a Graph link (route stays reachable directly)', async () => {
+    const res = await req('/gallery');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).not.toContain('href="/graph"');
+    expect(html).not.toContain('>Graph<');
+
+    const graphRes = await req('/graph');
+    expect(graphRes.status).toBe(200);
+  });
+});

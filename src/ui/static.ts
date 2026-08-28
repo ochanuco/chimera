@@ -156,6 +156,19 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .card-image-meta { margin: 0; text-align: left; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
+/* Root-scoped jump into Graph View from a detail page heading (the only in-app entry to /graph). */
+.graph-jump {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.graph-jump:hover { color: var(--accent); border-color: var(--accent); }
+
 .copy-id-btn {
   background: none;
   border: none;
@@ -217,6 +230,36 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .rel-badge.rel-reference { background: color-mix(in srgb, var(--graph-reference) 22%, transparent); color: var(--graph-reference); }
 .rel-badge.rel-refinement { background: color-mix(in srgb, var(--graph-relation) 22%, transparent); color: var(--graph-relation); }
 .rel-badge.rel-story { background: color-mix(in srgb, var(--graph-story) 22%, transparent); color: var(--graph-story); }
+
+/* 親/子/兄弟 セクションのサムネイルカード（FamilyCard）。GenerationCard/.card より軽量で横並びに畳める。 */
+.family-strip { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.family-card {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  width: 220px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  text-decoration: none;
+  color: inherit;
+}
+.family-card:hover { border-color: var(--accent); }
+.family-card-thumb { flex: none; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #000; }
+.family-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.family-card-thumb-empty { width: 100%; height: 100%; background: var(--bg); }
+.family-card-body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.family-card-top { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.family-card-caption { font-size: 0.65rem; color: var(--text-dim); }
+.family-card-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; color: var(--text); }
+.family-card-detail {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .tag-add-form { display: flex; gap: 0.3rem; }
 .tag-add-form input {

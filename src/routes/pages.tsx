@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import { getBatchByIdOrShortId, getGenerationByIdOrShortId, resolveBatchShortIds, resolveGenerationShortIds } from '../lib/db';
+import {
+  getBatchByIdOrShortId,
+  getGenerationByIdOrShortId,
+  resolveBatchShortIds,
+  resolveBatchThumbnails,
+  resolveGenerationShortIds,
+} from '../lib/db';
 import { listTagsForTarget } from '../lib/tags';
 import { generationImageUrl } from '../lib/serialize';
 import { listBookmarkedExperiments, listBookmarkedStories } from '../lib/ui-queries';
@@ -98,7 +104,7 @@ pages.get('/b/:shortId', async (c) => {
     ...data.siblings.filter((s) => s.via === 'reference').map((s) => s.shared_id),
   ];
 
-  const [storyNames, generationTags, batchShortIds, generationShortIds] = await Promise.all([
+  const [storyNames, generationTags, batchShortIds, generationShortIds, batchThumbnails] = await Promise.all([
     (async () => {
       const storyIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
       const names: Record<string, string> = {};
@@ -116,6 +122,7 @@ pages.get('/b/:shortId', async (c) => {
     Promise.all(data.generations.map((g) => listTagsForTarget(c.env.DB, 'generation_tags', g.id))),
     resolveBatchShortIds(c.env.DB, referencedBatchIds),
     resolveGenerationShortIds(c.env.DB, referencedGenerationIds),
+    resolveBatchThumbnails(c.env.DB, referencedBatchIds),
   ]);
 
   const generationsWithTags = data.generations.map((g, i) => ({
@@ -129,6 +136,7 @@ pages.get('/b/:shortId', async (c) => {
       storyNames={storyNames}
       batchShortIds={batchShortIds}
       generationShortIds={generationShortIds}
+      batchThumbnails={batchThumbnails}
     />,
   );
 });
