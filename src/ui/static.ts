@@ -149,8 +149,9 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-/* 親の高さが auto だと max-height: 100% は効かないため、img に直接ビューポート基準の上限を課す */
-#thumb-preview img { display: block; max-width: min(40vw, 640px); max-height: calc(80vh - 26px); border-radius: 6px; }
+/* 親の高さが auto だと max-height: 100% は効かないため、img に直接ビューポート基準の上限を課す。
+   26px = 外側マージン 8px×2 + パディング 4px×2 + ボーダー 1px×2（枠ごとビューポートに収める） */
+#thumb-preview img { display: block; max-width: calc(100vw - 26px); max-height: calc(100vh - 26px); border-radius: 6px; }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .card-image-meta { margin: 0; text-align: left; }
