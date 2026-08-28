@@ -105,8 +105,10 @@ GenerationそのものをFamilyCardリンク先にします。
 Refinement=橙、Story=緑）。
 
 親セクションの直前には系譜ミニマップ（Mapセクション）を表示します。画像なし・short_idのみで、このBatch
-自身のBatchRelation連結成分（無向、created_at昇順で1行）と、このBatchが属するStoryごとの全Batch（同じく
-created_at昇順で1行、行ラベルはStory名）を、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの一列で
+自身のBatchReference系譜（行ラベル `References`。材料として遡れる祖先と、このBatchのGenerationを材料に
+した子孫の有向到達集合をBatch単位に集約したもの。無関係な分岐は含まない）、BatchRelation連結成分（行ラベル
+`Retries`、無向）、このBatchが属するStoryごとの全Batch（行ラベルはStory名）を、いずれもcreated_at昇順の
+1行ずつとして、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの一列で
 並べます。現在地（このBatch自身）は角括弧付きで強調しリンクなし、それ以外はBatch Detailへのリンクです。要素
 が2件未満の行は表示せず、全行が該当する場合はMapセクション自体を表示しません。Generation Detailの
 Mapと仕様は共通です。
@@ -215,8 +217,9 @@ Detailと異なり、このGenerationが属するBatch自体のRefinement/Story�
     ③StoryRelationで後続にあたるBatch（バッジ `Story`、Batchカード）
 
 Mapセクションは「Map」の直下、親の直前に表示する系譜ミニマップです。画像なし・short_idのみで、このGenerationが
-属するBatchのBatchRelation連結成分（無向、created_at昇順で1行）と、そのBatchが属するStoryごとの全Batch
-（同じくcreated_at昇順で1行、行ラベルはStory名）を、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの
+属するBatchのBatchReference系譜（行ラベル `References`。材料の祖先と子孫の有向到達集合をBatch単位に集約）、
+BatchRelation連結成分（行ラベル `Retries`、無向）、そのBatchが属するStoryごとの全Batch（行ラベルはStory名）を、
+いずれもcreated_at昇順の1行ずつとして、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの
 一列で並べます。現在地（このGenerationが属するBatch）は角括弧付きで強調しリンクなし、それ以外はBatch
 Detailへのリンクです。要素が2件未満の行（関連Batchなしの行）は表示せず、全行が該当する場合はMapセクション
 自体を表示しません。

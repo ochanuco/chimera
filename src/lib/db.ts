@@ -146,6 +146,44 @@ export async function getStoryChainBatches(db: D1Database, storyId: string): Pro
   return results ?? [];
 }
 
+/**
+ * Reference (material) lineage of `batchId`: its ancestors (Batches whose Generations were used
+ * as material, recursively) and descendants (Batches that used this Batch's Generations,
+ * recursively), rolled up to Batch level via generations.batch_id, plus `batchId` itself.
+ * Directed reachability only -- not the undirected component -- so unrelated branches of a shared
+ * ancestor stay out. Ordered by created_at (a topological order in practice, since material must
+ * exist before the Batch consuming it). Capped at 100 as a runaway-recursion safety net.
+ */
+export async function getReferenceLineageBatches(db: D1Database, batchId: string): Promise<ChainBatch[]> {
+  const { results } = await db
+    .prepare(
+      `WITH RECURSIVE up(id) AS (
+         SELECT ?
+         UNION
+         SELECT g.batch_id
+         FROM up
+         JOIN batch_references br ON br.target_batch_id = up.id
+         JOIN generations g ON g.id = br.source_generation_id
+       ),
+       down(id) AS (
+         SELECT ?
+         UNION
+         SELECT br.target_batch_id
+         FROM down
+         JOIN generations g ON g.batch_id = down.id
+         JOIN batch_references br ON br.source_generation_id = g.id
+       )
+       SELECT b.id, b.short_id, b.created_at
+       FROM batches b
+       JOIN (SELECT id FROM up UNION SELECT id FROM down) c ON c.id = b.id
+       ORDER BY b.created_at ASC, b.id ASC
+       LIMIT 100`,
+    )
+    .bind(batchId, batchId)
+    .all<ChainBatch>();
+  return results ?? [];
+}
+
 export interface Pagination {
   limit: number;
   offset: number;
