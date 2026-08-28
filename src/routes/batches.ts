@@ -313,6 +313,11 @@ batches.get('/', async (c) => {
             bookmark: r.first_gen_bookmark as number,
             character_id: r.first_gen_character_id as string | null,
             created_at: r.first_gen_created_at as string,
+            // Not selected by this listing's join (only the thumbnail_url is used from
+            // the result, not the resolution/size fields) — see BatchRow.tsx.
+            image_width: null,
+            image_height: null,
+            image_size: null,
           },
           org,
         )

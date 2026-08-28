@@ -7,6 +7,17 @@ export interface ImageMeta {
 }
 
 /**
+ * Reads width/height from the PNG signature + IHDR chunk header (offsets 0-24).
+ * Returns null for non-PNG or truncated byte sequences.
+ */
+export function parsePngDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 24 || !PNG_SIGNATURE.every((b, i) => bytes[i] === b)) return null;
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { width: view.getUint32(16, false), height: view.getUint32(20, false) };
+}
+
+/**
  * Reads resolution + size directly from R2 without any D1 schema change, so it
  * works retroactively on every already-ingested image. A ranged get of the
  * first 26 bytes covers the PNG signature (8B) + IHDR chunk header/width/height
@@ -17,16 +28,9 @@ export async function getImageMeta(bucket: R2Bucket, key: string): Promise<Image
   if (!object) return null;
 
   const bytes = new Uint8Array(await object.arrayBuffer());
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const dimensions = parsePngDimensions(bytes);
 
-  let width: number | null = null;
-  let height: number | null = null;
-  if (bytes.length >= 24 && PNG_SIGNATURE.every((b, i) => bytes[i] === b)) {
-    width = view.getUint32(16, false);
-    height = view.getUint32(20, false);
-  }
-
-  return { width, height, size: object.size };
+  return { width: dimensions?.width ?? null, height: dimensions?.height ?? null, size: object.size };
 }
 
 export function formatBytes(size: number): string {
