@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createBatch, createGeneration, createJob, ingestGeneration, postJson, req } from './helpers';
 import { representativeGeneration, type GraphNodeData } from '../src/ui/pages/Graph';
@@ -98,6 +99,93 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('640×480');
+    expect(html).toContain(`${png.byteLength} B`);
+  });
+
+  it('GET /g/{short_id} shows the resolution from D1 columns even when the R2 object is gone', async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
+      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
+      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x00, 0x00, 0x01, 0x00, // width = 256
+      0x00, 0x00, 0x00, 0x80, // height = 128
+      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
+      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+    ]);
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const ingest = await ingestGeneration(
+      job.body.id,
+      { seed: 1, original_filename: 'no-r2-fallback.png', comfy_output_index: 0 },
+      png,
+    );
+    expect(ingest.status).toBe(201);
+
+    // Proves the meta banner comes from the persisted D1 columns, not a fresh
+    // R2 ranged get: getImageMeta would return null width/height (or fail
+    // entirely) once the object is gone.
+    await env.IMAGES.delete(ingest.body.r2_object_key);
+
+    const res = await req(`/g/${ingest.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('256×128');
+    expect(html).toContain(`${png.byteLength} B`);
+  });
+
+  it('GET /g/{short_id} falls back to an R2 read when the D1 image_size column is NULL (pre-backfill row)', async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
+      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
+      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x00, 0x00, 0x00, 0x64, // width = 100
+      0x00, 0x00, 0x00, 0x32, // height = 50
+      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
+      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+    ]);
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const ingest = await ingestGeneration(
+      job.body.id,
+      { seed: 1, original_filename: 'legacy-row.png', comfy_output_index: 0 },
+      png,
+    );
+    expect(ingest.status).toBe(201);
+
+    await env.DB.prepare('UPDATE generations SET image_width = NULL, image_height = NULL, image_size = NULL WHERE id = ?')
+      .bind(ingest.body.id)
+      .run();
+
+    const res = await req(`/g/${ingest.body.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('100×50');
+    expect(html).toContain(`${png.byteLength} B`);
+  });
+
+  it('GET /gallery shows the resolution and formatted file size in the card', async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
+      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
+      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x00, 0x00, 0x03, 0x00, // width = 768
+      0x00, 0x00, 0x03, 0x00, // height = 768
+      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
+      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+    ]);
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const ingest = await ingestGeneration(
+      job.body.id,
+      { seed: 1, original_filename: 'gallery-card-meta.png', comfy_output_index: 0 },
+      png,
+    );
+    expect(ingest.status).toBe(201);
+
+    const res = await req('/gallery?limit=200');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('768×768');
     expect(html).toContain(`${png.byteLength} B`);
   });
 

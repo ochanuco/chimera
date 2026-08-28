@@ -6,11 +6,19 @@ import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { GenerationDetailPage, type GenerationDetailData } from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
-import { getImageMeta } from '../lib/image-meta';
-import type { AppEnv, GenerationAssetRow } from '../types';
+import { getImageMeta, type ImageMeta } from '../lib/image-meta';
+import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 import type { Context } from 'hono';
 
 export const images = new Hono<AppEnv>();
+
+/** Prefers the D1-persisted columns (backfilled or set at ingest) over an R2 ranged get; NULL means a pre-backfill row. */
+async function resolveImageMeta(bucket: R2Bucket, generation: GenerationRow): Promise<ImageMeta | null> {
+  if (generation.image_size !== null) {
+    return { width: generation.image_width, height: generation.image_height, size: generation.image_size };
+  }
+  return getImageMeta(bucket, generation.r2_object_key);
+}
 
 /** Explicit JSON opt-out from the default HTML Generation Detail page. */
 function wantsJson(c: Context): boolean {
@@ -45,7 +53,7 @@ images.get('/:shortId', async (c) => {
   const [detailRes, tagRows, imageMeta] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
-    getImageMeta(c.env.IMAGES, generation.r2_object_key),
+    resolveImageMeta(c.env.IMAGES, generation),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 

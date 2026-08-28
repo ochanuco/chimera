@@ -89,4 +89,50 @@ describe('Generation ingest', () => {
     });
     expect(result.status).toBe(404);
   });
+
+  it('persists image_width/image_height/image_size on the Generation row', async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
+      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
+      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x00, 0x00, 0x02, 0x80, // width = 640
+      0x00, 0x00, 0x01, 0xe0, // height = 480
+      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
+      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+    ]);
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const result = await ingestGeneration(
+      job.body.id,
+      { seed: 1, original_filename: 'meta.png', comfy_output_index: 0 },
+      png,
+    );
+    expect(result.status).toBe(201);
+
+    const row = await env.DB.prepare('SELECT image_width, image_height, image_size FROM generations WHERE id = ?')
+      .bind(result.body.id)
+      .first<{ image_width: number; image_height: number; image_size: number }>();
+    expect(row?.image_width).toBe(640);
+    expect(row?.image_height).toBe(480);
+    expect(row?.image_size).toBe(png.byteLength);
+  });
+
+  it('persists a NULL width/height but a non-NULL image_size for a non-PNG image', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const result = await ingestGeneration(
+      job.body.id,
+      { seed: 1, original_filename: 'not-a-png.bin', comfy_output_index: 0 },
+      bytes,
+    );
+    expect(result.status).toBe(201);
+
+    const row = await env.DB.prepare('SELECT image_width, image_height, image_size FROM generations WHERE id = ?')
+      .bind(result.body.id)
+      .first<{ image_width: number | null; image_height: number | null; image_size: number }>();
+    expect(row?.image_width).toBeNull();
+    expect(row?.image_height).toBeNull();
+    expect(row?.image_size).toBe(bytes.byteLength);
+  });
 });

@@ -154,6 +154,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 #thumb-preview img { display: block; max-width: 100%; max-height: 100%; border-radius: 6px; }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.card-image-meta { margin: 0; text-align: left; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
 
 .rating-group { display: flex; gap: 0.25rem; }

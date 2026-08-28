@@ -67,6 +67,9 @@ export interface GenerationRow {
   original_filename: string | null;
   comfy_output_index: number | null;
   r2_object_key: string;
+  image_width: number | null;
+  image_height: number | null;
+  image_size: number | null;
   note: string | null;
   rating: Rating | null;
   bookmark: number;

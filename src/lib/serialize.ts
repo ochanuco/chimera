@@ -35,7 +35,7 @@ export function serializeBatch(row: BatchRow) {
 
 export type GenerationLightSource = Pick<
   GenerationRow,
-  'id' | 'short_id' | 'rating' | 'bookmark' | 'character_id' | 'created_at'
+  'id' | 'short_id' | 'rating' | 'bookmark' | 'character_id' | 'created_at' | 'image_width' | 'image_height' | 'image_size'
 >;
 
 /** Lightweight Generation representation embedded in Batch/Story responses. */
@@ -50,6 +50,9 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     bookmark: toBool(row.bookmark),
     character_id: row.character_id,
     created_at: row.created_at,
+    image_width: row.image_width,
+    image_height: row.image_height,
+    image_size: row.image_size,
   };
 }
 

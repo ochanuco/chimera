@@ -134,6 +134,9 @@ generations.get('/', async (c) => {
       tags,
       created_at: r.created_at,
       batch_id: r.batch_id,
+      image_width: r.image_width,
+      image_height: r.image_height,
+      image_size: r.image_size,
     };
   });
 

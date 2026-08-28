@@ -5,6 +5,7 @@ import { createUniqueShortId } from '../lib/shortid';
 import { nowIso } from '../lib/db';
 import { badRequest, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
+import { parsePngDimensions } from '../lib/image-meta';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
 export const jobs = new Hono<AppEnv>();
@@ -74,6 +75,10 @@ jobs.post('/:jobId/generations', async (c) => {
   const imageBuffer = await image.arrayBuffer();
   const contentType = image.type || 'image/png';
   const origin = new URL(c.req.url).origin;
+  const dimensions = parsePngDimensions(new Uint8Array(imageBuffer));
+  const imageWidth = dimensions?.width ?? null;
+  const imageHeight = dimensions?.height ?? null;
+  const imageSize = imageBuffer.byteLength;
 
   const respond = (g: Pick<GenerationRow, 'id' | 'short_id' | 'r2_object_key'>, status: 200 | 201) =>
     c.json(
@@ -119,9 +124,9 @@ jobs.post('/:jobId/generations', async (c) => {
     await db
       .prepare(
         `INSERT INTO generations (id, short_id, batch_id, comfy_job_id, character_id, seed, original_filename,
-          comfy_output_index, r2_object_key, note, rating, bookmark, semantic_schema_version, summary,
-          semantic_json, summary_status, summary_model, summary_updated_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
+          comfy_output_index, r2_object_key, image_width, image_height, image_size, note, rating, bookmark,
+          semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
       )
       .bind(
         id,
@@ -133,6 +138,9 @@ jobs.post('/:jobId/generations', async (c) => {
         metadata.original_filename,
         metadata.comfy_output_index,
         r2ObjectKey,
+        imageWidth,
+        imageHeight,
+        imageSize,
         now,
       )
       .run();
