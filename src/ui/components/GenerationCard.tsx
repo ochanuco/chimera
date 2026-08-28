@@ -1,4 +1,5 @@
 import { formatBytes } from '../../lib/image-meta';
+import { CopyIdButton } from './CopyIdButton';
 
 export interface GenerationCardData {
   id: string;
@@ -38,6 +39,7 @@ export function GenerationCard({ g, showCompare = true }: { g: GenerationCardDat
           <a class="short-id-link" href={`/g/${g.short_id}`}>
             {g.short_id}
           </a>
+          <CopyIdButton value={g.short_id} />
           <button
             type="button"
             class="bookmark-btn"

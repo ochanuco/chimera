@@ -1,4 +1,5 @@
 import { Layout } from '../layout';
+import { CopyIdButton } from '../components/CopyIdButton';
 
 export interface StoryRelationData {
   id: string;
@@ -41,6 +42,7 @@ function renderNode(
       <div class="story-node">
         {batch?.representative_generation ? <img src={batch.representative_generation.thumbnail_url} alt="" /> : null}
         <a href={`/b/${batch ? batch.short_id : batchId}`}>{batch ? batch.short_id : batchId}</a>
+        <CopyIdButton value={batch ? batch.short_id : batchId} />
       </div>
       {alreadyVisited || children.length === 0 ? null : (
         <ul>
