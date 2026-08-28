@@ -400,8 +400,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .compare-table .tok-del {
   background: rgba(212, 105, 95, 0.3);
   border-radius: 2px;
-  text-decoration: line-through;
-  text-decoration-color: var(--bad);
 }
 .compare-legend { font-size: 0.75rem; color: var(--text-dim); margin: 0.75rem 0 0.25rem; }
 .compare-legend .tok-add, .compare-legend .tok-del { padding: 0 0.25rem; }

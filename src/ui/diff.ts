@@ -1,6 +1,7 @@
 /**
  * Token-level diff helpers for the Compare page's semantic diff table
- * (GitHub-style word-diff: additions and deletions highlighted inline).
+ * (WinMerge-style per-lane highlighting: each cell shows only its own text,
+ * with the parts that differ from the row's base highlighted).
  */
 
 export type DiffSeg = { text: string; type: 'same' | 'add' | 'del' };
@@ -55,27 +56,6 @@ function lcsOps(base: string[], target: string[]): Op[] {
   return ops;
 }
 
-/** Within each contiguous non-same run, orders deletions before additions (so replacements read as del-then-add). */
-function regroupDelBeforeAdd(ops: Op[]): Op[] {
-  const result: Op[] = [];
-  let i = 0;
-  while (i < ops.length) {
-    if (ops[i]!.type === 'same') {
-      result.push(ops[i]!);
-      i++;
-      continue;
-    }
-    const dels: Op[] = [];
-    const adds: Op[] = [];
-    while (i < ops.length && ops[i]!.type !== 'same') {
-      (ops[i]!.type === 'del' ? dels : adds).push(ops[i]!);
-      i++;
-    }
-    result.push(...dels, ...adds);
-  }
-  return result;
-}
-
 /** Merges adjacent ops of the same type into one segment. */
 function mergeOps(ops: Op[]): DiffSeg[] {
   const merged: DiffSeg[] = [];
@@ -91,33 +71,47 @@ function mergeOps(ops: Op[]): DiffSeg[] {
 }
 
 /**
- * Diffs base tokens against target tokens (target's perspective): tokens only base has are 'del',
- * tokens only target has are 'add', shared tokens are 'same'. Falls back to a coarse whole-value
- * diff when base.length * target.length exceeds DP_PRODUCT_LIMIT, to avoid O(n·m) blowup.
+ * For a non-base cell: diffs base tokens against this cell's own (target) tokens and returns only
+ * the target's own text, with tokens that base lacks marked 'add'. Never emits 'del' — the base's
+ * text is never drawn into a non-base cell. Falls back to a coarse whole-value diff when
+ * base.length * target.length exceeds DP_PRODUCT_LIMIT, to avoid O(n·m) blowup.
  */
-export function diffTokens(base: string[], target: string[]): DiffSeg[] {
+export function addOnlySegments(base: string[], target: string[]): DiffSeg[] {
   if (base.length * target.length > DP_PRODUCT_LIMIT) {
     const baseJoined = base.join('');
     const targetJoined = target.join('');
-    if (baseJoined === targetJoined) return [{ text: targetJoined, type: 'same' }];
-    const segs: DiffSeg[] = [];
-    if (baseJoined) segs.push({ text: baseJoined, type: 'del' });
-    if (targetJoined) segs.push({ text: targetJoined, type: 'add' });
-    return segs;
+    if (!targetJoined) return [];
+    return [{ text: targetJoined, type: baseJoined === targetJoined ? 'same' : 'add' }];
   }
-  return mergeOps(regroupDelBeforeAdd(lcsOps(base, target)));
+  return mergeOps(lcsOps(base, target).filter((op) => op.type !== 'del'));
 }
 
 /**
- * Diffs base items against target items at item granularity (each list entry is one token), for
- * strengths/defects/list-shaped attributes. Each item stays its own segment (not merged with
- * neighbors) so callers can render one item per line; segments other than the last carry a
- * trailing '\n' separator.
+ * For the base cell: returns one boolean per base token, true where that token has no counterpart
+ * in target (i.e. it would render as 'del' against target). Same fallback threshold as
+ * addOnlySegments.
  */
-export function diffList(base: string[], target: string[]): DiffSeg[] {
-  const ops = regroupDelBeforeAdd(lcsOps(base, target));
-  return ops.map((op, idx) => ({
-    type: op.type,
-    text: idx < ops.length - 1 ? `${op.text}\n` : op.text,
-  }));
+export function delMask(base: string[], target: string[]): boolean[] {
+  if (base.length * target.length > DP_PRODUCT_LIMIT) {
+    const differs = base.join('') !== target.join('');
+    return base.map(() => differs);
+  }
+  return lcsOps(base, target)
+    .filter((op) => op.type !== 'add')
+    .map((op) => op.type === 'del');
+}
+
+/** Builds base-cell segments from a delMask (typically the OR of delMask against every other real cell in the row). */
+export function maskToSegments(tokens: string[], mask: boolean[]): DiffSeg[] {
+  const segs: DiffSeg[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const type: DiffSeg['type'] = mask[i] ? 'del' : 'same';
+    const last = segs[segs.length - 1];
+    if (last && last.type === type) {
+      last.text += tokens[i]!;
+    } else {
+      segs.push({ text: tokens[i]!, type });
+    }
+  }
+  return segs;
 }
