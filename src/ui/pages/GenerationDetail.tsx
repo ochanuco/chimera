@@ -1,5 +1,6 @@
 import { Layout } from '../layout';
 import { formatBytes, type ImageMeta } from '../../lib/image-meta';
+import { CopyIdButton } from '../components/CopyIdButton';
 
 export interface GenerationDetailData {
   id: string;
@@ -82,7 +83,9 @@ export function GenerationDetailPage({
           ) : null}
         </div>
         <div class="detail-right">
-          <h1>{data.short_id}</h1>
+          <h1>
+            {data.short_id} <CopyIdButton value={data.short_id} />
+          </h1>
           {data.character ? <p>{data.character.name}</p> : null}
           <div class="card-top-row">
             <div class="rating-group" data-generation-id={data.id} data-current={data.rating ?? ''}>

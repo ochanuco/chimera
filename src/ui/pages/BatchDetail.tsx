@@ -1,5 +1,6 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
+import { CopyIdButton } from '../components/CopyIdButton';
 
 export interface BatchDetailData {
   id: string;
@@ -77,7 +78,9 @@ export function BatchDetailPage({
           )}
         </div>
         <div class="detail-right">
-          <h1>Batch {batch.short_id}</h1>
+          <h1>
+            Batch {batch.short_id} <CopyIdButton value={batch.short_id} />
+          </h1>
           <div class="card-top-row">
             <button
               type="button"
@@ -309,7 +312,9 @@ export function BatchDetailPage({
               <table class="kv-table">
                 {batch.jobs.map((j) => (
                   <tr>
-                    <td>{j.comfy_prompt_id ?? j.id}</td>
+                    <td>
+                      {j.comfy_prompt_id ?? j.id} <CopyIdButton value={j.comfy_prompt_id ?? j.id} />
+                    </td>
                     <td>
                       seed: {j.seed ?? '-'} / status: {j.status}
                     </td>

@@ -156,6 +156,16 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .card-image-meta { margin: 0; text-align: left; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
+.copy-id-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0.1rem 0.15rem;
+  cursor: pointer;
+}
+.copy-id-btn:hover { color: var(--text); }
 
 .rating-group { display: flex; gap: 0.25rem; }
 .rate-btn {
@@ -527,6 +537,34 @@ export const appJs = `
     return ct.indexOf('application/json') !== -1 ? res.json() : null;
   }
 
+  // --- Clipboard helpers (used by copy-id buttons and the Graph context menu) ---
+  function flashCopied(btn, text) {
+    const original = btn.textContent;
+    btn.textContent = text || 'Copied';
+    setTimeout(function () { btn.textContent = original; }, 900);
+  }
+
+  function copyText(text, btn, flashText) {
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        flashCopied(btn, flashText);
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  // --- Copy-id buttons (short_id / prompt_id displays across the app) ---
+  function initCopyIdButtons() {
+    document.addEventListener('click', function (ev) {
+      const btn = ev.target.closest('.copy-id-btn');
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const value = btn.getAttribute('data-copy-id');
+      if (!value) return;
+      copyText(value, btn, '✓');
+    });
+  }
+
   // --- Rating ---
   function initRating() {
     document.addEventListener('click', async function (ev) {
@@ -851,20 +889,6 @@ export const appJs = `
     function closeMenu() {
       menu.classList.add('hidden');
       menu.innerHTML = '';
-    }
-
-    function flashCopied(btn) {
-      const original = btn.textContent;
-      btn.textContent = 'Copied';
-      setTimeout(function () { btn.textContent = original; }, 900);
-    }
-
-    function copyText(text, btn) {
-      try {
-        navigator.clipboard.writeText(text).then(function () {
-          flashCopied(btn);
-        }).catch(function () {});
-      } catch (e) {}
     }
 
     function addItem(label, onClick) {
@@ -1253,6 +1277,7 @@ export const appJs = `
     initGraphSelection();
     initGraphStubs();
     initGraphContextMenu();
+    initCopyIdButtons();
   });
 })();
 `;

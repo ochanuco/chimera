@@ -1,3 +1,5 @@
+import { CopyIdButton } from './CopyIdButton';
+
 export interface BatchRowData {
   id: string;
   short_id: string;
@@ -26,6 +28,7 @@ export function BatchRow({ b }: { b: BatchRowData }) {
           <a class="short-id-link" href={`/b/${b.short_id}`}>
             {b.short_id}
           </a>
+          <CopyIdButton value={b.short_id} />
           <button
             type="button"
             class="bookmark-btn"

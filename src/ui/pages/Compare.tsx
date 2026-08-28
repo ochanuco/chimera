@@ -1,4 +1,5 @@
 import { Layout } from '../layout';
+import { CopyIdButton } from '../components/CopyIdButton';
 
 const NOT_ANALYZED = '(not analyzed)';
 const NO_VALUE = '—';
@@ -110,6 +111,7 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
                 <a class="short-id-link" href={`/g/${item.short_id}`}>
                   {item.short_id}
                 </a>
+                <CopyIdButton value={item.short_id} />
                 <div class="compare-meta">{item.rating ?? NO_VALUE}</div>
                 <div class="compare-meta">{item.character_name ?? NO_VALUE}</div>
               </div>
