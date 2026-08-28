@@ -364,8 +364,9 @@ details.section .section-body { margin-top: 0.6rem; }
   font-size: 0.78rem;
 }
 
-.compare-columns { display: flex; gap: 1rem; flex-wrap: wrap; }
-.compare-col { flex: 1 1 220px; max-width: 320px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
+/* grid の auto-fill で列幅を全行共通にする（flex-wrap だと折り返し後の行だけカードが伸びる） */
+.compare-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); gap: 1rem; }
+.compare-col { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
 .compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; }
 .compare-meta { font-size: 0.8rem; color: var(--text-dim); }
 
