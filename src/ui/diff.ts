@@ -1,10 +1,10 @@
 /**
- * Token-level diff helpers for the Compare page's semantic diff table
- * (WinMerge-style per-lane highlighting: each cell shows only its own text,
- * with the parts that differ from the row's base highlighted).
+ * Token-level diff helpers for the Compare page's semantic diff table (consensus-style: every
+ * lane's own text is shown, with tokens highlighted by how many *other* lanes in the row also
+ * have them — no lane is singled out as a "base").
  */
 
-export type DiffSeg = { text: string; type: 'same' | 'add' | 'del' };
+export type DiffSeg = { text: string; type: 'same' | 'uniq' | 'partial' };
 
 /** Above this base.length * target.length, the O(n·m) LCS DP is skipped in favor of a coarse whole-value diff. */
 const DP_PRODUCT_LIMIT = 200_000;
@@ -16,7 +16,7 @@ export function tokenize(s: string): string[] {
   return s.match(TOKEN_RE) ?? [];
 }
 
-type Op = { type: DiffSeg['type']; text: string };
+type Op = { type: 'same' | 'del' | 'add'; text: string };
 
 /** Backtraces a standard LCS DP table into a same/del/add op per source token, in target order. */
 function lcsOps(base: string[], target: string[]): Op[] {
@@ -56,56 +56,34 @@ function lcsOps(base: string[], target: string[]): Op[] {
   return ops;
 }
 
-/** Merges adjacent ops of the same type into one segment. */
-function mergeOps(ops: Op[]): DiffSeg[] {
-  const merged: DiffSeg[] = [];
-  for (const op of ops) {
-    const last = merged[merged.length - 1];
-    if (last && last.type === op.type) {
-      last.text += op.text;
-    } else {
-      merged.push({ text: op.text, type: op.type });
-    }
-  }
-  return merged;
-}
-
 /**
- * For a non-base cell: diffs base tokens against this cell's own (target) tokens and returns only
- * the target's own text, with tokens that base lacks marked 'add'. Never emits 'del' — the base's
- * text is never drawn into a non-base cell. Falls back to a coarse whole-value diff when
- * base.length * target.length exceeds DP_PRODUCT_LIMIT, to avoid O(n·m) blowup.
+ * Returns one boolean per token, true where that token is part of the pairwise LCS match against
+ * `other` (i.e. it has a counterpart there), false where it's unique to `tokens` against `other`.
+ * Falls back to a coarse whole-value comparison when tokens.length * other.length exceeds
+ * DP_PRODUCT_LIMIT, to avoid O(n·m) blowup: all true if the joined values are equal, all false
+ * otherwise.
  */
-export function addOnlySegments(base: string[], target: string[]): DiffSeg[] {
-  if (base.length * target.length > DP_PRODUCT_LIMIT) {
-    const baseJoined = base.join('');
-    const targetJoined = target.join('');
-    if (!targetJoined) return [];
-    return [{ text: targetJoined, type: baseJoined === targetJoined ? 'same' : 'add' }];
+export function matchMask(tokens: string[], other: string[]): boolean[] {
+  if (tokens.length * other.length > DP_PRODUCT_LIMIT) {
+    const same = tokens.join('') === other.join('');
+    return tokens.map(() => same);
   }
-  return mergeOps(lcsOps(base, target).filter((op) => op.type !== 'del'));
-}
-
-/**
- * For the base cell: returns one boolean per base token, true where that token has no counterpart
- * in target (i.e. it would render as 'del' against target). Same fallback threshold as
- * addOnlySegments.
- */
-export function delMask(base: string[], target: string[]): boolean[] {
-  if (base.length * target.length > DP_PRODUCT_LIMIT) {
-    const differs = base.join('') !== target.join('');
-    return base.map(() => differs);
-  }
-  return lcsOps(base, target)
+  return lcsOps(tokens, other)
     .filter((op) => op.type !== 'add')
-    .map((op) => op.type === 'del');
+    .map((op) => op.type === 'same');
 }
 
-/** Builds base-cell segments from a delMask (typically the OR of delMask against every other real cell in the row). */
-export function maskToSegments(tokens: string[], mask: boolean[]): DiffSeg[] {
+/**
+ * Builds consensus segments for one lane's tokens: for each token, matchCounts[i] is how many of
+ * the row's other lanes it matched against (0..othersCount). A token matching every other lane is
+ * 'same' (plain), matching none is 'uniq' (lane-specific), anything in between is 'partial'.
+ * Adjacent tokens of the same resulting type are merged into one segment.
+ */
+export function consensusSegments(tokens: string[], matchCounts: number[], othersCount: number): DiffSeg[] {
   const segs: DiffSeg[] = [];
   for (let i = 0; i < tokens.length; i++) {
-    const type: DiffSeg['type'] = mask[i] ? 'del' : 'same';
+    const count = matchCounts[i]!;
+    const type: DiffSeg['type'] = count === othersCount ? 'same' : count === 0 ? 'uniq' : 'partial';
     const last = segs[segs.length - 1];
     if (last && last.type === type) {
       last.text += tokens[i]!;
