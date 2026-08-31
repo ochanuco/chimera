@@ -1156,3 +1156,45 @@ describe('Experiment run patch delta edge cases', () => {
     expect(html).toContain('soften edges');
   });
 });
+
+describe('Experiment run patch delta matching', () => {
+  async function experimentWithRuns(runs: unknown[]) {
+    const experiment = await postJson<{ id: string; short_id: string }>('/api/v1/experiments', {
+      name: `ui-exp-match-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    let parentId: string | null = null;
+    for (const overrides of runs) {
+      const body: Record<string, unknown> = { overrides };
+      if (parentId) body.parent_run_id = parentId;
+      const created = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.body.id}/runs`, body);
+      parentId = created.body.id;
+    }
+    const res = await req(`/experiments/${experiment.body.short_id}`);
+    return await res.text();
+  }
+
+  const cfg = { target: 'render.cfg', op: 'set', value: 4.5, reason: 'soften edges' };
+  const socks = { target: 'prompt.positive', op: 'append', value: ', socks', reason: 'sock cuff' };
+
+  it('marks nothing as added on the first run, since it has no base to differ from', async () => {
+    const html = await experimentWithRuns([{ patches: [cfg] }]);
+    expect(html).toContain('Initial overrides');
+    expect(html).toContain('soften edges');
+    expect(html).not.toContain('exp-delta-added');
+  });
+
+  it('keeps duplicate patches distinct instead of collapsing them into one', async () => {
+    // base に同じ patch が2件、次の Run に1件。差し引き1件が removed になる。
+    const html = await experimentWithRuns([{ patches: [cfg, cfg] }, { patches: [cfg] }]);
+    const removedCount = html.split('exp-delta-removed').length - 1;
+    expect(removedCount).toBe(1);
+  });
+
+  it('falls back to the leaf diff when the base run is not patch-shaped', async () => {
+    const html = await experimentWithRuns([{ controlnet: { weight: 0.6 } }, { patches: [socks] }]);
+    // patch リストとして突き合わせず、leaf diff の path 表記が出る。
+    expect(html).toContain('controlnet.weight');
+    expect(html).toContain('patches');
+    expect(html).not.toContain('exp-delta-kept');
+  });
+});

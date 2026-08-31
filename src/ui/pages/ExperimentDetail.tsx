@@ -171,14 +171,38 @@ function renderPatchLine(patch: Patch, marker: 'added' | 'removed' | 'kept') {
  * unreadable "patches[] changed" entry. Instead show this run's patch list
  * directly, marking each line against the base run's list by JSON identity.
  */
-function renderPatchDelta(runPatches: Patch[], basePatches: Patch[], label: string) {
-  const baseKeys = new Set(basePatches.map((p) => JSON.stringify(p)));
-  const runKeys = new Set(runPatches.map((p) => JSON.stringify(p)));
-  const kept = runPatches.map((p) => renderPatchLine(p, baseKeys.has(JSON.stringify(p)) ? 'kept' : 'added'));
-  // patch を全部外した Run も「前回からの変更」なので、removed 行だけが残る場合は
-  // それを出す。空表示は両方空（= 実際に何も変えていない）ときだけ。
-  const removed = basePatches.filter((p) => !runKeys.has(JSON.stringify(p))).map((p) => renderPatchLine(p, 'removed'));
-  const lines = [...kept, ...removed];
+function countByKey(patches: Patch[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const patch of patches) {
+    const key = JSON.stringify(patch);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * `basePatches` が null のときは比較相手のない最初の Run。その patch は
+ * 「前回からの追加」ではないので marker を付けない。
+ * 同一 patch が複数入りうるので Set ではなく多重集合として突き合わせる。
+ * patch を全部外した Run も変更なので、removed 行だけが残る場合はそれを出す。
+ */
+function renderPatchDelta(runPatches: Patch[], basePatches: Patch[] | null, label: string) {
+  const remaining = countByKey(basePatches ?? []);
+  const lines = runPatches.map((patch) => {
+    if (!basePatches) return renderPatchLine(patch, 'kept');
+    const key = JSON.stringify(patch);
+    const left = remaining.get(key) ?? 0;
+    if (left === 0) return renderPatchLine(patch, 'added');
+    remaining.set(key, left - 1);
+    return renderPatchLine(patch, 'kept');
+  });
+  for (const patch of basePatches ?? []) {
+    const key = JSON.stringify(patch);
+    const left = remaining.get(key) ?? 0;
+    if (left === 0) continue;
+    remaining.set(key, left - 1);
+    lines.push(renderPatchLine(patch, 'removed'));
+  }
   return (
     <div class="exp-delta">
       <div class="exp-delta-label">{label}</div>
@@ -192,8 +216,12 @@ function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
   const label = base ? `Changed from #${base.run_index}` : 'Initial overrides';
   const runPatches = readPatches(run.overrides);
   if (runPatches) {
-    const basePatches = base ? (readPatches(base.overrides) ?? []) : [];
-    return renderPatchDelta(runPatches, basePatches, label);
+    // base が patch 形式でないなら比較軸が違う。patch リストとして突き合わせると
+    // base 側の中身が全部消えたように見えるので、その組み合わせは leaf diff に落とす。
+    const basePatches = base ? readPatches(base.overrides) : null;
+    if (!base || basePatches) {
+      return renderPatchDelta(runPatches, basePatches, label);
+    }
   }
   const entries = diffOverrides(base ? base.overrides : {}, run.overrides);
   return (
