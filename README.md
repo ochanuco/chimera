@@ -17,6 +17,7 @@ ComfyUI で生成した画像を、単なる置き場ではなく生成探索の
 | `/bookmarks` | Bookmark した Generation / Batch / Story / Experiment |
 | `/compare?ids=a,b` | 2〜9枚比較。aspect を選んで Claude へ渡す指示テキストを生成・コピー |
 | `/graph` | 生成履歴全体の Graph 表示。Reference / Refinement / Story の3種のエッジを視覚的に区別、パン/ズーム可能 |
+| `/experiments`, `/experiments/{short_id}` | Experiment の一覧・詳細。Run ごとの override 差分・評価・Promotion を表示 |
 
 ### API
 
@@ -29,6 +30,8 @@ POST /api/v1/jobs/{id}/generations        # 画像 ingest（multipart: metadata 
 GET  /api/v1/generations?character=...    # 検索
 GET  /api/v1/generations/{id}/context     # Claude 向け軽量 context
 PUT  /api/v1/generations/{id}/semantic    # semantic metadata 保存
+POST /api/v1/experiments/{id}/runs        # 検証試行の記録（overrides / evaluation / decision）
+POST /api/v1/experiments/{id}/promotions  # 安定条件を comfyui-recipes へ昇格する記録
 ```
 
 Batch / Job 作成と ingest は冪等（同一 idempotency_key / 同一 (job, output_index) の再送は既存を返す）。

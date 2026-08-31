@@ -11,12 +11,54 @@ export type Rating = 'bad' | 'neutral' | 'good';
 export type Actor = 'human' | 'claude';
 export type CreatedBy = 'human' | 'claude';
 
+export type ExperimentStatus = 'active' | 'stabilized' | 'promoted' | 'abandoned';
+export type PromotionStatus = 'proposed' | 'applied' | 'rejected';
+
 export interface ExperimentRow {
   id: string;
+  short_id: string;
   name: string;
+  description: string | null;
   note: string | null;
+  status: ExperimentStatus;
+  base_recipe: string | null;
+  character_id: string | null;
   bookmark: number;
   created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface ExperimentRunRow {
+  id: string;
+  experiment_id: string;
+  run_index: number;
+  parent_run_id: string | null;
+  batch_id: string | null;
+  generation_id: string | null;
+  overrides_json: string;
+  objective: string | null;
+  evaluation_json: string | null;
+  decision_json: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExperimentPromotionRow {
+  id: string;
+  experiment_id: string;
+  source_run_id: string | null;
+  promoted_overrides_json: string;
+  status: PromotionStatus;
+  target_repository: string;
+  target_path: string | null;
+  commit_sha: string | null;
+  pull_request_url: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }
 
 export interface BatchRow {

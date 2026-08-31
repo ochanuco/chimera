@@ -20,6 +20,9 @@ import { BatchesPage } from '../ui/pages/Batches';
 import { BatchDetailPage, type BatchDetailData } from '../ui/pages/BatchDetail';
 import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
+import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
+import { EXPERIMENT_STATUSES } from '../lib/experiment-status';
+import { ExperimentDetailPage, type ExperimentDetailData } from '../ui/pages/ExperimentDetail';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { GraphPage, type GraphNodeData, type GraphEdgeData, type GraphStoryOption, type GraphScope } from '../ui/pages/Graph';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
@@ -204,6 +207,33 @@ pages.get('/stories/:id', async (c) => {
   }
   const data = (await res.json()) as StoryDetailData;
   return c.html(<StoryDetailPage story={data} />);
+});
+
+pages.get('/experiments', async (c) => {
+  // 未知の status をそのまま転送すると API が 400 を返し、一覧が描画できなくなる。
+  // GUI のフィルタなので、候補外の値は指定なしとして扱う。
+  const statusParam = c.req.query('status');
+  const status = statusParam && (EXPERIMENT_STATUSES as readonly string[]).includes(statusParam)
+    ? statusParam
+    : undefined;
+  const bookmarkOnly = c.req.query('bookmark') === 'true';
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (bookmarkOnly) params.set('bookmark', 'true');
+
+  const res = await internalApiRequest(c, `/api/v1/experiments?${params.toString()}`);
+  const data = (await res.json()) as { items: ExperimentListItem[] };
+  return c.html(<ExperimentsPage items={data.items} status={status} />);
+});
+
+pages.get('/experiments/:id', async (c) => {
+  const id = c.req.param('id');
+  const res = await internalApiRequest(c, `/api/v1/experiments/${id}`);
+  if (res.status === 404) {
+    return c.html(<NotFoundPage what="Experiment" />, 404);
+  }
+  const data = (await res.json()) as ExperimentDetailData;
+  return c.html(<ExperimentDetailPage experiment={data} />);
 });
 
 pages.get('/bookmarks', async (c) => {

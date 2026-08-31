@@ -627,6 +627,91 @@ details.section .section-body { margin-top: 0.6rem; }
   stroke-width: var(--graph-edge-stroke, 4px);
   stroke-linejoin: round;
 }
+
+/* Experiments */
+.status-badge {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--neutral) 22%, transparent);
+  color: var(--neutral);
+}
+.status-badge[data-value="active"] { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.status-badge[data-value="stabilized"] { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+.status-badge[data-value="promoted"] { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+.status-badge[data-value="abandoned"] { background: color-mix(in srgb, var(--text-dim) 22%, transparent); color: var(--text-dim); }
+.status-badge[data-value="pass"] { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+.status-badge[data-value="fail"] { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+.status-badge[data-value="proposed"] { background: color-mix(in srgb, var(--neutral) 22%, transparent); color: var(--neutral); }
+.status-badge[data-value="applied"] { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+.status-badge[data-value="rejected"] { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+
+.exp-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: var(--text-dim); }
+.exp-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; }
+
+.exp-status-row { margin: 0.5rem 0 1rem; }
+.exp-status-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.exp-run {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.9rem;
+  background: var(--bg-elevated);
+}
+.exp-run-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.exp-run-index { font-weight: 600; }
+.exp-run-objective { color: var(--text-dim); font-size: 0.85rem; }
+
+.exp-delta { font-size: 0.8rem; margin-bottom: 0.5rem; }
+.exp-delta-label { color: var(--text-dim); margin-bottom: 0.2rem; }
+.exp-delta-line { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.exp-delta-path { color: var(--text-dim); }
+.exp-delta-added { color: var(--good); }
+.exp-delta-removed { color: var(--bad); }
+.exp-delta-changed { color: var(--accent); }
+.exp-delta-empty { color: var(--text-dim); font-style: italic; }
+
+.exp-run-thumb { display: flex; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }
+.exp-run-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: #000; }
+.exp-run-batch-link { font-size: 0.82rem; }
+
+.exp-evaluation, .exp-decision { margin-top: 0.6rem; font-size: 0.85rem; }
+.exp-evaluation-head, .exp-decision-head { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; margin-bottom: 0.3rem; }
+.exp-aspects { margin-bottom: 0.3rem; }
+.exp-notes { margin: 0.2rem 0; padding-left: 1.2rem; color: var(--text-dim); }
+.exp-decision-action {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.exp-decision-reason { color: var(--text-dim); margin: 0.2rem 0; }
+
+.exp-promotion {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.9rem;
+  background: var(--bg-elevated);
+}
+.exp-promotion-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.exp-promotion-target { font-weight: 600; }
+.exp-promotion-meta { color: var(--text-dim); font-size: 0.78rem; }
 `;
 
 export const appJs = `
@@ -738,6 +823,25 @@ export const appJs = `
         btn.setAttribute('data-bookmarked', bookmarked ? 'false' : 'true');
       } catch (e) {
         alert('bookmark update failed: ' + e.message);
+      }
+    });
+  }
+
+  // --- Experiment status transition ---
+  function initExperimentStatus() {
+    document.addEventListener('change', async function (ev) {
+      const select = ev.target.closest('.exp-status-select');
+      if (!select) return;
+      const id = select.getAttribute('data-id');
+      const previous = select.getAttribute('data-current');
+      const next = select.value;
+      try {
+        await api('/api/v1/experiments/' + id, 'PATCH', { status: next });
+        select.setAttribute('data-current', next);
+        location.reload();
+      } catch (e) {
+        alert('status update failed: ' + e.message);
+        select.value = previous;
       }
     });
   }
@@ -1459,6 +1563,7 @@ export const appJs = `
     initGraphContextMenu();
     initCopyIdButtons();
     initCompareCols();
+    initExperimentStatus();
   });
 })();
 `;

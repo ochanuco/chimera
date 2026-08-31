@@ -1,5 +1,16 @@
 import { toBool } from './db';
-import type { BatchRow, ComfyJobRow, GenerationAssetRow, GenerationRow, StoryRow, StoryRelationRow } from '../types';
+import { parseJsonObject, parseJsonObjectOrNull } from './overrides';
+import type {
+  BatchRow,
+  ComfyJobRow,
+  ExperimentPromotionRow,
+  ExperimentRow,
+  ExperimentRunRow,
+  GenerationAssetRow,
+  GenerationRow,
+  StoryRow,
+  StoryRelationRow,
+} from '../types';
 
 export function canonicalGenerationUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}`;
@@ -113,5 +124,58 @@ export function serializeStoryRelation(row: StoryRelationRow) {
     generated_by: row.generated_by,
     created_at: row.created_at,
     updated_at: row.updated_at,
+  };
+}
+
+export function serializeExperiment(row: ExperimentRow) {
+  return {
+    id: row.id,
+    short_id: row.short_id,
+    name: row.name,
+    description: row.description,
+    note: row.note,
+    status: row.status,
+    base_recipe: row.base_recipe,
+    character_id: row.character_id,
+    bookmark: toBool(row.bookmark),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    completed_at: row.completed_at,
+  };
+}
+
+export function serializeExperimentRun(row: ExperimentRunRow) {
+  return {
+    id: row.id,
+    experiment_id: row.experiment_id,
+    run_index: row.run_index,
+    parent_run_id: row.parent_run_id,
+    batch_id: row.batch_id,
+    generation_id: row.generation_id,
+    overrides: parseJsonObject(row.overrides_json),
+    objective: row.objective,
+    evaluation: parseJsonObjectOrNull(row.evaluation_json),
+    decision: parseJsonObjectOrNull(row.decision_json),
+    note: row.note,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+export function serializeExperimentPromotion(row: ExperimentPromotionRow) {
+  return {
+    id: row.id,
+    experiment_id: row.experiment_id,
+    source_run_id: row.source_run_id,
+    promoted_overrides: parseJsonObject(row.promoted_overrides_json),
+    status: row.status,
+    target_repository: row.target_repository,
+    target_path: row.target_path,
+    commit_sha: row.commit_sha,
+    pull_request_url: row.pull_request_url,
+    note: row.note,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    completed_at: row.completed_at,
   };
 }

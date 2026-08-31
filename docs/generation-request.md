@@ -152,6 +152,27 @@ Story上の続きの場合のみ指定します。
 
 `label` / `description` はClaudeが人間の会話から生成します。
 
+## experiment（Version 2）
+
+ExperimentRun の override を生成要求へ渡すためのブロックです。
+
+``` json
+{
+  "experiment": {
+    "experiment_id": "...",
+    "run_id": "...",
+    "overrides": {}
+  }
+}
+```
+
+`overrides` は chimera の ExperimentRun が持つ差分をそのまま渡します。これを読んで
+base recipe へ override を適用する責務は comfyui-recipes 側の `scripts/generate.py`
+にあります。
+
+`experiment` は既存の `references` / `refinement` / `story` と同様、キー省略と明示
+`null` のどちらも「該当なし」として受理します。
+
 ## Seeds
 
 通常はClaude Codeがseedを決定しません。
@@ -196,5 +217,7 @@ CLI は schema validation 後、Batch作成からDiscord通知までを実行し
 -   `seeds` 指定時は `len(seeds) == count`。
 -   Reference の `generation_id` はManagement APIで存在確認する。
 -   refinement source と story previous batch は存在確認する。
+-   experiment の `experiment_id` / `run_id` はManagement APIで存在確認し、
+    `run_id` が `experiment_id` に属することも確認する。
 -   同じ実行を再送しても重複Batchを作らないよう idempotency key
     を内部生成・保持する。

@@ -1,5 +1,5 @@
 import { isUuid } from './uuidv7';
-import type { BatchRow, GenerationRow } from '../types';
+import type { BatchRow, ExperimentRow, GenerationRow } from '../types';
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -35,6 +35,18 @@ export async function getGenerationByIdOrShortId(
     .prepare(`SELECT * FROM generations WHERE ${column} = ?`)
     .bind(idOrShortId)
     .first<GenerationRow>();
+}
+
+/** Resolves an Experiment by its UUID or short_id (path {id} accepts both). */
+export async function getExperimentByIdOrShortId(
+  db: D1Database,
+  idOrShortId: string,
+): Promise<ExperimentRow | null> {
+  const column = isUuid(idOrShortId) ? 'id' : 'short_id';
+  return db
+    .prepare(`SELECT * FROM experiments WHERE ${column} = ?`)
+    .bind(idOrShortId)
+    .first<ExperimentRow>();
 }
 
 /** Resolves short_ids for a set of Batch UUIDs, for display in reference links. Missing ids are simply absent from the result. */

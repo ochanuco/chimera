@@ -2,10 +2,16 @@
 
 ## System Context
 
+chimera は Generation Experiment Orchestrator です。semantic
+な判断主体は Claude Code / Agent / Human のいずれでもよく、ComfyUI
+workflow の構築・実行責務は comfyui-recipes に残します。chimera
+は Experiment / provenance / evaluation / decision / promotion
+を管理します。
+
 ``` text
 Human
   ↓
-Claude Code
+semantic 判断主体 (Claude Code / Agent / Human)
   ↓ request.json
 Python CLI / comfyui-recipes
   ├── ComfyUI API
@@ -24,13 +30,12 @@ Discord
 
 ### Human
 
--   Claude Code と自然言語で対話する。
+-   semantic 判断主体（Claude Code / Agent）と自然言語で対話する。
 -   Discord / Web GUI で生成結果を確認する。
 -   Rating、Tag、Bookmark、Note を必要に応じて編集する。
--   複数 Generation の「ポーズ」「服装」などを選択し、Claude
-    に再生成を依頼する。
+-   複数 Generation の「ポーズ」「服装」などを選択し、再生成を依頼する。
 
-### Claude Code
+### semantic 判断主体（Claude Code / Agent / Human）
 
 semantic な判断を担当します。
 
@@ -42,6 +47,13 @@ semantic な判断を担当します。
 -   必要に応じて生成画像を検品する。
 -   `request.json` を生成し Python CLI を実行する。
 -   後から Generation の semantic metadata を生成・更新する。
+-   Experiment の override を提案・変更する。
+-   evaluation・decision を記録する。
+-   Promotion を提案する。
+
+recipe のコードは直接書き換えません。comfyui-recipes への反映は
+Promotion として提案し、実際のコード変更は別途 comfyui-recipes
+側のPRとして行われます。
 
 ### Python CLI
 
@@ -61,6 +73,7 @@ semantic な判断を担当します。
 -   D1 の整合性を管理する。
 -   R2 へ画像を保存する。
 -   Generation / Batch / Story / Tag 等を永続化する。
+-   Experiment / ExperimentRun / Promotion を永続化し、提供する。
 -   canonical URL と Claude 向け semantic context を提供する。
 -   Web GUI の Read / Mutation API を提供する。
 -   LLM 固有処理は持たない。
@@ -72,6 +85,9 @@ semantic な判断を担当します。
 -   Tag / Rating / Bookmark / Note を編集する。
 -   Story / Provenance を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
+-   Experiment 一覧・詳細を閲覧する。
+
+chimera は ComfyUI へ生成要求を送りません。
 
 ## Storage
 
@@ -82,6 +98,8 @@ semantic な判断を担当します。
 主な対象:
 
 -   Experiment
+-   ExperimentRun
+-   ExperimentPromotion
 -   Batch
 -   ComfyJob
 -   Generation
@@ -144,6 +162,8 @@ UI / Discord / Claude で扱いやすい short ID を別途持ち、canonical UR
 /g/abc123
 /b/def456
 ```
+
+Experiment の short ID は `/experiments/{short_id}` の形で使います。
 
 ComfyUI の prompt/job ID は外部識別子として保持します。
 

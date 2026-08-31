@@ -75,7 +75,7 @@ export function BookmarksPage({
           <ul>
             {experiments.map((e) => (
               <li>
-                {e.name} ({e.created_at})
+                <a href={`/experiments/${e.id}`}>{e.name}</a> ({e.created_at})
               </li>
             ))}
           </ul>

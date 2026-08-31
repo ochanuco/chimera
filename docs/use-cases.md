@@ -201,3 +201,92 @@ file yk-lineT3_00001_.png
 
 `comfy_prompt_id` + `original_filename`
 等からGenerationを検索できるようにします。
+
+## UC-15: overrideを変えながら検証を反復する
+
+人間 / Claude / Agent いずれかが検証テーマとして Experiment
+を作成します。
+
+``` text
+POST /api/v1/experiments
+```
+
+Runを作成し、overrideを添えて生成を実行します。
+
+``` text
+POST /api/v1/experiments/{id}/runs
+```
+
+生成完了後、対応する Batch / Generation を Run へ紐付けます。
+
+``` text
+PATCH /api/v1/experiment-runs/{run_id}
+```
+
+結果を評価し、次の一手を decision として記録します。
+
+``` text
+PATCH /api/v1/experiment-runs/{run_id}
+```
+
+``` json
+{
+  "evaluation": { "overall": "fail" },
+  "decision": { "action": "retry", "next_overrides": { "...": "..." } }
+}
+```
+
+decisionのnext_overridesを踏まえ、`parent_run_id`
+に前Runを指定して次のRunを作成します。安定するまで繰り返します。
+
+## UC-16: 安定した条件をcomfyui-recipesへ昇格する
+
+反復の結果、条件が安定したらExperimentを`stabilized`にします。
+
+``` text
+PATCH /api/v1/experiments/{id}
+```
+
+``` json
+{ "status": "stabilized" }
+```
+
+安定したRunをsource_run_idに指定し、Promotionを作成します。
+
+``` text
+POST /api/v1/experiments/{id}/promotions
+```
+
+comfyui-recipes側への反映後、commit SHA / PR URLを記録し、applied
+に確定します。
+
+``` text
+PATCH /api/v1/promotions/{promotion_id}
+```
+
+``` json
+{
+  "status": "applied",
+  "commit_sha": "a1b2c3d",
+  "pull_request_url": "https://github.com/.../pull/12"
+}
+```
+
+## UC-17: AgentがExperimentサイクルを回す
+
+Agent が Git リポジトリへの書き込み権限を持たなくても、以下がAPIだけで完結します。
+
+``` text
+GET   /api/v1/experiments/{id}          # Experiment取得（過去Run込み）
+GET   /api/v1/generations/{id}/context  # 参照するGenerationのcontext取得
+POST  /api/v1/experiments/{id}/runs     # override決定→Run作成
+PATCH /api/v1/experiment-runs/{run_id}  # 生成結果の紐付け、evaluation/decision保存
+POST  /api/v1/experiments/{id}/promotions  # 必要ならPromotion提案
+```
+
+Agentが通常操作してはいけないもの:
+
+-   comfyui-recipesの任意ファイル編集
+-   recipe自体の直接変更
+-   既存Experiment履歴の破壊的変更
+-   過去Runの削除
