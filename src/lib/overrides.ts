@@ -26,12 +26,22 @@ function isPlainObject(value: unknown): value is JsonObject {
 }
 
 /**
+ * `.` はパス区切りに使うので、キー自身に含まれる `\` と `.` はエスケープしてから
+ * join する。これがないと `{"a.b":1}` と `{"a":{"b":2}}` が同じ `a.b` に潰れて
+ * Map 上で衝突する。表示用の文字列なので JSON Pointer 等には寄せず読みやすさを保つ。
+ */
+function escapeKeySegment(key: string): string {
+  return key.replace(/\\/g, '\\\\').replace(/\./g, '\\.');
+}
+
+/**
  * Flattens nested objects into `a.b.c` -> leaf. 配列は葉として扱う（要素単位の
  * 差分は出さず、配列まるごとを1つの変更として見せる）。空オブジェクトも葉。
  */
 function flatten(value: JsonObject, prefix = '', out = new Map<string, unknown>()): Map<string, unknown> {
   for (const [key, child] of Object.entries(value)) {
-    const path = prefix ? `${prefix}.${key}` : key;
+    const segment = escapeKeySegment(key);
+    const path = prefix ? `${prefix}.${segment}` : segment;
     if (isPlainObject(child) && Object.keys(child).length > 0) {
       flatten(child, path, out);
     } else {

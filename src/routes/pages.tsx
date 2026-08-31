@@ -21,6 +21,7 @@ import { BatchDetailPage, type BatchDetailData } from '../ui/pages/BatchDetail';
 import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
+import { EXPERIMENT_STATUSES } from '../lib/experiment-status';
 import { ExperimentDetailPage, type ExperimentDetailData } from '../ui/pages/ExperimentDetail';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { GraphPage, type GraphNodeData, type GraphEdgeData, type GraphStoryOption, type GraphScope } from '../ui/pages/Graph';
@@ -209,7 +210,12 @@ pages.get('/stories/:id', async (c) => {
 });
 
 pages.get('/experiments', async (c) => {
-  const status = c.req.query('status') || undefined;
+  // 未知の status をそのまま転送すると API が 400 を返し、一覧が描画できなくなる。
+  // GUI のフィルタなので、候補外の値は指定なしとして扱う。
+  const statusParam = c.req.query('status');
+  const status = statusParam && (EXPERIMENT_STATUSES as readonly string[]).includes(statusParam)
+    ? statusParam
+    : undefined;
   const bookmarkOnly = c.req.query('bookmark') === 'true';
   const params = new URLSearchParams();
   if (status) params.set('status', status);

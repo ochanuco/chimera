@@ -312,6 +312,14 @@ describe('Guardrails', () => {
     const res = await del(`/api/v1/experiment-runs/${run.body.id}`);
     expect(res.status).toBe(404);
   });
+
+  it('400s GET /api/v1/experiments?status= with an invalid status, 200s with a valid one', async () => {
+    const invalid = await getJson('/api/v1/experiments?status=stabilised');
+    expect(invalid.status).toBe(400);
+
+    const valid = await getJson<{ items: unknown[] }>('/api/v1/experiments?status=stabilized');
+    expect(valid.status).toBe(200);
+  });
 });
 
 describe('Experiment status transitions', () => {
@@ -450,6 +458,37 @@ describe('Promotion', () => {
 
     const list = await getJson<{ items: Promotion[] }>(`/api/v1/experiments/${exp.body.id}/promotions`);
     expect(list.body.items).toHaveLength(2);
+  });
+
+  it('400s creating a promotion with a javascript: pull_request_url, 201s with an https URL that round-trips', async () => {
+    const exp = await createExperiment();
+
+    const bad = await postJson(`/api/v1/experiments/${exp.body.id}/promotions`, {
+      pull_request_url: 'javascript:alert(1)',
+    });
+    expect(bad.status).toBe(400);
+
+    const good = await postJson<Promotion>(`/api/v1/experiments/${exp.body.id}/promotions`, {
+      pull_request_url: 'https://github.com/example/repo/pull/2',
+    });
+    expect(good.status).toBe(201);
+    expect(good.body.pull_request_url).toBe('https://github.com/example/repo/pull/2');
+  });
+
+  it('400s patching a promotion with a javascript: pull_request_url, 200s with an https URL that round-trips', async () => {
+    const exp = await createExperiment();
+    const promo = await postJson<Promotion>(`/api/v1/experiments/${exp.body.id}/promotions`, {});
+
+    const bad = await postJson(`/api/v1/promotions/${promo.body.id}`, { pull_request_url: 'javascript:alert(1)' }, 'PATCH');
+    expect(bad.status).toBe(400);
+
+    const good = await postJson<Promotion>(
+      `/api/v1/promotions/${promo.body.id}`,
+      { pull_request_url: 'https://github.com/example/repo/pull/3' },
+      'PATCH',
+    );
+    expect(good.status).toBe(200);
+    expect(good.body.pull_request_url).toBe('https://github.com/example/repo/pull/3');
   });
 });
 

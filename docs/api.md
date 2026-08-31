@@ -185,6 +185,8 @@ limit
 offset
 ```
 
+`status` に候補外の値を渡すと400です。
+
 `updated_at` DESC順です。Run / Promotion の作成・更新でも Experiment
 の `updated_at` が進みます。
 
@@ -407,6 +409,9 @@ PATCH /api/v1/promotions/{promotion_id}
   "pull_request_url": "https://github.com/.../pull/12"
 }
 ```
+
+`pull_request_url` は `http` / `https` のみ受け付けます。保存値は Web GUI の
+リンクとして描画されるため、実行可能なスキームを保存時点で弾きます。
 
 409のケース:
 

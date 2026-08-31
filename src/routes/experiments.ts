@@ -6,6 +6,7 @@ import {
   updateExperimentRunSchema,
   createPromotionSchema,
   updatePromotionSchema,
+  experimentStatusSchema,
 } from '../schemas/experiments';
 import { assignTagSchema } from '../schemas/tags';
 import { isUuid, uuidv7 } from '../lib/uuidv7';
@@ -18,6 +19,7 @@ import {
   resolveBatchThumbnails,
 } from '../lib/db';
 import { createUniqueShortId } from '../lib/shortid';
+import { EXPERIMENT_STATUS_TRANSITIONS } from '../lib/experiment-status';
 import { assignTag, listTagsForTarget, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, conflict, notFound } from '../lib/errors';
@@ -33,7 +35,6 @@ import type {
   ExperimentPromotionRow,
   ExperimentRow,
   ExperimentRunRow,
-  ExperimentStatus,
   GenerationRow,
   PromotionStatus,
 } from '../types';
@@ -47,18 +48,6 @@ export const promotions = new Hono<AppEnv>();
 function origin(c: { req: { url: string } }): string {
   return new URL(c.req.url).origin;
 }
-
-/**
- * 検証テーマとしての Experiment の状態遷移。`active` を離れた時点で
- * `completed_at` が立ち、`active` へ戻すと消える（再開できる）。
- * `stabilized -> promoted` では最初に完了した時刻を保つ。
- */
-const EXPERIMENT_STATUS_TRANSITIONS: Record<ExperimentStatus, ExperimentStatus[]> = {
-  active: ['stabilized', 'abandoned'],
-  stabilized: ['promoted', 'active', 'abandoned'],
-  promoted: ['active'],
-  abandoned: ['active'],
-};
 
 /** proposed からのみ確定でき、applied / rejected は終端。 */
 const PROMOTION_STATUS_TRANSITIONS: Record<PromotionStatus, PromotionStatus[]> = {
@@ -152,8 +141,10 @@ experiments.get('/', async (c) => {
   const conditions: string[] = [];
   const binds: unknown[] = [];
   if (query.status) {
+    const status = experimentStatusSchema.safeParse(query.status);
+    if (!status.success) throw badRequest(`invalid status '${query.status}'`);
     conditions.push('e.status = ?');
-    binds.push(query.status);
+    binds.push(status.data);
   }
   if (query.character) {
     if (isUuid(query.character)) {

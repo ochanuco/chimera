@@ -1,7 +1,9 @@
 import { Layout } from '../layout';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { diffOverrides, formatOverrideValue, type JsonObject } from '../../lib/overrides';
-import { EXPERIMENT_STATUSES, StatusBadge } from './Experiments';
+import { EXPERIMENT_STATUSES, allowedNextStatuses } from '../../lib/experiment-status';
+import type { ExperimentStatus } from '../../types';
+import { StatusBadge } from './Experiments';
 
 export interface ExperimentDetailRunBatch {
   id: string;
@@ -80,6 +82,21 @@ export interface ExperimentDetailData {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** `experiment.status` is typed `string`; narrow it to the known enum before looking up its allowed transitions. */
+function isExperimentStatus(value: string): value is ExperimentStatus {
+  return (EXPERIMENT_STATUSES as readonly string[]).includes(value);
+}
+
+/** Rows written before pull_request_url validation existed may hold a non-http(s) scheme (e.g. `javascript:`); only link out when it's safe. */
+function isHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -256,7 +273,11 @@ function renderPromotion(promotion: ExperimentDetailPromotion, runs: ExperimentD
       ) : null}
       {promotion.pull_request_url ? (
         <p>
-          <a href={promotion.pull_request_url}>{promotion.pull_request_url}</a>
+          {isHttpUrl(promotion.pull_request_url) ? (
+            <a href={promotion.pull_request_url}>{promotion.pull_request_url}</a>
+          ) : (
+            promotion.pull_request_url
+          )}
         </p>
       ) : null}
       {promotion.note ? <p>{promotion.note}</p> : null}
@@ -290,11 +311,13 @@ export function ExperimentDetailPage({ experiment }: { experiment: ExperimentDet
 
       <div class="exp-status-row">
         <select class="exp-status-select" data-id={experiment.id} data-current={experiment.status}>
-          {EXPERIMENT_STATUSES.map((s) => (
-            <option value={s} selected={experiment.status === s}>
-              {s}
-            </option>
-          ))}
+          {(isExperimentStatus(experiment.status) ? allowedNextStatuses(experiment.status) : [experiment.status]).map(
+            (s) => (
+              <option value={s} selected={experiment.status === s}>
+                {s}
+              </option>
+            ),
+          )}
         </select>
       </div>
 

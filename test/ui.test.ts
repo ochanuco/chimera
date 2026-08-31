@@ -1067,4 +1067,28 @@ describe('Experiments pages', () => {
     expect(html).toContain(`/experiments/${experiment.id}`);
     expect(html).toContain(experiment.name);
   });
+
+  it('GET /experiments/{id} offers only the allowed status transitions for an active experiment', async () => {
+    const experiment = await createExperiment();
+
+    const res = await req(`/experiments/${experiment.id}`);
+    const html = await res.text();
+    const optionValues = Array.from(html.matchAll(/<option value="([^"]*)"/g)).map((m) => m[1]);
+
+    expect(optionValues).toContain('active');
+    expect(optionValues).toContain('stabilized');
+    expect(optionValues).toContain('abandoned');
+    expect(optionValues).not.toContain('promoted');
+  });
+});
+
+describe('Experiments list filter robustness', () => {
+  it('GET /experiments?status=<unknown> falls back to no filter instead of erroring', async () => {
+    const created = await postJson<{ name: string }>('/api/v1/experiments', {
+      name: `ui-exp-badfilter-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    const res = await req('/experiments?status=stabilised');
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(created.body.name);
+  });
 });

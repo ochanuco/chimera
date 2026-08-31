@@ -124,6 +124,29 @@ describe('diffOverrides', () => {
     expect(entries).toEqual([{ path: 'weight', kind: 'changed', before: '0.5', after: '0.72' }]);
   });
 
+  it('escapes a `.` in a key so it is distinct from a path separator', () => {
+    const entries = diffOverrides({}, { 'a.b': 1 });
+    expect(entries).toEqual([{ path: 'a\\.b', kind: 'added', before: null, after: '1' }]);
+  });
+
+  it('escapes a `\\` in a key', () => {
+    const entries = diffOverrides({}, { 'a\\b': 1 });
+    expect(entries).toEqual([{ path: 'a\\\\b', kind: 'added', before: null, after: '1' }]);
+  });
+
+  it('handles an empty-string key', () => {
+    const entries = diffOverrides({}, { '': 1 });
+    expect(entries).toEqual([{ path: '', kind: 'added', before: null, after: '1' }]);
+  });
+
+  it('does not collide a dotted flat key with the equivalent nested path', () => {
+    const entries = diffOverrides({}, { 'a.b': 1, a: { b: 2 } });
+    expect(entries).toEqual([
+      { path: 'a.b', kind: 'added', before: null, after: '2' },
+      { path: 'a\\.b', kind: 'added', before: null, after: '1' },
+    ]);
+  });
+
   it('handles a realistic nested override diff end to end', () => {
     const base = { prompt: { positive_append: ['light purple thighhigh socks'] }, controlnet: { weight: 0.5 } };
     const next = {

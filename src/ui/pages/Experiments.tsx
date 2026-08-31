@@ -1,6 +1,7 @@
 import { Layout } from '../layout';
+import { EXPERIMENT_STATUSES } from '../../lib/experiment-status';
 
-export const EXPERIMENT_STATUSES = ['active', 'stabilized', 'promoted', 'abandoned'] as const;
+export { EXPERIMENT_STATUSES };
 
 export interface ExperimentListItem {
   id: string;

@@ -10,6 +10,19 @@ const jsonObject = z.record(z.string(), z.unknown());
 export const experimentStatusSchema = z.enum(['active', 'stabilized', 'promoted', 'abandoned']);
 export const promotionStatusSchema = z.enum(['proposed', 'applied', 'rejected']);
 
+/** `javascript:` などの実行可能スキームが `<a href>` に入らないよう、保存時点で弾く。 */
+const httpUrl = z.string().refine(
+  (v) => {
+    try {
+      const u = new URL(v);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  },
+  { message: 'must be an http(s) URL' },
+);
+
 export const createExperimentSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -63,7 +76,7 @@ export const createPromotionSchema = z.object({
   target_repository: z.string().min(1).default('comfyui-recipes'),
   target_path: z.string().optional(),
   commit_sha: z.string().optional(),
-  pull_request_url: z.string().optional(),
+  pull_request_url: httpUrl.optional(),
   note: z.string().optional(),
 });
 
@@ -74,7 +87,7 @@ export const updatePromotionSchema = z
     target_repository: z.string().min(1).optional(),
     target_path: z.string().nullable().optional(),
     commit_sha: z.string().nullable().optional(),
-    pull_request_url: z.string().nullable().optional(),
+    pull_request_url: httpUrl.nullable().optional(),
     note: z.string().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
