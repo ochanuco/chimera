@@ -35,12 +35,16 @@ Story の続きなのかを体系的に追跡しにくい問題があります�
 2.  **Generation は永続的な資産**。ComfyUI output を削除しても R2
     上で保持する。
 3.  **生成上の因果関係と Story 上の連続性を混同しない**。
-4.  Claude Code は semantic な判断を担当し、Python CLI
+4.  chimera は Generation Experiment Orchestrator である。semantic
+    な判断主体は Claude Code / Agent / Human のいずれでもよく、Python CLI
     は実行と記録を担当する。
-5.  Web GUI 自身を ComfyUI の生成オーケストレーターにはしない。
+5.  ComfyUI workflow の構築・実行は comfyui-recipes に残し、chimera
+    自身は ComfyUI へ生成要求を送らない。
 6.  canonical Generation URL を、人間・Claude・Discord・CLI
     の共通参照とする。
 7.  削除よりラベリングを優先し、生成履歴を破壊しない。
+8.  Experiment / override / evaluation / decision / promotion
+    を管理し、検証の反復と comfyui-recipes への昇格を追跡可能にする。
 
 ## ドキュメント
 
@@ -66,6 +70,7 @@ MVPでは以下を優先します。
 -   Story と StoryRelation
 -   canonical Generation URL
 -   Claude 向け context API
+-   Experiment / ExperimentRun / ExperimentPromotion
 
 semantic 全文検索、GraphDB、統計分析などは後回しにします。
 

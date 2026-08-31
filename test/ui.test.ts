@@ -960,3 +960,111 @@ describe('系譜ミニマップ (MiniMap)', () => {
     expect(html).toContain(`[${batchY.body.short_id}]`);
   });
 });
+
+describe('Experiments pages', () => {
+  async function createExperiment(overrides: Record<string, unknown> = {}) {
+    const res = await postJson<{ id: string; short_id: string; name: string }>('/api/v1/experiments', {
+      name: `ui-exp-${crypto.randomUUID().slice(0, 8)}`,
+      ...overrides,
+    });
+    expect(res.status).toBe(201);
+    return res.body;
+  }
+
+  it('GET /experiments lists name, status, run count and latest result', async () => {
+    const experiment = await createExperiment({ base_recipe: 'dq3' });
+    const run = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      overrides: { prompt: { positive_append: ['light purple thighhigh socks'] } },
+    });
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { evaluation: { overall: 'fail' } }, 'PATCH');
+
+    const res = await req('/experiments');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(experiment.name);
+    expect(html).toContain(`/experiments/${experiment.short_id}`);
+    expect(html).toContain('1 runs');
+    expect(html).toContain('data-value="fail"');
+  });
+
+  it('GET /experiments?status= filters by status', async () => {
+    const active = await createExperiment();
+    const abandoned = await createExperiment();
+    await postJson(`/api/v1/experiments/${abandoned.id}`, { status: 'abandoned' }, 'PATCH');
+
+    const res = await req('/experiments?status=abandoned');
+    const html = await res.text();
+    expect(html).toContain(abandoned.name);
+    expect(html).not.toContain(active.name);
+  });
+
+  it('GET /experiments/{short_id} shows the override delta of each run against its base', async () => {
+    const experiment = await createExperiment({ base_recipe: 'dq3', description: 'legwear separation' });
+    const first = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      overrides: { controlnet: { weight: 0.6 }, prompt: { positive_append: ['black tights'] } },
+      objective: 'baseline',
+    });
+    await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      parent_run_id: first.body.id,
+      overrides: { controlnet: { weight: 0.72 }, prompt: { positive_append: ['black tights'] } },
+    });
+
+    const res = await req(`/experiments/${experiment.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('legwear separation');
+    expect(html).toContain('Initial overrides');
+    expect(html).toContain('Changed from #1');
+    expect(html).toContain('controlnet.weight');
+    expect(html).toContain('0.6 → 0.72');
+    // 変わっていない leaf は差分に出さない
+    expect(html).not.toContain('prompt.positive_append</span> black tights → black tights');
+  });
+
+  it('GET /experiments/{id} renders the attached generation thumbnail and the promotion', async () => {
+    const { generation, batch } = await createGeneration();
+    const experiment = await createExperiment();
+    const run = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      overrides: { pose: { hip_rotation: 4 } },
+      batch_id: batch.id,
+      generation_id: generation.id,
+      evaluation: { overall: 'pass', aspects: { clothing: 'pass' }, notes: ['sock cuff is distinct'] },
+      decision: { action: 'stabilize', reason: 'legwear separated' },
+    });
+    await postJson(`/api/v1/experiments/${experiment.id}/promotions`, {
+      source_run_id: run.body.id,
+      target_path: 'recipes/dq3.py',
+    });
+
+    const res = await req(`/experiments/${experiment.id}`);
+    const html = await res.text();
+    expect(html).toContain(`https://chimera.test/g/${generation.short_id}/image`);
+    expect(html).toContain(`/b/${batch.short_id}`);
+    expect(html).toContain('sock cuff is distinct');
+    expect(html).toContain('stabilize');
+    expect(html).toContain('comfyui-recipes / recipes/dq3.py');
+    expect(html).toContain('data-value="proposed"');
+    expect(html).not.toContain('http://localhost');
+  });
+
+  it('GET /experiments/{unknown} renders the 404 page', async () => {
+    const res = await req('/experiments/zzzzzz');
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain('Experiment');
+  });
+
+  it('nav links to /experiments', async () => {
+    const res = await req('/experiments');
+    expect(await res.text()).toContain('href="/experiments"');
+  });
+
+  it('GET /bookmarks links a bookmarked experiment to its detail page', async () => {
+    const experiment = await createExperiment();
+    await req(`/api/v1/experiments/${experiment.id}/bookmark`, { method: 'PUT' });
+
+    const res = await req('/bookmarks');
+    const html = await res.text();
+    expect(html).toContain(`/experiments/${experiment.id}`);
+    expect(html).toContain(experiment.name);
+  });
+});

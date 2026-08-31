@@ -5,11 +5,21 @@
 中心となる生成階層は以下です。
 
 ``` text
-Experiment
-  └── Batch
-       └── ComfyJob
-            └── Generation
+Batch
+ └── ComfyJob
+      └── Generation
 ```
+
+Experiment は Batch を包含する階層ではなく、ExperimentRun を介して
+Batch / Generation を参照します。
+
+``` text
+Experiment
+  └── ExperimentRun ──▶ Batch / Generation
+```
+
+`batches.experiment_id` は引き続き存在しますが、Experiment
+上の試行の主体は ExperimentRun です。
 
 ただし、本システムの重要部分は階層そのものではなく、生成探索に存在する複数種類の
 Relation を意味ごとに分離することです。
@@ -22,21 +32,164 @@ Batch ── StoryRelation ──▶ Batch
 
 ## Experiment
 
-一連の生成試行を後からまとめて見るための軽量なコンテナです。
-
-長寿命なプロジェクトとしては扱いません。過去の Experiment
-を「再開」するより、過去 Generation を Reference として新しい Experiment
-/ Batch に取り込み、現在の prompt / recipe で rebuild します。
+1つの検証テーマです。例えば「結月ゆかりの脚部で黒タイツと薄紫ソックスを安定して分離する」のように、base
+recipe に対する override を変えながら反復し、安定した条件を
+comfyui-recipes へ昇格させるまでを1単位として扱います。
 
 主な属性:
 
 ``` text
 id
+short_id
 name
+description
 note
+status
+base_recipe
+character_id
 bookmark
 created_at
+updated_at
+completed_at
 ```
+
+status の候補と遷移:
+
+``` text
+active     → stabilized, abandoned
+stabilized → promoted, active, abandoned
+promoted   → active
+abandoned  → active
+```
+
+`active` を離れた時点で `completed_at` が立ち、`active`
+に戻すと消えます。`stabilized → promoted` では最初に完了した時刻を保ちます。許可されていない遷移は409です。
+
+過去の生成系譜を辿るときは、過去の Experiment を「再開」するより、過去
+Generation を Reference として新しい Experiment / Batch
+に取り込み、現在の prompt / recipe で rebuild します。Experiment
+自体の再開は、この rebuild とは別に、`abandoned` / `promoted` から
+`active` への status 遷移として扱います。
+
+Experiment は原則物理削除しません。
+
+## ExperimentRun
+
+Experiment 内の1回の試行です。`run_index` は Experiment
+内で1から連番、`(experiment_id, run_index)` は一意です。
+
+主な属性:
+
+``` text
+id
+experiment_id
+run_index
+parent_run_id
+batch_id
+generation_id
+overrides_json
+objective
+evaluation_json
+decision_json
+note
+created_at
+updated_at
+```
+
+`overrides` は base recipe に対する差分だけを保持し、recipe
+全体は保存しません。`parent_run_id` は「どの Run を受けて次を試したか」を表します。
+
+既存の Batch / Generation は ExperimentRun 側から参照します（Generation
+/ Batch 側に experiment_run_id は持たせません）。
+
+`overrides` / `evaluation` / `decision` は typed schema を持たない
+JSON blob です。評価軸は Experiment や評価者ごとに変わるため、DB
+カラムに分解しません。将来 typed schema を載せられるよう、API
+境界では任意の JSON オブジェクトを受けます。
+
+overrides の例:
+
+``` json
+{
+  "prompt": {
+    "positive_append": ["light purple thighhigh socks"],
+    "negative_append": ["bare legs"]
+  },
+  "pose": { "hip_rotation": 4 },
+  "controlnet": { "weight": 0.72 }
+}
+```
+
+evaluation の例:
+
+``` json
+{
+  "overall": "fail",
+  "aspects": { "pose": "pass", "anatomy": "pass", "clothing": "fail", "composition": "pass" },
+  "notes": ["sock/tights boundary is ambiguous"]
+}
+```
+
+decision の例:
+
+``` json
+{
+  "action": "retry",
+  "reason": "legwear separation failed",
+  "next_overrides": { "prompt": { "positive_append": ["distinct sock cuff"] } }
+}
+```
+
+`action` は `retry` / `accept` / `stabilize` / `abandon` を想定しますが
+enum化しません。
+
+不変条件:
+
+-   ExperimentRun は原則物理削除しません。
+-   Batch / Generation が attach された Run の `overrides`
+    は変更できません（409）。条件を変えるなら新しい Run を作ります。
+-   attach 済みの Batch / Generation を別のものに付け替えることはできません（409）。同じ
+    id の再送は冪等です。
+
+## ExperimentPromotion
+
+「この Experiment のこの条件を comfyui-recipes へ昇格させる」という意思決定と結果の記録です。chimera
+が recipe を書き換えることを意味しません。
+
+主な属性:
+
+``` text
+id
+experiment_id
+source_run_id
+promoted_overrides_json
+status
+target_repository
+target_path
+commit_sha
+pull_request_url
+note
+created_at
+updated_at
+completed_at
+```
+
+status の候補:
+
+``` text
+proposed
+applied
+rejected
+```
+
+`proposed` からのみ確定でき、`applied` / `rejected`
+は終端です（409）。`commit_sha` / `pull_request_url`
+は作成後に更新できます（作成時点では未定でよい）。
+
+不変条件:
+
+-   ExperimentPromotion は原則物理削除しません。
+-   確定済み Promotion の `promoted_overrides` は変更できません（409）。
 
 ## Batch
 

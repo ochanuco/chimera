@@ -146,6 +146,275 @@ GET  /api/v1/characters
 CLI / Claude は name で GET
 して既存を解決し、なければ作成してから id を使います。
 
+## Experiment
+
+Experiment は検証テーマの単位です（詳細は `domain-model.md` の Experiment
+/ ExperimentRun / ExperimentPromotion 参照）。`{id}` はUUID / short_id
+のどちらでも受けます。
+
+### Create Experiment
+
+``` text
+POST /api/v1/experiments
+```
+
+``` json
+{
+  "name": "黒タイツ+薄紫ソックスの分離",
+  "description": "結月ゆかりの脚部で黒タイツと薄紫ソックスを安定して分離する",
+  "base_recipe": "dq3",
+  "character_id": "..."
+}
+```
+
+`status` は常に `active` で作成されます。
+
+### List Experiments
+
+``` text
+GET /api/v1/experiments
+```
+
+主なquery:
+
+``` text
+status
+character   # idまたはname
+bookmark
+limit
+offset
+```
+
+`updated_at` DESC順です。Run / Promotion の作成・更新でも Experiment
+の `updated_at` が進みます。
+
+``` json
+{
+  "items": [
+    {
+      "id": "...",
+      "short_id": "abc123",
+      "name": "...",
+      "description": "...",
+      "note": null,
+      "status": "active",
+      "base_recipe": "dq3",
+      "character_id": "...",
+      "bookmark": false,
+      "created_at": "...",
+      "updated_at": "...",
+      "completed_at": null,
+      "character": { "id": "...", "name": "結月ゆかり" },
+      "run_count": 3,
+      "latest_run": {
+        "id": "...",
+        "run_index": 3,
+        "created_at": "...",
+        "evaluation_overall": "fail"
+      }
+    }
+  ]
+}
+```
+
+### Get Experiment
+
+``` text
+GET /api/v1/experiments/{id-or-short-id}
+```
+
+List item と同じフィールドに加え、`tags` と `runs`（`run_index`
+昇順。各 Run に `batch` / `generation` が付く）、`promotions` を返します。
+
+``` json
+{
+  "id": "...",
+  "short_id": "abc123",
+  "name": "...",
+  "description": "...",
+  "note": null,
+  "status": "active",
+  "base_recipe": "dq3",
+  "character_id": "...",
+  "bookmark": false,
+  "created_at": "...",
+  "updated_at": "...",
+  "completed_at": null,
+  "character": { "id": "...", "name": "結月ゆかり" },
+  "tags": ["legwear"],
+  "run_count": 1,
+  "runs": [
+    {
+      "id": "...",
+      "experiment_id": "...",
+      "run_index": 1,
+      "parent_run_id": null,
+      "batch_id": "...",
+      "generation_id": "...",
+      "overrides": { "pose": { "hip_rotation": 4 } },
+      "objective": "...",
+      "evaluation": null,
+      "decision": null,
+      "note": null,
+      "created_at": "...",
+      "updated_at": "...",
+      "batch": { "id": "...", "short_id": "...", "thumbnail_url": "..." },
+      "generation": { "id": "...", "short_id": "..." }
+    }
+  ],
+  "promotions": []
+}
+```
+
+### Update Experiment
+
+``` text
+PATCH /api/v1/experiments/{id-or-short-id}
+```
+
+``` json
+{
+  "status": "stabilized"
+}
+```
+
+許可されていない status 遷移（`domain-model.md` の Experiment
+遷移表参照）は409です。
+
+## ExperimentRun
+
+### Create Run
+
+``` text
+POST /api/v1/experiments/{id}/runs
+```
+
+``` json
+{
+  "overrides": { "prompt": { "positive_append": ["light purple thighhigh socks"] } },
+  "objective": "ソックスとタイツの境界を明確にする",
+  "parent_run_id": "..."
+}
+```
+
+`batch_id` / `generation_id` はUUID / short_idのどちらでも受けます。`run_index`
+は Experiment 内で自動採番されます。
+
+### List Runs
+
+``` text
+GET /api/v1/experiments/{id}/runs
+```
+
+``` json
+{ "items": [ /* Get Experimentの`runs`と同じ形 */ ] }
+```
+
+### Get Run
+
+``` text
+GET /api/v1/experiment-runs/{run_id}
+```
+
+Run の各フィールドに加え、`batch` / `generation` と以下を返します。
+
+``` json
+"experiment": {
+  "id": "...",
+  "short_id": "abc123",
+  "name": "...",
+  "status": "active",
+  "base_recipe": "dq3",
+  "character_id": "..."
+}
+```
+
+### Update Run
+
+``` text
+PATCH /api/v1/experiment-runs/{run_id}
+```
+
+``` json
+{
+  "evaluation": {
+    "overall": "fail",
+    "aspects": { "pose": "pass", "anatomy": "pass", "clothing": "fail", "composition": "pass" },
+    "notes": ["sock/tights boundary is ambiguous"]
+  },
+  "decision": {
+    "action": "retry",
+    "reason": "legwear separation failed",
+    "next_overrides": { "prompt": { "positive_append": ["distinct sock cuff"] } }
+  }
+}
+```
+
+`batch_id` / `generation_id` はattach専用でnullを受けません。`evaluation`
+/ `decision` は明示nullでクリアできます。
+
+409のケース:
+
+-   Batch / Generation がattach済みのRunで `overrides` を変更しようとした
+-   既にattach済みの `batch_id` / `generation_id` を別のものへ付け替えようとした
+
+## ExperimentPromotion
+
+### Create Promotion
+
+``` text
+POST /api/v1/experiments/{id}/promotions
+```
+
+``` json
+{
+  "source_run_id": "...",
+  "target_path": "recipes/yukari/legwear.py",
+  "note": "..."
+}
+```
+
+`target_repository` の既定値は `comfyui-recipes` です。`promoted_overrides`
+省略時は `source_run_id` の Run の overrides をそのまま昇格対象とします。`status`
+は常に `proposed` で作成されます。
+
+### List Promotions
+
+``` text
+GET /api/v1/experiments/{id}/promotions
+```
+
+``` json
+{ "items": [ /* Promotionの配列 */ ] }
+```
+
+### Get Promotion
+
+``` text
+GET /api/v1/promotions/{promotion_id}
+```
+
+### Update Promotion
+
+``` text
+PATCH /api/v1/promotions/{promotion_id}
+```
+
+``` json
+{
+  "status": "applied",
+  "commit_sha": "a1b2c3d",
+  "pull_request_url": "https://github.com/.../pull/12"
+}
+```
+
+409のケース:
+
+-   `proposed` 以外からの status 遷移（`applied` / `rejected` は終端）
+-   `proposed` 以外の状態で `promoted_overrides` を変更しようとした
+
+Experiment の tag / bookmark は Tags / Bookmark 章の endpoint を使います。
+
 ## Generation Ingest
 
 ``` text
@@ -527,6 +796,8 @@ PUT /api/v1/generations/{id}/rating
 /g/{short_id}
 /b/{short_id}
 ```
+
+Experiment の人間向けパスは `/experiments/{short_id}` です。
 
 Claudeはcanonical URLを受け取った後、context
 APIへ解決可能な設計とします。

@@ -13,7 +13,8 @@ Progressive disclosure
 見る → 選ぶ → Claudeに渡す
 ```
 
-Web GUI 自身を ComfyUI の生成オーケストレーターにはしません。
+Web GUI から ComfyUI へ生成要求を送りません。ComfyUI workflow の構築・実行は
+comfyui-recipes の責務です。
 
 ## Navigation
 
@@ -23,10 +24,9 @@ MVPのトップレベル導線:
 Gallery
 Batches
 Stories
+Experiments
 Bookmarks
 ```
-
-Experimentは主要導線にせず、Batch等から辿れる程度でも構いません。
 
 Graph View（`/graph`）はグローバルナビに含めません。Batch Detail / Generation
 Detailの見出し横にある「Graph」リンク（`/graph?root=<short_id>&depth=3`、そのBatch起点のスコープ付き）または直接URLからのみ到達します。
@@ -269,6 +269,50 @@ StoryRelationのlabel /
 descriptionはClaude生成ですが、人間が編集できます。
 
 Graph全体を常時表示せず、Storyを閲覧するときのみ使用します。
+
+## Experiment View
+
+検証テーマ単位で「何を試し、どう変え、何が良かったか」を追う画面です。
+
+`/experiments` は一覧です。表示する軸:
+
+``` text
+name
+character
+status
+run count
+latest run
+latest result
+updated_at
+```
+
+status で絞り込めます。
+
+`/experiments/{short_id}` は詳細です。Experiment概要（Base Recipe /
+Character / Tag / 各時刻）、Runの一覧、Promotionの順に並べます。
+
+各Runで最も重要なのは「前回から何を変えたか」です。`parent_run_id`（未指定なら直前の
+`run_index`）のRunを基準に override の差分だけを先頭へ出し、override
+全文は折りたたみます。
+
+``` text
+#1  PASS なし
+    Initial overrides
+      controlnet.weight  + 0.6
+
+#2  FAIL
+    Changed from #1
+      controlnet.weight  0.6 → 0.72
+    thumbnail / evaluation / decision
+```
+
+Runに紐づくGenerationがあればそのサムネイル、なければ Batch
+の代表画像を1枚出します。evaluation / decision
+は固定schemaを持たないJSONなので、`overall` / `aspects` / `notes`、`action` /
+`reason` / `next_overrides` を認識できたときだけ整形し、それ以外はJSONのまま見せます。
+
+status の変更は詳細画面のselectから行います。Experiment / Run / Promotion
+の削除UIは持ちません。
 
 ## Graph View
 
