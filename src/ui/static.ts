@@ -680,6 +680,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-delta-added { color: var(--good); }
 .exp-delta-removed { color: var(--bad); }
 .exp-delta-changed { color: var(--accent); }
+.exp-delta-kept { color: var(--text-dim); }
+.exp-delta-reason { color: var(--text-dim); font-style: italic; }
 .exp-delta-empty { color: var(--text-dim); font-style: italic; }
 
 .exp-run-thumb { display: flex; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }

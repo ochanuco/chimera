@@ -5,7 +5,7 @@ ComfyUI Generation Manager（Management API + Web GUI）。Cloudflare Workers + 
 ## 正本と構成
 
 - 設計は `docs/*.md` が正本。実装と食い違う変更をするときは docs も更新する
-- Python CLI（request.json の送り手）は別リポジトリ comfyui-recipes の `scripts/generate.py`。API の互換性を壊す変更はそちらへの影響を確認する
+- Python CLI（request.json の送り手）は別リポジトリ comfyui-recipes の `comfyui_recipes` パッケージ（`comfy-recipes generate` CLI、実装は `src/comfyui_recipes/application/generate.py`）。API の互換性を壊す変更はそちらへの影響を確認する
 - `src/app.ts` が Hono app の組み立て。API は `src/routes/*.ts`、SSR ページは `src/routes/pages.tsx` + `src/ui/`、スキーマは `src/schemas/`
 
 ## 検証

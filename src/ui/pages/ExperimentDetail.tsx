@@ -125,10 +125,77 @@ function renderDeltaLine(entry: ReturnType<typeof diffOverrides>[number]) {
   );
 }
 
+type Patch = Record<string, unknown>;
+
+/**
+ * Recognizes the comfyui-recipes patch shape (`overrides.patches`): an array
+ * whose entries are all plain objects. Chimera never validates the entries
+ * themselves (target/op/value are opaque to it) — this is purely a rendering
+ * hint, so anything else (missing key, non-array, an array with a non-object
+ * entry) returns null and callers fall back to the leaf diff.
+ */
+function readPatches(overrides: JsonObject): Patch[] | null {
+  const patches = overrides.patches;
+  if (!Array.isArray(patches)) return null;
+  return patches.every(isPlainObject) ? patches : null;
+}
+
+/** `value`, or `old` for remove, or `old → value` for replace. Missing fields render as `?`. */
+function formatPatchOperand(patch: Patch): string {
+  const hasOld = 'old' in patch;
+  const hasValue = 'value' in patch;
+  if (patch.op === 'remove') return hasOld ? formatOverrideValue(patch.old) : '?';
+  if (patch.op === 'replace') {
+    return `${hasOld ? formatOverrideValue(patch.old) : '?'} → ${hasValue ? formatOverrideValue(patch.value) : '?'}`;
+  }
+  return hasValue ? formatOverrideValue(patch.value) : '?';
+}
+
+function renderPatchLine(patch: Patch, marker: 'added' | 'removed' | 'kept') {
+  const target = typeof patch.target === 'string' ? patch.target : '?';
+  const op = typeof patch.op === 'string' ? patch.op : '?';
+  const reason = typeof patch.reason === 'string' ? patch.reason : null;
+  const prefix = marker === 'added' ? '+ ' : marker === 'removed' ? '- ' : '';
+  return (
+    <div class={`exp-delta-line exp-delta-${marker === 'kept' ? 'kept' : marker}`}>
+      {prefix}
+      <span class="exp-delta-path">{target}</span> {op} {formatPatchOperand(patch)}
+      {reason ? <span class="exp-delta-reason"> {reason}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * `overrides.patches` is already a diff against the base recipe, so comparing
+ * two runs' patch lists leaf-by-leaf (via diffOverrides) collapses to one
+ * unreadable "patches[] changed" entry. Instead show this run's patch list
+ * directly, marking each line against the base run's list by JSON identity.
+ */
+function renderPatchDelta(runPatches: Patch[], basePatches: Patch[], label: string) {
+  const baseKeys = new Set(basePatches.map((p) => JSON.stringify(p)));
+  const runKeys = new Set(runPatches.map((p) => JSON.stringify(p)));
+  const kept = runPatches.map((p) => renderPatchLine(p, baseKeys.has(JSON.stringify(p)) ? 'kept' : 'added'));
+  // patch を全部外した Run も「前回からの変更」なので、removed 行だけが残る場合は
+  // それを出す。空表示は両方空（= 実際に何も変えていない）ときだけ。
+  const removed = basePatches.filter((p) => !runKeys.has(JSON.stringify(p))).map((p) => renderPatchLine(p, 'removed'));
+  const lines = [...kept, ...removed];
+  return (
+    <div class="exp-delta">
+      <div class="exp-delta-label">{label}</div>
+      {lines.length === 0 ? <div class="exp-delta-empty">(no override change)</div> : lines}
+    </div>
+  );
+}
+
 function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
   const base = findBaseRun(run, runs);
-  const entries = diffOverrides(base ? base.overrides : {}, run.overrides);
   const label = base ? `Changed from #${base.run_index}` : 'Initial overrides';
+  const runPatches = readPatches(run.overrides);
+  if (runPatches) {
+    const basePatches = base ? (readPatches(base.overrides) ?? []) : [];
+    return renderPatchDelta(runPatches, basePatches, label);
+  }
+  const entries = diffOverrides(base ? base.overrides : {}, run.overrides);
   return (
     <div class="exp-delta">
       <div class="exp-delta-label">{label}</div>

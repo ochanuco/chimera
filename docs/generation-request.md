@@ -166,9 +166,19 @@ ExperimentRun の override を生成要求へ渡すためのブロックです�
 }
 ```
 
-`overrides` は chimera の ExperimentRun が持つ差分をそのまま渡します。これを読んで
-base recipe へ override を適用する責務は comfyui-recipes 側の `scripts/generate.py`
-にあります。
+`experiment_id` / `run_id` は対象の Experiment / ExperimentRun、`overrides`
+は chimera の ExperimentRun が持つ差分をそのまま渡します。
+
+`overrides.patches` は `generation.patches` と同じ patch 語彙・同じ
+validation（`parse_patches` / `apply_patches`）を使います。chimera 側に
+翻訳層はなく、ExperimentRun の `overrides` をそのまま渡すだけです。`experiment`
+は `generation.patches` / `generation.graph` / `generation.prompt` /
+`generation.negative_prompt` のいずれとも併用できません。
+
+生成後、CLI は作成した Batch を `PATCH
+/api/v1/experiment-runs/{run_id}` で `batch_id` のみ付けてRunへ紐付けます。Run
+の代表 `generation_id` は評価後に人間またはagentが選ぶものなので、CLI
+は推測せず設定しません。
 
 `experiment` は既存の `references` / `refinement` / `story` と同様、キー省略と明示
 `null` のどちらも「該当なし」として受理します。

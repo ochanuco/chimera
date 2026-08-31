@@ -107,16 +107,20 @@ JSON blob です。評価軸は Experiment や評価者ごとに変わるため�
 カラムに分解しません。将来 typed schema を載せられるよう、API
 境界では任意の JSON オブジェクトを受けます。
 
+`overrides` の実際の語彙は comfyui-recipes の patch 形式
+（`generation.patches` と同じもの）で、chimera はそれを検証も解釈もせず
+そのまま保存・返却します。patch の意味づけとバリデーションは
+comfyui-recipes 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
+
 overrides の例:
 
 ``` json
 {
-  "prompt": {
-    "positive_append": ["light purple thighhigh socks"],
-    "negative_append": ["bare legs"]
-  },
-  "pose": { "hip_rotation": 4 },
-  "controlnet": { "weight": 0.72 }
+  "patches": [
+    { "target": "prompt.positive", "op": "append", "value": ", light purple thighhigh socks", "reason": "ソックスの縁を明示する" },
+    { "target": "prompt.negative", "op": "remove", "old": "bare legs", "reason": "..." },
+    { "target": "render.cfg", "op": "set", "value": 4.5, "reason": "..." }
+  ]
 }
 ```
 

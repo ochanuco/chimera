@@ -1021,6 +1021,48 @@ describe('Experiments pages', () => {
     expect(html).not.toContain('prompt.positive_append</span> black tights → black tights');
   });
 
+  it('GET /experiments/{short_id} shows a patch-shaped run delta as a marked patch list, not a leaf diff', async () => {
+    const experiment = await createExperiment({ base_recipe: 'dq3' });
+    const kept = { target: 'prompt.positive', op: 'append', value: 'black tights', reason: 'baseline legwear' };
+    const first = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      overrides: { patches: [kept] },
+      objective: 'baseline',
+    });
+    const added = { target: 'render.cfg', op: 'set', value: 4.5, reason: 'sharper edges' };
+    await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      parent_run_id: first.body.id,
+      overrides: { patches: [kept, added] },
+    });
+
+    const res = await req(`/experiments/${experiment.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('render.cfg');
+    expect(html).toContain('sharper edges');
+    expect(html).toMatch(/exp-delta-added">\s*\+\s*<span class="exp-delta-path">render\.cfg/);
+    expect(html).toMatch(/exp-delta-kept">\s*<span class="exp-delta-path">prompt\.positive/);
+    expect(html).not.toContain('exp-delta-removed');
+  });
+
+  it('GET /experiments/{short_id} falls back to the leaf diff when overrides.patches is not a patch list', async () => {
+    const experiment = await createExperiment({ base_recipe: 'dq3' });
+    const first = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      // patches present but holds a bare string, not patch objects — must not be mistaken for the patch shape
+      overrides: { patches: ['not-a-patch-object'], controlnet: { weight: 0.6 } },
+      objective: 'baseline',
+    });
+    await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      parent_run_id: first.body.id,
+      overrides: { patches: ['not-a-patch-object'], controlnet: { weight: 0.72 } },
+    });
+
+    const res = await req(`/experiments/${experiment.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('controlnet.weight');
+    expect(html).toContain('0.6 → 0.72');
+  });
+
   it('GET /experiments/{id} renders the attached generation thumbnail and the promotion', async () => {
     const { generation, batch } = await createGeneration();
     const experiment = await createExperiment();
@@ -1090,5 +1132,27 @@ describe('Experiments list filter robustness', () => {
     const res = await req('/experiments?status=stabilised');
     expect(res.status).toBe(200);
     expect(await res.text()).toContain(created.body.name);
+  });
+});
+
+describe('Experiment run patch delta edge cases', () => {
+  it('shows removed patch lines when a run clears every patch its base had', async () => {
+    const experiment = await postJson<{ id: string; short_id: string }>('/api/v1/experiments', {
+      name: `ui-exp-cleared-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    const first = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.body.id}/runs`, {
+      overrides: {
+        patches: [{ target: 'render.cfg', op: 'set', value: 4.5, reason: 'soften edges' }],
+      },
+    });
+    await postJson(`/api/v1/experiments/${experiment.body.id}/runs`, {
+      parent_run_id: first.body.id,
+      overrides: { patches: [] },
+    });
+
+    const res = await req(`/experiments/${experiment.body.short_id}`);
+    const html = await res.text();
+    expect(html).toContain('exp-delta-removed');
+    expect(html).toContain('soften edges');
   });
 });
