@@ -112,6 +112,17 @@ JSON blob です。評価軸は Experiment や評価者ごとに変わるため�
 そのまま保存・返却します。patch の意味づけとバリデーションは
 comfyui-recipes 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
 
+ただし封筒の形だけは chimera 側で検証します。`overrides` は `{}` か
+`{"patches": [...]}` のどちらかで、それ以外のトップレベルキーは400で拒否します。
+各 patch は `target` / `op` / `reason` を持つオブジェクトで、いずれも非空文字列
+であることまでを検証します（`reason` は全 patch で必須）。`value` / `old`
+の有無・型は op に依存するため検証しません。base_parameters
+相当の生成パラメータ（`pose` / `costume` など）が overrides
+に紛れ込む事故を型で防ぐのが目的で、patch の語彙 (target / op
+に何が使えるか) は引き続き comfyui-recipes 側の実装に属します。
+同じ検証を `promoted_overrides`（ExperimentPromotion）にも適用します。
+`evaluation` / `decision` はこの検証を通さず、引き続き完全に自由記述です。
+
 overrides の例:
 
 ``` json

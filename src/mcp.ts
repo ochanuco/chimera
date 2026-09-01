@@ -114,6 +114,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     {
       description:
         'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no batch attached). ' +
+        'overrides is a diff against the Experiment\'s base recipe, shaped {"patches": [...]}. Each patch is ' +
+        '{target, op, reason, plus value and/or old depending on op} — reason is required on every patch. ' +
+        "chimera does not define the target/op vocabulary; it's the recipe's, on the comfyui-recipes side — read " +
+        'existing Runs\' overrides (list_experiments / get_experiment / get_run) to learn what is in use. ' +
+        'Generation parameters such as pose or costume are NOT overrides — they live in the Experiment\'s ' +
+        'base_parameters and are fixed for the whole Experiment. ' +
         'Pass a stable idempotency_key (e.g. one generated per intended Run) so that if the response is lost, retrying ' +
         'with the same key returns the original Run instead of creating a duplicate — Runs cannot be deleted, so a duplicate is permanent.',
       inputSchema: createRunInputSchema,

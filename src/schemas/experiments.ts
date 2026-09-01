@@ -7,6 +7,54 @@ import { z } from 'zod';
  */
 export const jsonObject = z.record(z.string(), z.unknown());
 
+/**
+ * overrides / promoted_overrides のエンベロープ検証。patch の語彙 (target / op の値、
+ * value・old の型) は comfyui-recipes 側の実装に属するため検証しない。chimera が
+ * 保証するのは「diff の形をしているか」だけ — base_parameters 相当の生成パラメータが
+ * overrides に紛れ込む事故 (docs/experiment-agent.md 参照) を型では防げないので、
+ * せめて封筒の形だけ弾く。evaluation / decision はここを通さない（自由記述のまま）。
+ */
+export const overridesSchema = jsonObject.superRefine((value, ctx) => {
+  const keys = Object.keys(value);
+  const unexpected = keys.filter((k) => k !== 'patches');
+  if (unexpected.length > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      message:
+        `must be {} or {"patches": [...]}; unexpected key(s): ${unexpected.join(', ')}. ` +
+        "Generation parameters (pose, costume, count, ...) belong to the Experiment's base_parameters, not to a Run's overrides.",
+    });
+    return;
+  }
+  if (!('patches' in value)) return;
+
+  const patches = value.patches;
+  if (!Array.isArray(patches)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'must be an array of patch objects, e.g. [{ target, op, reason, value? }]',
+      path: ['patches'],
+    });
+    return;
+  }
+  patches.forEach((patch, i) => {
+    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'each patch must be an object with target, op and reason',
+        path: ['patches', i],
+      });
+      return;
+    }
+    for (const field of ['target', 'op', 'reason'] as const) {
+      const fieldValue = (patch as Record<string, unknown>)[field];
+      if (typeof fieldValue !== 'string' || fieldValue.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'must be a non-empty string', path: ['patches', i, field] });
+      }
+    }
+  });
+});
+
 export const experimentStatusSchema = z.enum(['active', 'stabilized', 'promoted', 'abandoned']);
 export const promotionStatusSchema = z.enum(['proposed', 'applied', 'rejected']);
 
@@ -45,7 +93,7 @@ export const updateExperimentSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
 export const createExperimentRunSchema = z.object({
-  overrides: jsonObject.optional(),
+  overrides: overridesSchema.optional(),
   objective: z.string().optional(),
   parent_run_id: z.string().min(1).optional(),
   batch_id: z.string().min(1).optional(),
@@ -63,7 +111,7 @@ export const createExperimentRunSchema = z.object({
  */
 export const updateExperimentRunSchema = z
   .object({
-    overrides: jsonObject.optional(),
+    overrides: overridesSchema.optional(),
     objective: z.string().nullable().optional(),
     batch_id: z.string().min(1).optional(),
     generation_id: z.string().min(1).optional(),
@@ -75,7 +123,7 @@ export const updateExperimentRunSchema = z
 
 export const createPromotionSchema = z.object({
   source_run_id: z.string().min(1).optional(),
-  promoted_overrides: jsonObject.optional(),
+  promoted_overrides: overridesSchema.optional(),
   target_repository: z.string().min(1).default('comfyui-recipes'),
   target_path: z.string().optional(),
   commit_sha: z.string().optional(),
@@ -86,7 +134,7 @@ export const createPromotionSchema = z.object({
 export const updatePromotionSchema = z
   .object({
     status: promotionStatusSchema.optional(),
-    promoted_overrides: jsonObject.optional(),
+    promoted_overrides: overridesSchema.optional(),
     target_repository: z.string().min(1).optional(),
     target_path: z.string().nullable().optional(),
     commit_sha: z.string().nullable().optional(),

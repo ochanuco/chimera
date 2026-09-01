@@ -311,6 +311,14 @@ POST /api/v1/experiments/{id}/runs
 Run を返します（新規作成は201、再送は200）。同じキーを別の Experiment へ渡すと
 409です（そのキーは既に他所で使われています）。
 
+`overrides` は `{}` か `{"patches": [...]}` のどちらかで、それ以外のキーが
+トップレベルにあると400です。各 patch は `target` / `op` / `reason`
+を持つオブジェクトで、いずれも非空文字列である必要があります（`value` /
+`old` の有無・型は検証しません）。`pose` / `costume` のような生成パラメータは
+overrides ではなく Experiment の `base_parameters` に属します。同じ検証は
+PATCH /api/v1/experiment-runs/{id} と Promotion の `promoted_overrides`
+にも適用されます。
+
 ### List Runs
 
 ``` text

@@ -85,6 +85,12 @@ Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから
 キーなしで再試行すると重複 Run が恒久的に残ります。
 
+`create_run` の `overrides` は `{"patches": [...]}` 形の diff のみを受け付け、
+`{"pose": "...", "costume": "...", "count": 1}` のような base_parameters
+形のオブジェクトを渡すと400で拒否します（tool error として返ります）。
+生成パラメータは Experiment 作成時の `base_parameters` に属し、Run ごとには
+変わりません。
+
 生やさないもの:
 
 ``` text
