@@ -152,6 +152,86 @@ describe('Create ExperimentRun', () => {
   });
 });
 
+describe('ExperimentRun idempotency', () => {
+  it('201s on first create with a key; replaying the same key + experiment 200s with the identical run id and keeps run_count at 1', async () => {
+    const exp = await createExperiment();
+    const key = crypto.randomUUID();
+
+    const first = await createRun(exp.body.id, { idempotency_key: key });
+    expect(first.status).toBe(201);
+
+    const replay = await createRun(exp.body.id, { idempotency_key: key });
+    expect(replay.status).toBe(200);
+    expect(replay.body.id).toBe(first.body.id);
+
+    const detail = await getJson<ExperimentDetail>(`/api/v1/experiments/${exp.body.id}`);
+    expect(detail.body.run_count).toBe(1);
+  });
+
+  it('does not allocate a new run_index on replay', async () => {
+    const exp = await createExperiment();
+    const key = crypto.randomUUID();
+
+    const first = await createRun(exp.body.id, { idempotency_key: key });
+    const replay = await createRun(exp.body.id, { idempotency_key: key });
+    expect(replay.body.run_index).toBe(first.body.run_index);
+
+    // A subsequent, differently-keyed run still gets the next index (no gap/skip left behind).
+    const next = await createRun(exp.body.id);
+    expect(next.body.run_index).toBe(first.body.run_index + 1);
+  });
+
+  it('409s reusing the same key against a different experiment', async () => {
+    const expA = await createExperiment();
+    const expB = await createExperiment();
+    const key = crypto.randomUUID();
+
+    const first = await createRun(expA.body.id, { idempotency_key: key });
+    expect(first.status).toBe(201);
+
+    const res = await createRun(expB.body.id, { idempotency_key: key });
+    expect(res.status).toBe(409);
+  });
+
+  it('two creates with different keys produce two runs', async () => {
+    const exp = await createExperiment();
+    const a = await createRun(exp.body.id, { idempotency_key: crypto.randomUUID() });
+    const b = await createRun(exp.body.id, { idempotency_key: crypto.randomUUID() });
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(a.body.id).not.toBe(b.body.id);
+  });
+
+  it('creating without a key twice produces two runs (unchanged behaviour)', async () => {
+    const exp = await createExperiment();
+    const a = await createRun(exp.body.id);
+    const b = await createRun(exp.body.id);
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(a.body.id).not.toBe(b.body.id);
+  });
+
+  it('concurrent creates with the same key produce exactly one run', async () => {
+    const exp = await createExperiment();
+    const key = crypto.randomUUID();
+    const CONCURRENCY = 8;
+
+    const results = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () => createRun(exp.body.id, { idempotency_key: key })),
+    );
+
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 200)).toHaveLength(CONCURRENCY - 1);
+
+    const ids = new Set(results.map((r) => r.body.id));
+    expect(ids.size).toBe(1);
+
+    const detail = await getJson<ExperimentDetail>(`/api/v1/experiments/${exp.body.id}`);
+    expect(detail.body.run_count).toBe(1);
+  });
+});
+
 describe('Generation / Batch linkage', () => {
   it('attaches a batch, then a generation (by short_id) from that batch, surfacing them in the experiment detail', async () => {
     const exp = await createExperiment();

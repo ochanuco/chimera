@@ -53,6 +53,7 @@ export const createExperimentRunSchema = z.object({
   evaluation: jsonObject.optional(),
   decision: jsonObject.optional(),
   note: z.string().optional(),
+  idempotency_key: z.string().min(1).optional(),
 });
 
 /**

@@ -50,7 +50,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 const createRunInputSchema = createExperimentRunSchema
-  .pick({ overrides: true, objective: true, parent_run_id: true })
+  .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true })
   .extend({ experiment_id: z.string().min(1) });
 
 export function createChimeraMcpServer(env: Bindings, origin: string): McpServer {
@@ -106,13 +106,21 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
   server.registerTool(
     'create_run',
     {
-      description: 'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no batch attached).',
+      description:
+        'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no batch attached). ' +
+        'Pass a stable idempotency_key (e.g. one generated per intended Run) so that if the response is lost, retrying ' +
+        'with the same key returns the original Run instead of creating a duplicate — Runs cannot be deleted, so a duplicate is permanent.',
       inputSchema: createRunInputSchema,
     },
-    async ({ experiment_id, overrides, objective, parent_run_id }) => {
+    async ({ experiment_id, overrides, objective, parent_run_id, idempotency_key }) => {
       const experiment = await getExperimentOr404(db, experiment_id);
-      const row = await createExperimentRun(db, experiment, { overrides, objective, parent_run_id });
-      return jsonResult(serializeExperimentRun(row));
+      const { row, created } = await createExperimentRun(db, experiment, {
+        overrides,
+        objective,
+        parent_run_id,
+        idempotency_key,
+      });
+      return jsonResult({ created, run: serializeExperimentRun(row) });
     },
   );
 

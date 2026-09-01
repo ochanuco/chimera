@@ -210,8 +210,8 @@ experiments.post('/:id/runs', async (c) => {
   const body = createExperimentRunSchema.parse(await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
-  const row = await createExperimentRun(db, experiment, body);
-  return c.json(serializeExperimentRun(row), 201);
+  const { row, created } = await createExperimentRun(db, experiment, body);
+  return c.json(serializeExperimentRun(row), created ? 201 : 200);
 });
 
 experiments.get('/:id/runs', async (c) => {
