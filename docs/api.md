@@ -293,7 +293,11 @@ POST /api/v1/experiments/{id}/runs
 
 ``` json
 {
-  "overrides": { "prompt": { "positive_append": ["light purple thighhigh socks"] } },
+  "overrides": {
+    "patches": [
+      { "target": "prompt.positive", "op": "append", "value": ", light purple thighhigh socks", "reason": "ソックスの縁を明示する" }
+    ]
+  },
   "objective": "ソックスとタイツの境界を明確にする",
   "parent_run_id": "..."
 }

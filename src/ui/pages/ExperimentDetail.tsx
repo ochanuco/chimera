@@ -125,10 +125,105 @@ function renderDeltaLine(entry: ReturnType<typeof diffOverrides>[number]) {
   );
 }
 
+type Patch = Record<string, unknown>;
+
+/**
+ * Recognizes the comfyui-recipes patch shape (`overrides.patches`): an array
+ * whose entries are all plain objects. Chimera never validates the entries
+ * themselves (target/op/value are opaque to it) — this is purely a rendering
+ * hint, so anything else (missing key, non-array, an array with a non-object
+ * entry) returns null and callers fall back to the leaf diff.
+ */
+function readPatches(overrides: JsonObject): Patch[] | null {
+  const patches = overrides.patches;
+  if (!Array.isArray(patches)) return null;
+  return patches.every(isPlainObject) ? patches : null;
+}
+
+/** `value`, or `old` for remove, or `old → value` for replace. Missing fields render as `?`. */
+function formatPatchOperand(patch: Patch): string {
+  const hasOld = 'old' in patch;
+  const hasValue = 'value' in patch;
+  if (patch.op === 'remove') return hasOld ? formatOverrideValue(patch.old) : '?';
+  if (patch.op === 'replace') {
+    return `${hasOld ? formatOverrideValue(patch.old) : '?'} → ${hasValue ? formatOverrideValue(patch.value) : '?'}`;
+  }
+  return hasValue ? formatOverrideValue(patch.value) : '?';
+}
+
+function renderPatchLine(patch: Patch, marker: 'added' | 'removed' | 'kept') {
+  const target = typeof patch.target === 'string' ? patch.target : '?';
+  const op = typeof patch.op === 'string' ? patch.op : '?';
+  const reason = typeof patch.reason === 'string' ? patch.reason : null;
+  const prefix = marker === 'added' ? '+ ' : marker === 'removed' ? '- ' : '';
+  return (
+    <div class={`exp-delta-line exp-delta-${marker === 'kept' ? 'kept' : marker}`}>
+      {prefix}
+      <span class="exp-delta-path">{target}</span> {op} {formatPatchOperand(patch)}
+      {reason ? <span class="exp-delta-reason"> {reason}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * `overrides.patches` is already a diff against the base recipe, so comparing
+ * two runs' patch lists leaf-by-leaf (via diffOverrides) collapses to one
+ * unreadable "patches[] changed" entry. Instead show this run's patch list
+ * directly, marking each line against the base run's list by JSON identity.
+ */
+function countByKey(patches: Patch[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const patch of patches) {
+    const key = JSON.stringify(patch);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * `basePatches` が null のときは比較相手のない最初の Run。その patch は
+ * 「前回からの追加」ではないので marker を付けない。
+ * 同一 patch が複数入りうるので Set ではなく多重集合として突き合わせる。
+ * patch を全部外した Run も変更なので、removed 行だけが残る場合はそれを出す。
+ */
+function renderPatchDelta(runPatches: Patch[], basePatches: Patch[] | null, label: string) {
+  const remaining = countByKey(basePatches ?? []);
+  const lines = runPatches.map((patch) => {
+    if (!basePatches) return renderPatchLine(patch, 'kept');
+    const key = JSON.stringify(patch);
+    const left = remaining.get(key) ?? 0;
+    if (left === 0) return renderPatchLine(patch, 'added');
+    remaining.set(key, left - 1);
+    return renderPatchLine(patch, 'kept');
+  });
+  for (const patch of basePatches ?? []) {
+    const key = JSON.stringify(patch);
+    const left = remaining.get(key) ?? 0;
+    if (left === 0) continue;
+    remaining.set(key, left - 1);
+    lines.push(renderPatchLine(patch, 'removed'));
+  }
+  return (
+    <div class="exp-delta">
+      <div class="exp-delta-label">{label}</div>
+      {lines.length === 0 ? <div class="exp-delta-empty">(no override change)</div> : lines}
+    </div>
+  );
+}
+
 function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
   const base = findBaseRun(run, runs);
-  const entries = diffOverrides(base ? base.overrides : {}, run.overrides);
   const label = base ? `Changed from #${base.run_index}` : 'Initial overrides';
+  const runPatches = readPatches(run.overrides);
+  if (runPatches) {
+    // base が patch 形式でないなら比較軸が違う。patch リストとして突き合わせると
+    // base 側の中身が全部消えたように見えるので、その組み合わせは leaf diff に落とす。
+    const basePatches = base ? readPatches(base.overrides) : null;
+    if (!base || basePatches) {
+      return renderPatchDelta(runPatches, basePatches, label);
+    }
+  }
+  const entries = diffOverrides(base ? base.overrides : {}, run.overrides);
   return (
     <div class="exp-delta">
       <div class="exp-delta-label">{label}</div>

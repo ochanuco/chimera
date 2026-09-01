@@ -291,18 +291,24 @@ status で絞り込めます。
 `/experiments/{short_id}` は詳細です。Experiment概要（Base Recipe /
 Character / Tag / 各時刻）、Runの一覧、Promotionの順に並べます。
 
-各Runで最も重要なのは「前回から何を変えたか」です。`parent_run_id`（未指定なら直前の
-`run_index`）のRunを基準に override の差分だけを先頭へ出し、override
-全文は折りたたみます。
+各Runで最も重要なのは「前回から何を変えたか」です。`overrides.patches`
+（comfyui-recipesのpatch語彙、[domain-model.md](domain-model.md#experimentrun)参照）は
+それ自体がbase recipeへの差分なので、leaf diffではなくRunのpatch一覧をそのまま出し、
+`parent_run_id`（未指定なら直前の`run_index`）のRunが基準です。基準Runと同一のpatch
+（JSON同値）はそのまま、基準Runになくこの Run で加わった patch は
+`+`、基準Runにありこの Run で消えた patch は `-`
+で印を付けます。override全文は折りたたみます。`overrides.patches`
+の形を認識できないRun（過去データなど）だけ従来のleaf diffへfallbackします。
 
 ``` text
 #1  PASS なし
     Initial overrides
-      controlnet.weight  + 0.6
+      prompt.positive  append  , light purple thighhigh socks
 
 #2  FAIL
     Changed from #1
-      controlnet.weight  0.6 → 0.72
+      prompt.positive  append  , light purple thighhigh socks
+    + render.cfg       set     4.5
     thumbnail / evaluation / decision
 ```
 

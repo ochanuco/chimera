@@ -36,7 +36,7 @@ POST /api/v1/experiments/{id}/promotions  # 安定条件を comfyui-recipes へ�
 
 Batch / Job 作成と ingest は冪等（同一 idempotency_key / 同一 (job, output_index) の再送は既存を返す）。
 
-クライアントは comfyui-recipes の `scripts/generate.py`（`request.json` 契約は [docs/generation-request.md](docs/generation-request.md)）。
+クライアントは comfyui-recipes の `comfy-recipes generate` CLI（`comfyui_recipes` パッケージ、`request.json` 契約は [docs/generation-request.md](docs/generation-request.md)）。
 
 ## 開発
 
