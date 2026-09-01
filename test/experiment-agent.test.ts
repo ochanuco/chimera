@@ -318,3 +318,20 @@ describe('Run creation enforces the same generation provenance rule', () => {
     expect(res.body.generation_id).toBe(generation.id);
   });
 });
+
+describe('MCP tool annotations', () => {
+  it('marks the read tools readOnlyHint and leaves the mutating ones unannotated', async () => {
+    const { body } = await mcpCall<{ tools: { name: string; annotations?: { readOnlyHint?: boolean } }[] }>(
+      'tools/list',
+      {},
+    );
+    const byName = new Map((body.result?.tools ?? []).map((t) => [t.name, t]));
+    for (const name of ['list_experiments', 'get_experiment', 'get_run', 'get_generation_image']) {
+      expect(byName.get(name)?.annotations?.readOnlyHint, name).toBe(true);
+    }
+    // 副作用のある tool は承認キューに入るべきなので、readOnlyHint を主張しない。
+    for (const name of ['create_run', 'attach_generation', 'set_evaluation', 'set_decision']) {
+      expect(byName.get(name)?.annotations?.readOnlyHint, name).not.toBe(true);
+    }
+  });
+});
