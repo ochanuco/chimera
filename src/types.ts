@@ -22,6 +22,7 @@ export interface ExperimentRow {
   note: string | null;
   status: ExperimentStatus;
   base_recipe: string | null;
+  base_parameters_json: string | null;
   character_id: string | null;
   bookmark: number;
   created_at: string;

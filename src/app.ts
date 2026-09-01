@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
+import { createMcpHandler } from 'agents/mcp/server';
 import { ApiError } from './lib/errors';
 import { batches } from './routes/batches';
 import { jobs } from './routes/jobs';
@@ -12,6 +13,7 @@ import { graph } from './routes/graph';
 import { images } from './routes/images';
 import { assets } from './routes/assets';
 import { pages } from './routes/pages';
+import { createChimeraMcpServer } from './mcp';
 import type { AppEnv } from './types';
 
 export const app = new Hono<AppEnv>();
@@ -28,6 +30,27 @@ app.route('/api/v1/tags', tags);
 app.route('/api/v1/graph', graph);
 app.route('/g', images);
 app.route('/assets', assets);
+
+// Cloudflare OS 上の Agent 用の stateless MCP エンドポイント (docs/experiment-agent.md)。
+// Durable Object もセッションも持たない — createMcpHandler 自体が
+// agents パッケージの stateless 実装 (createStatelessMcpHandler)。tool は
+// c.env の D1 / R2 を必要とするため、factory を毎リクエスト c.env に
+// クロージャで束縛する（McpServerFactory 自体は env を受け取らない）。
+// c.executionCtx は Worker 本番では常に存在するが、テストハーネスの
+// app.request(url, init, env) は ExecutionContext を渡さないため未設定
+// でも動くようガードする（createMcpHandler は ctx が undefined でも動作する）。
+app.all('/mcp', (c) => {
+  const origin = new URL(c.req.url).origin;
+  const handler = createMcpHandler(() => createChimeraMcpServer(c.env, origin));
+  let executionCtx: unknown;
+  try {
+    executionCtx = c.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
+  return handler(c.req.raw, c.env, executionCtx as Parameters<typeof handler>[2]);
+});
+
 app.route('/', pages);
 
 app.onError((err, c) => {
