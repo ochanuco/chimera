@@ -90,6 +90,8 @@ attach 後の overrides 変更
 recipe への書き込み
 ```
 
+Run の代表 Generation は、その Run 自身の Batch に属するものだけを選べます。Batch が未 attach の Run への attach と、別 Batch の Generation の attach はいずれも 409 です。Run 作成時に同じ組を渡す経路にも同じ規則が適用されます。
+
 API 側は同じ操作を 409 / 404 で拒みます。tool として存在しないことと合わせて防御が二重になります。
 
 ## 1サイクル

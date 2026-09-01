@@ -5,6 +5,20 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** D1 は 1 クエリあたり最大 100 個の bound parameter しか受け付けない。`IN (?, ?, ...)` を
+ * 組み立てるヘルパーはこの上限を超えないよう、id 配列を `chunk` でこのサイズ以下に割ってから
+ * クエリを複数回実行する。 */
+export const D1_MAX_BOUND_PARAMS = 100;
+
+/** Splits `items` into chunks of at most `size` elements. */
+export function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export function toBool(value: number | null | undefined): boolean {
   return value === 1;
 }
@@ -52,25 +66,31 @@ export async function getExperimentByIdOrShortId(
 /** Resolves short_ids for a set of Batch UUIDs, for display in reference links. Missing ids are simply absent from the result. */
 export async function resolveBatchShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(ids));
-  if (unique.length === 0) return new Map();
-  const placeholders = unique.map(() => '?').join(', ');
-  const { results } = await db
-    .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
-    .bind(...unique)
-    .all<{ id: string; short_id: string }>();
-  return new Map((results ?? []).map((r) => [r.id, r.short_id]));
+  const map = new Map<string, string>();
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
+      .bind(...part)
+      .all<{ id: string; short_id: string }>();
+    for (const r of results ?? []) map.set(r.id, r.short_id);
+  }
+  return map;
 }
 
 /** Resolves short_ids for a set of Generation UUIDs, for display in reference links. Missing ids are simply absent from the result. */
 export async function resolveGenerationShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(ids));
-  if (unique.length === 0) return new Map();
-  const placeholders = unique.map(() => '?').join(', ');
-  const { results } = await db
-    .prepare(`SELECT id, short_id FROM generations WHERE id IN (${placeholders})`)
-    .bind(...unique)
-    .all<{ id: string; short_id: string }>();
-  return new Map((results ?? []).map((r) => [r.id, r.short_id]));
+  const map = new Map<string, string>();
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(`SELECT id, short_id FROM generations WHERE id IN (${placeholders})`)
+      .bind(...part)
+      .all<{ id: string; short_id: string }>();
+    for (const r of results ?? []) map.set(r.id, r.short_id);
+  }
+  return map;
 }
 
 /**
@@ -85,20 +105,25 @@ export async function resolveGenerationShortIds(db: D1Database, ids: string[]): 
  */
 export async function resolveBatchThumbnails(db: D1Database, batchIds: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(batchIds));
-  if (unique.length === 0) return new Map();
-  const placeholders = unique.map(() => '?').join(', ');
-  const { results } = await db
-    .prepare(
-      `SELECT batch_id, short_id FROM (
-         SELECT batch_id, short_id,
-           ROW_NUMBER() OVER (PARTITION BY batch_id ORDER BY created_at ASC, id ASC) AS rn
-         FROM generations
-         WHERE batch_id IN (${placeholders})
-       ) WHERE rn = 1`,
-    )
-    .bind(...unique)
-    .all<{ batch_id: string; short_id: string }>();
-  return new Map((results ?? []).map((r) => [r.batch_id, r.short_id]));
+  const map = new Map<string, string>();
+  // ROW_NUMBER() は batch_id ごとに独立して振られるので、チャンクをまたいでも
+  // (互いに素な batch_id の集合を投げているため) 結果は変わらない。
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(
+        `SELECT batch_id, short_id FROM (
+           SELECT batch_id, short_id,
+             ROW_NUMBER() OVER (PARTITION BY batch_id ORDER BY created_at ASC, id ASC) AS rn
+           FROM generations
+           WHERE batch_id IN (${placeholders})
+         ) WHERE rn = 1`,
+      )
+      .bind(...part)
+      .all<{ batch_id: string; short_id: string }>();
+    for (const r of results ?? []) map.set(r.batch_id, r.short_id);
+  }
+  return map;
 }
 
 export interface ChainBatch {
@@ -113,13 +138,16 @@ export async function resolveBatchPrompts(
   ids: string[],
 ): Promise<Map<string, { prompt: string | null; negative_prompt: string | null }>> {
   const unique = Array.from(new Set(ids));
-  if (unique.length === 0) return new Map();
-  const placeholders = unique.map(() => '?').join(', ');
-  const { results } = await db
-    .prepare(`SELECT id, prompt, negative_prompt FROM batches WHERE id IN (${placeholders})`)
-    .bind(...unique)
-    .all<{ id: string; prompt: string | null; negative_prompt: string | null }>();
-  return new Map((results ?? []).map((r) => [r.id, { prompt: r.prompt, negative_prompt: r.negative_prompt }]));
+  const map = new Map<string, { prompt: string | null; negative_prompt: string | null }>();
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(`SELECT id, prompt, negative_prompt FROM batches WHERE id IN (${placeholders})`)
+      .bind(...part)
+      .all<{ id: string; prompt: string | null; negative_prompt: string | null }>();
+    for (const r of results ?? []) map.set(r.id, { prompt: r.prompt, negative_prompt: r.negative_prompt });
+  }
+  return map;
 }
 
 /**

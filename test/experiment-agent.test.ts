@@ -201,8 +201,9 @@ describe('MCP server at /mcp', () => {
   it('tools/call attach_generation on an already-attached run surfaces the 409 message as a tool error', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);
-    const { generation: g1 } = await createGeneration();
+    const { generation: g1, batch: batch1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch1.id }, 'PATCH');
 
     const first = await mcpToolCall('attach_generation', { run_id: run.body.id, generation_id: g1.id });
     expect(first.isError).toBe(false);
@@ -210,6 +211,28 @@ describe('MCP server at /mcp', () => {
     const second = await mcpToolCall('attach_generation', { run_id: run.body.id, generation_id: g2.id });
     expect(second.isError).toBe(true);
     expect(second.text).toContain('run already has a generation attached');
+  });
+
+  it('tools/call attach_generation on a run with no batch surfaces the 409 message as a tool error', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { generation } = await createGeneration();
+
+    const call = await mcpToolCall('attach_generation', { run_id: run.body.id, generation_id: generation.id });
+    expect(call.isError).toBe(true);
+    expect(call.text).toContain('no batch attached');
+  });
+
+  it('tools/call attach_generation with a generation from another batch surfaces the 409 message as a tool error', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { batch: runBatch } = await createGeneration();
+    const { generation: otherGeneration } = await createGeneration();
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: runBatch.id }, 'PATCH');
+
+    const call = await mcpToolCall('attach_generation', { run_id: run.body.id, generation_id: otherGeneration.id });
+    expect(call.isError).toBe(true);
+    expect(call.text).toContain(`not the run's batch ${runBatch.id}`);
   });
 });
 
@@ -235,5 +258,42 @@ describe('MCP get_generation_image', () => {
     expect(result?.content?.[0]?.type).toBe('text');
     expect(text).toContain('inline limit');
     expect(text).toContain(`/g/${generation.short_id}`);
+  });
+});
+
+describe('Run creation enforces the same generation provenance rule', () => {
+  it('409s creating a run with a generation but no batch', async () => {
+    const { generation } = await createGeneration();
+    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: uniqueName('exp-prov-a') });
+    const res = await postJson<{ error: { message: string } }>(
+      `/api/v1/experiments/${experiment.body.id}/runs`,
+      { generation_id: generation.id },
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain('attach a batch');
+  });
+
+  it('409s creating a run whose generation belongs to another batch', async () => {
+    const a = await createGeneration();
+    const b = await createGeneration();
+    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: uniqueName('exp-prov-b') });
+    const res = await postJson<{ error: { message: string } }>(
+      `/api/v1/experiments/${experiment.body.id}/runs`,
+      { batch_id: a.batch.id, generation_id: b.generation.id },
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain("not the run's batch");
+  });
+
+  it('creates a run when the batch and generation match', async () => {
+    const { batch, generation } = await createGeneration();
+    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: uniqueName('exp-prov-c') });
+    const res = await postJson<{ batch_id: string; generation_id: string }>(
+      `/api/v1/experiments/${experiment.body.id}/runs`,
+      { batch_id: batch.id, generation_id: generation.id },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.batch_id).toBe(batch.id);
+    expect(res.body.generation_id).toBe(generation.id);
   });
 });

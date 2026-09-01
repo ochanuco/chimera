@@ -3,6 +3,8 @@
 // クエリを二重に持たないようにする。
 
 import {
+  chunk,
+  D1_MAX_BOUND_PARAMS,
   getBatchByIdOrShortId,
   getExperimentByIdOrShortId,
   getGenerationByIdOrShortId,
@@ -83,19 +85,24 @@ export async function latestRunByExperiment(
   experimentIds: string[],
 ): Promise<Map<string, ExperimentRunRow>> {
   const unique = Array.from(new Set(experimentIds));
-  if (unique.length === 0) return new Map();
-  const placeholders = unique.map(() => '?').join(', ');
-  const { results } = await db
-    .prepare(
-      `SELECT * FROM (
-         SELECT r.*, ROW_NUMBER() OVER (PARTITION BY r.experiment_id ORDER BY r.run_index DESC) AS rn
-         FROM experiment_runs r
-         WHERE r.experiment_id IN (${placeholders})
-       ) WHERE rn = 1`,
-    )
-    .bind(...unique)
-    .all<ExperimentRunRow>();
-  return new Map((results ?? []).map((r) => [r.experiment_id, r]));
+  const map = new Map<string, ExperimentRunRow>();
+  // ROW_NUMBER() は experiment_id ごとに独立して振られるので、チャンクをまたいでも
+  // (互いに素な experiment_id の集合を投げているため) 結果は変わらない。
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(
+        `SELECT * FROM (
+           SELECT r.*, ROW_NUMBER() OVER (PARTITION BY r.experiment_id ORDER BY r.run_index DESC) AS rn
+           FROM experiment_runs r
+           WHERE r.experiment_id IN (${placeholders})
+         ) WHERE rn = 1`,
+      )
+      .bind(...part)
+      .all<ExperimentRunRow>();
+    for (const r of results ?? []) map.set(r.experiment_id, r);
+  }
+  return map;
 }
 
 /**
@@ -107,21 +114,21 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
   const generationIds = runs.map((r) => r.generation_id).filter((id): id is string => id !== null);
 
   const batchMap = new Map<string, { id: string; short_id: string }>();
-  if (batchIds.length > 0) {
-    const placeholders = batchIds.map(() => '?').join(', ');
+  for (const part of chunk(batchIds, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
       .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
-      .bind(...batchIds)
+      .bind(...part)
       .all<{ id: string; short_id: string }>();
     for (const row of results ?? []) batchMap.set(row.id, row);
   }
 
   const generationMap = new Map<string, GenerationRow>();
-  if (generationIds.length > 0) {
-    const placeholders = generationIds.map(() => '?').join(', ');
+  for (const part of chunk(generationIds, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
       .prepare(`SELECT * FROM generations WHERE id IN (${placeholders})`)
-      .bind(...generationIds)
+      .bind(...part)
       .all<GenerationRow>();
     for (const row of results ?? []) generationMap.set(row.id, row);
   }
@@ -261,56 +268,55 @@ export async function createExperimentRun(
   }
 
   const batchId = body.batch_id ? (await resolveBatchOr404(db, body.batch_id)).id : null;
-  const generationId = body.generation_id ? (await resolveGenerationOr404(db, body.generation_id)).id : null;
-
-  const next = await db
-    .prepare('SELECT COALESCE(MAX(run_index), 0) + 1 AS next FROM experiment_runs WHERE experiment_id = ?')
-    .bind(experiment.id)
-    .first<{ next: number }>();
+  // 代表 Generation は Run 自身の Batch から選ぶもの。updateExperimentRun と同じ規則を
+  // 作成時にも適用しないと、こちらの経路から provenance の合わない紐付けが入る。
+  let generationId: string | null = null;
+  if (body.generation_id) {
+    const generation = await resolveGenerationOr404(db, body.generation_id);
+    if (!batchId) {
+      throw conflict('run has no batch attached; attach a batch before attaching a generation');
+    }
+    if (generation.batch_id !== batchId) {
+      throw conflict(
+        `generation belongs to batch ${generation.batch_id}, not the run's batch ${batchId}`,
+      );
+    }
+    generationId = generation.id;
+  }
 
   const now = nowIso();
-  const row: ExperimentRunRow = {
-    id: uuidv7(),
-    experiment_id: experiment.id,
-    run_index: next?.next ?? 1,
-    parent_run_id: parentRunId,
-    batch_id: batchId,
-    generation_id: generationId,
-    overrides_json: JSON.stringify(body.overrides ?? {}),
-    objective: body.objective ?? null,
-    evaluation_json: body.evaluation ? JSON.stringify(body.evaluation) : null,
-    decision_json: body.decision ? JSON.stringify(body.decision) : null,
-    note: body.note ?? null,
-    created_at: now,
-    updated_at: now,
-  };
+  const id = uuidv7();
 
+  // run_index の採番を SELECT MAX(...) → INSERT の2ステップに分けると、同じ Experiment への
+  // 同時 create が同じ次番号を読み、片方が UNIQUE (experiment_id, run_index) で失敗する。
+  // 採番を INSERT ... SELECT の1文に埋め込み、MAX の読み取りと確定を単一の atomic statement にする。
   await db
     .prepare(
       `INSERT INTO experiment_runs
          (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
           objective, evaluation_json, decision_json, note, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       FROM experiment_runs WHERE experiment_id = ?`,
     )
     .bind(
-      row.id,
-      row.experiment_id,
-      row.run_index,
-      row.parent_run_id,
-      row.batch_id,
-      row.generation_id,
-      row.overrides_json,
-      row.objective,
-      row.evaluation_json,
-      row.decision_json,
-      row.note,
-      row.created_at,
-      row.updated_at,
+      id,
+      experiment.id,
+      parentRunId,
+      batchId,
+      generationId,
+      JSON.stringify(body.overrides ?? {}),
+      body.objective ?? null,
+      body.evaluation ? JSON.stringify(body.evaluation) : null,
+      body.decision ? JSON.stringify(body.decision) : null,
+      body.note ?? null,
+      now,
+      now,
+      experiment.id,
     )
     .run();
   await touchExperiment(db, experiment.id, now);
 
-  return row;
+  return getRunOr404(db, id);
 }
 
 export interface UpdateExperimentRunInput {
@@ -348,17 +354,32 @@ export async function updateExperimentRun(
     }
     assign('overrides_json', JSON.stringify(body.overrides));
   }
+  // generation_id の妥当性チェックは batch_id の解決後に行う必要がある: 同じ PATCH で
+  // batch_id と generation_id を両方渡した場合、Generation は「これから設定される Batch」
+  // (= effectiveBatchId) に対して検証されるべきで、Run に元々ついていた Batch ではない。
+  let effectiveBatchId = run.batch_id;
   if (body.batch_id !== undefined) {
     const batch = await resolveBatchOr404(db, body.batch_id);
     if (run.batch_id && run.batch_id !== batch.id) {
       throw conflict('run already has a batch attached');
     }
     assign('batch_id', batch.id);
+    effectiveBatchId = batch.id;
   }
   if (body.generation_id !== undefined) {
     const generation = await resolveGenerationOr404(db, body.generation_id);
     if (run.generation_id && run.generation_id !== generation.id) {
       throw conflict('run already has a generation attached');
+    }
+    // Run の代表 Generation はその Run 自身の Batch から出たものでなければ、
+    // 何が何を生んだかという provenance が壊れる。
+    if (!effectiveBatchId) {
+      throw conflict('run has no batch attached; attach a batch before attaching a generation');
+    }
+    if (generation.batch_id !== effectiveBatchId) {
+      throw conflict(
+        `generation belongs to batch ${generation.batch_id}, not the run's batch ${effectiveBatchId}`,
+      );
     }
     assign('generation_id', generation.id);
   }

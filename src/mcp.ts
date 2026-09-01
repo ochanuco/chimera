@@ -183,7 +183,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
   server.registerTool(
     'attach_generation',
     {
-      description: 'Attach a Generation (the representative result) to a Run. 409s if the Run already has a different Generation attached.',
+      description:
+        'Attach a Generation (the representative result) to a Run. The Run must already have a Batch attached, and the Generation must belong to that Batch. 409s if the Run already has a different Generation attached, if no Batch is attached yet, or if the Generation belongs to a different Batch.',
       inputSchema: z.object({ run_id: z.string().min(1), generation_id: z.string().min(1) }),
     },
     async ({ run_id, generation_id }) => {
