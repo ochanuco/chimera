@@ -73,13 +73,17 @@ Run は作られた時点で「まだ実行されていない」状態であり�
 ``` text
 list_experiments(status?)
 get_experiment(id)                       runs / overrides / evaluation / decision 込み
-create_run(experiment_id, overrides, objective?, parent_run_id?)
+create_run(experiment_id, overrides, objective?, parent_run_id?, idempotency_key?)
 get_run(run_id)                          batch と、その batch の generation 一覧
 get_generation_image(short_id)
 attach_generation(run_id, generation_id)
 set_evaluation(run_id, evaluation)
 set_decision(run_id, decision)
 ```
+
+Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
+を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから
+キーなしで再試行すると重複 Run が恒久的に残ります。
 
 生やさないもの:
 

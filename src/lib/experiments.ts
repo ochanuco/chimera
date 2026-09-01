@@ -250,6 +250,17 @@ export interface CreateExperimentRunInput {
   evaluation?: JsonObject;
   decision?: JsonObject;
   note?: string;
+  idempotency_key?: string;
+}
+
+export interface CreateExperimentRunResult {
+  row: ExperimentRunRow;
+  /** false ならキーの再送で既存 Run をそのまま返した（何も作成・更新していない）。 */
+  created: boolean;
+}
+
+async function findRunByIdempotencyKey(db: D1Database, key: string): Promise<ExperimentRunRow | null> {
+  return db.prepare('SELECT * FROM experiment_runs WHERE idempotency_key = ?').bind(key).first<ExperimentRunRow>();
 }
 
 /** POST /api/v1/experiments/{id}/runs と create_run MCP tool が共有する。 */
@@ -257,7 +268,21 @@ export async function createExperimentRun(
   db: D1Database,
   experiment: ExperimentRow,
   body: CreateExperimentRunInput,
-): Promise<ExperimentRunRow> {
+): Promise<CreateExperimentRunResult> {
+  if (body.idempotency_key) {
+    const existing = await findRunByIdempotencyKey(db, body.idempotency_key);
+    if (existing) {
+      // このキーは既に別の Experiment の Run で使われている。「無ければ作る」の
+      // 意味論を保つには、ここで黙って再利用するのではなく衝突として拒否する。
+      if (existing.experiment_id !== experiment.id) {
+        throw conflict(
+          `idempotency_key already used by a run under a different experiment (${existing.experiment_id})`,
+        );
+      }
+      return { row: existing, created: false };
+    }
+  }
+
   let parentRunId: string | null = null;
   if (body.parent_run_id) {
     const parent = await getRunOr404(db, body.parent_run_id);
@@ -290,33 +315,44 @@ export async function createExperimentRun(
   // run_index の採番を SELECT MAX(...) → INSERT の2ステップに分けると、同じ Experiment への
   // 同時 create が同じ次番号を読み、片方が UNIQUE (experiment_id, run_index) で失敗する。
   // 採番を INSERT ... SELECT の1文に埋め込み、MAX の読み取りと確定を単一の atomic statement にする。
-  await db
-    .prepare(
-      `INSERT INTO experiment_runs
-         (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
-          objective, evaluation_json, decision_json, note, created_at, updated_at)
-       SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       FROM experiment_runs WHERE experiment_id = ?`,
-    )
-    .bind(
-      id,
-      experiment.id,
-      parentRunId,
-      batchId,
-      generationId,
-      JSON.stringify(body.overrides ?? {}),
-      body.objective ?? null,
-      body.evaluation ? JSON.stringify(body.evaluation) : null,
-      body.decision ? JSON.stringify(body.decision) : null,
-      body.note ?? null,
-      now,
-      now,
-      experiment.id,
-    )
-    .run();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO experiment_runs
+           (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
+            objective, evaluation_json, decision_json, note, idempotency_key, created_at, updated_at)
+         SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         FROM experiment_runs WHERE experiment_id = ?`,
+      )
+      .bind(
+        id,
+        experiment.id,
+        parentRunId,
+        batchId,
+        generationId,
+        JSON.stringify(body.overrides ?? {}),
+        body.objective ?? null,
+        body.evaluation ? JSON.stringify(body.evaluation) : null,
+        body.decision ? JSON.stringify(body.decision) : null,
+        body.note ?? null,
+        body.idempotency_key ?? null,
+        now,
+        now,
+        experiment.id,
+      )
+      .run();
+  } catch (err) {
+    // 同じキーでの同時 create が両方この INSERT まで進み、片方が UNIQUE
+    // (idempotency_key) で失敗するレース。先に確定した側の行を読み直して返す。
+    if (body.idempotency_key && err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+      const raced = await findRunByIdempotencyKey(db, body.idempotency_key);
+      if (raced) return { row: raced, created: false };
+    }
+    throw err;
+  }
   await touchExperiment(db, experiment.id, now);
 
-  return getRunOr404(db, id);
+  return { row: await getRunOr404(db, id), created: true };
 }
 
 export interface UpdateExperimentRunInput {

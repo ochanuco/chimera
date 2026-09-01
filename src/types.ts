@@ -42,6 +42,7 @@ export interface ExperimentRunRow {
   evaluation_json: string | null;
   decision_json: string | null;
   note: string | null;
+  idempotency_key: string | null;
   created_at: string;
   updated_at: string;
 }

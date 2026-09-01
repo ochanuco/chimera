@@ -299,12 +299,17 @@ POST /api/v1/experiments/{id}/runs
     ]
   },
   "objective": "ソックスとタイツの境界を明確にする",
-  "parent_run_id": "..."
+  "parent_run_id": "...",
+  "idempotency_key": "..."
 }
 ```
 
 `batch_id` / `generation_id` はUUID / short_idのどちらでも受けます。`run_index`
 は Experiment 内で自動採番されます。
+
+`idempotency_key` は省略可能です。渡した場合、同じキーの再送は新規作成せず既存
+Run を返します（新規作成は201、再送は200）。同じキーを別の Experiment へ渡すと
+409です（そのキーは既に他所で使われています）。
 
 ### List Runs
 
@@ -823,3 +828,9 @@ APIへ解決可能な設計とします。
 
 Generation ingest はGeneration ID / R2
 keyを決定的に扱い、R2成功・D1失敗等から再実行可能にします。
+
+ExperimentRun create の `idempotency_key` は任意です。Run
+は物理削除できないため、Agent
+がレスポンスを失って作成の成否が分からなくなった場合の再送手段として使います。
+人間がGUIから作る場合や一回限りのcurlなど、再送保護を必要としない経路も
+引き続きキーなしで使えるようにするため、他の3つと異なり必須にはしません。
