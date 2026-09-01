@@ -186,17 +186,31 @@ describe('MCP server at /mcp', () => {
   it('tools/call create_run creates a Run visible through the REST API', async () => {
     const exp = await createExperiment({ base_recipe: 'yukari' });
 
+    const overrides = { patches: [{ target: 'pose', op: 'set', value: 'seated', reason: 'try a seated variant' }] };
     const call = await mcpToolCall<{ created: boolean; run: ExperimentRun }>('create_run', {
       experiment_id: exp.body.id,
-      overrides: { pose: 'seated' },
+      overrides,
       objective: 'try a seated variant',
     });
     expect(call.isError).toBe(false);
     expect(call.data?.created).toBe(true);
-    expect(call.data?.run.overrides).toEqual({ pose: 'seated' });
+    expect(call.data?.run.overrides).toEqual(overrides);
 
     const viaRest = await getJson<{ items: ExperimentRun[] }>(`/api/v1/experiments/${exp.body.id}/runs`);
     expect(viaRest.body.items.map((r) => r.id)).toContain(call.data?.run.id);
+  });
+
+  it('tools/call create_run with the PoC payload (base_parameters shape, not overrides) surfaces the 400 as a tool error', async () => {
+    const exp = await createExperiment({ base_recipe: 'yukari' });
+
+    const call = await mcpToolCall('create_run', {
+      experiment_id: exp.body.id,
+      overrides: { pose: '膝枕', costume: 'default', count: 1 },
+    });
+    expect(call.isError).toBe(true);
+    expect(call.text).toContain('pose');
+    expect(call.text).toContain('costume');
+    expect(call.text).toContain('count');
   });
 
   it('tools/call create_run with the same idempotency_key twice reports the second as not created and returns the same run id', async () => {

@@ -106,8 +106,10 @@ describe('Create ExperimentRun', () => {
   it('round-trips overrides JSON verbatim, including nesting and arrays', async () => {
     const exp = await createExperiment();
     const overrides = {
-      prompt: { positive_append: ['light purple thighhigh socks'] },
-      controlnet: { weight: 0.72 },
+      patches: [
+        { target: 'prompt.positive', op: 'append', value: ['light purple thighhigh socks'], reason: 'sock rendering' },
+        { target: 'controlnet.weight', op: 'set', value: 0.72, reason: 'sharper edges', old: 0.6 },
+      ],
     };
     const run = await createRun(exp.body.id, { overrides });
     expect(run.status).toBe(201);
@@ -149,6 +151,159 @@ describe('Create ExperimentRun', () => {
 
     const indices = results.map((r) => r.body.run_index).sort((a, b) => a - b);
     expect(indices).toEqual(Array.from({ length: CONCURRENCY }, (_, i) => i + 1));
+  });
+});
+
+describe('overrides envelope validation', () => {
+  it('400s the exact PoC payload (base_parameters shape, not the patch envelope), naming the unexpected keys', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { pose: '膝枕', costume: 'default', count: 1 },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('pose');
+    expect(res.body.error.message).toContain('costume');
+    expect(res.body.error.message).toContain('count');
+  });
+
+  it('accepts {}', async () => {
+    const exp = await createExperiment();
+    const res = await createRun(exp.body.id, { overrides: {} });
+    expect(res.status).toBe(201);
+    expect(res.body.overrides).toEqual({});
+  });
+
+  it('accepts {"patches": []}', async () => {
+    const exp = await createExperiment();
+    const res = await createRun(exp.body.id, { overrides: { patches: [] } });
+    expect(res.status).toBe(201);
+    expect(res.body.overrides).toEqual({ patches: [] });
+  });
+
+  it('accepts a well-formed patch list, including one with `old` and one with a numeric `value`', async () => {
+    const exp = await createExperiment();
+    const overrides = {
+      patches: [
+        { target: 'prompt.negative', op: 'remove', old: 'bare legs', reason: 'legwear must stay covered' },
+        { target: 'render.cfg', op: 'set', value: 4.5, reason: 'sharper edges' },
+      ],
+    };
+    const res = await createRun(exp.body.id, { overrides });
+    expect(res.status).toBe(201);
+    expect(res.body.overrides).toEqual(overrides);
+  });
+
+  it('accepts an unknown target value — chimera does not own the target/op vocabulary', async () => {
+    const exp = await createExperiment();
+    const overrides = { patches: [{ target: 'prompt.nonsense', op: 'set', value: 1, reason: 'r' }] };
+    const res = await createRun(exp.body.id, { overrides });
+    expect(res.status).toBe(201);
+    expect(res.body.overrides).toEqual(overrides);
+  });
+
+  it('400s when patches is not an array', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { patches: { target: 'a', op: 'set', reason: 'r' } },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('patches');
+  });
+
+  it('400s naming the index of a patch entry that is not an object', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { patches: [{ target: 'a', op: 'set', reason: 'r' }, 'not-an-object'] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('patches.1');
+  });
+
+  it('400s a patch missing reason', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { patches: [{ target: 'a', op: 'set' }] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('reason');
+  });
+
+  it('400s a patch missing target', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { patches: [{ op: 'set', reason: 'r' }] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('target');
+  });
+
+  it('400s a patch missing op', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { patches: [{ target: 'a', reason: 'r' }] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('op');
+  });
+
+  it('400s a patch with an empty-string target', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      overrides: { patches: [{ target: '', op: 'set', reason: 'r' }] },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('target');
+  });
+
+  it('applies the same rejection on PATCH /api/v1/experiment-runs/{id}', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const res = await postJson<{ error: { message: string } }>(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { overrides: { pose: '膝枕', costume: 'default', count: 1 } },
+      'PATCH',
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('pose');
+  });
+
+  it('applies the same rejection to promoted_overrides on promotion create', async () => {
+    const exp = await createExperiment();
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/experiments/${exp.body.id}/promotions`, {
+      promoted_overrides: { pose: '膝枕', costume: 'default', count: 1 },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('pose');
+  });
+
+  it('applies the same rejection to promoted_overrides on promotion update', async () => {
+    const exp = await createExperiment();
+    const promo = await postJson<{ id: string }>(`/api/v1/experiments/${exp.body.id}/promotions`, {});
+    const res = await postJson<{ error: { message: string } }>(
+      `/api/v1/promotions/${promo.body.id}`,
+      { promoted_overrides: { pose: '膝枕', costume: 'default', count: 1 } },
+      'PATCH',
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('pose');
+  });
+
+  it('leaves evaluation and decision free-form, including a decision.next_overrides that is not patch-shaped', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const decision = {
+      action: 'retry',
+      reason: 'r',
+      next_overrides: { prompt: { positive_append: ['distinct sock cuff'] } },
+    };
+    const res = await postJson<ExperimentRun>(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { evaluation: { pose: 'x', costume: 'y' }, decision },
+      'PATCH',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.evaluation).toEqual({ pose: 'x', costume: 'y' });
+    expect(res.body.decision).toEqual(decision);
   });
 });
 
@@ -426,7 +581,11 @@ describe('Guardrails', () => {
     await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch.id }, 'PATCH');
     await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: generation.id }, 'PATCH');
 
-    const res = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { overrides: { foo: 'bar' } }, 'PATCH');
+    const res = await postJson(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { overrides: { patches: [{ target: 'render.cfg', op: 'set', value: 4.5, reason: 'r' }] } },
+      'PATCH',
+    );
     expect(res.status).toBe(409);
   });
 
@@ -436,21 +595,28 @@ describe('Guardrails', () => {
     const { batch } = await createGeneration();
     await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch.id }, 'PATCH');
 
-    const res = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { overrides: { foo: 'bar' } }, 'PATCH');
+    const res = await postJson(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { overrides: { patches: [{ target: 'render.cfg', op: 'set', value: 4.5, reason: 'r' }] } },
+      'PATCH',
+    );
     expect(res.status).toBe(409);
   });
 
   it('allows changing overrides before anything is attached', async () => {
     const exp = await createExperiment();
-    const run = await createRun(exp.body.id, { overrides: { a: 1 } });
+    const run = await createRun(exp.body.id, {
+      overrides: { patches: [{ target: 'render.cfg', op: 'set', value: 4.5, reason: 'r' }] },
+    });
 
+    const updated = { patches: [{ target: 'render.cfg', op: 'set', value: 5.0, reason: 'r2' }] };
     const res = await postJson<ExperimentRun>(
       `/api/v1/experiment-runs/${run.body.id}`,
-      { overrides: { a: 2 } },
+      { overrides: updated },
       'PATCH',
     );
     expect(res.status).toBe(200);
-    expect(res.body.overrides).toEqual({ a: 2 });
+    expect(res.body.overrides).toEqual(updated);
   });
 
   it('400s PATCH with no fields', async () => {
@@ -525,7 +691,7 @@ describe('Experiment status transitions', () => {
 describe('Promotion', () => {
   it('copies the source run overrides when promoted_overrides is not given', async () => {
     const exp = await createExperiment();
-    const overrides = { controlnet: { weight: 0.9 } };
+    const overrides = { patches: [{ target: 'controlnet.weight', op: 'set', value: 0.9, reason: 'r' }] };
     const run = await createRun(exp.body.id, { overrides });
 
     const promo = await postJson<Promotion>(`/api/v1/experiments/${exp.body.id}/promotions`, {
@@ -537,8 +703,15 @@ describe('Promotion', () => {
 
   it('explicit promoted_overrides wins over the source run overrides', async () => {
     const exp = await createExperiment();
-    const run = await createRun(exp.body.id, { overrides: { a: 1 } });
-    const explicitOverrides = { a: 2, b: 3 };
+    const run = await createRun(exp.body.id, {
+      overrides: { patches: [{ target: 'a', op: 'set', value: 1, reason: 'r' }] },
+    });
+    const explicitOverrides = {
+      patches: [
+        { target: 'a', op: 'set', value: 2, reason: 'r' },
+        { target: 'b', op: 'set', value: 3, reason: 'r' },
+      ],
+    };
 
     const promo = await postJson<Promotion>(`/api/v1/experiments/${exp.body.id}/promotions`, {
       source_run_id: run.body.id,
@@ -601,7 +774,11 @@ describe('Promotion', () => {
     const promo = await postJson<Promotion>(`/api/v1/experiments/${exp.body.id}/promotions`, {});
     await postJson(`/api/v1/promotions/${promo.body.id}`, { status: 'applied' }, 'PATCH');
 
-    const res = await postJson(`/api/v1/promotions/${promo.body.id}`, { promoted_overrides: { a: 1 } }, 'PATCH');
+    const res = await postJson(
+      `/api/v1/promotions/${promo.body.id}`,
+      { promoted_overrides: { patches: [{ target: 'a', op: 'set', value: 1, reason: 'r' }] } },
+      'PATCH',
+    );
     expect(res.status).toBe(409);
   });
 

@@ -973,9 +973,7 @@ describe('Experiments pages', () => {
 
   it('GET /experiments lists name, status, run count and latest result', async () => {
     const experiment = await createExperiment({ base_recipe: 'dq3' });
-    const run = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      overrides: { prompt: { positive_append: ['light purple thighhigh socks'] } },
-    });
+    const run = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {});
     await postJson(`/api/v1/experiment-runs/${run.body.id}`, { evaluation: { overall: 'fail' } }, 'PATCH');
 
     const res = await req('/experiments');
@@ -1000,14 +998,34 @@ describe('Experiments pages', () => {
 
   it('GET /experiments/{short_id} shows the override delta of each run against its base', async () => {
     const experiment = await createExperiment({ base_recipe: 'dq3', description: 'legwear separation' });
-    const first = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      overrides: { controlnet: { weight: 0.6 }, prompt: { positive_append: ['black tights'] } },
-      objective: 'baseline',
-    });
-    await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      parent_run_id: first.body.id,
-      overrides: { controlnet: { weight: 0.72 }, prompt: { positive_append: ['black tights'] } },
-    });
+    // 非 patch 形式の overrides は API のエンベロープ検証を通らないため、leaf diff
+    // 表示経路をテストするにはここだけ env.DB へ直接 INSERT する。
+    const now = new Date().toISOString();
+    const firstId = crypto.randomUUID();
+    const secondId = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO experiment_runs (id, experiment_id, run_index, overrides_json, objective, created_at, updated_at)
+         VALUES (?, ?, 1, ?, 'baseline', ?, ?)`,
+      ).bind(
+        firstId,
+        experiment.id,
+        JSON.stringify({ controlnet: { weight: 0.6 }, prompt: { positive_append: ['black tights'] } }),
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO experiment_runs (id, experiment_id, run_index, parent_run_id, overrides_json, created_at, updated_at)
+         VALUES (?, ?, 2, ?, ?, ?, ?)`,
+      ).bind(
+        secondId,
+        experiment.id,
+        firstId,
+        JSON.stringify({ controlnet: { weight: 0.72 }, prompt: { positive_append: ['black tights'] } }),
+        now,
+        now,
+      ),
+    ]);
 
     const res = await req(`/experiments/${experiment.short_id}`);
     expect(res.status).toBe(200);
@@ -1046,15 +1064,34 @@ describe('Experiments pages', () => {
 
   it('GET /experiments/{short_id} falls back to the leaf diff when overrides.patches is not a patch list', async () => {
     const experiment = await createExperiment({ base_recipe: 'dq3' });
-    const first = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      // patches present but holds a bare string, not patch objects — must not be mistaken for the patch shape
-      overrides: { patches: ['not-a-patch-object'], controlnet: { weight: 0.6 } },
-      objective: 'baseline',
-    });
-    await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      parent_run_id: first.body.id,
-      overrides: { patches: ['not-a-patch-object'], controlnet: { weight: 0.72 } },
-    });
+    // patches はあるが中身がオブジェクトでない (patch 形式と誤認してはいけない) —
+    // これも API のエンベロープ検証を通らないため env.DB へ直接 INSERT する。
+    const now = new Date().toISOString();
+    const firstId = crypto.randomUUID();
+    const secondId = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO experiment_runs (id, experiment_id, run_index, overrides_json, objective, created_at, updated_at)
+         VALUES (?, ?, 1, ?, 'baseline', ?, ?)`,
+      ).bind(
+        firstId,
+        experiment.id,
+        JSON.stringify({ patches: ['not-a-patch-object'], controlnet: { weight: 0.6 } }),
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO experiment_runs (id, experiment_id, run_index, parent_run_id, overrides_json, created_at, updated_at)
+         VALUES (?, ?, 2, ?, ?, ?, ?)`,
+      ).bind(
+        secondId,
+        experiment.id,
+        firstId,
+        JSON.stringify({ patches: ['not-a-patch-object'], controlnet: { weight: 0.72 } }),
+        now,
+        now,
+      ),
+    ]);
 
     const res = await req(`/experiments/${experiment.short_id}`);
     expect(res.status).toBe(200);
@@ -1067,7 +1104,7 @@ describe('Experiments pages', () => {
     const { generation, batch } = await createGeneration();
     const experiment = await createExperiment();
     const run = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      overrides: { pose: { hip_rotation: 4 } },
+      overrides: { patches: [{ target: 'pose.hip_rotation', op: 'set', value: 4, reason: 'r' }] },
       batch_id: batch.id,
       generation_id: generation.id,
       evaluation: { overall: 'pass', aspects: { clothing: 'pass' }, notes: ['sock cuff is distinct'] },
@@ -1191,7 +1228,26 @@ describe('Experiment run patch delta matching', () => {
   });
 
   it('falls back to the leaf diff when the base run is not patch-shaped', async () => {
-    const html = await experimentWithRuns([{ controlnet: { weight: 0.6 } }, { patches: [socks] }]);
+    const experiment = await postJson<{ id: string; short_id: string }>('/api/v1/experiments', {
+      name: `ui-exp-match-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    // base run の overrides は非 patch 形式 (leaf diff フォールバックを起こすため) なので
+    // API のエンベロープ検証を通らず env.DB へ直接 INSERT する。
+    const now = new Date().toISOString();
+    const baseId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO experiment_runs (id, experiment_id, run_index, overrides_json, created_at, updated_at)
+       VALUES (?, ?, 1, ?, ?, ?)`,
+    )
+      .bind(baseId, experiment.body.id, JSON.stringify({ controlnet: { weight: 0.6 } }), now, now)
+      .run();
+    await postJson(`/api/v1/experiments/${experiment.body.id}/runs`, {
+      parent_run_id: baseId,
+      overrides: { patches: [socks] },
+    });
+
+    const res = await req(`/experiments/${experiment.body.short_id}`);
+    const html = await res.text();
     // patch リストとして突き合わせず、leaf diff の path 表記が出る。
     expect(html).toContain('controlnet.weight');
     expect(html).toContain('patches');
