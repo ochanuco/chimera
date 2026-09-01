@@ -8,6 +8,10 @@
 // に変換する（node_modules/@modelcontextprotocol/server の実装、
 // createToolError を参照）ので、メッセージはそのまま tool error に出る。
 
+// 読み取り tool には readOnlyHint を付ける。Cloudflare OS の gatekeeper-mcp は
+// annotation のない tool をすべて副作用ありの action として承認キューに入れ、
+// 呼び出し時点では結果を返さない。読み取りがそこに入ると Agent はデータを
+// 受け取れず同じ呼び出しを繰り返す。
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
@@ -63,6 +67,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     {
       description: 'List Experiments, optionally filtered by status. Each item carries its base_recipe/base_parameters and latest Run.',
       inputSchema: z.object({ status: experimentStatusSchema.optional() }),
+      annotations: { readOnlyHint: true },
     },
     async ({ status }) => {
       const rows = await queryExperiments(db, { status }, 200, 0);
@@ -96,6 +101,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     {
       description: 'Get an Experiment (by id or short_id) with its runs, promotions and tags — same shape as GET /api/v1/experiments/{id}.',
       inputSchema: z.object({ id: z.string().min(1) }),
+      annotations: { readOnlyHint: true },
     },
     async ({ id }) => {
       const experiment = await getExperimentOr404(db, id);
@@ -129,6 +135,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     {
       description: "Get a Run, its attached batch, and that batch's generations (short_id, rating, image dimensions).",
       inputSchema: z.object({ run_id: z.string().min(1) }),
+      annotations: { readOnlyHint: true },
     },
     async ({ run_id }) => {
       const run = await getRunOr404(db, run_id);
@@ -155,6 +162,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
       description:
         'Fetch a Generation image by short_id (or id). Returns inline image content up to 4MB; larger images return the canonical URL instead.',
       inputSchema: z.object({ short_id: z.string().min(1) }),
+      annotations: { readOnlyHint: true },
     },
     async ({ short_id }) => {
       const generation = await resolveGenerationOr404(db, short_id);
