@@ -33,8 +33,25 @@ import { canonicalGenerationUrl, serializeExperimentRun } from './lib/serialize'
 import { parseJsonObjectOrNull } from './lib/overrides';
 import type { Bindings } from './types';
 
-/** R2 read は base64 で返すと content が肥大化するので、この値を超えたら本文を送らずポインタだけ返す。 */
-const MAX_INLINE_IMAGE_BYTES = 4 * 1024 * 1024;
+/**
+ * MCP クライアント（cloudflare-os の packages/mcp-shared/src/fetch.ts、MAX_RESPONSE_BYTES）は
+ * tools/call レスポンス全体を 1 MiB で切る。inline image は base64 化で 4/3 に膨れるため、
+ * 実際に返せる生バイト数は 1 MiB ÷ (4/3) ≈ 786 KiB。JSON-RPC envelope の分の余裕を見て
+ * 700 KiB に切り詰める。
+ */
+const MAX_RETURNED_IMAGE_BYTES = 700 * 1024;
+
+/** Images binding の `.input()` はここを超えると ImagesError を投げるので、その前に text で断る。 */
+const MAX_TRANSFORM_INPUT_BYTES = 20 * 1024 * 1024;
+
+const DEFAULT_IMAGE_WIDTH = 768;
+const MIN_IMAGE_WIDTH = 256;
+const MAX_IMAGE_WIDTH = 1024;
+
+function clampImageWidth(width: number | undefined): number {
+  if (width === undefined) return DEFAULT_IMAGE_WIDTH;
+  return Math.min(MAX_IMAGE_WIDTH, Math.max(MIN_IMAGE_WIDTH, Math.round(width)));
+}
 
 function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
@@ -166,38 +183,56 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     'get_generation_image',
     {
       description:
-        'Fetch a Generation image by short_id (or id). Returns inline image content up to 4MB; larger images return the canonical URL instead.',
-      inputSchema: z.object({ short_id: z.string().min(1) }),
+        'Fetch a Generation image by short_id (or id). Returns it downscaled and re-encoded as JPEG — the MCP ' +
+        "client caps a whole response at 1MB, which a full-size PNG blows past once base64-encoded — so it's for " +
+        'judging composition, not pixel-level inspection. width (256-1024, default 768) trades detail for a ' +
+        'smaller reply. Images too large to inline return the canonical URL instead.',
+      inputSchema: z.object({ short_id: z.string().min(1), width: z.number().optional() }),
       annotations: { readOnlyHint: true },
     },
-    async ({ short_id }) => {
+    async ({ short_id, width }) => {
       const generation = await resolveGenerationOr404(db, short_id);
       const head = await bucket.head(generation.r2_object_key);
       if (!head) throw notFound('image');
 
       const canonicalUrl = canonicalGenerationUrl(origin, generation.short_id);
-      if (head.size > MAX_INLINE_IMAGE_BYTES) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `image is ${head.size} bytes, over the ${MAX_INLINE_IMAGE_BYTES} byte inline limit. See ${canonicalUrl}`,
-            },
-          ],
-        };
+      const pointer = (reason: string) => ({
+        content: [{ type: 'text' as const, text: `${reason} See ${canonicalUrl}` }],
+      });
+
+      if (head.size > MAX_TRANSFORM_INPUT_BYTES) {
+        return pointer(`image is ${head.size} bytes, over the ${MAX_TRANSFORM_INPUT_BYTES} byte transform input limit.`);
       }
 
       const object = await bucket.get(generation.r2_object_key);
       if (!object) throw notFound('image');
-      const bytes = new Uint8Array(await object.arrayBuffer());
+
+      // transform 用と、失敗時のフォールバック用に body を分ける。成功すれば
+      // フォールバック側は誰も読まないまま捨てられる。
+      const [forTransform, forFallback] = object.body.tee();
+
+      let bytes: Uint8Array;
+      let mimeType: string;
+      try {
+        const result = await env.IMAGE_TRANSFORM.input(forTransform)
+          .transform({ width: clampImageWidth(width) })
+          .output({ format: 'image/jpeg', quality: 72 });
+        bytes = new Uint8Array(await result.response().arrayBuffer());
+        mimeType = 'image/jpeg';
+      } catch {
+        // 変換失敗（壊れた画像、binding 未提供の環境など）でも tool call 自体は
+        // 失敗させない。元画像がキャップ内に収まればそのまま返し、収まらなければ
+        // 従来どおりポインタに落とす。
+        bytes = new Uint8Array(await new Response(forFallback).arrayBuffer());
+        mimeType = object.httpMetadata?.contentType ?? 'image/png';
+      }
+
+      if (bytes.length > MAX_RETURNED_IMAGE_BYTES) {
+        return pointer(`image is ${bytes.length} bytes, over the ${MAX_RETURNED_IMAGE_BYTES} byte inline limit.`);
+      }
+
       return {
-        content: [
-          {
-            type: 'image' as const,
-            data: toBase64(bytes),
-            mimeType: object.httpMetadata?.contentType ?? 'image/png',
-          },
-        ],
+        content: [{ type: 'image' as const, data: toBase64(bytes), mimeType }],
       };
     },
   );
