@@ -97,6 +97,96 @@ export const TINY_PNG = new Uint8Array([
   0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 ]);
 
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of buf) crc = (CRC_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function u32be(n: number): Uint8Array {
+  return new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const typeBytes = new TextEncoder().encode(type);
+  const body = new Uint8Array(typeBytes.length + data.length);
+  body.set(typeBytes, 0);
+  body.set(data, typeBytes.length);
+  const out = new Uint8Array(4 + body.length + 4);
+  out.set(u32be(data.length), 0);
+  out.set(body, 4);
+  out.set(u32be(crc32(body)), 4 + body.length);
+  return out;
+}
+
+async function zlibDeflate(data: Uint8Array): Promise<Uint8Array> {
+  const cs = new CompressionStream('deflate');
+  const writer = cs.writable.getWriter();
+  void writer.write(data);
+  void writer.close();
+  const chunks: Uint8Array[] = [];
+  const reader = cs.readable.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
+/**
+ * Builds a real, decodable solid-color PNG at the given size (8-bit RGB, no interlace).
+ * Used where a fixture must be big enough for the Images binding to actually resize —
+ * TINY_PNG (1x1) never shrinks under the default scale-down fit.
+ */
+export async function makeSolidPng(width: number, height: number, rgb: [number, number, number]): Promise<Uint8Array> {
+  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  const ihdrData = new Uint8Array(13);
+  new DataView(ihdrData.buffer).setUint32(0, width);
+  new DataView(ihdrData.buffer).setUint32(4, height);
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = 2; // color type: RGB
+  const ihdr = pngChunk('IHDR', ihdrData);
+
+  const rowBytes = 1 + width * 3;
+  const raw = new Uint8Array(rowBytes * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * rowBytes; // raw[rowStart] stays 0: filter type "none"
+    for (let x = 0; x < width; x++) {
+      const px = rowStart + 1 + x * 3;
+      raw.set(rgb, px);
+    }
+  }
+  const idat = pngChunk('IDAT', await zlibDeflate(raw));
+  const iend = pngChunk('IEND', new Uint8Array(0));
+
+  const out = new Uint8Array(signature.length + ihdr.length + idat.length + iend.length);
+  let offset = 0;
+  for (const part of [signature, ihdr, idat, iend]) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
 export async function createBatch(overrides: Record<string, unknown> = {}) {
   return postJson<{ id: string; short_id: string; status: string }>('/api/v1/batches', {
     idempotency_key: crypto.randomUUID(),

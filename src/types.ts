@@ -1,6 +1,7 @@
 export interface Bindings {
   DB: D1Database;
   IMAGES: R2Bucket;
+  IMAGE_TRANSFORM: ImagesBinding;
 }
 
 export type AppEnv = { Bindings: Bindings };

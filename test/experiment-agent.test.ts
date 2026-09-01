@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createGeneration, getJson, mcpCall, mcpToolCall, postJson } from './helpers';
+import { createGeneration, getJson, makeSolidPng, mcpCall, mcpToolCall, postJson } from './helpers';
 
 function uniqueName(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
@@ -272,21 +272,67 @@ describe('MCP server at /mcp', () => {
 });
 
 describe('MCP get_generation_image', () => {
-  it('returns inline image content for a small image', async () => {
+  it('returns a downscaled JPEG for a small image', async () => {
     const { generation } = await createGeneration();
     const { result, isError } = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
     expect(isError).toBe(false);
     expect(result?.content?.[0]?.type).toBe('image');
-    expect(result?.content?.[0]?.mimeType).toContain('image/');
+    expect(result?.content?.[0]?.mimeType).toBe('image/jpeg');
     expect((result?.content?.[0]?.data ?? '').length).toBeGreaterThan(0);
   });
 
-  it('returns the canonical URL instead of bytes when the object is over the inline limit', async () => {
+  it('honours the width argument, resizing to the requested width', async () => {
     const { generation } = await createGeneration();
-    // ingest 済みの R2 オブジェクトを直接 4MB 超へ差し替える。境界を跨ぐ分岐を
-    // 通すためだけの操作で、D1 行はそのまま。
     const key = `generations/${generation.id}/original.png`;
-    await env.IMAGES.put(key, new Uint8Array(4 * 1024 * 1024 + 1));
+    // デフォルト幅 (768) より大きい実画像でないと scale-down は縮小しない。
+    await env.IMAGES.put(key, await makeSolidPng(1600, 2400, [200, 80, 40]));
+
+    const requested = 256;
+    const { result, isError } = await mcpToolCall('get_generation_image', {
+      short_id: generation.short_id,
+      width: requested,
+    });
+    expect(isError).toBe(false);
+    expect(result?.content?.[0]?.mimeType).toBe('image/jpeg');
+
+    const data = result?.content?.[0]?.data ?? '';
+    const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+    const info = await env.IMAGE_TRANSFORM.info(new Response(bytes).body!);
+    expect('width' in info && info.width).toBe(requested);
+  });
+
+  it('refuses a source over the transform input limit without touching the binding', async () => {
+    const { generation } = await createGeneration();
+    // ingest 済みの R2 オブジェクトを直接 20MB 超へ差し替える。.input() の上限
+    // チェックが transform を試みる前に効くことだけを確認する。D1 行はそのまま。
+    const key = `generations/${generation.id}/original.png`;
+    await env.IMAGES.put(key, new Uint8Array(20 * 1024 * 1024 + 1));
+
+    const { result, text, isError } = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
+    expect(isError).toBe(false);
+    expect(result?.content?.[0]?.type).toBe('text');
+    expect(text).toContain('transform input limit');
+    expect(text).toContain(`/g/${generation.short_id}`);
+  });
+
+  it('falls back to the original bytes when the transform fails and the source fits under the cap', async () => {
+    const { generation } = await createGeneration();
+    // 壊れた（デコード不能な）オブジェクトに差し替えて transform を失敗させる。
+    const key = `generations/${generation.id}/original.png`;
+    await env.IMAGES.put(key, new Uint8Array(1024));
+
+    const { result, isError } = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
+    expect(isError).toBe(false);
+    expect(result?.content?.[0]?.type).toBe('image');
+    expect((result?.content?.[0]?.data ?? '').length).toBeGreaterThan(0);
+  });
+
+  it('falls back to the canonical URL when the transform fails and the original is over the inline cap', async () => {
+    const { generation } = await createGeneration();
+    // 壊れたオブジェクトを inline cap 超のサイズで用意し、フォールバックも
+    // ポインタに落ちることを確認する。
+    const key = `generations/${generation.id}/original.png`;
+    await env.IMAGES.put(key, new Uint8Array(701 * 1024));
 
     const { result, text, isError } = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
     expect(isError).toBe(false);

@@ -28,5 +28,8 @@
       "binding": "IMAGES",
       "bucket_name": "chimera-images"
     }
-  ]
+  ],
+  "images": {
+    "binding": "IMAGE_TRANSFORM"
+  }
 }

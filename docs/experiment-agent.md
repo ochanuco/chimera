@@ -75,7 +75,7 @@ list_experiments(status?)
 get_experiment(id)                       runs / overrides / evaluation / decision 込み
 create_run(experiment_id, overrides, objective?, parent_run_id?, idempotency_key?)
 get_run(run_id)                          batch と、その batch の generation 一覧
-get_generation_image(short_id)
+get_generation_image(short_id, width?)
 attach_generation(run_id, generation_id)
 set_evaluation(run_id, evaluation)
 set_decision(run_id, decision)
@@ -84,6 +84,11 @@ set_decision(run_id, decision)
 Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから
 キーなしで再試行すると重複 Run が恒久的に残ります。
+
+`get_generation_image` は元画像そのものではなく、Images binding で縮小・JPEG
+再エンコードした画像を返します。MCP クライアント側がレスポンス全体を 1MiB
+に制限しており、生成物の元 PNG（1MB 台）は base64 化するとほぼ必ずこの上限を
+超えるためです。構図確認には十分な解像度ですが、ピクセル単位の確認には向きません。
 
 `create_run` の `overrides` は `{"patches": [...]}` 形の diff のみを受け付け、
 `{"pose": "...", "costume": "...", "count": 1}` のような base_parameters
