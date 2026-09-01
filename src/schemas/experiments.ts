@@ -5,7 +5,7 @@ import { z } from 'zod';
  * JSON blob として受ける（docs/domain-model.md 参照）。評価軸は Experiment や
  * 評価者ごとに変わるため、ここで固定するとその都度 migration が必要になる。
  */
-const jsonObject = z.record(z.string(), z.unknown());
+export const jsonObject = z.record(z.string(), z.unknown());
 
 export const experimentStatusSchema = z.enum(['active', 'stabilized', 'promoted', 'abandoned']);
 export const promotionStatusSchema = z.enum(['proposed', 'applied', 'rejected']);
@@ -28,6 +28,7 @@ export const createExperimentSchema = z.object({
   description: z.string().optional(),
   note: z.string().optional(),
   base_recipe: z.string().optional(),
+  base_parameters: jsonObject.optional(),
   character_id: z.string().min(1).optional(),
 });
 
@@ -37,6 +38,7 @@ export const updateExperimentSchema = z
     description: z.string().nullable().optional(),
     note: z.string().nullable().optional(),
     base_recipe: z.string().nullable().optional(),
+    base_parameters: jsonObject.nullable().optional(),
     character_id: z.string().min(1).nullable().optional(),
     status: experimentStatusSchema.optional(),
   })

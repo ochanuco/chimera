@@ -34,6 +34,61 @@ export async function del<T = unknown>(path: string): Promise<{ status: number; 
   return { status: res.status, body };
 }
 
+export interface McpJsonRpcResponse<T = unknown> {
+  jsonrpc: '2.0';
+  id: number | string;
+  result?: T;
+  error?: { code: number; message: string };
+}
+
+/**
+ * Drives POST /mcp with a plain JSON-RPC request body. The stateless handler answers with an
+ * SSE frame (`event: message\ndata: {...}\n\n`) rather than a bare JSON body, so this parses the
+ * `data:` line back out. `Accept: application/json, text/event-stream` is required by the
+ * installed @modelcontextprotocol/server handler (checked by hitting the endpoint directly).
+ */
+export async function mcpCall<T = unknown>(
+  method: string,
+  params: unknown,
+  id: number | string = 1,
+): Promise<{ status: number; body: McpJsonRpcResponse<T> }> {
+  const res = await req('/mcp', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+  });
+  const text = await res.text();
+  const dataLine = text.split('\n').find((line) => line.startsWith('data: '));
+  const body = dataLine
+    ? (JSON.parse(dataLine.slice('data: '.length)) as McpJsonRpcResponse<T>)
+    : ({} as McpJsonRpcResponse<T>);
+  return { status: res.status, body };
+}
+
+export interface McpToolCallResult {
+  content: { type: string; text?: string; data?: string; mimeType?: string }[];
+  isError?: boolean;
+}
+
+/** tools/call convenience wrapper; parses the first text content block as JSON when it looks like one. */
+export async function mcpToolCall<T = unknown>(name: string, args: unknown, id: number | string = 1) {
+  const { status, body } = await mcpCall<McpToolCallResult>('tools/call', { name, arguments: args }, id);
+  const result = body.result;
+  const firstText = result?.content?.[0]?.text;
+  let data: T | undefined;
+  if (firstText) {
+    try {
+      data = JSON.parse(firstText) as T;
+    } catch {
+      data = undefined;
+    }
+  }
+  return { status, result, data, isError: result?.isError === true, text: firstText };
+}
+
 // 1x1 transparent PNG.
 export const TINY_PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00,

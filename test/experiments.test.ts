@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, del, getJson, postJson } from './helpers';
 
@@ -138,20 +139,24 @@ describe('Create ExperimentRun', () => {
     expect(list.body.items.map((r) => r.id)).toEqual([r1.body.id, r2.body.id, r3.body.id]);
     expect(list.body.items.map((r) => r.run_index)).toEqual([1, 2, 3]);
   });
+
+  it('does not produce duplicate run_index values under concurrent creates on the same experiment', async () => {
+    const exp = await createExperiment();
+    const CONCURRENCY = 10;
+
+    const results = await Promise.all(Array.from({ length: CONCURRENCY }, () => createRun(exp.body.id)));
+    for (const r of results) expect(r.status).toBe(201);
+
+    const indices = results.map((r) => r.body.run_index).sort((a, b) => a - b);
+    expect(indices).toEqual(Array.from({ length: CONCURRENCY }, (_, i) => i + 1));
+  });
 });
 
 describe('Generation / Batch linkage', () => {
-  it('attaches a generation (by short_id) and a batch, surfacing them in the experiment detail', async () => {
+  it('attaches a batch, then a generation (by short_id) from that batch, surfacing them in the experiment detail', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);
     const { generation, batch } = await createGeneration();
-
-    const patchedGeneration = await postJson<ExperimentRun>(
-      `/api/v1/experiment-runs/${run.body.id}`,
-      { generation_id: generation.short_id },
-      'PATCH',
-    );
-    expect(patchedGeneration.status).toBe(200);
 
     const patchedBatch = await postJson<ExperimentRun>(
       `/api/v1/experiment-runs/${run.body.id}`,
@@ -159,6 +164,13 @@ describe('Generation / Batch linkage', () => {
       'PATCH',
     );
     expect(patchedBatch.status).toBe(200);
+
+    const patchedGeneration = await postJson<ExperimentRun>(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { generation_id: generation.short_id },
+      'PATCH',
+    );
+    expect(patchedGeneration.status).toBe(200);
 
     const detail = await getJson<ExperimentDetail>(`/api/v1/experiments/${exp.body.id}`);
     const decoratedRun = detail.body.runs.find((r: any) => r.id === run.body.id) as any;
@@ -170,8 +182,10 @@ describe('Generation / Batch linkage', () => {
   it('409s when attaching a different generation to a run that already has one', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);
-    const { generation: g1 } = await createGeneration();
+    const { generation: g1, batch: batch1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
+
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch1.id }, 'PATCH');
 
     const first = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: g1.id }, 'PATCH');
     expect(first.status).toBe(200);
@@ -183,7 +197,8 @@ describe('Generation / Batch linkage', () => {
   it('accepts re-attaching the same generation id (idempotent)', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);
-    const { generation } = await createGeneration();
+    const { generation, batch } = await createGeneration();
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch.id }, 'PATCH');
 
     const first = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: generation.id }, 'PATCH');
     expect(first.status).toBe(200);
@@ -197,6 +212,64 @@ describe('Generation / Batch linkage', () => {
     const run = await createRun(exp.body.id);
     const res = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: crypto.randomUUID() }, 'PATCH');
     expect(res.status).toBe(404);
+  });
+
+  it('409s attaching a generation to a run with no batch attached', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { generation } = await createGeneration();
+
+    const res = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: generation.id }, 'PATCH');
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ error: { message: expect.stringContaining('no batch attached') } });
+  });
+
+  it('409s attaching a generation that belongs to a different batch than the run', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { batch: runBatch } = await createGeneration();
+    const { generation: otherGeneration } = await createGeneration();
+
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: runBatch.id }, 'PATCH');
+
+    const res = await postJson(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { generation_id: otherGeneration.id },
+      'PATCH',
+    );
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      error: { message: expect.stringContaining(`not the run's batch ${runBatch.id}`) },
+    });
+  });
+
+  it('200s setting a matching batch_id and generation_id together in one PATCH', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { generation, batch } = await createGeneration();
+
+    const res = await postJson<ExperimentRun>(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { batch_id: batch.id, generation_id: generation.id },
+      'PATCH',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.batch_id).toBe(batch.id);
+    expect(res.body.generation_id).toBe(generation.id);
+  });
+
+  it('409s setting a batch_id and generation_id together in one PATCH when the generation belongs to a different batch', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { batch } = await createGeneration();
+    const { generation: otherGeneration } = await createGeneration();
+
+    const res = await postJson(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { batch_id: batch.id, generation_id: otherGeneration.id },
+      'PATCH',
+    );
+    expect(res.status).toBe(409);
   });
 });
 
@@ -269,7 +342,8 @@ describe('Guardrails', () => {
   it('409s changing overrides after a generation is attached', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);
-    const { generation } = await createGeneration();
+    const { generation, batch } = await createGeneration();
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch.id }, 'PATCH');
     await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: generation.id }, 'PATCH');
 
     const res = await postJson(`/api/v1/experiment-runs/${run.body.id}`, { overrides: { foo: 'bar' } }, 'PATCH');
@@ -522,5 +596,41 @@ describe('Experiment detail', () => {
 
     const detail = await getJson<ExperimentDetail>(`/api/v1/experiments/${exp.body.id}`);
     expect(detail.body.tags).toContain(tagged.body.name);
+  });
+});
+
+describe('D1 bound-parameter chunking (>100 ids)', () => {
+  it('GET /api/v1/experiments/{id} returns every run when the experiment has more than 100', async () => {
+    const exp = await createExperiment();
+    const RUN_COUNT = 120;
+    const now = new Date().toISOString();
+
+    // 120件を REST 経由で1件ずつ作ると直列 fetch でテストが遅くなるため、env.DB へ直接
+    // INSERT する。各 Run に一意な batch_id を振ることで、decorateRuns の
+    // `batches WHERE id IN (...)` / `resolveBatchThumbnails` が 100 個を超える bound
+    // parameter を要求する状況を再現する。batch_id は FK 制約があるため、ダミーの
+    // batches 行も先に用意する。
+    const batchIds = Array.from({ length: RUN_COUNT }, () => crypto.randomUUID());
+    const batchStatements = batchIds.map((id) =>
+      env.DB.prepare(
+        `INSERT INTO batches (id, short_id, prompt, status, idempotency_key, created_at, updated_at)
+         VALUES (?, ?, 'chunk test', 'created', ?, ?, ?)`,
+      ).bind(id, crypto.randomUUID().replace(/-/g, '').slice(0, 6), crypto.randomUUID(), now, now),
+    );
+    await env.DB.batch(batchStatements);
+
+    const runStatements = batchIds.map((batchId, i) =>
+      env.DB.prepare(
+        `INSERT INTO experiment_runs
+           (id, experiment_id, run_index, batch_id, overrides_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, '{}', ?, ?)`,
+      ).bind(crypto.randomUUID(), exp.body.id, i + 1, batchId, now, now),
+    );
+    await env.DB.batch(runStatements);
+
+    const detail = await getJson<ExperimentDetail>(`/api/v1/experiments/${exp.body.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.run_count).toBe(RUN_COUNT);
+    expect(detail.body.runs).toHaveLength(RUN_COUNT);
   });
 });
