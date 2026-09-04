@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createJob, getJson, ingestGeneration, postJson } from './helpers';
+import { createBatch, createJob, getJson, ingestGeneration, postJson, setJobGraph } from './helpers';
 
 interface Experiment {
   id: string;
@@ -345,5 +345,63 @@ describe('List / Summary PairwiseJudgment', () => {
     const ctx = await setupPair();
     const res = await getJson<SummaryBody>(`/api/v1/experiments/${ctx.experiment.short_id}/judgments/summary`);
     expect(res.status).toBe(200);
+  });
+});
+
+interface JudgmentRevealSide {
+  run_id: string;
+  run_index: number;
+  role: string;
+}
+
+interface RenderDiffEntry {
+  column: string;
+  baseline: string | null;
+  arm: string | null;
+}
+
+interface JudgmentWithReveal extends Judgment {
+  reveal: { left: JudgmentRevealSide; right: JudgmentRevealSide; render_diff: RenderDiffEntry[] };
+}
+
+interface SummaryBodyWithRenderDiff extends SummaryBody {
+  pairs: (SummaryBody['pairs'][number] & { render_diff: RenderDiffEntry[] })[];
+}
+
+describe('PairwiseJudgment render_facts reveal', () => {
+  it('POST response carries reveal.left/right (role matching the generation orientation) and a render_diff covering checkpoint + variables, matching the same-shaped summary.pairs[].render_diff', async () => {
+    const ctx = await setupPair();
+
+    const [baselineJobs, armJobs] = await Promise.all([
+      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.baselineBatch.id}`),
+      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.armBatch.id}`),
+    ]);
+    const baselineFirstJob = baselineJobs.body.jobs.find((j) => j.index === 0)!;
+    const armFirstJob = armJobs.body.jobs.find((j) => j.index === 0)!;
+
+    await setJobGraph(baselineFirstJob.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'base.safetensors' } } });
+    await setJobGraph(armFirstJob.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'arm.safetensors' } } });
+    await postJson(`/api/v1/experiment-runs/${ctx.armRun.id}`, { variables: { prompt_variant: 'v2' } }, 'PATCH');
+
+    // left = baseline generation, right = arm generation.
+    const res = await postJson<JudgmentWithReveal>(`/api/v1/experiments/${ctx.experiment.id}/judgments`, {
+      baseline_run_id: ctx.baselineRun.id,
+      arm_run_id: ctx.armRun.id,
+      seed: 11,
+      left_generation_id: ctx.baselineGens[11]!.id,
+      right_generation_id: ctx.armGens[11]!.id,
+      verdict: 'right',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reveal.left).toEqual({ run_id: ctx.baselineRun.id, run_index: ctx.baselineRun.run_index, role: 'baseline' });
+    expect(res.body.reveal.right).toEqual({ run_id: ctx.armRun.id, run_index: ctx.armRun.run_index, role: 'arm' });
+
+    expect(res.body.reveal.render_diff).toContainEqual({ column: 'checkpoint', baseline: 'base.safetensors', arm: 'arm.safetensors' });
+    expect(res.body.reveal.render_diff).toContainEqual({ column: 'variables.prompt_variant', baseline: null, arm: 'v2' });
+
+    const summary = await getJson<SummaryBodyWithRenderDiff>(`/api/v1/experiments/${ctx.experiment.id}/judgments/summary`);
+    const pair = summary.body.pairs.find((p) => p.baseline_run_id === ctx.baselineRun.id && p.arm_run_id === ctx.armRun.id);
+    expect(pair?.render_diff).toEqual(res.body.reveal.render_diff);
   });
 });

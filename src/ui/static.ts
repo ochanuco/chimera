@@ -783,6 +783,29 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .ab-vote:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .ab-vote:disabled { opacity: 0.5; cursor: default; }
+
+.ab-reveal {
+  margin-top: 1.25rem;
+  text-align: center;
+}
+.ab-reveal-line { color: var(--text); font-size: 0.9rem; margin-bottom: 0.75rem; }
+.ab-next {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  padding: 0.6rem 2.2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.exp-facts { margin-bottom: 0.4rem; }
+.exp-facts th { text-align: left; padding: 0.2rem 0.8rem 0.2rem 0; font-size: 0.78rem; color: var(--text-dim); font-weight: 600; }
+.exp-facts td { padding: 0.2rem 0.8rem 0.2rem 0; font-size: 0.85rem; }
+.exp-facts-diff { background: rgba(124, 156, 245, 0.18); }
+.exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
+.exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 `;
 
 export const appJs = `
@@ -1645,6 +1668,9 @@ export const appJs = `
     const leftImg = leftLink ? leftLink.querySelector('img') : null;
     const rightImg = rightLink ? rightLink.querySelector('img') : null;
     const voteButtons = qsa('.ab-vote', root);
+    const revealEl = qs('.ab-reveal', root);
+    const revealLineEl = qs('.ab-reveal-line', root);
+    const nextBtn = qs('.ab-next', root);
 
     function updateProgress() {
       if (progressEl) progressEl.textContent = judged + ' / ' + total;
@@ -1655,6 +1681,7 @@ export const appJs = `
     }
 
     function renderCurrent() {
+      if (revealEl) revealEl.hidden = true;
       if (index >= pairs.length) {
         if (areaEl) areaEl.hidden = true;
         if (doneEl) doneEl.hidden = false;
@@ -1669,13 +1696,37 @@ export const appJs = `
       setButtonsDisabled(false);
     }
 
+    // reveal.render_diff の各行を "column: baseline → arm" として一行にまとめる。POST の
+    // 409 (既に判定済み) は response body を持たないので、この整形は成功時のみ通る。
+    function formatReveal(reveal) {
+      var line = 'A = #' + reveal.left.run_index + ' (' + reveal.left.role + ') · B = #' + reveal.right.run_index + ' (' + reveal.right.role + ')';
+      if (reveal.render_diff && reveal.render_diff.length > 0) {
+        reveal.render_diff.forEach(function (d) {
+          line += ' · ' + d.column + ': ' + (d.baseline == null ? '—' : d.baseline) + ' → ' + (d.arm == null ? '—' : d.arm);
+        });
+      } else {
+        line += ' · no fact difference';
+      }
+      return line;
+    }
+
+    function showReveal(text) {
+      if (revealLineEl) revealLineEl.textContent = text;
+      if (revealEl) revealEl.hidden = false;
+    }
+
+    function advance() {
+      index += 1;
+      renderCurrent();
+    }
+
     async function vote(verdict) {
       const pair = pairs[index];
       if (!pair || inFlight) return;
       inFlight = true;
       setButtonsDisabled(true);
       try {
-        await api('/api/v1/experiments/' + experimentId + '/judgments', 'POST', {
+        const res = await api('/api/v1/experiments/' + experimentId + '/judgments', 'POST', {
           baseline_run_id: baselineRunId,
           arm_run_id: armRunId,
           seed: pair.seed,
@@ -1685,14 +1736,12 @@ export const appJs = `
         });
         judged += 1;
         updateProgress();
-        index += 1;
-        renderCurrent();
+        showReveal(formatReveal(res.reveal));
       } catch (e) {
         if (e.status === 409) {
           judged += 1;
           updateProgress();
-          index += 1;
-          renderCurrent();
+          showReveal('already judged');
           return;
         }
         alert('judgment failed: ' + e.message);
@@ -1708,9 +1757,22 @@ export const appJs = `
       });
     });
 
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        advance();
+      });
+    }
+
     document.addEventListener('keydown', function (ev) {
       if (!areaEl || areaEl.hidden) return;
       if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
+      if (revealEl && !revealEl.hidden) {
+        if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+          ev.preventDefault();
+          advance();
+        }
+        return;
+      }
       if (ev.key === '1' || ev.key === 'ArrowLeft') vote('left');
       else if (ev.key === '2' || ev.key === 'ArrowRight') vote('right');
       else if (ev.key === '0' || ev.key === 't' || ev.key === 'T') vote('tie');

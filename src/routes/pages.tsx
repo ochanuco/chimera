@@ -29,7 +29,8 @@ import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { GraphPage, type GraphNodeData, type GraphEdgeData, type GraphStoryOption, type GraphScope } from '../ui/pages/Graph';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
-import type { AppEnv, ExperimentRunRow, GenerationRow } from '../types';
+import { renderFactsForJob } from '../lib/render-facts';
+import type { AppEnv, ComfyJobRow, ExperimentRunRow, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 import type { BatchRowData } from '../ui/components/BatchRow';
 
@@ -741,6 +742,24 @@ pages.get('/compare', async (c) => {
     rows.map(({ row }) => row.batch_id),
   );
 
+  const jobIds = Array.from(new Set(rows.map(({ row }) => row.comfy_job_id)));
+  const jobsById = new Map<string, ComfyJobRow>();
+  if (jobIds.length > 0) {
+    const placeholders = jobIds.map(() => '?').join(', ');
+    const { results } = await c.env.DB.prepare(`SELECT * FROM comfy_jobs WHERE id IN (${placeholders})`)
+      .bind(...jobIds)
+      .all<ComfyJobRow>();
+    for (const j of results ?? []) jobsById.set(j.id, j);
+  }
+  const renderFactsByGenerationId = new Map(
+    await Promise.all(
+      rows.map(async ({ row }) => {
+        const job = jobsById.get(row.comfy_job_id);
+        return [row.id, job ? await renderFactsForJob(c.env.DB, job) : null] as const;
+      }),
+    ),
+  );
+
   const items: CompareItem[] = rows.map(({ row, characterName }) => ({
     short_id: row.short_id,
     image_url: generationImageUrl(origin, row.short_id),
@@ -750,6 +769,7 @@ pages.get('/compare', async (c) => {
     seed: row.seed,
     created_at: row.created_at,
     semantic: parseCompareSemantic(row),
+    render_facts: renderFactsByGenerationId.get(row.id) ?? null,
   }));
 
   return c.html(<ComparePage items={items} missingIds={missingIds} warning={warning} />);

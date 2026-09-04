@@ -92,6 +92,7 @@ objective
 evaluation_json
 decision_json
 note
+variables_json
 created_at
 updated_at
 ```
@@ -158,6 +159,13 @@ decision の例:
 `action` は `retry` / `accept` / `stabilize` / `abandon` を想定しますが
 enum化しません。
 
+`variables` はグラフ（`render_facts`、ComfyJob 参照）からは表現できない
+factor を CLI / 人間が書き添えるための、キー文字列 → `string | number`
+のフラットな注記です（プロンプトのバリアント名など）。overrides
+と違ってこれは provenance（何がその生成結果を生んだか）ではなく単なる
+ラベル付けなので、`overrides` のように attach 後は不変、という制約を
+持ちません。Batch / Generation が attach された後でも自由に変更できます。
+
 不変条件:
 
 -   ExperimentRun は原則物理削除しません。
@@ -165,6 +173,7 @@ enum化しません。
     は変更できません（409）。条件を変えるなら新しい Run を作ります。
 -   attach 済みの Batch / Generation を別のものに付け替えることはできません（409）。同じ
     id の再送は冪等です。
+-   `variables` に上記の制約はありません（いつでも変更・クリア可能）。
 
 ## ExperimentPromotion
 
@@ -308,12 +317,20 @@ seed
 index
 status
 graph
+render_facts_json
 created_at
 updated_at
 ```
 
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
+
+`render_facts_json` は `graph` から抽出した派生データ（checkpoint / sampler /
+canvas / lora / controlnet / seed のキャッシュ）です。`graph` を PATCH した
+時点で抽出して保存しますが、それ以前に `graph` だけが入った既存行のために
+NULL も許容し、その場合は最初の読み取り時に抽出して書き戻します（遅延キャッシュ、
+一括バックフィルはしません）。抽出ロジックとルールは `src/lib/render-facts.ts` /
+[api.md](api.md#comfyjob) 参照。
 
 ## Generation
 

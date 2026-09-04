@@ -39,6 +39,7 @@ interface ExperimentRun {
   evaluation: Record<string, unknown> | null;
   decision: Record<string, unknown> | null;
   note: string | null;
+  variables: Record<string, string | number> | null;
 }
 
 interface Promotion {
@@ -384,6 +385,51 @@ describe('ExperimentRun idempotency', () => {
 
     const detail = await getJson<ExperimentDetail>(`/api/v1/experiments/${exp.body.id}`);
     expect(detail.body.run_count).toBe(1);
+  });
+});
+
+describe('ExperimentRun variables', () => {
+  it('round-trips variables on create', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id, { variables: { prompt_variant: 'socks-v2', trial: 3 } });
+    expect(run.status).toBe(201);
+    expect(run.body.variables).toEqual({ prompt_variant: 'socks-v2', trial: 3 });
+  });
+
+  it('defaults variables to null when omitted', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    expect(run.body.variables).toBeNull();
+  });
+
+  it('allows PATCHing variables after a batch is attached, unlike overrides', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id);
+    const { batch } = await createGeneration();
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { batch_id: batch.id }, 'PATCH');
+
+    const res = await postJson<ExperimentRun>(
+      `/api/v1/experiment-runs/${run.body.id}`,
+      { variables: { prompt_variant: 'socks-v2' } },
+      'PATCH',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.variables).toEqual({ prompt_variant: 'socks-v2' });
+  });
+
+  it('clears variables with PATCH variables: null', async () => {
+    const exp = await createExperiment();
+    const run = await createRun(exp.body.id, { variables: { trial: 1 } });
+
+    const res = await postJson<ExperimentRun>(`/api/v1/experiment-runs/${run.body.id}`, { variables: null }, 'PATCH');
+    expect(res.status).toBe(200);
+    expect(res.body.variables).toBeNull();
+  });
+
+  it('400s a nested object value', async () => {
+    const exp = await createExperiment();
+    const res = await createRun(exp.body.id, { variables: { trial: { nested: true } } });
+    expect(res.status).toBe(400);
   });
 });
 

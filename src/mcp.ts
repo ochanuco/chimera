@@ -71,7 +71,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 const createRunInputSchema = createExperimentRunSchema
-  .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true })
+  .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
   .extend({ experiment_id: z.string().min(1) });
 
 export function createChimeraMcpServer(env: Bindings, origin: string): McpServer {
@@ -138,16 +138,19 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
         'Generation parameters such as pose or costume are NOT overrides — they live in the Experiment\'s ' +
         'base_parameters and are fixed for the whole Experiment. ' +
         'Pass a stable idempotency_key (e.g. one generated per intended Run) so that if the response is lost, retrying ' +
-        'with the same key returns the original Run instead of creating a duplicate — Runs cannot be deleted, so a duplicate is permanent.',
+        'with the same key returns the original Run instead of creating a duplicate — Runs cannot be deleted, so a duplicate is permanent. ' +
+        'variables: optional flat map of factor names to values that the graph cannot express, e.g. {"prompt_variant": "socks-v2"}; ' +
+        'shown as extra columns in the Experiment facts table.',
       inputSchema: createRunInputSchema,
     },
-    async ({ experiment_id, overrides, objective, parent_run_id, idempotency_key }) => {
+    async ({ experiment_id, overrides, objective, parent_run_id, idempotency_key, variables }) => {
       const experiment = await getExperimentOr404(db, experiment_id);
       const { row, created } = await createExperimentRun(db, experiment, {
         overrides,
         objective,
         parent_run_id,
         idempotency_key,
+        variables,
       });
       return jsonResult({ created, run: serializeExperimentRun(row) });
     },

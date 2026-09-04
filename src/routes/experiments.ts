@@ -386,8 +386,8 @@ experiments.post('/:id/judgments', async (c) => {
   const body = createJudgmentSchema.parse(await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
-  const { row, winner } = await createJudgment(db, experiment, body);
-  return c.json(serializePairwiseJudgment(row, winner), 201);
+  const { row, winner, reveal } = await createJudgment(db, experiment, body);
+  return c.json({ ...serializePairwiseJudgment(row, winner), reveal }, 201);
 });
 
 experiments.get('/:id/judgments', async (c) => {

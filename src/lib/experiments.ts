@@ -15,6 +15,7 @@ import { parseJsonObjectOrNull, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { listTagsForTarget } from './tags';
 import { isUuid, uuidv7 } from './uuidv7';
+import { resolveBatchRenderFacts } from './render-facts';
 import {
   generationImageUrl,
   serializeExperiment,
@@ -134,6 +135,7 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
   }
 
   const batchThumbnails = await resolveBatchThumbnails(db, batchIds);
+  const renderFactsByBatch = await resolveBatchRenderFacts(db, batchIds);
 
   return runs.map((run) => {
     const batch = run.batch_id ? batchMap.get(run.batch_id) ?? null : null;
@@ -149,6 +151,7 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
           }
         : null,
       generation: generation ? serializeGenerationLight(generation, org) : null,
+      render_facts: run.batch_id ? renderFactsByBatch.get(run.batch_id) ?? null : null,
     };
   });
 }
@@ -251,6 +254,7 @@ export interface CreateExperimentRunInput {
   decision?: JsonObject;
   note?: string;
   idempotency_key?: string;
+  variables?: Record<string, string | number>;
 }
 
 export interface CreateExperimentRunResult {
@@ -320,8 +324,8 @@ export async function createExperimentRun(
       .prepare(
         `INSERT INTO experiment_runs
            (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
-            objective, evaluation_json, decision_json, note, idempotency_key, created_at, updated_at)
-         SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            objective, evaluation_json, decision_json, note, idempotency_key, variables_json, created_at, updated_at)
+         SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          FROM experiment_runs WHERE experiment_id = ?`,
       )
       .bind(
@@ -336,6 +340,7 @@ export async function createExperimentRun(
         body.decision ? JSON.stringify(body.decision) : null,
         body.note ?? null,
         body.idempotency_key ?? null,
+        body.variables ? JSON.stringify(body.variables) : null,
         now,
         now,
         experiment.id,
@@ -363,6 +368,7 @@ export interface UpdateExperimentRunInput {
   evaluation?: JsonObject | null;
   decision?: JsonObject | null;
   note?: string | null;
+  variables?: Record<string, string | number> | null;
 }
 
 /**
@@ -427,6 +433,11 @@ export async function updateExperimentRun(
     assign('decision_json', body.decision === null ? null : JSON.stringify(body.decision));
   }
   if (body.note !== undefined) assign('note', body.note);
+  // overrides と違い、variables は「グラフに現れない factor の注記」であって provenance
+  // ではないので batch/generation 付与後も自由に書き換えられる。
+  if (body.variables !== undefined) {
+    assign('variables_json', body.variables === null ? null : JSON.stringify(body.variables));
+  }
 
   const now = nowIso();
   assign('updated_at', now);

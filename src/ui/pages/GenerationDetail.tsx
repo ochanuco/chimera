@@ -3,6 +3,7 @@ import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
+import { summarizeRenderFacts, type RenderFacts } from '../../lib/render-facts';
 
 export interface GenerationDetailData {
   id: string;
@@ -33,7 +34,7 @@ export interface GenerationDetailData {
   } | null;
   references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
-  comfy_job: { id: string; seed: number | null; comfy_prompt_id: string | null; status: string } | null;
+  comfy_job: { id: string; seed: number | null; comfy_prompt_id: string | null; status: string; render_facts: RenderFacts | null } | null;
   original_filename: string | null;
 }
 
@@ -43,6 +44,24 @@ const RATINGS = ['bad', 'neutral', 'good'] as const;
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
+}
+
+/** Builds the Render facts kv-table rows, skipping any column with no value; null means "(no graph)". */
+function buildRenderFactsRows(facts: RenderFacts | null): { label: string; value: string }[] | null {
+  if (!facts) return null;
+  const summary = summarizeRenderFacts(facts);
+  const rows: { label: string; value: string }[] = [];
+  if (summary.checkpoint) rows.push({ label: 'checkpoint', value: summary.checkpoint });
+  for (const s of facts.samplers) {
+    rows.push({
+      label: `sampler #${s.node_id}`,
+      value: `${s.sampler_name ?? '?'}/${s.scheduler ?? '?'} · steps ${s.steps ?? '?'} · cfg ${s.cfg ?? '?'} · denoise ${s.denoise ?? '?'}`,
+    });
+  }
+  if (summary.canvas) rows.push({ label: 'canvas', value: summary.canvas });
+  if (summary.lora) rows.push({ label: 'lora', value: summary.lora });
+  if (summary.controlnet) rows.push({ label: 'controlnet', value: summary.controlnet });
+  return rows;
 }
 
 export function GenerationDetailPage({
@@ -313,6 +332,26 @@ export function GenerationDetailPage({
           <details class="section" open>
             <summary>Seed</summary>
             <div class="section-body">{data.comfy_job?.seed ?? '-'}</div>
+          </details>
+
+          <details class="section" open>
+            <summary>Render facts</summary>
+            <div class="section-body">
+              {(() => {
+                const rows = buildRenderFactsRows(data.comfy_job?.render_facts ?? null);
+                if (!rows) return <p>(no graph)</p>;
+                return (
+                  <table class="kv-table">
+                    {rows.map((r) => (
+                      <tr>
+                        <td>{r.label}</td>
+                        <td>{r.value}</td>
+                      </tr>
+                    ))}
+                  </table>
+                );
+              })()}
+            </div>
           </details>
 
           <details class="section" open>
