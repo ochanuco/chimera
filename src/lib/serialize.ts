@@ -8,6 +8,8 @@ import type {
   ExperimentRunRow,
   GenerationAssetRow,
   GenerationRow,
+  JudgmentWinner,
+  PairwiseJudgmentRow,
   StoryRow,
   StoryRelationRow,
 } from '../types';
@@ -160,6 +162,21 @@ export function serializeExperimentRun(row: ExperimentRunRow) {
     note: row.note,
     created_at: row.created_at,
     updated_at: row.updated_at,
+  };
+}
+
+export function serializePairwiseJudgment(row: PairwiseJudgmentRow, winner: JudgmentWinner) {
+  return {
+    id: row.id,
+    experiment_id: row.experiment_id,
+    baseline_run_id: row.baseline_run_id,
+    arm_run_id: row.arm_run_id,
+    seed: row.seed,
+    left_generation_id: row.left_generation_id,
+    right_generation_id: row.right_generation_id,
+    verdict: row.verdict,
+    winner,
+    judged_at: row.judged_at,
   };
 }
 

@@ -206,6 +206,44 @@ rejected
 -   ExperimentPromotion は原則物理削除しません。
 -   確定済み Promotion の `promoted_overrides` は変更できません（409）。
 
+## PairwiseJudgment
+
+同じ seed の baseline run / arm run の生成結果を人間が盲検で対比較した記録です。Web GUI の
+A/B Judge View（[ui.md](ui.md#a-b-judge-view)参照）でのみ作られます。
+
+主な属性:
+
+``` text
+id
+experiment_id
+baseline_run_id
+arm_run_id
+seed
+left_generation_id
+right_generation_id
+verdict
+judged_at
+```
+
+verdict の候補:
+
+``` text
+left
+right
+tie
+```
+
+`left_generation_id` / `right_generation_id` は表示時にランダムに割り当てた向きで、`verdict`
+はその向きへの回答です。どちらの Generation が baseline / arm 側だったかは列自体には残らず、各
+Generation の `batch_id`（baseline run / arm run のどちらの batch から出たか）と突き合わせて
+その都度導きます（API の `winner` フィールド）。この向き付けにより、GUI 上で人間が
+baseline / arm のどちらを見ているか判別できません（盲検性）。
+
+不変条件:
+
+-   `(baseline_run_id, arm_run_id, seed)` は一意です。同じ組み合わせへの2回目の judgment は409です。
+-   PairwiseJudgment は物理削除しません。
+
 ## Batch
 
 **1生成リクエスト = 1 Batch** と定義します。

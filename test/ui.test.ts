@@ -1161,6 +1161,145 @@ describe('Experiments pages', () => {
   });
 });
 
+describe('A/B judge page', () => {
+  async function batchWithSeeds(seeds: number[]) {
+    const batch = await createBatch();
+    const gens: Record<number, { id: string; short_id: string }> = {};
+    for (const seed of seeds) {
+      const job = await createJob(batch.body.id, { seed });
+      const ingest = await ingestGeneration(job.body.id, {
+        seed,
+        original_filename: `out_${seed}_${crypto.randomUUID().slice(0, 8)}.png`,
+        comfy_output_index: 0,
+      });
+      gens[seed] = { id: ingest.body.id, short_id: ingest.body.short_id };
+    }
+    return { batch: batch.body, gens };
+  }
+
+  async function setupPair() {
+    const experiment = await postJson<{ id: string; short_id: string }>('/api/v1/experiments', {
+      name: `ab-page-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    const baselineRun = await postJson<{ id: string; run_index: number }>(
+      `/api/v1/experiments/${experiment.body.id}/runs`,
+      { objective: 'baseline objective text' },
+    );
+    const armRun = await postJson<{ id: string; run_index: number }>(
+      `/api/v1/experiments/${experiment.body.id}/runs`,
+      { objective: 'arm objective text' },
+    );
+
+    const { batch: baselineBatch, gens: baselineGens } = await batchWithSeeds([11, 22]);
+    const { batch: armBatch, gens: armGens } = await batchWithSeeds([11, 22]);
+    await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: baselineBatch.id }, 'PATCH');
+    await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { batch_id: armBatch.id }, 'PATCH');
+
+    return {
+      experiment: experiment.body,
+      baselineRun: baselineRun.body,
+      armRun: armRun.body,
+      baselineGens,
+      armGens,
+    };
+  }
+
+  function extractPairsJson(html: string): { seed: number }[] {
+    const match = html.match(/<script type="application\/json" id="ab-pairs">([\s\S]*?)<\/script>/);
+    if (!match) throw new Error('ab-pairs script block not found');
+    return JSON.parse(match[1]!.trim());
+  }
+
+  it('renders both images by generation UUID, embeds ab-pairs JSON, and hides run identity', async () => {
+    const ctx = await setupPair();
+    const res = await req(
+      `/experiments/${ctx.experiment.short_id}/ab?baseline=${ctx.baselineRun.id}&arm=${ctx.armRun.id}`,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain(`/g/${ctx.baselineGens[11]!.id}/image`);
+    expect(html).toContain(`/g/${ctx.armGens[11]!.id}/image`);
+    expect(html).toContain('id="ab-pairs"');
+
+    for (const gens of [ctx.baselineGens, ctx.armGens]) {
+      for (const seed of [11, 22]) {
+        expect(html).not.toContain(gens[seed]!.short_id);
+      }
+    }
+    expect(html).not.toContain('baseline objective text');
+    expect(html).not.toContain('arm objective text');
+    expect(html).not.toContain('data-value="good"');
+  });
+
+  it('drops a judged seed from the embedded pairs JSON on the next load', async () => {
+    const ctx = await setupPair();
+    const before = await req(
+      `/experiments/${ctx.experiment.id}/ab?baseline=${ctx.baselineRun.id}&arm=${ctx.armRun.id}`,
+    );
+    const beforePairs = extractPairsJson(await before.text());
+    expect(beforePairs.some((p) => p.seed === 11)).toBe(true);
+    expect(beforePairs.some((p) => p.seed === 22)).toBe(true);
+
+    await postJson(`/api/v1/experiments/${ctx.experiment.id}/judgments`, {
+      baseline_run_id: ctx.baselineRun.id,
+      arm_run_id: ctx.armRun.id,
+      seed: 11,
+      left_generation_id: ctx.baselineGens[11]!.id,
+      right_generation_id: ctx.armGens[11]!.id,
+      verdict: 'left',
+    });
+
+    const after = await req(
+      `/experiments/${ctx.experiment.id}/ab?baseline=${ctx.baselineRun.id}&arm=${ctx.armRun.id}`,
+    );
+    const afterPairs = extractPairsJson(await after.text());
+    expect(afterPairs.some((p) => p.seed === 11)).toBe(false);
+    expect(afterPairs.some((p) => p.seed === 22)).toBe(true);
+  });
+
+  it('renders a stable warning when baseline/arm params are missing or cross-experiment', async () => {
+    const ctx = await setupPair();
+
+    const missing = await req(`/experiments/${ctx.experiment.id}/ab?baseline=${ctx.baselineRun.id}`);
+    expect(missing.status).toBe(200);
+    expect(await missing.text()).toContain('Select a baseline and an arm run');
+
+    const other = await postJson<{ id: string }>('/api/v1/experiments', {
+      name: `ab-other-${crypto.randomUUID().slice(0, 8)}`,
+    });
+    const otherRun = await postJson<{ id: string }>(`/api/v1/experiments/${other.body.id}/runs`, {});
+
+    const crossExperiment = await req(
+      `/experiments/${ctx.experiment.id}/ab?baseline=${ctx.baselineRun.id}&arm=${otherRun.body.id}`,
+    );
+    expect(crossExperiment.status).toBe(200);
+    expect(await crossExperiment.text()).toContain('belongs to a different experiment');
+  });
+
+  it('GET /experiments/{id} shows the A/B link for the non-baseline run, the pairs table, and the ratings table', async () => {
+    const ctx = await setupPair();
+    await postJson(`/api/v1/experiments/${ctx.experiment.id}/judgments`, {
+      baseline_run_id: ctx.baselineRun.id,
+      arm_run_id: ctx.armRun.id,
+      seed: 11,
+      left_generation_id: ctx.baselineGens[11]!.id,
+      right_generation_id: ctx.armGens[11]!.id,
+      verdict: 'right', // arm wins
+    });
+
+    const res = await req(`/experiments/${ctx.experiment.id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain(
+      `/experiments/${ctx.experiment.short_id}/ab?baseline=${ctx.baselineRun.id}&amp;arm=${ctx.armRun.id}`,
+    );
+    expect(html).toContain(`#${ctx.baselineRun.run_index} vs #${ctx.armRun.run_index}`);
+    expect(html).toContain('exp-ab-ratings');
+  });
+});
+
 describe('Experiments list filter robustness', () => {
   it('GET /experiments?status=<unknown> falls back to no filter instead of erroring', async () => {
     const created = await postJson<{ name: string }>('/api/v1/experiments', {

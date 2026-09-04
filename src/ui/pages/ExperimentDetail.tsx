@@ -60,6 +60,30 @@ export interface ExperimentDetailPromotion {
   completed_at: string | null;
 }
 
+export interface ExperimentJudgmentPairSummary {
+  baseline_run_id: string;
+  baseline_run_index: number;
+  arm_run_id: string;
+  arm_run_index: number;
+  win: number;
+  loss: number;
+  tie: number;
+  total: number;
+}
+
+export interface ExperimentJudgmentRunSummary {
+  run_id: string;
+  run_index: number;
+  batch_id: string | null;
+  generation_count: number;
+  rating: { good: number; neutral: number; bad: number; unrated: number };
+}
+
+export interface ExperimentJudgmentSummary {
+  pairs: ExperimentJudgmentPairSummary[];
+  runs: ExperimentJudgmentRunSummary[];
+}
+
 export interface ExperimentDetailData {
   id: string;
   short_id: string;
@@ -324,14 +348,20 @@ function renderDecision(decision: JsonObject | null) {
   );
 }
 
-function renderRun(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
+function renderRun(run: ExperimentDetailRun, runs: ExperimentDetailRun[], experimentShortId: string, baseline: ExperimentDetailRun | null) {
   const overall = run.evaluation && typeof run.evaluation.overall === 'string' ? run.evaluation.overall : null;
+  const showAbLink = baseline !== null && run.id !== baseline.id && run.batch_id !== null && baseline.batch_id !== null;
   return (
     <section class="exp-run" id={`run-${run.id}`}>
       <div class="exp-run-head">
         <span class="exp-run-index">#{run.run_index}</span>
         {overall ? <StatusBadge value={overall} /> : null}
         {run.objective ? <span class="exp-run-objective">{run.objective}</span> : null}
+        {showAbLink ? (
+          <a class="exp-run-ab-link" href={`/experiments/${experimentShortId}/ab?baseline=${baseline!.id}&arm=${run.id}`}>
+            A/B vs #{baseline!.run_index}
+          </a>
+        ) : null}
       </div>
       {renderRunDelta(run, runs)}
       <details>
@@ -388,7 +418,20 @@ function renderPromotion(promotion: ExperimentDetailPromotion, runs: ExperimentD
   );
 }
 
-export function ExperimentDetailPage({ experiment }: { experiment: ExperimentDetailData }) {
+/** Baseline = the run with the lowest run_index (docs/domain-model.md#experimentrun). */
+function findBaseline(runs: ExperimentDetailRun[]): ExperimentDetailRun | null {
+  if (runs.length === 0) return null;
+  return runs.reduce((min, r) => (r.run_index < min.run_index ? r : min), runs[0]!);
+}
+
+export function ExperimentDetailPage({
+  experiment,
+  judgments,
+}: {
+  experiment: ExperimentDetailData;
+  judgments: ExperimentJudgmentSummary;
+}) {
+  const baseline = findBaseline(experiment.runs);
   return (
     <Layout title={experiment.name}>
       <h1>
@@ -459,8 +502,58 @@ export function ExperimentDetailPage({ experiment }: { experiment: ExperimentDet
       {experiment.runs.length === 0 ? (
         <p class="empty-state">No runs yet.</p>
       ) : (
-        experiment.runs.map((run) => renderRun(run, experiment.runs))
+        experiment.runs.map((run) => renderRun(run, experiment.runs, experiment.short_id, baseline))
       )}
+
+      <h2>A/B</h2>
+      {judgments.pairs.length === 0 ? (
+        <p class="empty-state">No judgments yet.</p>
+      ) : (
+        <table class="kv-table exp-ab-pairs">
+          <tr>
+            <th>pair</th>
+            <th>arm wins</th>
+            <th>baseline wins</th>
+            <th>tie</th>
+            <th>total</th>
+          </tr>
+          {judgments.pairs.map((p) => (
+            <tr>
+              <td>
+                <a href={`/experiments/${experiment.short_id}/ab?baseline=${p.baseline_run_id}&arm=${p.arm_run_id}`}>
+                  #{p.baseline_run_index} vs #{p.arm_run_index}
+                </a>
+              </td>
+              <td>{p.win}</td>
+              <td>{p.loss}</td>
+              <td>{p.tie}</td>
+              <td>{p.total}</td>
+            </tr>
+          ))}
+        </table>
+      )}
+      {experiment.runs.length > 0 ? (
+        <table class="kv-table exp-ab-ratings">
+          <tr>
+            <th>run</th>
+            <th>generations</th>
+            <th>good</th>
+            <th>neutral</th>
+            <th>bad</th>
+            <th>unrated</th>
+          </tr>
+          {judgments.runs.map((r) => (
+            <tr>
+              <td>#{r.run_index}</td>
+              <td>{r.generation_count}</td>
+              <td>{r.rating.good}</td>
+              <td>{r.rating.neutral}</td>
+              <td>{r.rating.bad}</td>
+              <td>{r.rating.unrated}</td>
+            </tr>
+          ))}
+        </table>
+      ) : null}
 
       <h2>Promotions</h2>
       {experiment.promotions.length === 0 ? (

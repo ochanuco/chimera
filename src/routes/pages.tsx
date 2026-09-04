@@ -22,12 +22,14 @@ import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
 import { EXPERIMENT_STATUSES } from '../lib/experiment-status';
-import { ExperimentDetailPage, type ExperimentDetailData } from '../ui/pages/ExperimentDetail';
+import { ExperimentDetailPage, type ExperimentDetailData, type ExperimentJudgmentSummary } from '../ui/pages/ExperimentDetail';
+import { ExperimentAbPage, type AbPair, type ExperimentAbData } from '../ui/pages/ExperimentAb';
+import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { GraphPage, type GraphNodeData, type GraphEdgeData, type GraphStoryOption, type GraphScope } from '../ui/pages/Graph';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
-import type { AppEnv, GenerationRow } from '../types';
+import type { AppEnv, ExperimentRunRow, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 import type { BatchRowData } from '../ui/components/BatchRow';
 
@@ -233,7 +235,111 @@ pages.get('/experiments/:id', async (c) => {
     return c.html(<NotFoundPage what="Experiment" />, 404);
   }
   const data = (await res.json()) as ExperimentDetailData;
-  return c.html(<ExperimentDetailPage experiment={data} />);
+  const judgmentsRes = await internalApiRequest(c, `/api/v1/experiments/${id}/judgments/summary`);
+  const judgments = (await judgmentsRes.json()) as ExperimentJudgmentSummary;
+  return c.html(<ExperimentDetailPage experiment={data} judgments={judgments} />);
+});
+
+pages.get('/experiments/:id/ab', async (c) => {
+  const id = c.req.param('id');
+  const experimentRes = await internalApiRequest(c, `/api/v1/experiments/${id}`);
+  if (experimentRes.status === 404) {
+    return c.html(<NotFoundPage what="Experiment" />, 404);
+  }
+  const experiment = (await experimentRes.json()) as ExperimentDetailData;
+
+  const db = c.env.DB;
+  const origin = new URL(c.req.url).origin;
+  const baselineId = c.req.query('baseline');
+  const armId = c.req.query('arm');
+
+  let warning: string | null = null;
+  let baselineRun: ExperimentRunRow | null = null;
+  let armRun: ExperimentRunRow | null = null;
+
+  if (!baselineId || !armId) {
+    warning = 'Select a baseline and an arm run.';
+  } else if (baselineId === armId) {
+    warning = 'baseline and arm must be different runs.';
+  } else {
+    const [b, a] = await Promise.all([
+      db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(baselineId).first<ExperimentRunRow>(),
+      db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(armId).first<ExperimentRunRow>(),
+    ]);
+    if (!b || !a) {
+      warning = 'Select a baseline and an arm run.';
+    } else if (b.experiment_id !== experiment.id || a.experiment_id !== experiment.id) {
+      warning = 'baseline / arm run belongs to a different experiment.';
+    } else if (!b.batch_id || !a.batch_id) {
+      warning = 'baseline and arm runs must both have a batch attached.';
+    } else if (b.batch_id === a.batch_id) {
+      warning = 'baseline and arm runs share the same batch.';
+    } else {
+      baselineRun = b;
+      armRun = a;
+    }
+  }
+
+  let pairs: AbPair[] = [];
+  let judgedCount = 0;
+  let totalSeeds = 0;
+
+  if (baselineRun && armRun) {
+    const seedRows = 'SELECT id, seed FROM generations WHERE batch_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
+    const [baselineGens, armGens, judgedSeeds] = await Promise.all([
+      db.prepare(seedRows).bind(baselineRun.batch_id).all<{ id: string; seed: number }>(),
+      db.prepare(seedRows).bind(armRun.batch_id).all<{ id: string; seed: number }>(),
+      judgedSeedsForPair(db, baselineRun.id, armRun.id),
+    ]);
+
+    // multi-output job の複数枚は先頭の1枚 (created_at, id 昇順) だけを A/B の対象にする。
+    const firstBySeed = (rows: { id: string; seed: number }[]): Map<number, string> => {
+      const map = new Map<number, string>();
+      for (const row of rows) {
+        if (!map.has(row.seed)) map.set(row.seed, row.id);
+      }
+      return map;
+    };
+    const baselineBySeed = firstBySeed(baselineGens.results ?? []);
+    const armBySeed = firstBySeed(armGens.results ?? []);
+
+    const commonSeeds = Array.from(baselineBySeed.keys())
+      .filter((seed) => armBySeed.has(seed))
+      .sort((x, y) => x - y);
+
+    totalSeeds = commonSeeds.length;
+    judgedCount = judgedSeeds.size;
+
+    pairs = commonSeeds
+      .filter((seed) => !judgedSeeds.has(seed))
+      .map((seed) => {
+        const baselineGenId = baselineBySeed.get(seed)!;
+        const armGenId = armBySeed.get(seed)!;
+        // 表示の左右はブラウザに judgment を推測させないよう毎回サーバー側で決める。
+        const baselineOnLeft = Math.random() < 0.5;
+        const leftId = baselineOnLeft ? baselineGenId : armGenId;
+        const rightId = baselineOnLeft ? armGenId : baselineGenId;
+        return {
+          seed,
+          left: { id: leftId, image_url: generationImageUrl(origin, leftId) },
+          right: { id: rightId, image_url: generationImageUrl(origin, rightId) },
+        };
+      });
+  }
+
+  const data: ExperimentAbData = {
+    experiment: { id: experiment.id, short_id: experiment.short_id, name: experiment.name },
+    baseline_run_id: baselineRun?.id ?? null,
+    arm_run_id: armRun?.id ?? null,
+    baseline_run_index: baselineRun?.run_index ?? null,
+    arm_run_index: armRun?.run_index ?? null,
+    warning,
+    pairs,
+    judged_count: judgedCount,
+    total_seeds: totalSeeds,
+  };
+
+  return c.html(<ExperimentAbPage data={data} />);
 });
 
 pages.get('/bookmarks', async (c) => {

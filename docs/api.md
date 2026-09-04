@@ -437,6 +437,114 @@ PATCH /api/v1/promotions/{promotion_id}
 
 Experiment の tag / bookmark は Tags / Bookmark 章の endpoint を使います。
 
+## PairwiseJudgment
+
+同じseedのbaseline run / arm runの生成結果を人間が盲検で対比較した結果です。
+Web GUIの `/experiments/{id}/ab` (A/B Judge View, [ui.md](ui.md#a-b-judge-view)参照)
+から作られます。
+
+### Create Judgment
+
+``` text
+POST /api/v1/experiments/{id}/judgments
+```
+
+``` json
+{
+  "baseline_run_id": "...",
+  "arm_run_id": "...",
+  "seed": 12345,
+  "left_generation_id": "...",
+  "right_generation_id": "...",
+  "verdict": "right"
+}
+```
+
+`left_generation_id` / `right_generation_id`
+はA/B画面が表示時にランダムに割り当てた向きで、`verdict`
+はその向きに対する回答（`left` / `right` / `tie`）です。レスポンスは以下を返します。
+
+``` json
+{
+  "id": "...",
+  "experiment_id": "...",
+  "baseline_run_id": "...",
+  "arm_run_id": "...",
+  "seed": 12345,
+  "left_generation_id": "...",
+  "right_generation_id": "...",
+  "verdict": "right",
+  "winner": "arm",
+  "judged_at": "..."
+}
+```
+
+`winner`は`verdict`と各Generationの所属batchから導いた`baseline` / `arm` /
+`tie`です（`left_generation_id` / `right_generation_id`自体は向きを覚えているだけで、
+どちらがbaselineかは表現しません）。
+
+400のケース:
+
+-   `baseline_run_id` と `arm_run_id` が同じ
+-   `baseline_run_id` / `arm_run_id` が別のExperimentのRun
+-   baseline run と arm run が同じ batch を指している
+-   `left_generation_id` / `right_generation_id`
+    がbaseline runのbatchとarm runのbatchから一つずつになっていない
+-   `left_generation_id` / `right_generation_id` の `seed` が `seed` フィールドと一致しない
+
+409のケース:
+
+-   `baseline_run_id` / `arm_run_id` のいずれかに `batch_id` が付いていない
+-   同じ `(baseline_run_id, arm_run_id, seed)` に対する2回目のjudgment
+
+### List Judgments
+
+``` text
+GET /api/v1/experiments/{id}/judgments
+```
+
+``` json
+{ "items": [ /* Create Judgmentのレスポンスと同じ形の配列, judged_at昇順 */ ] }
+```
+
+### Judgment Summary
+
+``` text
+GET /api/v1/experiments/{id}/judgments/summary
+```
+
+``` json
+{
+  "pairs": [
+    {
+      "baseline_run_id": "...",
+      "baseline_run_index": 1,
+      "arm_run_id": "...",
+      "arm_run_index": 2,
+      "win": 3,
+      "loss": 1,
+      "tie": 0,
+      "total": 4
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "...",
+      "run_index": 1,
+      "batch_id": "...",
+      "generation_count": 9,
+      "rating": { "good": 4, "neutral": 3, "bad": 0, "unrated": 2 }
+    }
+  ]
+}
+```
+
+`win` / `loss` / `tie` はarmから見た結果（`win` =
+armが選ばれた数）です。`pairs`は実際にjudgmentがあるbaseline/armの組だけを持ちます。`runs`は
+Experimentの全Run（`batch_id`未attachのRunも`generation_count: 0`
+で含む）で、`rating`はそのRunのbatchに属する全Generationの評価内訳です（未評価は
+`unrated`）。
+
 ## Generation Ingest
 
 ``` text

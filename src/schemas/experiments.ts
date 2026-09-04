@@ -121,6 +121,17 @@ export const updateExperimentRunSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
+export const judgmentVerdictSchema = z.enum(['left', 'right', 'tie']);
+
+export const createJudgmentSchema = z.object({
+  baseline_run_id: z.string().min(1),
+  arm_run_id: z.string().min(1),
+  seed: z.number().int(),
+  left_generation_id: z.string().min(1),
+  right_generation_id: z.string().min(1),
+  verdict: judgmentVerdictSchema,
+});
+
 export const createPromotionSchema = z.object({
   source_run_id: z.string().min(1).optional(),
   promoted_overrides: overridesSchema.optional(),

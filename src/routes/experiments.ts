@@ -6,6 +6,7 @@ import {
   updateExperimentRunSchema,
   createPromotionSchema,
   updatePromotionSchema,
+  createJudgmentSchema,
   experimentStatusSchema,
 } from '../schemas/experiments';
 import { assignTagSchema } from '../schemas/tags';
@@ -33,7 +34,13 @@ import {
   touchExperiment,
   updateExperimentRun,
 } from '../lib/experiments';
-import { serializeExperiment, serializeExperimentPromotion, serializeExperimentRun } from '../lib/serialize';
+import { createJudgment, judgmentSummary, listJudgments } from '../lib/judgments';
+import {
+  serializeExperiment,
+  serializeExperimentPromotion,
+  serializeExperimentRun,
+  serializePairwiseJudgment,
+} from '../lib/serialize';
 import type { AppEnv, ExperimentPromotionRow, ExperimentRow, ExperimentRunRow, PromotionStatus } from '../types';
 
 export const experiments = new Hono<AppEnv>();
@@ -371,6 +378,29 @@ promotions.patch('/:promotionId', async (c) => {
 
   const updated = await getPromotionOr404(db, promotion.id);
   return c.json(serializeExperimentPromotion(updated));
+});
+
+// --- PairwiseJudgment ---
+
+experiments.post('/:id/judgments', async (c) => {
+  const body = createJudgmentSchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const experiment = await getExperimentOr404(db, c.req.param('id'));
+  const { row, winner } = await createJudgment(db, experiment, body);
+  return c.json(serializePairwiseJudgment(row, winner), 201);
+});
+
+experiments.get('/:id/judgments', async (c) => {
+  const db = c.env.DB;
+  const experiment = await getExperimentOr404(db, c.req.param('id'));
+  const items = await listJudgments(db, experiment.id);
+  return c.json({ items: items.map(({ row, winner }) => serializePairwiseJudgment(row, winner)) });
+});
+
+experiments.get('/:id/judgments/summary', async (c) => {
+  const db = c.env.DB;
+  const experiment = await getExperimentOr404(db, c.req.param('id'));
+  return c.json(await judgmentSummary(db, experiment));
 });
 
 // --- Bookmark / Tag ---

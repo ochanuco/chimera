@@ -320,6 +320,36 @@ Runに紐づくGenerationがあればそのサムネイル、なければ Batch
 status の変更は詳細画面のselectから行います。Experiment / Run / Promotion
 の削除UIは持ちません。
 
+baseline（`run_index`が最小のRun）以外の各Runには、baselineとの `A/B vs #<baseline
+run_index>` リンクが付きます（両Runにbatchが付いている場合のみ）。リンク先はA/B Judge
+Viewです。
+
+RunsとPromotionsの間に `A/B` セクションがあります。judgmentがある baseline/arm
+の組ごとに1行（`#<baseline run_index> vs #<arm run_index>`、armの勝ち数 / baselineの勝ち数
+/ tie数 / 合計）、行はそのペアのA/B Judge Viewへリンクします。judgmentがなければ
+「No judgments yet.」。その下にRunごとのrating内訳表（生成数 / good / neutral / bad /
+unrated、batch未attachのRunも0件で表示）が並びます。
+
+## A/B Judge View
+
+`/experiments/{id}/ab?baseline=<run_id>&arm=<run_id>` は、baseline runとarm
+runのGenerationを人間が盲検で1対1に対比較する画面です
+（[domain-model.md](domain-model.md#pairwisejudgment)のPairwiseJudgment参照）。
+
+対象は両Runのbatchに共通するseedのみです（同じseedのGenerationが両方に存在する組）。
+multi-output jobで同一seedに複数枚あるときは、batch内で最初に作られた1枚だけを対象にします。
+既にjudgment済みのseedは対象から除きます。
+
+表示のたびにサーバー側でどちらをleftに置くかをランダムに決めます。画面には現在のGenerationペア
+と `seed` 値だけを出し、Run名 / objective / short_id / rating
+などbaseline・arm判別につながる情報は一切出しません。画像クリックでオリジナル画像を新しいタブで開きます。
+
+投票は3つのボタン（A / Tie / B）またはキーボードショートカット（`1` /
+`←` = A、`2` / `→` = B、`0` / `t` = Tie）で行います。投票するとその場で次のペアへ進み、
+全seedを判定し終えると完了メッセージとExperiment詳細への戻りリンクを表示します。
+`baseline` / `arm` が未指定・不正・別Experiment・batch未attachのRunを指すときは、
+ペア画面の代わりに警告文を表示します。
+
 ## Graph View
 
 `/graph` は生成履歴全体を1画面で見るための、`Provenance View`

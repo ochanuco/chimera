@@ -48,6 +48,21 @@ export interface ExperimentRunRow {
   updated_at: string;
 }
 
+export type JudgmentVerdict = 'left' | 'right' | 'tie';
+export type JudgmentWinner = 'baseline' | 'arm' | 'tie';
+
+export interface PairwiseJudgmentRow {
+  id: string;
+  experiment_id: string;
+  baseline_run_id: string;
+  arm_run_id: string;
+  seed: number;
+  left_generation_id: string;
+  right_generation_id: string;
+  verdict: JudgmentVerdict;
+  judged_at: string;
+}
+
 export interface ExperimentPromotionRow {
   id: string;
   experiment_id: string;
