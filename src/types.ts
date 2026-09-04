@@ -44,6 +44,7 @@ export interface ExperimentRunRow {
   decision_json: string | null;
   note: string | null;
   idempotency_key: string | null;
+  variables_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -107,6 +108,7 @@ export interface ComfyJobRow {
   status: JobStatus;
   idempotency_key: string;
   graph: string | null;
+  render_facts_json: string | null;
   created_at: string;
   updated_at: string;
 }

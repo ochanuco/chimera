@@ -14,6 +14,7 @@ import { assignTag, listTagsForTarget, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeBatch, serializeGenerationLight } from '../lib/serialize';
+import { renderFactsForJob } from '../lib/render-facts';
 import type {
   AppEnv,
   BatchRelationRow,
@@ -411,15 +412,21 @@ batches.get('/:id', async (c) => {
     return true;
   });
 
+  const jobRows = jobs.results ?? [];
+  const renderFactsByJobId = new Map(
+    await Promise.all(jobRows.map(async (j) => [j.id, await renderFactsForJob(db, j)] as const)),
+  );
+
   return c.json({
     ...serializeBatch(batch),
-    jobs: (jobs.results ?? []).map((j) => ({
+    jobs: jobRows.map((j) => ({
       id: j.id,
       comfy_prompt_id: j.comfy_prompt_id,
       seed: j.seed,
       index: j.job_index,
       status: j.status,
       graph: j.graph ? JSON.parse(j.graph) : null,
+      render_facts: renderFactsByJobId.get(j.id) ?? null,
       created_at: j.created_at,
       updated_at: j.updated_at,
     })),

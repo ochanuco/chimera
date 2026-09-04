@@ -181,6 +181,14 @@ defects / 配列形式のattributesは項目単位で同じ3段階の扱いを�
 
 テーブルは横スクロール可能なコンテナに収め、列数が多くても崩れないようにします。
 
+`created` 行の直後・`summary` 行の直前には、各GenerationのComfyJobから抽出した
+render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.checkpoint` /
+`render.sampler` / `render.steps` / `render.cfg` / `render.denoise` / `render.canvas` /
+`render.lora` / `render.controlnet` の行として並べます。値の表現はsemantic行と同じ
+コンセンサス方式のトークンハイライトを使い、行内の値が全カラムで一致しない場合は
+その行を黄系ハイライト（diff）します。ComfyJobにgraphが無いGenerationはそのカラムに
+`(no graph)` を表示し、全カラムが値なしの列（render_facts行）はその行ごと表示しません。
+
 Compareは比較表示のみで、ComfyUIへの生成要求も指示テキストの生成も行いません。
 
 ## Generation Detail
@@ -208,6 +216,7 @@ Map
 Story
 Prompt
 Seed
+Render facts
 ComfyUI Job
 Git
 Note
@@ -231,6 +240,13 @@ BatchRelation連結成分（行ラベル `Retries`、無向）、そのBatchが�
 一列で並べます。現在地（このGenerationが属するBatch）は角括弧付きで強調しリンクなし、それ以外はBatch
 Detailへのリンクです。要素が2件未満の行（関連Batchなしの行）は表示せず、全行が該当する場合はMapセクション
 自体を表示しません。
+
+Render factsセクションは「Seed」の直後にあり、このGenerationのComfyJobから抽出した
+render_facts（[domain-model.md](domain-model.md#comfyjob)参照）をkv-tableで表示します。
+checkpoint（複数あれば結合）、samplerノードごとに1行（`sampler #<node_id>` →
+`euler/karras · steps 20 · cfg 7 · denoise 1`）、canvas、lora、controlnetの各行を、
+値があるものだけ並べます。ComfyJobにgraphが無い（未抽出）場合は `(no graph)`
+とだけ表示します。
 
 ## Provenance View
 
@@ -291,6 +307,17 @@ status で絞り込めます。
 `/experiments/{short_id}` は詳細です。Experiment概要（Base Recipe /
 Character / Tag / 各時刻）、Runの一覧、Promotionの順に並べます。
 
+Runsセクションの一覧の直前には、少なくとも1つのRunがrender_factsまたはvariablesを
+持つときだけ facts テーブル（`exp-facts`）を表示します。列は
+`run | checkpoint | sampler | steps | cfg | denoise | canvas | lora | controlnet`
+に続けて、全Runの`variables`キーの和集合（アルファベット順）を1キー1列で追加した
+ものです。値は各Runのrender_factsサマリと`variables`から取り、値なしは `—`。
+baseline（`run_index`が最小のRun）以外の行では、baselineと異なる値のセルを
+黄系ハイライト（`exp-facts-diff`）し、表の下に「Highlighted cells differ from
+#<baseline run_index>」という凡例を出します。テーブルの2番目のtbodyには、
+`overrides.patches`を持つRunごとにpatch単位の行（`#<run_index>` /
+`<target> <op> <value>`、replaceは`<old> → <value>`）を並べます。
+
 各Runで最も重要なのは「前回から何を変えたか」です。`overrides.patches`
 （comfyui-recipesのpatch語彙、[domain-model.md](domain-model.md#experimentrun)参照）は
 それ自体がbase recipeへの差分なので、leaf diffではなくRunのpatch一覧をそのまま出し、
@@ -345,8 +372,16 @@ multi-output jobで同一seedに複数枚あるときは、batch内で最初に�
 などbaseline・arm判別につながる情報は一切出しません。画像クリックでオリジナル画像を新しいタブで開きます。
 
 投票は3つのボタン（A / Tie / B）またはキーボードショートカット（`1` /
-`←` = A、`2` / `→` = B、`0` / `t` = Tie）で行います。投票するとその場で次のペアへ進み、
-全seedを判定し終えると完了メッセージとExperiment詳細への戻りリンクを表示します。
+`←` = A、`2` / `→` = B、`0` / `t` = Tie）で行います。投票すると即座に次のペアへは進まず、
+判定結果の reveal（PairwiseJudgment作成レスポンスの `reveal`、
+[api.md](api.md#pairwisejudgment)参照）を1行で表示します：
+`A = #<left.run_index> (<left.role>) · B = #<right.run_index> (<right.role>)`
+に続けて、`render_diff` の各エントリを ` · <column>: <baseline> → <arm>`
+として並べます（差分が無ければ ` · no fact difference`）。すでに判定済み（409）の
+場合は reveal の代わりに「already judged」とだけ出します。reveal表示中は投票
+ボタンを無効化し、「Next」ボタン（キーボードは Enter / Space）を押すと次のペアへ
+進んでreveal表示を隠します。全seedを判定し終えたペアでもreveal自体は表示され、
+Nextを押すと完了メッセージとExperiment詳細への戻りリンクの状態に遷移します。
 `baseline` / `arm` が未指定・不正・別Experiment・batch未attachのRunを指すときは、
 ペア画面の代わりに警告文を表示します。
 

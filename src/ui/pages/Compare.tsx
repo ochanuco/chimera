@@ -1,8 +1,10 @@
 import { Layout } from '../layout';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { consensusSegments, matchMask, tokenize, type DiffSeg } from '../diff';
+import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFactColumn, type RenderFacts } from '../../lib/render-facts';
 
 const NOT_ANALYZED = '(not analyzed)';
+const NO_GRAPH = '(no graph)';
 const NO_VALUE = '—';
 
 export interface CompareSemantic {
@@ -28,6 +30,7 @@ export interface CompareItem {
   seed: number | null;
   created_at: string;
   semantic: CompareSemantic | null;
+  render_facts: RenderFacts | null;
 }
 
 interface CompareRow {
@@ -116,21 +119,13 @@ function computeConsensusSegments(cellItems: string[], otherItemsList: string[][
 }
 
 /**
- * Builds one semantic comparison row. Each cell's raw value feeds display text (via joinList for
- * lists) and the "all differ" row-level diff flag. Beyond that, every cell with a real value is
- * diffed against the consensus of all other real-value cells in the row (no base column): a token
- * shared with every other lane renders plain, one shared with some renders 'partial', one unique
- * to this lane renders 'uniq' — no cell ever renders another cell's text.
+ * Core cells -> CompareRow builder shared by every diffable row: the "all differ" row-level
+ * flag, plus per-cell consensus segments. Every cell with a real value is diffed against the
+ * consensus of all other real-value cells in the row (no base column): a token shared with
+ * every other lane renders plain, one shared with some renders 'partial', one unique to this
+ * lane renders 'uniq' — no cell ever renders another cell's text.
  */
-function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: CompareSemantic) => SemanticRaw): CompareRow {
-  const cells: SemanticCell[] = items.map((item) => {
-    if (!item.semantic) return { display: NOT_ANALYZED, raw: null, kind: 'text' };
-    const r = extractRaw(item.semantic);
-    if (r === null) return { display: NO_VALUE, raw: null, kind: 'text' };
-    if (r.kind === 'list') return { display: joinList(r.raw) ?? NO_VALUE, raw: r.raw, kind: 'list' };
-    return { display: r.raw, raw: r.raw, kind: 'text' };
-  });
-
+function buildDiffRow(label: string, cells: SemanticCell[]): CompareRow {
   const values = cells.map((c) => c.display);
   const diff = new Set(values).size > 1;
 
@@ -152,6 +147,36 @@ function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: C
   return { label, values, diff, segments };
 }
 
+/** Builds one semantic comparison row: "(not analyzed)" for an un-analyzed item, else extractRaw's value. */
+function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: CompareSemantic) => SemanticRaw): CompareRow {
+  const cells: SemanticCell[] = items.map((item) => {
+    if (!item.semantic) return { display: NOT_ANALYZED, raw: null, kind: 'text' };
+    const r = extractRaw(item.semantic);
+    if (r === null) return { display: NO_VALUE, raw: null, kind: 'text' };
+    if (r.kind === 'list') return { display: joinList(r.raw) ?? NO_VALUE, raw: r.raw, kind: 'list' };
+    return { display: r.raw, raw: r.raw, kind: 'text' };
+  });
+  return buildDiffRow(label, cells);
+}
+
+/**
+ * Builds one `render.<column>` row from each item's pre-summarized render_facts: "(no graph)"
+ * when the Generation's ComfyJob carries no graph, NO_VALUE when the graph doesn't populate this
+ * column. Returns null (row omitted entirely) when every item has no value for this column.
+ */
+function buildRenderFactRow(
+  column: RenderFactColumn,
+  summaries: (Record<RenderFactColumn, string | null> | null)[],
+): CompareRow | null {
+  const cells: SemanticCell[] = summaries.map((summary) => {
+    if (!summary) return { display: NO_GRAPH, raw: null, kind: 'text' };
+    const value = summary[column];
+    return value === null ? { display: NO_VALUE, raw: null, kind: 'text' } : { display: value, raw: value, kind: 'text' };
+  });
+  if (cells.every((c) => c.raw === null)) return null;
+  return buildDiffRow(`render.${column}`, cells);
+}
+
 /** Builds a row from generation-level facts, available regardless of semantic analysis. */
 function buildBasicRow(label: string, items: CompareItem[], extract: (item: CompareItem) => string | null): CompareRow {
   const values = items.map((item) => extract(item) ?? NO_VALUE);
@@ -167,6 +192,13 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
     rows.push(buildBasicRow('batch', items, (i) => i.batch_short_id));
     rows.push(buildBasicRow('seed', items, (i) => (i.seed != null ? String(i.seed) : null)));
     rows.push(buildBasicRow('created', items, (i) => i.created_at.slice(0, 10)));
+
+    const renderFactSummaries = items.map((item) => (item.render_facts ? summarizeRenderFacts(item.render_facts) : null));
+    for (const column of RENDER_FACT_COLUMNS) {
+      const row = buildRenderFactRow(column, renderFactSummaries);
+      if (row) rows.push(row);
+    }
+
     rows.push(buildSemanticRow('summary', items, (s) => textRaw(s.summary)));
     for (const field of CORE_FIELDS) {
       rows.push(buildSemanticRow(field, items, (s) => textRaw(s.core[field])));

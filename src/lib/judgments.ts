@@ -7,7 +7,36 @@ import { chunk, D1_MAX_BOUND_PARAMS, nowIso } from './db';
 import { badRequest, conflict } from './errors';
 import { getRunOr404, listRuns, resolveGenerationOr404, touchExperiment } from './experiments';
 import { uuidv7 } from './uuidv7';
-import type { ExperimentRow, JudgmentVerdict, JudgmentWinner, PairwiseJudgmentRow } from '../types';
+import { parseJsonObjectOrNull } from './overrides';
+import { diffFactSummaries, resolveBatchRenderFacts, summarizeRenderFacts, type FactDiffEntry } from './render-facts';
+import type { ExperimentRow, ExperimentRunRow, JudgmentVerdict, JudgmentWinner, PairwiseJudgmentRow } from '../types';
+
+/**
+ * Run ごとの render_facts サマリに variables を `variables.<key>` として合流させる。
+ * A/B の reveal と judgments/summary の render_diff は同じこのマップから作る
+ * (docs/api.md 参照)。
+ */
+export async function runFactSummary(
+  db: D1Database,
+  runs: ExperimentRunRow[],
+): Promise<Map<string, Record<string, string | null>>> {
+  const batchIds = runs.map((r) => r.batch_id).filter((id): id is string => id !== null);
+  const factsByBatch = await resolveBatchRenderFacts(db, batchIds);
+
+  const map = new Map<string, Record<string, string | null>>();
+  for (const run of runs) {
+    const facts = run.batch_id ? factsByBatch.get(run.batch_id) ?? null : null;
+    const summary: Record<string, string | null> = summarizeRenderFacts(facts);
+    const variables = parseJsonObjectOrNull(run.variables_json);
+    if (variables) {
+      for (const [key, value] of Object.entries(variables)) {
+        summary[`variables.${key}`] = String(value);
+      }
+    }
+    map.set(run.id, summary);
+  }
+  return map;
+}
 
 export interface CreateJudgmentInput {
   baseline_run_id: string;
@@ -25,11 +54,23 @@ function computeWinner(verdict: JudgmentVerdict, leftIsArm: boolean): JudgmentWi
   return chosenIsArm ? 'arm' : 'baseline';
 }
 
+export interface JudgmentRevealSide {
+  run_id: string;
+  run_index: number;
+  role: 'baseline' | 'arm';
+}
+
+export interface JudgmentReveal {
+  left: JudgmentRevealSide;
+  right: JudgmentRevealSide;
+  render_diff: FactDiffEntry[];
+}
+
 export async function createJudgment(
   db: D1Database,
   experiment: ExperimentRow,
   body: CreateJudgmentInput,
-): Promise<{ row: PairwiseJudgmentRow; winner: JudgmentWinner }> {
+): Promise<{ row: PairwiseJudgmentRow; winner: JudgmentWinner; reveal: JudgmentReveal }> {
   if (body.baseline_run_id === body.arm_run_id) {
     throw badRequest('baseline_run_id and arm_run_id must be different runs');
   }
@@ -102,7 +143,16 @@ export async function createJudgment(
     .prepare('SELECT * FROM pairwise_judgments WHERE id = ?')
     .bind(id)
     .first<PairwiseJudgmentRow>();
-  return { row: row!, winner: computeWinner(body.verdict, leftIsArm) };
+
+  const factSummaries = await runFactSummary(db, [baseline, arm]);
+  const renderDiff = diffFactSummaries(factSummaries.get(baseline.id) ?? {}, factSummaries.get(arm.id) ?? {});
+  const reveal: JudgmentReveal = {
+    left: { run_id: leftIsBaseline ? baseline.id : arm.id, run_index: leftIsBaseline ? baseline.run_index : arm.run_index, role: leftIsBaseline ? 'baseline' : 'arm' },
+    right: { run_id: rightIsBaseline ? baseline.id : arm.id, run_index: rightIsBaseline ? baseline.run_index : arm.run_index, role: rightIsBaseline ? 'baseline' : 'arm' },
+    render_diff: renderDiff,
+  };
+
+  return { row: row!, winner: computeWinner(body.verdict, leftIsArm), reveal };
 }
 
 interface JudgmentListRow extends PairwiseJudgmentRow {
@@ -148,6 +198,7 @@ export interface JudgmentPairSummary {
   loss: number;
   tie: number;
   total: number;
+  render_diff: FactDiffEntry[];
 }
 
 export interface JudgmentRunSummary {
@@ -230,6 +281,8 @@ export async function judgmentSummary(
     }
   }
 
+  const factSummaryByRunId = await runFactSummary(db, runs);
+
   return {
     pairs: (pairsResult.results ?? []).map((p) => ({
       baseline_run_id: p.baseline_run_id,
@@ -240,6 +293,10 @@ export async function judgmentSummary(
       loss: p.loss,
       tie: p.tie,
       total: p.total,
+      render_diff: diffFactSummaries(
+        factSummaryByRunId.get(p.baseline_run_id) ?? {},
+        factSummaryByRunId.get(p.arm_run_id) ?? {},
+      ),
     })),
     runs: runs.map((r) => {
       const counts = r.batch_id ? ratingByBatch.get(r.batch_id) : undefined;

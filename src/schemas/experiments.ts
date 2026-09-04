@@ -92,6 +92,15 @@ export const updateExperimentSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
+/**
+ * Run に付記する自由記述の factor マップ。グラフ (render_facts) から読み取れない
+ * 要因 (prompt variant のラベルなど) を人間・Agent が書き添えるためのもので、
+ * overrides と違い batch/generation 付与後も編集できる（docs/domain-model.md 参照）。
+ * フラットな 1 階層のみ許容: 値を string|number に絞ることでネスト/配列/真偽値/null は
+ * zod が自動的に弾く。
+ */
+export const runVariablesSchema = z.record(z.string().min(1), z.union([z.string(), z.number()]));
+
 export const createExperimentRunSchema = z.object({
   overrides: overridesSchema.optional(),
   objective: z.string().optional(),
@@ -102,6 +111,7 @@ export const createExperimentRunSchema = z.object({
   decision: jsonObject.optional(),
   note: z.string().optional(),
   idempotency_key: z.string().min(1).optional(),
+  variables: runVariablesSchema.optional(),
 });
 
 /**
@@ -118,6 +128,7 @@ export const updateExperimentRunSchema = z
     evaluation: jsonObject.nullable().optional(),
     decision: jsonObject.nullable().optional(),
     note: z.string().nullable().optional(),
+    variables: runVariablesSchema.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 

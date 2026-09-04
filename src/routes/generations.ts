@@ -19,6 +19,7 @@ import {
   serializeGenerationAsset,
 } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
+import { renderFactsForJob } from '../lib/render-facts';
 import type {
   AppEnv,
   BatchReferenceRow,
@@ -208,6 +209,7 @@ generations.get('/:id', async (c) => {
     db.prepare('SELECT * FROM batches WHERE id = ?').bind(generation.batch_id).first<BatchRow>(),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
   ]);
+  const renderFacts = job ? await renderFactsForJob(db, job) : null;
 
   return c.json({
     ...context,
@@ -229,6 +231,7 @@ generations.get('/:id', async (c) => {
           comfy_prompt_id: job.comfy_prompt_id,
           status: job.status,
           graph: job.graph ? JSON.parse(job.graph) : null,
+          render_facts: renderFacts,
         }
       : null,
     original_filename: generation.original_filename,

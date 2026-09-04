@@ -2,6 +2,7 @@ import { Layout } from '../layout';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { diffOverrides, formatOverrideValue, type JsonObject } from '../../lib/overrides';
 import { EXPERIMENT_STATUSES, allowedNextStatuses } from '../../lib/experiment-status';
+import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFacts } from '../../lib/render-facts';
 import type { ExperimentStatus } from '../../types';
 import { StatusBadge } from './Experiments';
 
@@ -42,6 +43,8 @@ export interface ExperimentDetailRun {
   updated_at: string;
   batch: ExperimentDetailRunBatch | null;
   generation: ExperimentDetailRunGeneration | null;
+  render_facts: RenderFacts | null;
+  variables: Record<string, string | number> | null;
 }
 
 export interface ExperimentDetailPromotion {
@@ -424,6 +427,86 @@ function findBaseline(runs: ExperimentDetailRun[]): ExperimentDetailRun | null {
   return runs.reduce((min, r) => (r.run_index < min.run_index ? r : min), runs[0]!);
 }
 
+function formatVariableValue(value: string | number): string {
+  return String(value);
+}
+
+/**
+ * Facts table above the per-run list: one row per Run with its render_facts summary and
+ * variables, plus a patches breakdown below. Shown only when at least one Run carries
+ * render_facts or variables — most Experiments never got this far, and an all-empty table
+ * would just be noise.
+ */
+function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDetailRun | null) {
+  const hasAnything = runs.some((r) => r.render_facts !== null || (r.variables && Object.keys(r.variables).length > 0));
+  if (!hasAnything) return null;
+
+  const variableKeys = Array.from(
+    new Set(runs.flatMap((r) => (r.variables ? Object.keys(r.variables) : []))),
+  ).sort();
+  const columnCount = 1 + RENDER_FACT_COLUMNS.length + variableKeys.length;
+
+  const baselineSummary = baseline ? summarizeRenderFacts(baseline.render_facts) : null;
+
+  return (
+    <>
+      <table class="kv-table exp-facts">
+        <thead>
+          <tr>
+            <th>run</th>
+            {RENDER_FACT_COLUMNS.map((col) => (
+              <th>{col}</th>
+            ))}
+            {variableKeys.map((key) => (
+              <th>{key}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => {
+            const summary = summarizeRenderFacts(run.render_facts);
+            const isBaseline = baseline !== null && run.id === baseline.id;
+            return (
+              <tr>
+                <td>#{run.run_index}</td>
+                {RENDER_FACT_COLUMNS.map((col) => {
+                  const value = summary[col];
+                  const differsFromBaseline = !isBaseline && baselineSummary !== null && value !== baselineSummary[col];
+                  return <td class={differsFromBaseline ? 'exp-facts-diff' : undefined}>{value ?? '—'}</td>;
+                })}
+                {variableKeys.map((key) => {
+                  const raw = run.variables?.[key];
+                  const value = raw === undefined ? null : formatVariableValue(raw);
+                  const baselineRaw = baseline?.variables?.[key];
+                  const baselineValue = baselineRaw === undefined ? null : formatVariableValue(baselineRaw);
+                  const differsFromBaseline = !isBaseline && value !== baselineValue;
+                  return <td class={differsFromBaseline ? 'exp-facts-diff' : undefined}>{value ?? '—'}</td>;
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+        <tbody class="exp-facts-patches">
+          {runs.flatMap((run) => {
+            const patches = readPatches(run.overrides);
+            if (!patches) return [];
+            return patches.map((patch) => (
+              <tr>
+                <td>#{run.run_index}</td>
+                <td colspan={columnCount - 1}>
+                  <code>{typeof patch.target === 'string' ? patch.target : '?'}</code>{' '}
+                  {typeof patch.op === 'string' ? patch.op : '?'} {formatPatchOperand(patch)}
+                </td>
+              </tr>
+            ));
+          })}
+        </tbody>
+      </table>
+      {baseline ? <p class="exp-facts-legend">Highlighted cells differ from #{baseline.run_index}</p> : null}
+    </>
+  );
+}
+
 export function ExperimentDetailPage({
   experiment,
   judgments,
@@ -499,6 +582,7 @@ export function ExperimentDetailPage({
       </table>
 
       <h2>Runs</h2>
+      {renderExpFactsTable(experiment.runs, baseline)}
       {experiment.runs.length === 0 ? (
         <p class="empty-state">No runs yet.</p>
       ) : (

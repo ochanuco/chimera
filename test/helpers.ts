@@ -241,6 +241,11 @@ export async function ingestGeneration(
   return { status: res.status, body };
 }
 
+/** Inserts a graph directly into env.DB, bypassing PATCH /api/v1/jobs/{id} — leaves render_facts_json NULL (lazy-extraction path). */
+export async function setJobGraph(jobId: string, graph: unknown): Promise<void> {
+  await env.DB.prepare('UPDATE comfy_jobs SET graph = ? WHERE id = ?').bind(JSON.stringify(graph), jobId).run();
+}
+
 /** End-to-end helper: batch -> job -> ingested generation. */
 export async function createGeneration(overrides: {
   batchOverrides?: Record<string, unknown>;

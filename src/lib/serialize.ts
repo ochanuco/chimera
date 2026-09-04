@@ -160,6 +160,7 @@ export function serializeExperimentRun(row: ExperimentRunRow) {
     evaluation: parseJsonObjectOrNull(row.evaluation_json),
     decision: parseJsonObjectOrNull(row.decision_json),
     note: row.note,
+    variables: parseJsonObjectOrNull(row.variables_json) as Record<string, string | number> | null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

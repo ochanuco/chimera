@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, createJob, ingestGeneration, postJson, req } from './helpers';
+import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph } from './helpers';
 import { representativeGeneration, type GraphNodeData } from '../src/ui/pages/Graph';
 
 describe('Web GUI pages', () => {
@@ -74,6 +74,28 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain(`/g/${generation.short_id}/image`);
+  });
+
+  it('GET /g/{short_id} shows the Render facts section with the checkpoint name', async () => {
+    const { generation, job } = await createGeneration();
+    await postJson(
+      `/api/v1/jobs/${job.id}`,
+      { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } } } },
+      'PATCH',
+    );
+
+    const res = await req(`/g/${generation.short_id}`);
+    const html = await res.text();
+    expect(html).toContain('Render facts');
+    expect(html).toContain('model.safetensors');
+  });
+
+  it('GET /g/{short_id} shows "(no graph)" for a Generation whose Job never got a graph', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/g/${generation.short_id}`);
+    const html = await res.text();
+    expect(html).toContain('Render facts');
+    expect(html).toContain('(no graph)');
   });
 
   it('GET /g/{short_id} shows the image resolution and formatted file size read from R2', async () => {
@@ -494,6 +516,39 @@ describe('Web GUI pages', () => {
     expect(summaryCells[1]).toContain('sofa');
     expect(summaryCells[1]).not.toContain('sitting');
     expect(summaryCells[1]).not.toContain('chair');
+  });
+
+  it('GET /compare shows a render.checkpoint row with class="diff" when the two Jobs used different checkpoints', async () => {
+    const { generation: g1, job: job1 } = await createGeneration();
+    const { generation: g2, job: job2 } = await createGeneration();
+    await postJson(`/api/v1/jobs/${job1.id}`, { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'a.safetensors' } } } }, 'PATCH');
+    await postJson(`/api/v1/jobs/${job2.id}`, { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'b.safetensors' } } } }, 'PATCH');
+
+    const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('render.checkpoint');
+
+    const rowMatch = body.match(/<tr><td>render\.checkpoint<\/td>(.*?)<\/tr>/s);
+    expect(rowMatch).not.toBeNull();
+    expect(rowMatch![0]).toContain('class="diff"');
+    const cells = [...rowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
+    expect(cells).toHaveLength(2);
+    expect(cells[0]!.replace(/<[^>]+>/g, '')).toBe('a.safetensors');
+    expect(cells[1]!.replace(/<[^>]+>/g, '')).toBe('b.safetensors');
+  });
+
+  it('GET /compare shows "(no graph)" for a render.* column when a Generation\'s Job has no graph at all', async () => {
+    const { generation: g1, job: job1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+    await postJson(`/api/v1/jobs/${job1.id}`, { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'a.safetensors' } } } }, 'PATCH');
+
+    const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
+    const body = await res.text();
+    const rowMatch = body.match(/<tr><td>render\.checkpoint<\/td>(.*?)<\/tr>/s);
+    expect(rowMatch).not.toBeNull();
+    const cells = [...rowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
+    expect(cells[1]).toContain('(no graph)');
   });
 
   it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {
@@ -1126,6 +1181,52 @@ describe('Experiments pages', () => {
     expect(html).not.toContain('http://localhost');
   });
 
+  it('GET /experiments/{id} shows the exp-facts table: baseline-diff highlighting on the arm checkpoint cell, a variables column, and a patches row', async () => {
+    const experiment = await createExperiment();
+
+    const { generation: baselineGen, job: baselineJob, batch: baselineBatch } = await createGeneration();
+    const { generation: armGen, job: armJob, batch: armBatch } = await createGeneration();
+    await postJson(
+      `/api/v1/jobs/${baselineJob.id}`,
+      { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'base.safetensors' } } } },
+      'PATCH',
+    );
+    await postJson(
+      `/api/v1/jobs/${armJob.id}`,
+      { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'arm.safetensors' } } } },
+      'PATCH',
+    );
+
+    const baselineRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      overrides: { patches: [{ target: 'render.cfg', op: 'set', value: 5, reason: 'sharper' }] },
+      batch_id: baselineBatch.id,
+      generation_id: baselineGen.id,
+    });
+    const armRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      variables: { prompt_variant: 'v2' },
+      batch_id: armBatch.id,
+      generation_id: armGen.id,
+    });
+
+    const res = await req(`/experiments/${experiment.id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('exp-facts');
+    expect(html).toContain('<th>prompt_variant</th>');
+    expect(html).toContain('render.cfg');
+    expect(html).toContain('sharper');
+
+    const baselineRowMatch = html.match(new RegExp(`<tr><td>#${baselineRun.body.run_index}</td>.*?</tr>`, 's'));
+    const armRowMatch = html.match(new RegExp(`<tr><td>#${armRun.body.run_index}</td>.*?</tr>`, 's'));
+    expect(baselineRowMatch).not.toBeNull();
+    expect(armRowMatch).not.toBeNull();
+    expect(baselineRowMatch![0]).not.toContain('exp-facts-diff');
+    expect(armRowMatch![0]).toContain('exp-facts-diff');
+    expect(armRowMatch![0].replace(/<[^>]+>/g, ' ')).toContain('arm.safetensors');
+    expect(html).toContain(`Highlighted cells differ from #${baselineRun.body.run_index}`);
+  });
+
   it('GET /experiments/{unknown} renders the 404 page', async () => {
     const res = await req('/experiments/zzzzzz');
     expect(res.status).toBe(404);
@@ -1230,6 +1331,29 @@ describe('A/B judge page', () => {
     expect(html).not.toContain('baseline objective text');
     expect(html).not.toContain('arm objective text');
     expect(html).not.toContain('data-value="good"');
+  });
+
+  it('does not leak the checkpoint name before judgment, and carries the ab-reveal / ab-next skeleton', async () => {
+    const ctx = await setupPair();
+
+    const baselineRunDetail = await getJson<{ batch_id: string }>(`/api/v1/experiment-runs/${ctx.baselineRun.id}`);
+    const baselineJobs = await getJson<{ jobs: { id: string; index: number }[] }>(
+      `/api/v1/batches/${baselineRunDetail.body.batch_id}`,
+    );
+    const firstJob = baselineJobs.body.jobs.find((j) => j.index === 0)!;
+    await setJobGraph(firstJob.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'secret-checkpoint.safetensors' } } });
+
+    const res = await req(
+      `/experiments/${ctx.experiment.short_id}/ab?baseline=${ctx.baselineRun.id}&arm=${ctx.armRun.id}`,
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).not.toContain('secret-checkpoint.safetensors');
+    expect(html).toContain('class="ab-reveal"');
+    expect(html).toContain('class="ab-reveal-line"');
+    expect(html).toContain('class="ab-next"');
+    expect(html).toMatch(/<div class="ab-reveal"[^>]*hidden/);
   });
 
   it('drops a judged seed from the embedded pairs JSON on the next load', async () => {

@@ -94,6 +94,12 @@ export function ExperimentAbPage({ data }: { data: ExperimentAbData }) {
                 </button>
               </div>
               <p class="ab-hint">Keys: 1 / ← = A, 2 / → = B, 0 / T = Tie</p>
+              <div class="ab-reveal" hidden>
+                <p class="ab-reveal-line"></p>
+                <button type="button" class="ab-next">
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </>

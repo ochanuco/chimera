@@ -6,6 +6,7 @@ import { nowIso } from '../lib/db';
 import { badRequest, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import { parsePngDimensions } from '../lib/image-meta';
+import { extractRenderFacts } from '../lib/render-facts';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
 export const jobs = new Hono<AppEnv>();
@@ -34,6 +35,10 @@ jobs.patch('/:jobId', async (c) => {
   if (body.graph !== undefined) {
     sets.push('graph = ?');
     binds.push(JSON.stringify(body.graph));
+    // グラフが更新された時点で常に再抽出する: グラフはジョブごとに一度きり PATCH で
+    // 確定するものなので、古いキャッシュが後続の graph 変更に取り残されることはない。
+    sets.push('render_facts_json = ?');
+    binds.push(JSON.stringify(extractRenderFacts(body.graph)));
   }
   sets.push('updated_at = ?');
   const now = nowIso();
