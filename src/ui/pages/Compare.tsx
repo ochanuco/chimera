@@ -177,6 +177,25 @@ function buildRenderFactRow(
   return buildDiffRow(`render.${column}`, cells);
 }
 
+/** One item's pass-`passIndex` prompt text (positive/negative), "(no graph)" without a Job graph, `—` without that many passes. */
+function promptCell(item: CompareItem, passIndex: number, polarity: 'positive' | 'negative'): SemanticCell {
+  if (!item.render_facts) return { display: NO_GRAPH, raw: null, kind: 'text' };
+  const text = item.render_facts.samplers[passIndex]?.prompt[polarity] ?? null;
+  return text === null ? { display: NO_VALUE, raw: null, kind: 'text' } : { display: text, raw: text, kind: 'text' };
+}
+
+/**
+ * Builds a `render.positive` / `render.negative` row for pass 1, or `render.positive (pass 2)`
+ * etc. for later passes. Returns null (row omitted) when every item has no value for that
+ * pass/polarity.
+ */
+function buildPromptRow(items: CompareItem[], passIndex: number, polarity: 'positive' | 'negative'): CompareRow | null {
+  const label = passIndex === 0 ? `render.${polarity}` : `render.${polarity} (pass ${passIndex + 1})`;
+  const cells = items.map((item) => promptCell(item, passIndex, polarity));
+  if (cells.every((c) => c.raw === null)) return null;
+  return buildDiffRow(label, cells);
+}
+
 /** Builds a row from generation-level facts, available regardless of semantic analysis. */
 function buildBasicRow(label: string, items: CompareItem[], extract: (item: CompareItem) => string | null): CompareRow {
   const values = items.map((item) => extract(item) ?? NO_VALUE);
@@ -197,6 +216,14 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
     for (const column of RENDER_FACT_COLUMNS) {
       const row = buildRenderFactRow(column, renderFactSummaries);
       if (row) rows.push(row);
+    }
+
+    const maxPasses = Math.max(0, ...items.map((item) => item.render_facts?.samplers.length ?? 0));
+    for (let passIndex = 0; passIndex < maxPasses; passIndex++) {
+      for (const polarity of ['positive', 'negative'] as const) {
+        const row = buildPromptRow(items, passIndex, polarity);
+        if (row) rows.push(row);
+      }
     }
 
     rows.push(buildSemanticRow('summary', items, (s) => textRaw(s.summary)));

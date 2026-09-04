@@ -218,6 +218,7 @@ generations.get('/:id', async (c) => {
           id: batch.id,
           short_id: batch.short_id,
           prompt: batch.prompt,
+          negative_prompt: batch.negative_prompt,
           recipe: batch.recipe,
           raw_instruction: batch.raw_instruction,
           git_commit: batch.git_commit,

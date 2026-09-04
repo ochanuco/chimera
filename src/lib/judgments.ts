@@ -27,6 +27,8 @@ export async function runFactSummary(
   for (const run of runs) {
     const facts = run.batch_id ? factsByBatch.get(run.batch_id) ?? null : null;
     const summary: Record<string, string | null> = summarizeRenderFacts(facts);
+    summary.positive = facts?.samplers[0]?.prompt.positive ?? null;
+    summary.negative = facts?.samplers[0]?.prompt.negative ?? null;
     const variables = parseJsonObjectOrNull(run.variables_json);
     if (variables) {
       for (const [key, value] of Object.entries(variables)) {
