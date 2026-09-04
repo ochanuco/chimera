@@ -189,6 +189,12 @@ render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.c
 その行を黄系ハイライト（diff）します。ComfyJobにgraphが無いGenerationはそのカラムに
 `(no graph)` を表示し、全カラムが値なしの列（render_facts行）はその行ごと表示しません。
 
+続けて `render.positive` / `render.negative` 行（各Generationのpass 1の
+positive/negativeプロンプト、値の表現はsemantic行と同じコンセンサス方式の
+トークンハイライト）を並べます。いずれかのGenerationが2pass以上を持つ場合は、
+存在するpass indexごとに `render.positive (pass 2)` / `render.negative (pass 2)`
+のように追加します（全カラムが値なしの行は表示しません）。
+
 Compareは比較表示のみで、ComfyUIへの生成要求も指示テキストの生成も行いません。
 
 ## Generation Detail
@@ -214,9 +220,7 @@ Map
 親
 子
 Story
-Prompt
-Seed
-Render facts
+Workflow
 ComfyUI Job
 Git
 Note
@@ -241,12 +245,54 @@ BatchRelation連結成分（行ラベル `Retries`、無向）、そのBatchが�
 Detailへのリンクです。要素が2件未満の行（関連Batchなしの行）は表示せず、全行が該当する場合はMapセクション
 自体を表示しません。
 
-Render factsセクションは「Seed」の直後にあり、このGenerationのComfyJobから抽出した
-render_facts（[domain-model.md](domain-model.md#comfyjob)参照）をkv-tableで表示します。
-checkpoint（複数あれば結合）、samplerノードごとに1行（`sampler #<node_id>` →
-`euler/karras · steps 20 · cfg 7 · denoise 1`）、canvas、lora、controlnetの各行を、
-値があるものだけ並べます。ComfyJobにgraphが無い（未抽出）場合は `(no graph)`
-とだけ表示します。
+Workflowセクションは、以前の Prompt / Seed / Render facts
+の3セクションを統合したもので、「Story」の直後にあります。このGenerationの
+ComfyJobから抽出したrender_facts（[domain-model.md](domain-model.md#comfyjob)参照）
+を使い、`/g/{short_id}` だけを見て（ほぼ）同じワークフローを再現できるだけの
+情報を読みやすいレイアウトで並べます:
+
+``` text
+Model       hassaku-il-v22
+LoRA        sketch-worthyhuman.safetensors @0.8 (clip 0.6)
+ControlNet  openpose.safetensors @0.7 · 0–0.8
+Pass 1 · node 3
+  832×1664 · empty latent
+  dpmpp_2m / karras · 30 steps · cfg 5 · denoise 1 · seed 1234
+  positive   [chip chip chip]
+  negative   [chip chip]
+Pass 2 · node 12 · continues pass 1
+  image upscale lanczos → 1248×1824
+  dpmpp_2m / karras · 20 steps · cfg 4 · denoise 0.45 · seed 1234
+  positive   same as pass 1 (または差分チップ)
+  negative   同上
+Output      filename_prefix
+Raw graph   （折りたたみ、生JSON）
+```
+
+`Model`行はcheckpointを`  +  `区切りで結合したもの（chain_passのように複数
+checkpointを経由するグラフでは複数件）に続けて、clip/vaeがあればdimな行
+（`clip: … · vae: …`）を添えます。`LoRA` / `ControlNet`行はrender_facts
+の各要素を1行ずつ（無ければ表示しない）。
+
+`Pass n`は`render_facts.samplers`の並び順（node id順）で、見出しに`node
+<id>`を添えます。あるpassのlatentの`from_node_id`が別のpassのsamplerの
+node idと一致する場合、「continues pass k」を見出しに追加します。latentの
+行はkindに応じて「WxH · empty latent」「image upscale <method> → WxH」
+「latent upscale <method> → WxH」「×<scale_by> (<method>)」のいずれかです。
+positive/negativeはBatch DetailのPromptセクションと同じ`PromptChips`
+コンポーネントで表示します。pass 2以降の行は直前のpassのプロンプトに対する
+トークン差分（追加=緑枠、weight変化=黄枠バッジ、削除=取り消し線の別行）を表示し、
+trim後に完全に同じ場合は「same as pass N」とだけ表示します。
+
+graphが無い（未抽出）場合は `(no graph)` とだけ表示したうえで、Batchの
+`prompt` / `negative_prompt` をpositive/negativeのチップとして、seedは
+ComfyJobの`seed`列を表示するフォールバックにします。graphがあり、かつ
+Batchの`prompt`（trim後）がpass 1のpositiveと異なる場合は、dimな
+「request prompt differs」行と、折りたたみ`Request prompt`（Batchの
+promptをpass 1のpositiveに対して差分表示したチップ）を追加します。
+
+`Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
+末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
 ## Provenance View
 
@@ -318,6 +364,14 @@ baseline（`run_index`が最小のRun）以外の行では、baselineと異な�
 `overrides.patches`を持つRunごとにpatch単位の行（`#<run_index>` /
 `<target> <op> <value>`、replaceは`<old> → <value>`）を並べます。
 
+3番目のtbody（`exp-facts-prompts`）には、各Runのpass 1のpositive/negative
+プロンプトをBatch DetailのPromptセクションと同じ`PromptChips`で表示します。
+baseline runは値があるものだけ（`#<run_index> positive` / `#<run_index>
+negative`の行、値がnullなら行ごと省略）。baseline以外のRunは、そのRunの
+プロンプトがbaselineのものと異なるときだけ行を出し、baselineに対する
+トークン差分（追加=緑枠、weight変化=黄枠バッジ、削除=取り消し線）として
+表示します。
+
 各Runで最も重要なのは「前回から何を変えたか」です。`overrides.patches`
 （comfyui-recipesのpatch語彙、[domain-model.md](domain-model.md#experimentrun)参照）は
 それ自体がbase recipeへの差分なので、leaf diffではなくRunのpatch一覧をそのまま出し、
@@ -376,8 +430,10 @@ multi-output jobで同一seedに複数枚あるときは、batch内で最初に�
 判定結果の reveal（PairwiseJudgment作成レスポンスの `reveal`、
 [api.md](api.md#pairwisejudgment)参照）を1行で表示します：
 `A = #<left.run_index> (<left.role>) · B = #<right.run_index> (<right.role>)`
-に続けて、`render_diff` の各エントリを ` · <column>: <baseline> → <arm>`
-として並べます（差分が無ければ ` · no fact difference`）。すでに判定済み（409）の
+に続けて、`render_diff` の各エントリを並べます。`delta`
+を持つエントリ（`positive` / `negative`）は ` · <column>: <delta>`、
+それ以外は ` · <column>: <baseline> → <arm>`（差分が無ければ
+` · no fact difference`）です。すでに判定済み（409）の
 場合は reveal の代わりに「already judged」とだけ出します。reveal表示中は投票
 ボタンを無効化し、「Next」ボタン（キーボードは Enter / Space）を押すと次のペアへ
 進んでreveal表示を隠します。全seedを判定し終えたペアでもreveal自体は表示され、

@@ -370,6 +370,11 @@ details.section .section-body { margin-top: 0.6rem; }
 .w-badge.w-down { color: var(--text-dim); background: color-mix(in srgb, var(--border) 60%, transparent); }
 .prompt-raw { white-space: pre-wrap; font-size: 0.85rem; margin: 0; }
 
+/* Generation Detail の Workflow セクション: モデル/LoRA/ControlNetのkv-tableに続けてPassごとのブロックを並べる。 */
+.workflow-pass { border-left: 2px solid var(--border); padding-left: 0.6rem; margin: 0.6rem 0; }
+.workflow-pass-head { font-weight: 600; }
+.workflow-line { color: var(--text-dim); font-size: 0.85rem; }
+
 .gen-detail-hero { text-align: center; margin-bottom: 1rem; }
 .gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); }
 .image-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--text-dim); text-align: center; }
@@ -1696,13 +1701,18 @@ export const appJs = `
       setButtonsDisabled(false);
     }
 
-    // reveal.render_diff の各行を "column: baseline → arm" として一行にまとめる。POST の
-    // 409 (既に判定済み) は response body を持たないので、この整形は成功時のみ通る。
+    // reveal.render_diff の各行を "column: baseline → arm" として一行にまとめる（delta付きの
+    // エントリ、主に positive/negative は "column: <delta>" にする）。POST の 409（既に判定済み）
+    // は response body を持たないので、この整形は成功時のみ通る。
     function formatReveal(reveal) {
       var line = 'A = #' + reveal.left.run_index + ' (' + reveal.left.role + ') · B = #' + reveal.right.run_index + ' (' + reveal.right.role + ')';
       if (reveal.render_diff && reveal.render_diff.length > 0) {
         reveal.render_diff.forEach(function (d) {
-          line += ' · ' + d.column + ': ' + (d.baseline == null ? '—' : d.baseline) + ' → ' + (d.arm == null ? '—' : d.arm);
+          if (d.delta) {
+            line += ' · ' + d.column + ': ' + d.delta;
+          } else {
+            line += ' · ' + d.column + ': ' + (d.baseline == null ? '—' : d.baseline) + ' → ' + (d.arm == null ? '—' : d.arm);
+          }
         });
       } else {
         line += ' · no fact difference';

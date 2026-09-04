@@ -358,6 +358,7 @@ interface RenderDiffEntry {
   column: string;
   baseline: string | null;
   arm: string | null;
+  delta?: string;
 }
 
 interface JudgmentWithReveal extends Judgment {
@@ -403,5 +404,45 @@ describe('PairwiseJudgment render_facts reveal', () => {
     const summary = await getJson<SummaryBodyWithRenderDiff>(`/api/v1/experiments/${ctx.experiment.id}/judgments/summary`);
     const pair = summary.body.pairs.find((p) => p.baseline_run_id === ctx.baselineRun.id && p.arm_run_id === ctx.armRun.id);
     expect(pair?.render_diff).toEqual(res.body.reveal.render_diff);
+  });
+
+  it('render_diff carries a positive entry with a delta starting with "+" when the arm run added a prompt token', async () => {
+    const ctx = await setupPair();
+
+    const [baselineJobs, armJobs] = await Promise.all([
+      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.baselineBatch.id}`),
+      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.armBatch.id}`),
+    ]);
+    const baselineFirstJob = baselineJobs.body.jobs.find((j) => j.index === 0)!;
+    const armFirstJob = armJobs.body.jobs.find((j) => j.index === 0)!;
+
+    const graphFor = (text: string) => ({
+      '3': {
+        class_type: 'KSampler',
+        inputs: { seed: 1, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] },
+      },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512, batch_size: 1 } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text, clip: ['4', 1] } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'bad', clip: ['4', 1] } },
+    });
+    await setJobGraph(baselineFirstJob.id, graphFor('1girl, outdoors'));
+    await setJobGraph(armFirstJob.id, graphFor('1girl, outdoors, smiling'));
+
+    const res = await postJson<JudgmentWithReveal>(`/api/v1/experiments/${ctx.experiment.id}/judgments`, {
+      baseline_run_id: ctx.baselineRun.id,
+      arm_run_id: ctx.armRun.id,
+      seed: 11,
+      left_generation_id: ctx.baselineGens[11]!.id,
+      right_generation_id: ctx.armGens[11]!.id,
+      verdict: 'right',
+    });
+
+    expect(res.status).toBe(201);
+    const positiveEntry = res.body.reveal.render_diff.find((d) => d.column === 'positive');
+    expect(positiveEntry).toBeDefined();
+    expect(positiveEntry?.baseline).toBe('1girl, outdoors');
+    expect(positiveEntry?.arm).toBe('1girl, outdoors, smiling');
+    expect(positiveEntry?.delta).toMatch(/^\+/);
   });
 });

@@ -115,16 +115,46 @@ PATCH /api/v1/jobs/{job_id}
 `graph` は ComfyUI に POST した prompt グラフ全体（`/prompt` にそのまま再投稿できる形）です。
 Job の記録単体で生成を再現できるようにするための保存であり、省略した場合は既存の値を保持します。
 
-`graph` を伴う PATCH は、そのグラフから `render_facts`（checkpoint / sampler / canvas
-/ lora / controlnet / seed の構造化ファクト）を抽出し `render_facts_json`
-に保存します。抽出ルール（`src/lib/render-facts.ts`）:
+`graph` を伴う PATCH は、そのグラフから `render_facts`（version 2:
+checkpoint / models（clip/vae） / sampler ごとの steps・cfg・denoise・seed・
+prompt・latent / canvas / lora / controlnet / seed / output の構造化ファクト）
+を抽出し `render_facts_json` に保存します。抽出ルール（`src/lib/render-facts.ts`）:
 
+-   `version`: 抽出ロジックのバージョン。現在は `RENDER_FACTS_VERSION = 2`
 -   `checkpoints`: `CheckpointLoaderSimple.inputs.ckpt_name` /
     `DiffusersLoader.inputs.model_path` / `UNETLoader.inputs.unet_name` を
     node id 順にすべて拾う（chain_pass のように複数チェックポイントを経由する
     グラフでは複数件になる）
+-   `models`: `clip` は `CLIPLoader.inputs.clip_name` /
+    `DualCLIPLoader.inputs.clip_name1`/`clip_name2` を node id 順にすべて拾う。
+    `vae` は最初の `VAELoader.inputs.vae_name`
 -   `samplers`: 全 `KSampler` / `KSamplerAdvanced` を node id 順に
-    （`KSamplerAdvanced` は `denoise` を持たないので常に `null`）
+    （`KSamplerAdvanced` は `denoise` を持たないので常に `null`）。各サンプラーは
+    以下も持つ:
+    -   `seed`: `KSampler.inputs.seed` / `KSamplerAdvanced.inputs.noise_seed`
+    -   `prompt.positive` / `prompt.negative`: `inputs.positive` /
+        `inputs.negative` をグラフに沿って解決したテキスト（深さ8まで、循環
+        ガード付き）。`CLIPTextEncode` なら `inputs.text`
+        （それ自体が参照なら1ホップだけ追って `inputs.text` /
+        `inputs.value` / `inputs.string` を持つノードを見る）、
+        `ControlNetApply` / `ControlNetApplyAdvanced` なら
+        `inputs.conditioning`（Apply）または同じ極性の
+        `inputs.positive`/`inputs.negative`（Advanced）、
+        `ConditioningCombine` / `ConditioningConcat` /
+        `ConditioningSetArea*` / `ConditioningSetTimestepRange` なら
+        `inputs.conditioning_1`（無ければ `conditioning_to` /
+        `conditioning`）を辿って再帰する。解決できなければ `null`
+    -   `latent`: `inputs.latent_image` の解決結果。`EmptyLatentImage` なら
+        `{kind:'empty', width, height}`、`LatentUpscale` /
+        `LatentUpscaleBy` なら `{kind:'latent_upscale', ...}`、`VAEEncode`
+        の `pixels` が `ImageScale` / `ImageScaleBy` なら
+        `{kind:'image_upscale', ...}`。`upscale_method` /
+        `scale_by`（`*By` 系のみ）に加えて、`samples` /
+        `image` / `images` / `pixels` / `latent_image` を遡って見つけた
+        直前の `KSampler`/`KSamplerAdvanced` の node id を `from_node_id`
+        として持つ（複数passのチェーンを辿るのに使う）。認識できないノードは
+        `{kind:'other', ...}`（それでも `from_node_id` は求める）、
+        latent_image 自体が解決できなければ `null`
 -   `canvas`: 最初の `EmptyLatentImage` の width/height と、`LatentUpscale` /
     `ImageScale`（リテラル）または `LatentUpscaleBy` / `ImageScaleBy`
     （`scale_by` 倍、四捨五入）のうち node id が最後のノードから求めた
@@ -136,17 +166,24 @@ Job の記録単体で生成を再現できるようにするための保存で�
     strength null で1件として出す
 -   `seed`: 最初の `KSampler.inputs.seed` または
     `KSamplerAdvanced.inputs.noise_seed`
+-   `output.filename_prefix`: 最初の（node id 順）`SaveImage.inputs.filename_prefix`
 
 ノード入力値が他ノードへの参照 `[node_id, output_index]` の場合、スカラー欄では
-`null` 扱いになります（値そのものを解決するのは controlnet の参照だけ）。
+`null` 扱いになります（値そのものを解決するのは controlnet の参照 /
+sampler ごとの prompt・latent だけ）。
 
-`render_facts_json` は遅延抽出のキャッシュです。`NULL` は「未抽出」を意味し、
-graph はあるが facts がまだ無い行は最初の読み取り時（Generation detail /
+`render_facts_json` は遅延抽出のキャッシュです。`NULL`、または保存されている
+`version` が現在の `RENDER_FACTS_VERSION` 未満（v1 キャッシュのように
+`version` フィールド自体が無い場合を含む）は「未抽出」を意味し、graph はある
+がfactsがまだ無い（または古い）行は最初の読み取り時（Generation detail /
 Batch detail / Experiment run のいずれか）に抽出してその場で書き戻します。
 
 `render_facts` は以下の箇所に現れます:
 
--   `GET /api/v1/generations/{id}` の `comfy_job.render_facts`
+-   `GET /api/v1/generations/{id}` の `comfy_job.render_facts`（同じレスポンスの
+    `comfy_job.graph` は投稿された prompt グラフ全体、`batch.negative_prompt`
+    は所属 Batch の negative prompt — どちらも `/g/` の Workflow セクション
+    が「グラフから再現できる形」を組み立てる材料）
 -   `GET /api/v1/batches/{id}` の各 `jobs[].render_facts`
 -   ExperimentRun（`GET /api/v1/experiments/{id}` の `runs[]` /
     `GET /api/v1/experiments/{id}/runs` / `GET /api/v1/experiment-runs/{id}` /
@@ -527,6 +564,12 @@ POST /api/v1/experiments/{id}/judgments
     "right": { "run_id": "...", "run_index": 2, "role": "arm" },
     "render_diff": [
       { "column": "checkpoint", "baseline": "yukari-v3", "arm": "yukari-v4" },
+      {
+        "column": "positive",
+        "baseline": "1girl, outdoors",
+        "arm": "1girl, outdoors, smiling",
+        "delta": "+smiling"
+      },
       { "column": "variables.prompt_variant", "baseline": null, "arm": "socks-v2" }
     ]
   }
@@ -540,9 +583,15 @@ POST /api/v1/experiments/{id}/judgments
 `reveal` は判定後（このレスポンスと、Judgment Summary の
 `pairs[].render_diff`）にだけ現れます。A/B画面自体は判定前に確定情報を
 一切埋め込みません（盲検を保つため）。`render_diff` は baseline run /
-arm run それぞれの render_facts サマリ（`variables` は `variables.<key>`
-という列名で合流）を比較し、値が異なる列だけを返します
-（`src/lib/render-facts.ts` の `diffFactSummaries`）。
+arm run それぞれの render_facts サマリ（`RENDER_FACT_COLUMNS` に続けて
+`positive` / `negative`（pass 1 の prompt テキスト）、`variables` は
+`variables.<key>` という列名で合流）を比較し、値が異なる列だけをこの順で
+返します（`src/lib/render-facts.ts` の `diffFactSummaries`）。`positive` /
+`negative` の列は `baseline` / `arm` の生テキストに加えて、
+`promptDelta`（`src/lib/render-facts.ts`）が作るコンパクトなトークン差分を
+`delta` に持ちます（追加トークンは `+token`、削除は `-token`、重み変化は
+`w:(token before→after)`、両セクションは ` · ` で連結。差分が無ければ
+`delta` フィールド自体を省略）。
 
 400のケース:
 

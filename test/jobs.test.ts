@@ -86,4 +86,24 @@ describe('Job render_facts', () => {
     expect(after?.render_facts_json).not.toBeNull();
     expect(JSON.parse(after!.render_facts_json!).checkpoints).toEqual(['model.safetensors']);
   });
+
+  it('re-extracts a cached v1 render_facts_json (no version field) on read and persists version 2', async () => {
+    const { generation, job } = await createGeneration();
+    await setJobGraph(job.id, SAMPLE_GRAPH);
+    // v1 のキャッシュ (version フィールドなし) を直接書き込み、遅延再抽出をシミュレートする。
+    await env.DB.prepare('UPDATE comfy_jobs SET render_facts_json = ? WHERE id = ?')
+      .bind(JSON.stringify({ checkpoints: ['model.safetensors'], samplers: [], canvas: null, loras: [], controlnets: [], seed: null }), job.id)
+      .run();
+
+    const detail = await getJson<{ comfy_job: { render_facts: { version: number; checkpoints: string[] } } }>(
+      `/api/v1/generations/${generation.id}`,
+    );
+    expect(detail.body.comfy_job.render_facts.version).toBe(2);
+    expect(detail.body.comfy_job.render_facts.checkpoints).toEqual(['model.safetensors']);
+
+    const after = await env.DB.prepare('SELECT render_facts_json FROM comfy_jobs WHERE id = ?')
+      .bind(job.id)
+      .first<{ render_facts_json: string | null }>();
+    expect(JSON.parse(after!.render_facts_json!).version).toBe(2);
+  });
 });

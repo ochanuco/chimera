@@ -3,6 +3,7 @@ import { CopyIdButton } from '../components/CopyIdButton';
 import { diffOverrides, formatOverrideValue, type JsonObject } from '../../lib/overrides';
 import { EXPERIMENT_STATUSES, allowedNextStatuses } from '../../lib/experiment-status';
 import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFacts } from '../../lib/render-facts';
+import { PromptChips } from '../components/PromptChips';
 import type { ExperimentStatus } from '../../types';
 import { StatusBadge } from './Experiments';
 
@@ -431,6 +432,55 @@ function formatVariableValue(value: string | number): string {
   return String(value);
 }
 
+/** Pass-1 prompt text (the sampler that's node-id first) from a Run's render_facts, or null. */
+function passOnePrompt(facts: RenderFacts | null, polarity: 'positive' | 'negative'): string | null {
+  return facts?.samplers[0]?.prompt[polarity] ?? null;
+}
+
+/**
+ * Prompt rows below the patches breakdown: the baseline's own pass-1 positive/negative (omitted
+ * when null), then for every other Run the same pair but only when it differs from the
+ * baseline's — rendered diffed against it so added/removed/weight-changed chips stand out.
+ */
+function renderExpFactsPromptRows(runs: ExperimentDetailRun[], baseline: ExperimentDetailRun | null, columnCount: number) {
+  if (!baseline) return null;
+
+  interface PromptRowEntry {
+    runIndex: number;
+    polarity: 'positive' | 'negative';
+    text: string | null;
+    parentText: string | null;
+  }
+  const entries: PromptRowEntry[] = [];
+
+  for (const polarity of ['positive', 'negative'] as const) {
+    const baselineText = passOnePrompt(baseline.render_facts, polarity);
+    if (baselineText === null) continue;
+    entries.push({ runIndex: baseline.run_index, polarity, text: baselineText, parentText: null });
+  }
+
+  for (const run of runs) {
+    if (run.id === baseline.id) continue;
+    for (const polarity of ['positive', 'negative'] as const) {
+      const baselineText = passOnePrompt(baseline.render_facts, polarity);
+      const runText = passOnePrompt(run.render_facts, polarity);
+      if ((runText ?? '').trim() === (baselineText ?? '').trim()) continue;
+      entries.push({ runIndex: run.run_index, polarity, text: runText, parentText: baselineText });
+    }
+  }
+
+  return entries.map((e) => (
+    <tr>
+      <td>
+        #{e.runIndex} {e.polarity}
+      </td>
+      <td colspan={columnCount - 1}>
+        <PromptChips text={e.text} parentText={e.parentText} variant={e.polarity} />
+      </td>
+    </tr>
+  ));
+}
+
 /**
  * Facts table above the per-run list: one row per Run with its render_facts summary and
  * variables, plus a patches breakdown below. Shown only when at least one Run carries
@@ -501,6 +551,7 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
             ));
           })}
         </tbody>
+        <tbody class="exp-facts-prompts">{renderExpFactsPromptRows(runs, baseline, columnCount)}</tbody>
       </table>
       {baseline ? <p class="exp-facts-legend">Highlighted cells differ from #{baseline.run_index}</p> : null}
     </>

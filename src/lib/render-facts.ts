@@ -1,7 +1,8 @@
 // ComfyUI プロンプトグラフ (API format `{ "<node_id>": { class_type, inputs } }`) から
 // 「何で生成したか」を横断比較できる形に抽出する。値は常にリテラルか、他ノードへの参照
-// `[node_id, output_index]` のどちらか — 参照はスカラー欄では null 扱いにする（グラフを
-// たどって解決するのは controlnet の control_net 参照だけ、docs/domain-model.md 参照）。
+// `[node_id, output_index]` のどちらか — 参照はスカラー欄では null 扱いにする。v2 では
+// prompt（positive/negative のテキスト）と各サンプラーの latent 由来（empty / upscale /
+// 前段 KSampler からの継続）もグラフをたどって解決する（depth <= 8、循環ガード付き）。
 //
 // この中核部分 (extract/summarize/diff) は D1 に触れない純関数で、D1 を要する
 // lazy-extraction ヘルパー (renderFactsForJob / resolveBatchRenderFacts) は下部に置く。
@@ -9,7 +10,24 @@
 // cloudflare:test なしの素の vitest からも import できる。
 
 import { chunk, D1_MAX_BOUND_PARAMS } from './db';
+import { tokenizePrompt, diffTokens } from './prompt-tokens';
 import type { ComfyJobRow } from '../types';
+
+export const RENDER_FACTS_VERSION = 2;
+
+export interface RenderPrompt {
+  positive: string | null;
+  negative: string | null;
+}
+
+export interface RenderLatentSource {
+  kind: 'empty' | 'latent_upscale' | 'image_upscale' | 'other';
+  width: number | null;
+  height: number | null;
+  upscale_method: string | null; // LatentUpscale / ImageScale(By).upscale_method
+  scale_by: number | null; // *By variants
+  from_node_id: string | null; // the KSampler this pass continues from (chain), else null
+}
 
 export interface RenderSampler {
   node_id: string;
@@ -18,6 +36,9 @@ export interface RenderSampler {
   sampler_name: string | null;
   scheduler: string | null;
   denoise: number | null;
+  seed: number | null;
+  prompt: RenderPrompt;
+  latent: RenderLatentSource | null;
 }
 
 export interface RenderSize {
@@ -39,21 +60,27 @@ export interface RenderControlNet {
 }
 
 export interface RenderFacts {
+  version: number;
   checkpoints: string[];
+  models: { clip: string[]; vae: string | null };
   samplers: RenderSampler[];
   canvas: { width: number | null; height: number | null; final_size: RenderSize | null } | null;
   loras: RenderLora[];
   controlnets: RenderControlNet[];
   seed: number | null;
+  output: { filename_prefix: string | null };
 }
 
 const EMPTY_FACTS: RenderFacts = {
+  version: RENDER_FACTS_VERSION,
   checkpoints: [],
+  models: { clip: [], vae: null },
   samplers: [],
   canvas: null,
   loras: [],
   controlnets: [],
   seed: null,
+  output: { filename_prefix: null },
 };
 
 interface GraphNode {
@@ -61,6 +88,8 @@ interface GraphNode {
   class_type: string;
   inputs: Record<string, unknown>;
 }
+
+const MAX_RESOLVE_DEPTH = 8;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -127,7 +156,157 @@ function extractCheckpoints(nodes: GraphNode[]): string[] {
   return Array.from(new Set(checkpoints));
 }
 
-function extractSamplers(nodes: GraphNode[]): RenderSampler[] {
+function extractModels(nodes: GraphNode[]): RenderFacts['models'] {
+  const clip: string[] = [];
+  let vae: string | null = null;
+  for (const node of nodes) {
+    if (node.class_type === 'CLIPLoader') {
+      const name = asNonEmptyString(node.inputs.clip_name);
+      if (name) clip.push(name);
+    } else if (node.class_type === 'DualCLIPLoader') {
+      const name1 = asNonEmptyString(node.inputs.clip_name1);
+      const name2 = asNonEmptyString(node.inputs.clip_name2);
+      if (name1) clip.push(name1);
+      if (name2) clip.push(name2);
+    } else if (node.class_type === 'VAELoader' && vae === null) {
+      vae = asNonEmptyString(node.inputs.vae_name);
+    }
+  }
+  return { clip, vae };
+}
+
+function extractOutput(nodes: GraphNode[]): RenderFacts['output'] {
+  const save = nodes.find((n) => n.class_type === 'SaveImage') ?? null;
+  return { filename_prefix: save ? asNonEmptyString(save.inputs.filename_prefix) : null };
+}
+
+/** Walks upstream through samples / image / images / pixels / latent_image inputs until a KSampler(Advanced) node id, or null (depth-bounded, cycle-safe). */
+function resolveSamplerOrigin(
+  nodeMap: Map<string, GraphNode>,
+  ref: unknown,
+  depth = 0,
+  visited: Set<string> = new Set(),
+): string | null {
+  if (depth > MAX_RESOLVE_DEPTH) return null;
+  const nodeId = nodeRef(ref);
+  if (nodeId === null || visited.has(nodeId)) return null;
+  const node = nodeMap.get(nodeId);
+  if (!node) return null;
+  if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') return node.node_id;
+
+  visited.add(nodeId);
+  const next = node.inputs.samples ?? node.inputs.image ?? node.inputs.images ?? node.inputs.pixels ?? node.inputs.latent_image;
+  return resolveSamplerOrigin(nodeMap, next, depth + 1, visited);
+}
+
+/** Resolves a KSampler(Advanced) latent_image input into how that pass's canvas originated (depth-bounded via resolveSamplerOrigin). */
+function resolveLatentSource(nodeMap: Map<string, GraphNode>, ref: unknown): RenderLatentSource | null {
+  const nodeId = nodeRef(ref);
+  if (nodeId === null) return null;
+  const node = nodeMap.get(nodeId);
+  if (!node) return null;
+
+  if (node.class_type === 'EmptyLatentImage') {
+    return {
+      kind: 'empty',
+      width: asFiniteNumber(node.inputs.width),
+      height: asFiniteNumber(node.inputs.height),
+      upscale_method: null,
+      scale_by: null,
+      from_node_id: null,
+    };
+  }
+  if (node.class_type === 'LatentUpscale') {
+    return {
+      kind: 'latent_upscale',
+      width: asFiniteNumber(node.inputs.width),
+      height: asFiniteNumber(node.inputs.height),
+      upscale_method: asNonEmptyString(node.inputs.upscale_method),
+      scale_by: null,
+      from_node_id: resolveSamplerOrigin(nodeMap, node.inputs.samples),
+    };
+  }
+  if (node.class_type === 'LatentUpscaleBy') {
+    return {
+      kind: 'latent_upscale',
+      width: null,
+      height: null,
+      upscale_method: asNonEmptyString(node.inputs.upscale_method),
+      scale_by: asFiniteNumber(node.inputs.scale_by),
+      from_node_id: resolveSamplerOrigin(nodeMap, node.inputs.samples),
+    };
+  }
+  if (node.class_type === 'VAEEncode') {
+    const pixelsId = nodeRef(node.inputs.pixels);
+    const pixelsNode = pixelsId ? nodeMap.get(pixelsId) ?? null : null;
+    if (pixelsNode && (pixelsNode.class_type === 'ImageScale' || pixelsNode.class_type === 'ImageScaleBy')) {
+      const isBy = pixelsNode.class_type === 'ImageScaleBy';
+      return {
+        kind: 'image_upscale',
+        width: isBy ? null : asFiniteNumber(pixelsNode.inputs.width),
+        height: isBy ? null : asFiniteNumber(pixelsNode.inputs.height),
+        upscale_method: asNonEmptyString(pixelsNode.inputs.upscale_method),
+        scale_by: isBy ? asFiniteNumber(pixelsNode.inputs.scale_by) : null,
+        from_node_id: resolveSamplerOrigin(nodeMap, pixelsNode.inputs.image),
+      };
+    }
+  }
+
+  // Anything else upstream of a sampler (a VAEEncode without a recognized scale node, a
+  // passthrough node, ...): keep only where it continues from, no size/method facts.
+  const origin = resolveSamplerOrigin(nodeMap, ref);
+  return origin ? { kind: 'other', width: null, height: null, upscale_method: null, scale_by: null, from_node_id: origin } : null;
+}
+
+const CONDITIONING_PASSTHROUGH_CLASSES = new Set(['ConditioningCombine', 'ConditioningConcat', 'ConditioningSetTimestepRange']);
+
+function isConditioningSetArea(classType: string): boolean {
+  return classType.startsWith('ConditioningSetArea');
+}
+
+/**
+ * Resolves a KSampler(Advanced) positive/negative input into its prompt text, following
+ * CLIPTextEncode (one extra hop when `text` is itself a reference), ControlNetApply(Advanced),
+ * and Conditioning combinators. depth-bounded (<=8) and cycle-safe; anything unrecognized -> null.
+ */
+function resolvePromptText(
+  nodeMap: Map<string, GraphNode>,
+  ref: unknown,
+  polarity: 'positive' | 'negative',
+  depth = 0,
+  visited: Set<string> = new Set(),
+): string | null {
+  if (depth > MAX_RESOLVE_DEPTH) return null;
+  const nodeId = nodeRef(ref);
+  if (nodeId === null || visited.has(nodeId)) return null;
+  const node = nodeMap.get(nodeId);
+  if (!node) return null;
+  visited.add(nodeId);
+
+  if (node.class_type === 'CLIPTextEncode') {
+    const text = node.inputs.text;
+    if (typeof text === 'string') return text;
+    const hopId = nodeRef(text);
+    if (hopId === null) return null;
+    const hopNode = nodeMap.get(hopId);
+    if (!hopNode) return null;
+    const value = hopNode.inputs.text ?? hopNode.inputs.value ?? hopNode.inputs.string;
+    return typeof value === 'string' ? value : null;
+  }
+  if (node.class_type === 'ControlNetApply') {
+    return resolvePromptText(nodeMap, node.inputs.conditioning, polarity, depth + 1, visited);
+  }
+  if (node.class_type === 'ControlNetApplyAdvanced') {
+    return resolvePromptText(nodeMap, node.inputs[polarity], polarity, depth + 1, visited);
+  }
+  if (CONDITIONING_PASSTHROUGH_CLASSES.has(node.class_type) || isConditioningSetArea(node.class_type)) {
+    const next = node.inputs.conditioning_1 ?? node.inputs.conditioning_to ?? node.inputs.conditioning;
+    return resolvePromptText(nodeMap, next, polarity, depth + 1, visited);
+  }
+  return null;
+}
+
+function extractSamplers(nodes: GraphNode[], nodeMap: Map<string, GraphNode>): RenderSampler[] {
   const samplers: RenderSampler[] = [];
   for (const node of nodes) {
     if (node.class_type === 'KSampler') {
@@ -138,6 +317,12 @@ function extractSamplers(nodes: GraphNode[]): RenderSampler[] {
         sampler_name: asNonEmptyString(node.inputs.sampler_name),
         scheduler: asNonEmptyString(node.inputs.scheduler),
         denoise: asFiniteNumber(node.inputs.denoise),
+        seed: asFiniteInt(node.inputs.seed),
+        prompt: {
+          positive: resolvePromptText(nodeMap, node.inputs.positive, 'positive'),
+          negative: resolvePromptText(nodeMap, node.inputs.negative, 'negative'),
+        },
+        latent: resolveLatentSource(nodeMap, node.inputs.latent_image),
       });
     } else if (node.class_type === 'KSamplerAdvanced') {
       samplers.push({
@@ -147,6 +332,12 @@ function extractSamplers(nodes: GraphNode[]): RenderSampler[] {
         sampler_name: asNonEmptyString(node.inputs.sampler_name),
         scheduler: asNonEmptyString(node.inputs.scheduler),
         denoise: null,
+        seed: asFiniteInt(node.inputs.noise_seed),
+        prompt: {
+          positive: resolvePromptText(nodeMap, node.inputs.positive, 'positive'),
+          negative: resolvePromptText(nodeMap, node.inputs.negative, 'negative'),
+        },
+        latent: resolveLatentSource(nodeMap, node.inputs.latent_image),
       });
     }
   }
@@ -256,13 +447,17 @@ function extractSeed(nodes: GraphNode[]): number | null {
 export function extractRenderFacts(graph: unknown): RenderFacts {
   const nodes = parseNodes(graph);
   if (nodes.length === 0) return EMPTY_FACTS;
+  const nodeMap = new Map(nodes.map((n) => [n.node_id, n]));
   return {
+    version: RENDER_FACTS_VERSION,
     checkpoints: extractCheckpoints(nodes),
-    samplers: extractSamplers(nodes),
+    models: extractModels(nodes),
+    samplers: extractSamplers(nodes, nodeMap),
     canvas: extractCanvas(nodes),
     loras: extractLoras(nodes),
     controlnets: extractControlNets(nodes),
     seed: extractSeed(nodes),
+    output: extractOutput(nodes),
   };
 }
 
@@ -325,39 +520,89 @@ export function summarizeRenderFacts(facts: RenderFacts | null): Record<RenderFa
   return { checkpoint, sampler, steps, cfg, denoise, canvas, lora, controlnet };
 }
 
+const PROMPT_DELTA_MAX_LENGTH = 120;
+
+function capDelta(s: string): string {
+  return s.length > PROMPT_DELTA_MAX_LENGTH ? `${s.slice(0, PROMPT_DELTA_MAX_LENGTH - 1)}…` : s;
+}
+
+function tokenCount(text: string): string {
+  const n = tokenizePrompt(text).length;
+  return `${n} token${n === 1 ? '' : 's'}`;
+}
+
+/** Compact token-level delta between two prompt texts, null when equal (after trim) or both null. */
+export function promptDelta(baseline: string | null, arm: string | null): string | null {
+  const baselineTrimmed = baseline === null ? null : baseline.trim();
+  const armTrimmed = arm === null ? null : arm.trim();
+  if (baselineTrimmed === armTrimmed) return null;
+
+  if (baselineTrimmed === null || baselineTrimmed.length === 0) {
+    return capDelta(`(none) → ${tokenCount(armTrimmed ?? '')}`);
+  }
+  if (armTrimmed === null || armTrimmed.length === 0) {
+    return capDelta(`${tokenCount(baselineTrimmed)} → (none)`);
+  }
+
+  const baseTokens = tokenizePrompt(baselineTrimmed);
+  const armTokens = tokenizePrompt(armTrimmed);
+  const { tokens, removed } = diffTokens(armTokens, baseTokens);
+
+  const addedOrChanged = tokens
+    .filter((t) => t.diff === 'added' || t.diff === 'weight')
+    .map((t) => (t.diff === 'added' ? `+${t.text}` : `w:(${t.text} ${t.parentWeight}→${t.weight})`));
+  const removedParts = removed.map((t) => `-${t.text}`);
+
+  const sections = [addedOrChanged.join(', '), removedParts.join(', ')].filter((s) => s.length > 0);
+  if (sections.length === 0) return null;
+  return capDelta(sections.join(' · '));
+}
+
 export interface FactDiffEntry {
   column: string;
   baseline: string | null;
   arm: string | null;
+  delta?: string;
 }
 
-/** Diffs every key of the union of both summaries; RENDER_FACT_COLUMNS come first, then the rest sorted. */
+const PROMPT_DIFF_KEYS = ['positive', 'negative'] as const;
+
+/** Diffs every key of the union of both summaries; RENDER_FACT_COLUMNS come first, then positive/negative, then the rest sorted. */
 export function diffFactSummaries(
   baseline: Record<string, string | null>,
   arm: Record<string, string | null>,
 ): FactDiffEntry[] {
   const allKeys = new Set([...Object.keys(baseline), ...Object.keys(arm)]);
   const factColumns = (RENDER_FACT_COLUMNS as readonly string[]).filter((c) => allKeys.has(c));
+  const promptColumns = PROMPT_DIFF_KEYS.filter((c) => allKeys.has(c));
+  const excluded = new Set<string>([...RENDER_FACT_COLUMNS, ...PROMPT_DIFF_KEYS]);
   const remaining = Array.from(allKeys)
-    .filter((k) => !(RENDER_FACT_COLUMNS as readonly string[]).includes(k))
+    .filter((k) => !excluded.has(k))
     .sort();
 
   const entries: FactDiffEntry[] = [];
-  for (const key of [...factColumns, ...remaining]) {
+  for (const key of [...factColumns, ...promptColumns, ...remaining]) {
     const baselineValue = baseline[key] ?? null;
     const armValue = arm[key] ?? null;
-    if (baselineValue !== armValue) entries.push({ column: key, baseline: baselineValue, arm: armValue });
+    if (baselineValue === armValue) continue;
+    const entry: FactDiffEntry = { column: key, baseline: baselineValue, arm: armValue };
+    if ((PROMPT_DIFF_KEYS as readonly string[]).includes(key)) {
+      const delta = promptDelta(baselineValue, armValue);
+      if (delta !== null) entry.delta = delta;
+    }
+    entries.push(entry);
   }
   return entries;
 }
 
 // --- D1 側: lazy extraction + cache 永続化 ---
 
-/** render_facts_json を返す。未抽出 (NULL) で graph があれば抽出して列に書き戻す。graph も無ければ null。 */
+/** render_facts_json を返す。未抽出 (NULL) または version が古ければ graph から再抽出して書き戻す。graph も無ければ null。 */
 export async function renderFactsForJob(db: D1Database, job: ComfyJobRow): Promise<RenderFacts | null> {
   if (job.render_facts_json) {
     try {
-      return JSON.parse(job.render_facts_json) as RenderFacts;
+      const cached = JSON.parse(job.render_facts_json) as RenderFacts;
+      if ((cached.version ?? 0) >= RENDER_FACTS_VERSION) return cached;
     } catch {
       // 壊れたキャッシュは再抽出にフォールバックする。
     }

@@ -76,26 +76,99 @@ describe('Web GUI pages', () => {
     expect(body).toContain(`/g/${generation.short_id}/image`);
   });
 
-  it('GET /g/{short_id} shows the Render facts section with the checkpoint name', async () => {
+  it('GET /g/{short_id} shows the Workflow section with the checkpoint, Pass 1, positive chips, and Raw graph', async () => {
     const { generation, job } = await createGeneration();
-    await postJson(
-      `/api/v1/jobs/${job.id}`,
-      { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } } } },
-      'PATCH',
-    );
+    const graph = {
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          model: ['4', 0],
+          positive: ['6', 0],
+          negative: ['7', 0],
+          latent_image: ['5', 0],
+        },
+      },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512, batch_size: 1 } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text: 'a test prompt', clip: ['4', 1] } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'bad', clip: ['4', 1] } },
+    };
+    await postJson(`/api/v1/jobs/${job.id}`, { graph }, 'PATCH');
 
     const res = await req(`/g/${generation.short_id}`);
     const html = await res.text();
-    expect(html).toContain('Render facts');
+    expect(html).toContain('Workflow');
+    expect(html).toContain('Pass 1');
     expect(html).toContain('model.safetensors');
+    expect(html).toContain('class="prompt-chip"');
+    expect(html).toContain('a test prompt');
+    expect(html).toContain('Raw graph');
   });
 
-  it('GET /g/{short_id} shows "(no graph)" for a Generation whose Job never got a graph', async () => {
+  it('GET /g/{short_id} shows "(no graph)" and the request prompt chips for a Generation whose Job never got a graph', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}`);
     const html = await res.text();
-    expect(html).toContain('Render facts');
+    expect(html).toContain('Workflow');
     expect(html).toContain('(no graph)');
+    expect(html).toContain('class="prompt-chip"');
+  });
+
+  it('GET /g/{short_id} shows Pass 2 and "continues pass 1" for a chain (hires-fix) graph', async () => {
+    const { generation, job } = await createGeneration();
+    const graph = {
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 1234,
+          steps: 28,
+          cfg: 5.5,
+          sampler_name: 'euler_ancestral',
+          scheduler: 'karras',
+          denoise: 1,
+          model: ['4', 0],
+          positive: ['6', 0],
+          negative: ['7', 0],
+          latent_image: ['5', 0],
+        },
+      },
+      '4': { class_type: 'DiffusersLoader', inputs: { model_path: 'yukari-v3' } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width: 832, height: 1216, batch_size: 1 } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text: 'a', clip: ['4', 1] } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'b', clip: ['4', 1] } },
+      '8': { class_type: 'VAEDecode', inputs: { samples: ['3', 0], vae: ['4', 2] } },
+      '10': { class_type: 'ImageScale', inputs: { image: ['8', 0], upscale_method: 'lanczos', width: 1248, height: 1824, crop: 'disabled' } },
+      '11': { class_type: 'VAEEncode', inputs: { pixels: ['10', 0], vae: ['20', 2] } },
+      '12': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 1234,
+          steps: 20,
+          cfg: 4,
+          sampler_name: 'dpmpp_2m',
+          scheduler: 'karras',
+          denoise: 0.45,
+          model: ['20', 0],
+          positive: ['6b', 0],
+          negative: ['7', 0],
+          latent_image: ['11', 0],
+        },
+      },
+      '6b': { class_type: 'CLIPTextEncode', inputs: { text: 'a, hires detail', clip: ['20', 1] } },
+      '20': { class_type: 'DiffusersLoader', inputs: { model_path: 'yukari-finalize' } },
+    };
+    await postJson(`/api/v1/jobs/${job.id}`, { graph }, 'PATCH');
+
+    const res = await req(`/g/${generation.short_id}`);
+    const html = await res.text();
+    expect(html).toContain('Pass 2');
+    expect(html).toContain('continues pass 1');
   });
 
   it('GET /g/{short_id} shows the image resolution and formatted file size read from R2', async () => {
@@ -549,6 +622,28 @@ describe('Web GUI pages', () => {
     expect(rowMatch).not.toBeNull();
     const cells = [...rowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
     expect(cells[1]).toContain('(no graph)');
+  });
+
+  it('GET /compare shows a render.positive row built from each Job\'s pass-1 positive prompt', async () => {
+    const { generation: g1, job: job1 } = await createGeneration();
+    const { generation: g2, job: job2 } = await createGeneration();
+    const graphFor = (text: string) => ({
+      '3': {
+        class_type: 'KSampler',
+        inputs: { seed: 1, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] },
+      },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512, batch_size: 1 } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text, clip: ['4', 1] } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'bad', clip: ['4', 1] } },
+    });
+    await postJson(`/api/v1/jobs/${job1.id}`, { graph: graphFor('1girl, outdoors') }, 'PATCH');
+    await postJson(`/api/v1/jobs/${job2.id}`, { graph: graphFor('1girl, indoors') }, 'PATCH');
+
+    const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('render.positive');
   });
 
   it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {
@@ -1225,6 +1320,36 @@ describe('Experiments pages', () => {
     expect(armRowMatch![0]).toContain('exp-facts-diff');
     expect(armRowMatch![0].replace(/<[^>]+>/g, ' ')).toContain('arm.safetensors');
     expect(html).toContain(`Highlighted cells differ from #${baselineRun.body.run_index}`);
+  });
+
+  it('GET /experiments/{id} shows the baseline\'s positive prompt chips and a diff-added arm prompt row', async () => {
+    const experiment = await createExperiment();
+
+    const { generation: baselineGen, job: baselineJob, batch: baselineBatch } = await createGeneration();
+    const { generation: armGen, job: armJob, batch: armBatch } = await createGeneration();
+    const graphFor = (text: string) => ({
+      '3': {
+        class_type: 'KSampler',
+        inputs: { seed: 1, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] },
+      },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512, batch_size: 1 } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text, clip: ['4', 1] } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'bad', clip: ['4', 1] } },
+    });
+    await postJson(`/api/v1/jobs/${baselineJob.id}`, { graph: graphFor('1girl, old_tag') }, 'PATCH');
+    await postJson(`/api/v1/jobs/${armJob.id}`, { graph: graphFor('1girl, new_tag') }, 'PATCH');
+
+    await postJson(`/api/v1/experiments/${experiment.id}/runs`, { batch_id: baselineBatch.id, generation_id: baselineGen.id });
+    await postJson(`/api/v1/experiments/${experiment.id}/runs`, { batch_id: armBatch.id, generation_id: armGen.id });
+
+    const res = await req(`/experiments/${experiment.id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('exp-facts-prompts');
+    expect(html).toContain('#1 positive');
+    expect(html).toContain('>old_tag<');
+    expect(html).toContain('diff-added');
   });
 
   it('GET /experiments/{unknown} renders the 404 page', async () => {

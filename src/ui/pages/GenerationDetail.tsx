@@ -3,7 +3,8 @@ import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
-import { summarizeRenderFacts, type RenderFacts } from '../../lib/render-facts';
+import { PromptChips } from '../components/PromptChips';
+import type { RenderFacts, RenderLatentSource, RenderSampler } from '../../lib/render-facts';
 
 export interface GenerationDetailData {
   id: string;
@@ -27,6 +28,7 @@ export interface GenerationDetailData {
     id: string;
     short_id: string;
     prompt: string | null;
+    negative_prompt: string | null;
     recipe: string | null;
     raw_instruction: string | null;
     git_commit: string | null;
@@ -34,7 +36,14 @@ export interface GenerationDetailData {
   } | null;
   references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
-  comfy_job: { id: string; seed: number | null; comfy_prompt_id: string | null; status: string; render_facts: RenderFacts | null } | null;
+  comfy_job: {
+    id: string;
+    seed: number | null;
+    comfy_prompt_id: string | null;
+    status: string;
+    graph: unknown;
+    render_facts: RenderFacts | null;
+  } | null;
   original_filename: string | null;
 }
 
@@ -46,22 +55,74 @@ function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
 }
 
-/** Builds the Render facts kv-table rows, skipping any column with no value; null means "(no graph)". */
-function buildRenderFactsRows(facts: RenderFacts | null): { label: string; value: string }[] | null {
-  if (!facts) return null;
-  const summary = summarizeRenderFacts(facts);
-  const rows: { label: string; value: string }[] = [];
-  if (summary.checkpoint) rows.push({ label: 'checkpoint', value: summary.checkpoint });
-  for (const s of facts.samplers) {
-    rows.push({
-      label: `sampler #${s.node_id}`,
-      value: `${s.sampler_name ?? '?'}/${s.scheduler ?? '?'} · steps ${s.steps ?? '?'} · cfg ${s.cfg ?? '?'} · denoise ${s.denoise ?? '?'}`,
-    });
+/** `LoRA name @strength_model (clip strength_clip)`, omitting the clip part when absent or equal to strength_model. */
+function formatLoraLine(l: RenderFacts['loras'][number]): string {
+  let s = `${l.lora_name} @${l.strength_model ?? '?'}`;
+  if (l.strength_clip !== null && l.strength_clip !== l.strength_model) s += ` (clip ${l.strength_clip})`;
+  return s;
+}
+
+/** `ControlNet name @strength · start–end`, omitting the range when the apply node carries none. */
+function formatControlNetLine(cn: RenderFacts['controlnets'][number]): string {
+  let s = `${cn.control_net_name} @${cn.strength ?? '?'}`;
+  if (cn.start_percent !== null && cn.end_percent !== null) s += ` · ${cn.start_percent}–${cn.end_percent}`;
+  return s;
+}
+
+/** How a pass's canvas came to be: an empty latent's size, an upscale (literal size or *By scale factor), or an unrecognized upstream node. */
+function formatLatentLine(latent: RenderLatentSource | null): string {
+  if (!latent) return '(unknown latent source)';
+  if (latent.kind === 'empty') return `${latent.width ?? '?'}×${latent.height ?? '?'} · empty latent`;
+  if (latent.kind === 'other') return '(unrecognized latent source)';
+  const label = latent.kind === 'latent_upscale' ? 'latent upscale' : 'image upscale';
+  if (latent.width !== null && latent.height !== null) {
+    return `${label} ${latent.upscale_method ?? '?'} → ${latent.width}×${latent.height}`;
   }
-  if (summary.canvas) rows.push({ label: 'canvas', value: summary.canvas });
-  if (summary.lora) rows.push({ label: 'lora', value: summary.lora });
-  if (summary.controlnet) rows.push({ label: 'controlnet', value: summary.controlnet });
-  return rows;
+  if (latent.scale_by !== null) return `×${latent.scale_by} (${latent.upscale_method ?? '?'})`;
+  return label;
+}
+
+function formatSamplerLine(s: RenderSampler): string {
+  return `${s.sampler_name ?? '?'} / ${s.scheduler ?? '?'} · ${s.steps ?? '?'} steps · cfg ${s.cfg ?? '?'} · denoise ${s.denoise ?? '?'} · seed ${s.seed ?? '?'}`;
+}
+
+/** Pass n's "continues pass k" label: matches latent.from_node_id against an earlier sampler's node_id. */
+function findContinuesPassIndex(samplers: RenderSampler[], index: number): number | null {
+  const fromNodeId = samplers[index]?.latent?.from_node_id ?? null;
+  if (!fromNodeId) return null;
+  const i = samplers.findIndex((s) => s.node_id === fromNodeId);
+  return i >= 0 ? i : null;
+}
+
+function renderPromptField(label: string, text: string | null, parentText: string | null | undefined, variant: 'positive' | 'negative') {
+  return (
+    <div class="prompt-field">
+      <div class="prompt-field-label">
+        {label} {text ? <CopyIdButton value={text} /> : null}
+      </div>
+      <PromptChips text={text} parentText={parentText} variant={variant} />
+    </div>
+  );
+}
+
+/** A pass-2+ prompt field: collapses to "same as pass N" when identical (trimmed) to the previous pass, else diffs against it via PromptChips. */
+function renderPassPromptField(
+  label: string,
+  text: string | null,
+  prevText: string | null,
+  prevPassNumber: number,
+  variant: 'positive' | 'negative',
+) {
+  if (prevPassNumber === 0) return renderPromptField(label, text, null, variant);
+  if (text !== null && prevText !== null && text.trim() === prevText.trim()) {
+    return (
+      <div class="prompt-field">
+        <div class="prompt-field-label">{label}</div>
+        <p class="workflow-line">same as pass {prevPassNumber}</p>
+      </div>
+    );
+  }
+  return renderPromptField(label, text, prevText, variant);
 }
 
 export function GenerationDetailPage({
@@ -318,39 +379,111 @@ export function GenerationDetailPage({
           </details>
 
           <details class="section" open>
-            <summary>Prompt</summary>
+            <summary>Workflow</summary>
             <div class="section-body">
-              <table class="kv-table">
-                <tr>
-                  <td>prompt</td>
-                  <td>{data.batch?.prompt ?? '-'}</td>
-                </tr>
-              </table>
-            </div>
-          </details>
+              <div class="workflow">
+                {(() => {
+                  const facts = data.comfy_job?.render_facts ?? null;
+                  const graph = data.comfy_job?.graph ?? null;
+                  const batchPrompt = data.batch?.prompt ?? null;
+                  const batchNegative = data.batch?.negative_prompt ?? null;
 
-          <details class="section" open>
-            <summary>Seed</summary>
-            <div class="section-body">{data.comfy_job?.seed ?? '-'}</div>
-          </details>
+                  if (!facts) {
+                    return (
+                      <>
+                        <p>(no graph)</p>
+                        {renderPromptField('positive', batchPrompt, null, 'positive')}
+                        {renderPromptField('negative', batchNegative, null, 'negative')}
+                        <table class="kv-table">
+                          <tr>
+                            <td>seed</td>
+                            <td>{data.comfy_job?.seed ?? '-'}</td>
+                          </tr>
+                        </table>
+                      </>
+                    );
+                  }
 
-          <details class="section" open>
-            <summary>Render facts</summary>
-            <div class="section-body">
-              {(() => {
-                const rows = buildRenderFactsRows(data.comfy_job?.render_facts ?? null);
-                if (!rows) return <p>(no graph)</p>;
-                return (
-                  <table class="kv-table">
-                    {rows.map((r) => (
-                      <tr>
-                        <td>{r.label}</td>
-                        <td>{r.value}</td>
-                      </tr>
-                    ))}
-                  </table>
-                );
-              })()}
+                  const modelsLine = (() => {
+                    const parts: string[] = [];
+                    if (facts.models.clip.length > 0) parts.push(`clip: ${facts.models.clip.join(', ')}`);
+                    if (facts.models.vae) parts.push(`vae: ${facts.models.vae}`);
+                    return parts.length > 0 ? parts.join(' · ') : null;
+                  })();
+
+                  const headerRows: { label: string; value: unknown }[] = [
+                    {
+                      label: 'Model',
+                      value: (
+                        <>
+                          {facts.checkpoints.length > 0 ? facts.checkpoints.join('  +  ') : '-'}
+                          {modelsLine ? <div class="workflow-line">{modelsLine}</div> : null}
+                        </>
+                      ),
+                    },
+                    ...facts.loras.map((l) => ({ label: 'LoRA', value: formatLoraLine(l) })),
+                    ...facts.controlnets.map((cn) => ({ label: 'ControlNet', value: formatControlNetLine(cn) })),
+                  ];
+
+                  const pass1 = facts.samplers[0] ?? null;
+                  const requestDiffers =
+                    pass1 !== null && batchPrompt !== null && batchPrompt.trim() !== (pass1.prompt.positive ?? '').trim();
+
+                  return (
+                    <>
+                      <table class="kv-table">
+                        {headerRows.map((r) => (
+                          <tr>
+                            <td>{r.label}</td>
+                            <td>{r.value}</td>
+                          </tr>
+                        ))}
+                      </table>
+
+                      {facts.samplers.map((s, i) => {
+                        const continuesIdx = findContinuesPassIndex(facts.samplers, i);
+                        const prev = i > 0 ? facts.samplers[i - 1]! : null;
+                        return (
+                          <div class="workflow-pass">
+                            <div class="workflow-pass-head">
+                              Pass {i + 1} · node {s.node_id}
+                              {continuesIdx !== null ? ` · continues pass ${continuesIdx + 1}` : ''}
+                            </div>
+                            <p class="workflow-line">{formatLatentLine(s.latent)}</p>
+                            <p class="workflow-line">{formatSamplerLine(s)}</p>
+                            {renderPassPromptField('positive', s.prompt.positive, prev?.prompt.positive ?? null, i, 'positive')}
+                            {renderPassPromptField('negative', s.prompt.negative, prev?.prompt.negative ?? null, i, 'negative')}
+                          </div>
+                        );
+                      })}
+
+                      <table class="kv-table">
+                        <tr>
+                          <td>Output</td>
+                          <td>{facts.output.filename_prefix ?? '-'}</td>
+                        </tr>
+                      </table>
+
+                      {requestDiffers ? (
+                        <>
+                          <p class="workflow-line">request prompt differs</p>
+                          <details class="section-sub">
+                            <summary>Request prompt</summary>
+                            <div class="section-body">
+                              {renderPromptField('positive', batchPrompt, pass1!.prompt.positive, 'positive')}
+                            </div>
+                          </details>
+                        </>
+                      ) : null}
+
+                      <details class="section-sub">
+                        <summary>Raw graph</summary>
+                        <pre>{JSON.stringify(graph, null, 2)}</pre>
+                      </details>
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           </details>
 

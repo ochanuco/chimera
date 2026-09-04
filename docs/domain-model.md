@@ -325,12 +325,16 @@ updated_at
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
 
-`render_facts_json` は `graph` から抽出した派生データ（checkpoint / sampler /
-canvas / lora / controlnet / seed のキャッシュ）です。`graph` を PATCH した
-時点で抽出して保存しますが、それ以前に `graph` だけが入った既存行のために
-NULL も許容し、その場合は最初の読み取り時に抽出して書き戻します（遅延キャッシュ、
-一括バックフィルはしません）。抽出ロジックとルールは `src/lib/render-facts.ts` /
-[api.md](api.md#comfyjob) 参照。
+`render_facts_json` は `graph` から抽出した派生データ（checkpoint / models /
+sampler ごとの steps・cfg・denoise・seed・prompt・latent / canvas / lora /
+controlnet / seed / output のキャッシュ、`version` フィールドで抽出ロジックの
+バージョンを持つ）です。`graph` を PATCH した時点で抽出して保存しますが、
+それ以前に `graph` だけが入った既存行のために NULL も許容し、その場合は
+最初の読み取り時に抽出して書き戻します（遅延キャッシュ、一括バックフィルは
+しません）。保存済みの `version` が現在の `RENDER_FACTS_VERSION`
+未満（v1キャッシュのように `version` フィールド自体が無い場合を含む）も
+同様に「未抽出」扱いとし、最初の読み取り時に再抽出して書き戻します。
+抽出ロジックとルールは `src/lib/render-facts.ts` / [api.md](api.md#comfyjob) 参照。
 
 ## Generation
 
