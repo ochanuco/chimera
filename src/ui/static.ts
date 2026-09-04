@@ -714,6 +714,75 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-promotion-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
 .exp-promotion-target { font-weight: 600; }
 .exp-promotion-meta { color: var(--text-dim); font-size: 0.78rem; }
+
+.exp-run-ab-link { margin-left: 0.6rem; font-size: 0.8rem; }
+
+.exp-ab-pairs, .exp-ab-ratings { margin-top: 0.6rem; margin-bottom: 1.5rem; }
+.exp-ab-pairs th, .exp-ab-ratings th {
+  text-align: left;
+  padding: 0.2rem 0.8rem 0.2rem 0;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.exp-ab-pairs td, .exp-ab-ratings td { padding: 0.2rem 0.8rem 0.2rem 0; font-size: 0.85rem; }
+
+.ab-warning { color: var(--bad); font-weight: 600; }
+.ab-subtitle { color: var(--text-dim); }
+.ab-progress { font-weight: 600; }
+.ab-seed { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 0.5rem; }
+.ab-hint { color: var(--text-dim); font-size: 0.78rem; margin-top: 0.75rem; text-align: center; }
+.ab-done { font-weight: 600; }
+
+.ab-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.ab-side {
+  position: relative;
+  display: block;
+}
+.ab-side img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(100vh - 12rem);
+  object-fit: contain;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.ab-side-label {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.5rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.ab-votes {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+.ab-vote {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1.1rem;
+  padding: 0.7rem 2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ab-vote:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.ab-vote:disabled { opacity: 0.5; cursor: default; }
 `;
 
 export const appJs = `
@@ -733,7 +802,9 @@ export const appJs = `
         const data = await res.json();
         if (data && data.error && data.error.message) message = data.error.message;
       } catch (e) {}
-      throw new Error(message || ('request failed: ' + res.status));
+      const err = new Error(message || ('request failed: ' + res.status));
+      err.status = res.status;
+      throw err;
     }
     if (res.status === 204) return null;
     const ct = res.headers.get('content-type') || '';
@@ -1547,6 +1618,108 @@ export const appJs = `
     });
   }
 
+  // --- A/B judge page ---
+  function initAbJudge() {
+    const root = qs('.ab-root');
+    if (!root) return;
+
+    const pairsEl = document.getElementById('ab-pairs');
+    let pairs = [];
+    try { pairs = JSON.parse((pairsEl && pairsEl.textContent) || '[]'); } catch (e) { pairs = []; }
+
+    const experimentId = root.getAttribute('data-experiment-id');
+    const baselineRunId = root.getAttribute('data-baseline-run-id');
+    const armRunId = root.getAttribute('data-arm-run-id');
+    let judged = parseInt(root.getAttribute('data-judged') || '0', 10);
+    const total = parseInt(root.getAttribute('data-total') || '0', 10);
+    let index = 0;
+    // キー連打で同じペアを二重 POST すると 2 件目の 409 で index が余分に進みペアを飛ばすので、送信中は受け付けない。
+    let inFlight = false;
+
+    const progressEl = qs('.ab-progress');
+    const doneEl = qs('.ab-done', root);
+    const areaEl = qs('.ab-pair-area', root);
+    const seedEl = qs('.ab-seed-value', root);
+    const leftLink = qs('.ab-side[data-side="left"]', root);
+    const rightLink = qs('.ab-side[data-side="right"]', root);
+    const leftImg = leftLink ? leftLink.querySelector('img') : null;
+    const rightImg = rightLink ? rightLink.querySelector('img') : null;
+    const voteButtons = qsa('.ab-vote', root);
+
+    function updateProgress() {
+      if (progressEl) progressEl.textContent = judged + ' / ' + total;
+    }
+
+    function setButtonsDisabled(disabled) {
+      voteButtons.forEach(function (b) { b.disabled = disabled; });
+    }
+
+    function renderCurrent() {
+      if (index >= pairs.length) {
+        if (areaEl) areaEl.hidden = true;
+        if (doneEl) doneEl.hidden = false;
+        return;
+      }
+      const pair = pairs[index];
+      if (seedEl) seedEl.textContent = String(pair.seed);
+      if (leftImg) leftImg.src = pair.left.image_url;
+      if (leftLink) leftLink.href = pair.left.image_url;
+      if (rightImg) rightImg.src = pair.right.image_url;
+      if (rightLink) rightLink.href = pair.right.image_url;
+      setButtonsDisabled(false);
+    }
+
+    async function vote(verdict) {
+      const pair = pairs[index];
+      if (!pair || inFlight) return;
+      inFlight = true;
+      setButtonsDisabled(true);
+      try {
+        await api('/api/v1/experiments/' + experimentId + '/judgments', 'POST', {
+          baseline_run_id: baselineRunId,
+          arm_run_id: armRunId,
+          seed: pair.seed,
+          left_generation_id: pair.left.id,
+          right_generation_id: pair.right.id,
+          verdict: verdict,
+        });
+        judged += 1;
+        updateProgress();
+        index += 1;
+        renderCurrent();
+      } catch (e) {
+        if (e.status === 409) {
+          judged += 1;
+          updateProgress();
+          index += 1;
+          renderCurrent();
+          return;
+        }
+        alert('judgment failed: ' + e.message);
+        setButtonsDisabled(false);
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    voteButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        vote(btn.getAttribute('data-verdict'));
+      });
+    });
+
+    document.addEventListener('keydown', function (ev) {
+      if (!areaEl || areaEl.hidden) return;
+      if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA')) return;
+      if (ev.key === '1' || ev.key === 'ArrowLeft') vote('left');
+      else if (ev.key === '2' || ev.key === 'ArrowRight') vote('right');
+      else if (ev.key === '0' || ev.key === 't' || ev.key === 'T') vote('tie');
+    });
+
+    updateProgress();
+    renderCurrent();
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -1566,6 +1739,7 @@ export const appJs = `
     initCopyIdButtons();
     initCompareCols();
     initExperimentStatus();
+    initAbJudge();
   });
 })();
 `;
