@@ -92,7 +92,7 @@ POST /api/v1/requests
 ``` json
 {
   "kind": "finalize",
-  "payload": { "generation_id": "...", "options": { "denoise": 0.55, "repin": true } },
+  "payload": { "generation_id": "...", "options": { "repin": true } },
   "recipe_ref": "production",
   "idempotency_key": "gui:finalize:abc123:2026-09-05T12:00:00Z",
   "created_by": "gui"
@@ -125,6 +125,9 @@ POST /api/v1/requests/claim
 { "worker_id": "gpu-box-1", "kinds": ["generate", "finalize"] }
 ```
 
+`worker_id` は worker のホスト名です。`kinds` は省略すると全種です。段階 2 の box は
+両方を受けます。
+
 queued の最古の 1 件を `running` にして 200 で返します。無ければ 204。1 文の
 `UPDATE ... WHERE id = (SELECT id FROM requests WHERE status = 'queued' AND kind IN (...) ORDER BY created_at LIMIT 1) RETURNING *`
 で行い、複数 worker が同時に呼んでも同じ行を 2 度渡しません。claim は
@@ -152,8 +155,8 @@ worker が書く遷移:
 { "status": "failed", "error": "..." }
 ```
 
-`{ "status": "running" }` は heartbeat です。worker は実行中 30 秒ごとに送り、chimera
-は `heartbeat_at` を更新します。`worker_id` が claim 時のものと異なる PATCH は 409
+`{ "status": "running" }` は heartbeat です。worker は実行中 30 秒ごとに送り（ComfyUI
+の完了待ち 10 秒 poll の中から打つ）、chimera は `heartbeat_at` を更新します。`worker_id` が claim 時のものと異なる PATCH は 409
 です（stale と判定されて別 worker に渡った後の、旧 worker からの書き込みを弾く）。
 
 brain / GUI が書く遷移:
@@ -216,7 +219,7 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
   "payload": {
     "generation_id": "abc123",
     "options": {
-      "denoise": 0.55,
+      "denoise": null,
       "repin": false,
       "recolor": false,
       "keep_legwear": null,
@@ -238,7 +241,7 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
 
   options             型                        CLI
   ------------------- ------------------------- ------------------------------
-  denoise             number（既定 0.55）        `--denoise 0.55`
+  denoise             null | number             `--denoise 0.55`（null は recipe 既定。IL 併用 0.55、Anima 単体 0.75 など recipe が持つ）
   repin               bool                      `--repin`
   recolor             bool                      `--recolor`
   keep_legwear        null | true | number      `--keep-legwear`（true は既定 0.62、number はその値）
@@ -254,19 +257,68 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）
-だけを持ち、他は省略します。
+だけを持ち、他は省略します。`denoise` の入力欄は空が既定で、空のまま積めば
+`null`（recipe 既定）です。
 
-## idempotency
+## idempotency と再実行の再開
 
-- requests 行: `idempotency_key` は積む側が作ります。GUI は
-  `gui:{kind}:{generation_short_id}:{ISO 時刻}`、brain は自分の request ごとに 1 つ、
-  Run 由来の自動起票は `run:{run_id}`。
-- worker が作る Batch / Job: `idempotency_key` を `request:{request_id}` /
-  `request:{request_id}:job:{index}` とし、heartbeat 途絶後の再実行が既存 Batch を
-  そのまま使って続きを ingest できるようにします。ingest 自体は
-  `(comfy_job_id, comfy_output_index)` の unique で二重登録を防いでいます。
-- finalize の再実行も同じ規則です。source Generation ごとに新しい納品 Batch
-  を作るのは仕様で、同じ requests 行の再実行だけが同じ Batch に戻ります。
+### キーの導出
+
+  対象            idempotency_key                                    備考
+  --------------- -------------------------------------------------- -----------------------------------------
+  requests 行     積む側が作る                                       GUI `gui:{kind}:{generation_short_id}:{ISO 時刻}`、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
+  Batch           `request:{request_id}`                             worker が導出
+  Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
+  Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
+
+worker は Batch / Job / Generation のいずれにも uuid4 を持ち込まず、requests 行の
+`id` から全部を導出します。state.json はキャッシュであって正本ではなく、失っても
+chimera への再送だけで同じ行に戻れます。
+
+`(comfy_job_id, comfy_output_index)` の `comfy_job_id` は chimera が発行した Job の
+UUID です。ComfyUI の prompt_id は `comfy_jobs.comfy_prompt_id` に別途記録する外部
+識別子で、再実行で変わっても dedup には影響しません。同じ Job に対して 2 回目の
+ComfyUI 実行が走り、同じ `comfy_output_index` を ingest すれば既存 Generation を 200 で
+返します（画像は差し替えません）。
+
+### 再送レスポンスに含めるもの
+
+Batch / Job の `idempotency_key` 再送で 200 が返るとき、レスポンスは新規作成時と
+同じ形に加えて再開に必要な情報を含めます。
+
+``` json
+{
+  "id": "...", "short_id": "...", "status": "running",
+  "jobs": [
+    { "id": "...", "index": 0, "seed": 123, "status": "ingested", "comfy_prompt_id": "...",
+      "generations": [{ "id": "...", "comfy_output_index": 0 }] },
+    { "id": "...", "index": 1, "seed": 456, "status": "created", "comfy_prompt_id": null,
+      "generations": [] }
+  ]
+}
+```
+
+`POST /api/v1/batches` の再送は `jobs[]`（各 Job の `seed` / `status` /
+`comfy_prompt_id` / ingest 済み `generations[]`）を含み、`POST /api/v1/batches/{id}/jobs`
+の再送は当該 Job の同じ形を返します。worker は `status = ingested` の Job を飛ばし、
+それ以外を記録済み `seed` で再実行します。`graph` は再送レスポンスに含めません
+（recipe と seed から再構築でき、同じ graph に戻るのは snapshot test が担保します）。
+
+これは chimera 側の変更点です（今の再送は Batch が `serializeBatch` のみ、Job が
+`id / batch_id / seed / index / status` のみ）。requests 実装と同じ PR で入れます。
+
+### 再開の手順
+
+worker が claim した requests 行（`attempt >= 2`）に対して:
+
+1. `POST /api/v1/batches` を `request:{request_id}` で再送し、`jobs[]` を得る
+2. `status = ingested` の Job は飛ばす
+3. 残りの Job について `POST /batches/{id}/jobs` を同じキーで再送し、返った `seed` で生成
+4. ingest は通常通り。既存 `(comfy_job_id, comfy_output_index)` は 200 で戻る
+5. 全 Job が ingested になったら `PATCH /requests/{id}` に `done`
+
+finalize の再実行も同じ規則です。source Generation ごとに新しい納品 Batch を作るのは
+仕様で、同じ requests 行の再実行だけが同じ Batch に戻ります。
 
 ## ExperimentRun 由来の generate
 
@@ -284,13 +336,16 @@ worker は requests だけを見ます。
   語彙の解釈はしません（詰め替えだけ）。
 - `idempotency_key` は `run:{run_id}`。Run は物理削除されず、1 Run につき起票は 1 回です。
 - `done` で `experiment_runs.batch_id` を attach するのは上記の通り chimera が行います。
-- `GET /api/v1/experiment-runs?pending=true` は残しますが読み取り専用の状況確認用に
-  格下げし、worker は使いません。docs/experiment-agent.md の runner 節はこの文書を指すよう
-  書き換えます。
+- `GET /api/v1/experiment-runs?pending=true` は残しますが、migration 後は
+  「`batch_id IS NULL` かつ requests 行を持たない Run」だけを返します。backfill 直後は空で、
+  以後も Run 作成時に自動起票される限り空です。段階 1 の watch（このエンドポイントを
+  poll する版）が移行後も box で動き続けていても、同じ Run を requests 版と二重に
+  実行することはありません。worker の切り替えが済んだら状況確認用の読み取りに留めます。
+  docs/experiment-agent.md の runner 節はこの文書を指すよう書き換えます。
 - 移行: requests テーブルを作る migration で、`batch_id IS NULL` かつ Experiment が
   active / stabilized の既存 Run について requests 行を backfill します
-  （`created_by = system`、payload は同じ規則）。段階 1 の watch は移行後に
-  requests 版へ差し替えます。
+  （`created_by = system`、payload は同じ規則）。backfill と `pending=true` の条件変更は
+  同じ deploy で入れ、その瞬間から段階 1 の watch は何も拾わなくなります。
 
 並存させない理由: worker が 2 つのキューを見ると、優先順位・heartbeat・失敗の記録が
 2 系統になり、段階 3 の push も 2 種類になります。Run から request への詰め替えは
@@ -301,7 +356,7 @@ worker は requests だけを見ます。
 段階 2 の GUI は requests 行を積むことと status を表示することだけです。
 
 - Generation Detail: `Finalize` ボタン。`repin` / `recolor` / `keep-legwear` のチェックボックスと
-  `denoise`（既定 0.55）を持ち、`POST /api/v1/requests`（`created_by = gui`）を積む。
+  `denoise`（空 = recipe 既定）を持ち、`POST /api/v1/requests`（`created_by = gui`）を積む。
   積んだ後はボタンの横に最新 request の status（queued / running / done / failed）と、
   done なら納品 Generation へのリンクを出す。
 - Batch Detail: `Finalize all arms`。その Batch の全 Generation について同じ options で
@@ -340,7 +395,11 @@ running の回収は DO の alarm が担います。GUI も同じ DO に繋い�
 - worker は `generation.graph` を受け取った場合そのまま ComfyUI へ流します。request の
   書き手を自分のエージェント以外に広げる場合は、graph モードを worker 側で許可制にし、
   chimera 側でも `created_by` ごとに `generation.graph` の受理可否を設ける。
-- `recipe_ref` は origin のブランチ名に限ります。worker は `git fetch origin` の後
+- `recipe_ref` は origin のブランチ名に限ります。段階 2 の worker は自分の checkout
+  のブランチと一致する `recipe_ref` だけを受け、違えば `failed`
+  （error: `recipe_ref not served: {ref}`）にします。watch プロセス自身がその checkout
+  から動いているため、実行中に別 ref を checkout する仕組み（ref ごとの worktree）は
+  段階 4 のリリース経路と一緒に入れます。段階 4 以降は `git fetch origin` の後
   `origin/{recipe_ref}` を detached で checkout し、ローカルブランチや任意 commit は
   受けません。既定の `production` は昇格 PR の merge でしか動かないブランチです。
 - Service Token の期限切れは claim / heartbeat の 403 として現れます。worker は
