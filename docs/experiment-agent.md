@@ -56,14 +56,16 @@ chimera は中身を検証しません。`base_recipe` と同じく、語彙は 
 GET /api/v1/experiment-runs?pending=true
 ```
 
-`batch_id` が null の Run を Experiment 横断で返します。
+`batch_id` が null で、かつ requests 行（status を問わない）を持たない Run を Experiment
+横断で返します。
 
-Run は作られた時点で「まだ実行されていない」状態であり、`batch_id` が付いた時点で実行済みになります。この2状態のために別のカラムは持ちません。
+Run は作られた時点で「まだ実行されていない」状態であり、`batch_id` が付いた時点で実行済みになります。この2状態のために別のカラムは持ちません。実行の待機・実行中・失敗は Run ではなく requests 行の status が表します。
 
 runner（worker）の作業キューはこのエンドポイントではなく requests
 テーブルです。Run 作成時に chimera が `kind = generate` の requests 行を自動起票し、worker
 はそれを claim します（[worker-protocol.md](worker-protocol.md)）。このエンドポイントは
-状況確認用の読み取りに留めます。
+「requests 行が付かなかった Run」（base_recipe の無い Experiment の Run など）を見つける
+ための読み取りです。
 
 ## MCP サーバー
 
@@ -122,8 +124,8 @@ API 側は同じ操作を 409 / 404 で拒みます。tool として存在しな
 Agent     list_experiments → get_experiment で過去 Run を読む
           override を決めて create_run
               ↓ 未実行 Run として滞留
-runner    pending を拾う → request.json → comfy-recipes generate → ComfyUI
-              ↓ CLI が batch_id を Run へ紐付ける
+worker    requests 行を claim → request.json → comfy-recipes generate → ComfyUI
+              ↓ done を PATCH、chimera が batch_id を Run へ紐付ける
 Agent     get_run で生成物を見る
           get_generation_image で画像を確認
           attach_generation で代表を選ぶ

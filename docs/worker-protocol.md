@@ -36,6 +36,7 @@ id                TEXT PRIMARY KEY            UUIDv7
 kind              TEXT NOT NULL               generate | finalize
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
+payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
 recipe_ref        TEXT NOT NULL DEFAULT 'production'
 run_id            TEXT REFERENCES experiment_runs(id)   ExperimentRun 由来の generate のみ
 worker_id         TEXT                        claim した worker
@@ -94,14 +95,29 @@ POST /api/v1/requests
   "kind": "finalize",
   "payload": { "generation_id": "...", "options": { "repin": true } },
   "recipe_ref": "production",
-  "idempotency_key": "gui:finalize:abc123:2026-09-05T12:00:00Z",
+  "idempotency_key": "gui:finalize:abc123:0192d3a8-…",
   "created_by": "gui"
 }
 ```
 
-201 で行を返します。`idempotency_key` の再送は既存行を 200 で返します（Batch /
-Job と同じ契約）。`run_id` は `kind = generate` かつ `payload.experiment.run_id`
-がある場合に chimera が転記します。
+201 で行を返します。`idempotency_key` の再送は、`kind` と payload の正規化ハッシュが
+一致するときだけ既存行を 200 で返し、同じキーで別の `kind` / payload が来たら 409 です
+（`requests.payload_hash` に保存）。Batch / Job の「同じ要求の再送は 200」と同じ契約で、
+「同じキーで別の要求」を弾く点だけ厳しくしています。
+
+`run_id` は `kind = generate` かつ `payload.experiment.run_id` があるときに chimera が
+転記します。転記の前に、Run の存在、`payload.experiment.experiment_id` との所属一致、
+`kind = generate` をサーバー側で検証し、外れていれば 400 です。`kind = finalize` の payload
+に `experiment` があっても無視します。
+
+`created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
+Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
+Token）を区別せず、いずれも全 `kind` を積めます。「GUI は finalize しか積まない」は GUI
+のコードが finalize 用の form しか持たないことで保っており、API が `created_by` を見て
+拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
+（`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
+サーバー側で確定し、`created_by` ごとの `kind` / `generation.graph` の受理可否を設けます
+（後述の注意と同じ）。
 
 `recipe_ref` は `^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$` だけを検証し、存在は確認しません。
 存在しない ref は worker 側で `failed`（error に checkout 失敗）になります。
@@ -150,9 +166,9 @@ PATCH /api/v1/requests/{id}
 worker が書く遷移:
 
 ``` json
-{ "status": "running" }
-{ "status": "done", "result": { "batch_id": "...", "generation_ids": ["..."] } }
-{ "status": "failed", "error": "..." }
+{ "status": "running", "worker_id": "gpu-box-1" }
+{ "status": "done", "worker_id": "gpu-box-1", "result": { "batch_id": "...", "generation_ids": ["..."] } }
+{ "status": "failed", "worker_id": "gpu-box-1", "error": "..." }
 ```
 
 `{ "status": "running" }` は heartbeat です。worker は実行中 30 秒ごとに送り（ComfyUI
@@ -168,10 +184,12 @@ brain / GUI が書く遷移:
 queued 以外からの cancelled は 409。done / failed / cancelled は終端で、以後の
 PATCH は 409 です。
 
-`status = done` で `run_id` があり `result.batch_id` があれば、chimera は同じ
-リクエスト内で `experiment_runs.batch_id` を attach します。worker が別途
-`PATCH /api/v1/experiment-runs/{run_id}` を送る必要はなくなりますが、送っても
-既存の attach-only 規則で同じ batch なら 200 です。
+`run_id` を持つ generate の `done` は `result.batch_id` が必須（無ければ 400）で、
+chimera は requests 行の更新と `experiment_runs.batch_id` の attach を D1 の batch
+（単一トランザクション）で行います。request だけが done になって Run に batch が付かない
+状態は作りません。Run に既に別の batch が付いていれば 409 で、requests 行も done
+になりません。worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要は
+なくなりますが、送っても既存の attach-only 規則で同じ batch なら 200 です。
 
 ### Get Request
 
@@ -266,7 +284,7 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
-  requests 行     積む側が作る                                       GUI `gui:{kind}:{generation_short_id}:{ISO 時刻}`、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
+  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
   Batch           `request:{request_id}`                             worker が導出
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
@@ -326,7 +344,9 @@ finalize の再実行も同じ規則です。source Generation ごとに新し�
 worker は requests だけを見ます。
 
 - 起票のタイミングは `POST /api/v1/experiments/{id}/runs`（MCP `create_run` も同じ関数）で、
-  Experiment に `base_recipe` があり status が active / stabilized のときだけ。
+  Experiment に `base_recipe` があり status が active / stabilized のときだけ。Run の INSERT と
+  requests 行の INSERT は D1 の batch で 1 トランザクションにし、片方だけが残る状態を
+  作りません。
   無い Run は起票されず、後から Experiment に `base_recipe` を付けても自動では
   起票されません（`POST /api/v1/requests` で明示的に積む）。
 - payload は今 `watch.build_request` が Run から組み立てているものと同じ
@@ -344,8 +364,14 @@ worker は requests だけを見ます。
   docs/experiment-agent.md の runner 節はこの文書を指すよう書き換えます。
 - 移行: requests テーブルを作る migration で、`batch_id IS NULL` かつ Experiment が
   active / stabilized の既存 Run について requests 行を backfill します
-  （`created_by = system`、payload は同じ規則）。backfill と `pending=true` の条件変更は
-  同じ deploy で入れ、その瞬間から段階 1 の watch は何も拾わなくなります。
+  （`created_by = system`、payload は同じ規則）。順序は次の通りで、どの時点でも同じ Run を
+  2 つの worker が取ることはありません。
+  1. box で段階 1 の watch を止める（logon タスクを無効化）
+  2. chimera で migration（テーブル作成 + backfill）を適用し、`pending=true` の条件変更を
+     含む Worker を deploy する。この間 box には worker がいない
+  3. box で `comfy-recipes work` を起動する
+  migration と deploy の間に段階 1 の watch が動いていても、`pending=true` は backfill
+  済みの Run を返さないので二重実行にはなりません（1 を省いた場合の保険）。
 
 並存させない理由: worker が 2 つのキューを見ると、優先順位・heartbeat・失敗の記録が
 2 系統になり、段階 3 の push も 2 種類になります。Run から request への詰め替えは
@@ -400,7 +426,10 @@ running の回収は DO の alarm が担います。GUI も同じ DO に繋い�
   （error: `recipe_ref not served: {ref}`）にします。watch プロセス自身がその checkout
   から動いているため、実行中に別 ref を checkout する仕組み（ref ごとの worktree）は
   段階 4 のリリース経路と一緒に入れます。段階 4 以降は `git fetch origin` の後
-  `origin/{recipe_ref}` を detached で checkout し、ローカルブランチや任意 commit は
-  受けません。既定の `production` は昇格 PR の merge でしか動かないブランチです。
+  `origin/{recipe_ref}` を commit に解決してから detached で checkout します。照合対象は
+  checkout 後のブランチ名ではなく解決前の remote ref で、解決できなければ `failed`
+  （error: `recipe_ref not found: {ref}`）、解決した commit は `result.recipe_commit` に
+  記録します。ローカルブランチや任意 commit は受けません。既定の `production` は
+  昇格 PR の merge でしか動かないブランチです。
 - Service Token の期限切れは claim / heartbeat の 403 として現れます。worker は
   ログに出して poll を続け、chimera 側は何もしません。
