@@ -34,3 +34,4 @@ npm run typecheck && npm test
 - main に merge すると `production release PR` workflow が `release/production` を main の snapshot で作り直し、`production` への昇格 PR を作る。その PR の merge = リリース。required check は `production deploy preflight`（dry-run と migration 番号の検査）
 - API 疎通確認用の Service Token は 1Password `chimera-claude-agent`（`op` で取得、コミット禁止）
 - 本番でテストデータを作ったら削除まで行う（`wrangler d1 execute --remote` + `wrangler r2 object delete --remote`）
+- telemetry は `POSTHOG_KEY` secret（`npx wrangler secret put POSTHOG_KEY`、1Password `posthog`）で有効化。ローカルは `.dev.vars`
