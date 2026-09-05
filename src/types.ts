@@ -8,6 +8,10 @@ export interface Bindings {
   REQUESTS_DEFAULT_RECIPE_REF?: string;
   /** WorkerHub Durable Object (段階3, src/worker-hub.ts)。単一インスタンスを idFromName('global') で使う。 */
   WORKER_HUB: DurableObjectNamespace<WorkerHub>;
+  /** PostHog の project API key（`wrangler secret put POSTHOG_KEY`）。未設定なら telemetry は無効(docs/ui.md "Telemetry")。 */
+  POSTHOG_KEY?: string;
+  /** PostHog の api_host。省略時 https://us.i.posthog.com */
+  POSTHOG_HOST?: string;
 }
 
 export type AppEnv = { Bindings: Bindings };

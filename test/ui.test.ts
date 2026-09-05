@@ -1,7 +1,10 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { app } from '../src/app';
 import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph } from './helpers';
 import { representativeGeneration, type GraphNodeData } from '../src/ui/pages/Graph';
+
+const BASE = 'https://chimera.test';
 
 describe('Web GUI pages', () => {
   it('GET / redirects to /gallery', async () => {
@@ -24,6 +27,59 @@ describe('Web GUI pages', () => {
     expect(res.headers.get('content-type')).toContain('javascript');
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
+  });
+
+  it('GET /assets/app.js instruments UI actions with PostHog capture calls', async () => {
+    const res = await req('/assets/app.js');
+    const body = await res.text();
+    expect(body).toContain('posthog.capture');
+  });
+
+  it('GET /assets/telemetry.js is a no-op when POSTHOG_KEY is unset', async () => {
+    const res = await req('/assets/telemetry.js');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/javascript');
+    const body = await res.text();
+    expect(body).not.toContain('posthog.init');
+  });
+
+  it('GET /assets/telemetry.js initializes PostHog and identifies via Cf-Access header when POSTHOG_KEY is set', async () => {
+    const res = await app.request(
+      `${BASE}/assets/telemetry.js`,
+      { headers: { 'Cf-Access-Authenticated-User-Email': 'me@example.com' } },
+      { ...env, POSTHOG_KEY: 'phc_test', POSTHOG_HOST: 'https://eu.i.posthog.com' },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('posthog.init("phc_test"');
+    expect(body).toContain('https://eu.i.posthog.com');
+    expect(body).toContain('posthog.identify("me@example.com")');
+  });
+
+  it('GET /assets/telemetry.js skips identify without the Cf-Access header and defaults api_host to us', async () => {
+    const res = await app.request(`${BASE}/assets/telemetry.js`, undefined, { ...env, POSTHOG_KEY: 'phc_test' });
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).not.toContain('posthog.identify');
+    expect(body).toContain('https://us.i.posthog.com');
+  });
+
+  it('GET /assets/telemetry.js is not cacheable and falls back to the default host when POSTHOG_HOST is not https', async () => {
+    const res = await app.request(`${BASE}/assets/telemetry.js`, undefined, {
+      ...env,
+      POSTHOG_KEY: 'phc_test',
+      POSTHOG_HOST: 'http://evil.example.com',
+    });
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = await res.text();
+    expect(body).toContain('https://us.i.posthog.com');
+    expect(body).not.toContain('evil.example.com');
+  });
+
+  it('GET /gallery includes the telemetry script tag', async () => {
+    const res = await req('/gallery?limit=1');
+    const html = await res.text();
+    expect(html).toContain('<script src="/assets/telemetry.js">');
   });
 
   it('gallery card image URLs keep the request origin (not localhost)', async () => {
