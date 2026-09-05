@@ -198,3 +198,25 @@ MVPでは Cloudflare Workers + D1 + R2 を前提とします。
 
 GUI/API を単一 Worker
 にまとめるか分離するか、具体的なフレームワーク選定は実装フェーズで決定可能です。ただし、上記の責務境界は維持します。
+
+## Release Path
+
+``` text
+PR → main（ruleset: PR 必須、merge commit のみ、削除 / force push 禁止）
+  ↓ push ごとに production release PR workflow
+release/production := main の tree の snapshot
+  ↓ 昇格 PR（ruleset: approval 1 + code owner + thread 解決 + required check "production deploy preflight"）
+production
+  ↓ Cloudflare Workers Builds（migrations apply → wrangler deploy）
+chimera.chanu.co
+```
+
+昇格 PR の作成者は GitHub App（`APP_ID` / `APP_PRIVATE_KEY`）で、CODEOWNER が自分自身でも
+self-approve の制限に当たらないようにします。`production` は昇格 PR の merge でしか
+動かず、`release/production` は毎回作り直されるので release commit が main に戻ることは
+ありません。rollback は Cloudflare の Workers versions から前バージョンを選ぶか、main を
+戻して再昇格します。
+
+`recipe_ref` の既定（wrangler var `REQUESTS_DEFAULT_RECIPE_REF`）は comfyui-recipes 側の
+box が `production` を checkout した時点で `main` から `production` に戻します
+（[worker-protocol.md](worker-protocol.md)）。
