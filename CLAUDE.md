@@ -30,6 +30,7 @@ npm run typecheck && npm test
 ## 本番
 
 - https://chimera.chanu.co （D1 `chimera` / R2 `chimera-images`）
-- デプロイ: `npx wrangler deploy`。スキーマ変更時は先に `npx wrangler d1 migrations apply chimera --remote`
+- デプロイは `production` ブランチへの merge で Cloudflare Workers Builds が行う（deploy command は `npx wrangler d1 migrations apply chimera --remote && npx wrangler deploy`）。`npx wrangler deploy` の手打ちはしない
+- main に merge すると `production release PR` workflow が `release/production` を main の snapshot で作り直し、`production` への昇格 PR を作る。その PR の merge = リリース。required check は `production deploy preflight`（dry-run と migration 番号の検査）
 - API 疎通確認用の Service Token は 1Password `chimera-claude-agent`（`op` で取得、コミット禁止）
 - 本番でテストデータを作ったら削除まで行う（`wrangler d1 execute --remote` + `wrangler r2 object delete --remote`）
