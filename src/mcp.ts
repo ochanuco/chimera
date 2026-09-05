@@ -15,6 +15,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
+import { requestKindSchema, requestStatusSchema, RECIPE_REF_RE, payloadEnvelopeIssues } from './schemas/requests';
 import { notFound } from './lib/errors';
 import {
   createExperimentRun,
@@ -29,7 +30,8 @@ import {
   updateExperimentRun,
   evaluationOverall,
 } from './lib/experiments';
-import { canonicalGenerationUrl, serializeExperimentRun } from './lib/serialize';
+import { createRequest, getRequestOr404, listRequests } from './lib/requests';
+import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import type { Bindings } from './types';
 
@@ -73,6 +75,20 @@ function toBase64(bytes: Uint8Array): string {
 const createRunInputSchema = createExperimentRunSchema
   .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
   .extend({ experiment_id: z.string().min(1) });
+
+/** REST の createRequestSchema と同じ封筒検証だが、`created_by` は tool 側で 'mcp' に固定するため受け取らない。 */
+const createRequestInputSchema = z
+  .object({
+    kind: requestKindSchema,
+    payload: jsonObject,
+    recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
+    idempotency_key: z.string().min(1),
+  })
+  .superRefine((value, ctx) => {
+    for (const issue of payloadEnvelopeIssues(value.kind, value.payload)) {
+      ctx.addIssue({ code: 'custom', message: issue.message, path: ['payload', ...issue.path] });
+    }
+  });
 
 export function createChimeraMcpServer(env: Bindings, origin: string): McpServer {
   const db = env.DB;
@@ -145,14 +161,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     },
     async ({ experiment_id, overrides, objective, parent_run_id, idempotency_key, variables }) => {
       const experiment = await getExperimentOr404(db, experiment_id);
-      const { row, created } = await createExperimentRun(db, experiment, {
+      const { row, created, request_id } = await createExperimentRun(db, experiment, {
         overrides,
         objective,
         parent_run_id,
         idempotency_key,
         variables,
       });
-      return jsonResult({ created, run: serializeExperimentRun(row) });
+      return jsonResult({ created, run: { ...serializeExperimentRun(row), request_id } });
     },
   );
 
@@ -277,6 +293,52 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { decision });
       return jsonResult(serializeExperimentRun(updated));
+    },
+  );
+
+  server.registerTool(
+    'create_request',
+    {
+      description:
+        'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
+        'schema_version/request/generation required) or "finalize" (payload {generation_id, options?}). created_by is ' +
+        'forced to "mcp". Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
+        'row (created: false); the same key with a different kind/payload is a 409 tool error.',
+      inputSchema: createRequestInputSchema,
+    },
+    async ({ kind, payload, recipe_ref, idempotency_key }) => {
+      const { row, created } = await createRequest(db, { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' });
+      return jsonResult({ created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'get_request',
+    {
+      description: 'Get a requests row by id, including its payload and (once done/failed) result/error.',
+      inputSchema: z.object({ id: z.string().min(1) }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ id }) => {
+      const row = await getRequestOr404(db, id);
+      return jsonResult(serializeRequest(row));
+    },
+  );
+
+  server.registerTool(
+    'list_requests',
+    {
+      description: 'List requests rows, optionally filtered by status, kind, or run_id. Read-only; does not claim.',
+      inputSchema: z.object({
+        status: requestStatusSchema.optional(),
+        kind: requestKindSchema.optional(),
+        run_id: z.string().min(1).optional(),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ status, kind, run_id }) => {
+      const rows = await listRequests(db, { status, kind, run_id }, 200, 0);
+      return jsonResult({ items: rows.map(serializeRequest) });
     },
   );
 

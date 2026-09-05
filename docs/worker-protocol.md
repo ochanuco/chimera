@@ -31,6 +31,10 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ## requests テーブル
 
+backfill 行（後述「ExperimentRun 由来の generate」の移行手順）の id だけは例外で
+`bf-{run_id}` を使います。一度きりの移行専用の値で、以後 chimera が発行する id
+はすべて UUIDv7 です。
+
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
 kind              TEXT NOT NULL               generate | finalize

@@ -86,11 +86,23 @@ get_generation_image(short_id, width?)
 attach_generation(run_id, generation_id)
 set_evaluation(run_id, evaluation)
 set_decision(run_id, decision)
+create_request(kind, payload, recipe_ref?, idempotency_key)
+get_request(id)
+list_requests(status?, kind?, run_id?)
 ```
 
 Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから
 キーなしで再試行すると重複 Run が恒久的に残ります。
+
+`create_run` の結果は `run.request_id` を含みます。Experiment に `base_recipe`
+があり status が active / stabilized なら、Run 作成と同じトランザクションで
+requests 行が自動起票され（[worker-protocol.md](worker-protocol.md)
+「ExperimentRun 由来の generate」）、その id が入ります。base_recipe が無ければ
+`null` で、Agent は `create_request(kind: "generate", ...)` で明示的に積む必要が
+あります。`create_request` / `get_request` / `list_requests` は
+`POST /api/v1/requests` などと同じ `src/lib/requests.ts` を呼ぶ薄い別窓口で、
+`created_by` は `mcp` に固定されます。
 
 `get_generation_image` は元画像そのものではなく、Images binding で縮小・JPEG
 再エンコードした画像を返します。MCP クライアント側がレスポンス全体を 1MiB

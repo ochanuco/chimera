@@ -37,6 +37,37 @@ async function getBatchOr404(db: D1Database, idOrShortId: string): Promise<Batch
   return row;
 }
 
+/**
+ * worker-protocol.md「再送レスポンスに含めるもの」: idempotency_key 再送は新規作成時と
+ * 同じ形に加え、worker が再開に使う `jobs[]`（各 Job の seed/status/comfy_prompt_id と
+ * ingest 済み generations）を含める。`graph` は含めない（recipe と seed から再構築できる）。
+ */
+async function buildReplayJobs(db: D1Database, batchId: string) {
+  const [jobsResult, generationsResult] = await Promise.all([
+    db.prepare('SELECT * FROM comfy_jobs WHERE batch_id = ? ORDER BY job_index ASC').bind(batchId).all<ComfyJobRow>(),
+    db
+      .prepare('SELECT id, comfy_job_id, comfy_output_index FROM generations WHERE batch_id = ? ORDER BY created_at ASC, id ASC')
+      .bind(batchId)
+      .all<{ id: string; comfy_job_id: string; comfy_output_index: number | null }>(),
+  ]);
+
+  const generationsByJobId = new Map<string, { id: string; comfy_output_index: number | null }[]>();
+  for (const g of generationsResult.results ?? []) {
+    const list = generationsByJobId.get(g.comfy_job_id) ?? [];
+    list.push({ id: g.id, comfy_output_index: g.comfy_output_index });
+    generationsByJobId.set(g.comfy_job_id, list);
+  }
+
+  return (jobsResult.results ?? []).map((j) => ({
+    id: j.id,
+    index: j.job_index,
+    seed: j.seed,
+    status: j.status,
+    comfy_prompt_id: j.comfy_prompt_id,
+    generations: generationsByJobId.get(j.id) ?? [],
+  }));
+}
+
 batches.post('/', async (c) => {
   const body = createBatchSchema.parse(await c.req.json());
   const db = c.env.DB;
@@ -45,7 +76,7 @@ batches.post('/', async (c) => {
     .prepare('SELECT * FROM batches WHERE idempotency_key = ?')
     .bind(body.idempotency_key)
     .first<BatchRow>();
-  if (replayed) return c.json(serializeBatch(replayed), 200);
+  if (replayed) return c.json({ ...serializeBatch(replayed), jobs: await buildReplayJobs(db, replayed.id) }, 200);
 
   // Resolve and validate every referenced entity before writing anything.
   if (body.experiment_id) {
@@ -199,7 +230,7 @@ batches.post('/', async (c) => {
       .bind(body.idempotency_key)
       .first<BatchRow>();
     if (!raced) throw err;
-    return c.json(serializeBatch(raced), 200);
+    return c.json({ ...serializeBatch(raced), jobs: await buildReplayJobs(db, raced.id) }, 200);
   }
 
   // provenance の中核 (prompt / recipe / instruction) が全部空の登録は、API を
@@ -502,6 +533,10 @@ batches.post('/:batchId/jobs', async (c) => {
       .prepare('SELECT * FROM comfy_jobs WHERE idempotency_key = ?')
       .bind(body.idempotency_key)
       .first<ComfyJobRow>();
+    const generationsResult = await db
+      .prepare('SELECT id, comfy_output_index FROM generations WHERE comfy_job_id = ? ORDER BY created_at ASC, id ASC')
+      .bind(existing!.id)
+      .all<{ id: string; comfy_output_index: number | null }>();
     return c.json(
       {
         id: existing!.id,
@@ -509,12 +544,17 @@ batches.post('/:batchId/jobs', async (c) => {
         seed: existing!.seed,
         index: existing!.job_index,
         status: existing!.status,
+        comfy_prompt_id: existing!.comfy_prompt_id,
+        generations: (generationsResult.results ?? []).map((g) => ({ id: g.id, comfy_output_index: g.comfy_output_index })),
       },
       200,
     );
   }
 
-  return c.json({ id, batch_id: batch.id, seed: body.seed, index: body.index, status: 'created' }, 201);
+  return c.json(
+    { id, batch_id: batch.id, seed: body.seed, index: body.index, status: 'created', comfy_prompt_id: null, generations: [] },
+    201,
+  );
 });
 
 batches.put('/:id/bookmark', async (c) => {

@@ -13,7 +13,7 @@ import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
-import { GenerationDetailPage, type GenerationDetailData } from '../ui/pages/GenerationDetail';
+import { GenerationDetailPage, type GenerationDetailData, type FinalizeRequestSummary } from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { getImageMeta, type ImageMeta } from '../lib/image-meta';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
@@ -59,12 +59,27 @@ images.get('/:shortId', async (c) => {
     });
   }
 
-  const [detailRes, tagRows, imageMeta] = await Promise.all([
+  const [detailRes, tagRows, imageMeta, finalizeRequestsRes] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
     resolveImageMeta(c.env.IMAGES, generation),
+    internalApiRequest(c, `/api/v1/requests?kind=finalize&generation_id=${generation.id}&limit=5`),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
+
+  // Finalize セクション: このGenerationを対象にした最新のfinalize requestを状況表示する
+  // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
+  const finalizeRequestsData = (await finalizeRequestsRes.json()) as {
+    items: { status: string; created_at: string; error: string | null; result: { generation_ids: string[] } | null }[];
+  };
+  const finalizeResultGenerationIds = finalizeRequestsData.items.flatMap((r) => r.result?.generation_ids ?? []);
+  const finalizeResultShortIds = await resolveGenerationShortIds(db, finalizeResultGenerationIds);
+  const finalizeRequests: FinalizeRequestSummary[] = finalizeRequestsData.items.map((r) => ({
+    status: r.status as FinalizeRequestSummary['status'],
+    created_at: r.created_at,
+    error: r.error,
+    resultShortId: r.result?.generation_ids[0] ? finalizeResultShortIds.get(r.result.generation_ids[0]) ?? null : null,
+  }));
 
   // "親" (parent) material for a Generation is its own Batch's reference material
   // (batch_references where target_batch_id = the owning Batch), not `data.references`
@@ -170,6 +185,7 @@ images.get('/:shortId', async (c) => {
       relationsIncoming={relationsIncoming}
       relationsOutgoing={relationsOutgoing}
       imageMeta={imageMeta}
+      finalizeRequests={finalizeRequests}
     />,
   );
 });
