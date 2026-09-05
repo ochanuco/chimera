@@ -21,6 +21,9 @@ jobs:
     name: production deploy preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # secrets は step の if では参照できないので job env に落とす
+      HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -52,7 +55,7 @@ jobs:
       # CLOUDFLARE_API_TOKEN があれば本番 D1 の未適用 migration を一覧に出す。無ければ skip
       # （Workers Builds が deploy 前に apply するので、ここでは fail にしない）。
       - name: List unapplied D1 migrations
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        if: env.HAS_CF_TOKEN == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
