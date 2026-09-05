@@ -64,6 +64,18 @@ describe('Web GUI pages', () => {
     expect(body).toContain('https://us.i.posthog.com');
   });
 
+  it('GET /assets/telemetry.js is not cacheable and falls back to the default host when POSTHOG_HOST is not https', async () => {
+    const res = await app.request(`${BASE}/assets/telemetry.js`, undefined, {
+      ...env,
+      POSTHOG_KEY: 'phc_test',
+      POSTHOG_HOST: 'http://evil.example.com',
+    });
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = await res.text();
+    expect(body).toContain('https://us.i.posthog.com');
+    expect(body).not.toContain('evil.example.com');
+  });
+
   it('GET /gallery includes the telemetry script tag', async () => {
     const res = await req('/gallery?limit=1');
     const html = await res.text();

@@ -862,9 +862,12 @@ export const appJs = `
 
   // --- Telemetry (docs/ui.md "Telemetry"): /assets/telemetry.js が PostHog を初期化した
   // ときだけ window.posthog がある。無効時は no-op。
+  // 多くの呼び出し元が capture 直後に reload / 遷移するので、バッチに乗せず即時 beacon で送る。
   function track(event, props) {
     try {
-      if (window.posthog && typeof window.posthog.capture === 'function') window.posthog.capture(event, props || {});
+      if (window.posthog && typeof window.posthog.capture === 'function') {
+        window.posthog.capture(event, props || {}, { transport: 'sendBeacon', send_instantly: true });
+      }
     } catch (e) {}
   }
   function trackError(action, e, props) {
