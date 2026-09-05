@@ -108,6 +108,21 @@ describe('POST /api/v1/requests', () => {
     expect(conflicting.status).toBe(409);
   });
 
+  it('recipe_ref defaults to the REQUESTS_DEFAULT_RECIPE_REF var (main until stage 4), for POST and for run auto-provisioning', async () => {
+    const { generation } = await createGeneration();
+    const posted = await createFinalizeRequest(generation.id);
+    expect(posted.status).toBe(201);
+    expect(posted.body.recipe_ref).toBe('main');
+
+    const explicit = await createFinalizeRequest(generation.id, { recipe_ref: 'dev/x' });
+    expect(explicit.body.recipe_ref).toBe('dev/x');
+
+    const exp = await createExperiment({ base_recipe: 'yukari' });
+    const run = await createRun(exp.body.id, {});
+    const auto = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?run_id=${run.body.id}`);
+    expect(auto.body.items[0]!.recipe_ref).toBe('main');
+  });
+
   it('generate: payload.experiment.run_id belonging to a different experiment is a 400', async () => {
     const expA = await createExperiment();
     const expB = await createExperiment();

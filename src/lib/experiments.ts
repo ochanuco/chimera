@@ -275,10 +275,16 @@ async function findAutoRequestIdForRun(db: D1Database, runId: string): Promise<s
 }
 
 /** POST /api/v1/experiments/{id}/runs と create_run MCP tool が共有する。 */
+export interface CreateExperimentRunOptions {
+  /** 自動起票する requests 行の recipe_ref。呼び出し側が defaultRecipeRef(env) を渡す。 */
+  recipeRef?: string;
+}
+
 export async function createExperimentRun(
   db: D1Database,
   experiment: ExperimentRow,
   body: CreateExperimentRunInput,
+  options: CreateExperimentRunOptions = {},
 ): Promise<CreateExperimentRunResult> {
   if (body.idempotency_key) {
     const existing = await findRunByIdempotencyKey(db, body.idempotency_key);
@@ -403,9 +409,9 @@ export async function createExperimentRun(
           `INSERT INTO requests (
              id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
              claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at
-           ) VALUES (?, 'generate', 'queued', ?, ?, 'production', ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?)`,
+           ) VALUES (?, 'generate', 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?)`,
         )
-        .bind(requestId, requestPayloadJson, requestPayloadHash, id, `run:${id}`, now, now),
+        .bind(requestId, requestPayloadJson, requestPayloadHash, options.recipeRef ?? 'production', id, `run:${id}`, now, now),
     );
   }
 

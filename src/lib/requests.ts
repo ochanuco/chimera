@@ -88,6 +88,14 @@ async function replayOrConflict(existing: RequestRow, kind: RequestKind, newHash
   return { row: existing, created: false };
 }
 
+/**
+ * recipe_ref の既定。契約上は "production" だが、段階 4 まで box にそのブランチは無いので
+ * wrangler の var で "main" に寄せている（docs/worker-protocol.md「注意」節）。
+ */
+export function defaultRecipeRef(env: { REQUESTS_DEFAULT_RECIPE_REF?: string }): string {
+  return env.REQUESTS_DEFAULT_RECIPE_REF || 'production';
+}
+
 export interface CreateRequestInput {
   kind: RequestKind;
   payload: JsonObject;
@@ -110,6 +118,8 @@ export interface CreateRequestOptions {
    * db.batch の中で呼ばれる (SELECT で見えない) ため false で呼ぶ。
    */
   runValidation?: boolean;
+  /** `recipe_ref` 省略時の値。routes / MCP は defaultRecipeRef(env) を渡す。 */
+  defaultRecipeRef?: string;
 }
 
 export async function createRequest(
@@ -146,7 +156,7 @@ export async function createRequest(
 
   const id = uuidv7();
   const now = nowIso();
-  const recipeRef = input.recipe_ref ?? 'production';
+  const recipeRef = input.recipe_ref ?? options.defaultRecipeRef ?? 'production';
 
   try {
     await db

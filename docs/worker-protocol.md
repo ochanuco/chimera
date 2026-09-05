@@ -124,6 +124,10 @@ Token）を区別せず、いずれも全 `kind` を積めます。「GUI は fi
 （後述の注意と同じ）。
 
 `recipe_ref` は `^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$` だけを検証し、存在は確認しません。
+省略時の既定は契約上 `production` ですが、そのブランチは段階 4 のリリース経路で生まれる
+ため、それまでは wrangler の var `REQUESTS_DEFAULT_RECIPE_REF` で `main` にしています
+（Run 自動起票、`POST /requests`、MCP `create_request` の全てに効く）。段階 4 で var を
+`production` に戻します。
 存在しない ref は worker 側で `failed`（error に checkout 失敗）になります。
 
 ### List Requests

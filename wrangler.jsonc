@@ -12,6 +12,11 @@
       "custom_domain": true
     }
   ],
+  // requests 行の recipe_ref 既定。契約上の既定は "production" だが、そのブランチは
+  // 段階 4 のリリース経路で生まれるため、それまでは box が checkout している "main"。
+  "vars": {
+    "REQUESTS_DEFAULT_RECIPE_REF": "main"
+  },
   "observability": {
     "enabled": true
   },
