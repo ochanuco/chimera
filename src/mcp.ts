@@ -30,7 +30,7 @@ import {
   updateExperimentRun,
   evaluationOverall,
 } from './lib/experiments';
-import { createRequest, getRequestOr404, listRequests } from './lib/requests';
+import { createRequest, getRequestOr404, listRequests, defaultRecipeRef } from './lib/requests';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import type { Bindings } from './types';
@@ -161,13 +161,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
     },
     async ({ experiment_id, overrides, objective, parent_run_id, idempotency_key, variables }) => {
       const experiment = await getExperimentOr404(db, experiment_id);
-      const { row, created, request_id } = await createExperimentRun(db, experiment, {
-        overrides,
-        objective,
-        parent_run_id,
-        idempotency_key,
-        variables,
-      });
+      const { row, created, request_id } = await createExperimentRun(
+        db,
+        experiment,
+        { overrides, objective, parent_run_id, idempotency_key, variables },
+        { recipeRef: defaultRecipeRef(env) },
+      );
       return jsonResult({ created, run: { ...serializeExperimentRun(row), request_id } });
     },
   );
@@ -307,7 +306,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
       inputSchema: createRequestInputSchema,
     },
     async ({ kind, payload, recipe_ref, idempotency_key }) => {
-      const { row, created } = await createRequest(db, { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' });
+      const { row, created } = await createRequest(
+        db,
+        { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
       return jsonResult({ created, request: serializeRequest(row) });
     },
   );

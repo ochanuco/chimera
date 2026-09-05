@@ -35,6 +35,7 @@ import {
   updateExperimentRun,
 } from '../lib/experiments';
 import { createJudgment, judgmentSummary, listJudgments } from '../lib/judgments';
+import { defaultRecipeRef } from '../lib/requests';
 import {
   serializeExperiment,
   serializeExperimentPromotion,
@@ -217,7 +218,9 @@ experiments.post('/:id/runs', async (c) => {
   const body = createExperimentRunSchema.parse(await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
-  const { row, created, request_id } = await createExperimentRun(db, experiment, body);
+  const { row, created, request_id } = await createExperimentRun(db, experiment, body, {
+    recipeRef: defaultRecipeRef(c.env),
+  });
   return c.json({ ...serializeExperimentRun(row), request_id }, created ? 201 : 200);
 });
 

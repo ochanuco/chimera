@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { createRequestSchema, claimRequestSchema, updateRequestSchema, requestKindSchema, requestStatusSchema } from '../schemas/requests';
-import { createRequest, listRequests, claimRequest, updateRequest, getRequestOr404 } from '../lib/requests';
+import { createRequest, listRequests, claimRequest, updateRequest, getRequestOr404, defaultRecipeRef } from '../lib/requests';
 import { serializeRequest } from '../lib/serialize';
 import { parsePagination } from '../lib/db';
 import { badRequest } from '../lib/errors';
@@ -11,7 +11,7 @@ export const requests = new Hono<AppEnv>();
 requests.post('/', async (c) => {
   const body = createRequestSchema.parse(await c.req.json());
   const db = c.env.DB;
-  const { row, created } = await createRequest(db, body);
+  const { row, created } = await createRequest(db, body, { defaultRecipeRef: defaultRecipeRef(c.env) });
   return c.json(serializeRequest(row), created ? 201 : 200);
 });
 

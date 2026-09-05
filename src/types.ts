@@ -2,6 +2,8 @@ export interface Bindings {
   DB: D1Database;
   IMAGES: R2Bucket;
   IMAGE_TRANSFORM: ImagesBinding;
+  /** requests 行の recipe_ref 既定。段階 4 のリリース経路が入るまでは "main"（docs/worker-protocol.md）。 */
+  REQUESTS_DEFAULT_RECIPE_REF?: string;
 }
 
 export type AppEnv = { Bindings: Bindings };
