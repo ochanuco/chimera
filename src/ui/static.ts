@@ -447,6 +447,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .request-status-done { color: var(--good); }
 .request-status-failed { color: var(--bad); }
 .request-status-cancelled { color: var(--text-dim); }
+.request-progress { color: var(--text-dim); margin-left: 0.4rem; font-variant-numeric: tabular-nums; }
 
 .batch-row {
   display: flex;
@@ -1227,6 +1228,76 @@ export const appJs = `
     });
   }
 
+  // --- Request live status (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws
+  // から progress / status を受けて [data-request-id] 要素の表示を更新する。対象要素が
+  // ページに無ければ何もしない。
+  function initRequestLive() {
+    var els = qsa('[data-request-id]');
+    if (els.length === 0) return;
+
+    var byId = {};
+    els.forEach(function (el) {
+      byId[el.getAttribute('data-request-id')] = el;
+    });
+
+    function applyProgress(p) {
+      var el = byId[p.request_id];
+      if (!el) return;
+      var span = qs('.request-progress', el);
+      if (!span) return;
+      var text = p.phase || '';
+      if (typeof p.step === 'number' && typeof p.total === 'number') text += ' ' + p.step + '/' + p.total;
+      span.textContent = text;
+    }
+
+    function applyStatus(s) {
+      var el = byId[s.request_id];
+      if (!el) return;
+      el.className = el.className.replace(/request-status-\S+/, '').trim();
+      el.classList.add('request-status-' + s.status);
+      el.setAttribute('data-request-status', s.status);
+    }
+
+    var backoff = 1000;
+    function connect() {
+      var ws;
+      try {
+        var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
+      } catch (e) {
+        return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
+      }
+      ws.addEventListener('open', function () {
+        backoff = 1000;
+      });
+      ws.addEventListener('message', function (ev) {
+        var data;
+        try {
+          data = JSON.parse(ev.data);
+        } catch (e) {
+          return;
+        }
+        if (data.type === 'snapshot') {
+          (data.progress || []).forEach(applyProgress);
+        } else if (data.type === 'progress') {
+          applyProgress(data);
+        } else if (data.type === 'status') {
+          applyStatus(data);
+        }
+      });
+      ws.addEventListener('close', function () {
+        setTimeout(connect, backoff);
+        backoff = Math.min(backoff * 2, 30000);
+      });
+      ws.addEventListener('error', function () {
+        try {
+          ws.close();
+        } catch (e) {}
+      });
+    }
+    connect();
+  }
+
   // --- Compare selection bar ---
   // Feeds off two independent selection sources: Gallery's checkboxes
   // (.compare-check) and Graph's clicked-to-select thumbnails (.graph-gen-thumb.selected).
@@ -1877,6 +1948,7 @@ export const appJs = `
     initNoteForm();
     initFinalize();
     initFinalizeAll();
+    initRequestLive();
     initCompareBar();
     initStoryRelationEdit();
     initGraphScope();

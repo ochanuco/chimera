@@ -416,13 +416,91 @@ list_requests(status?, kind?, run_id?)
 
 `create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
 
-## 段階 3（概略）
+## 段階 3: WorkerHub
 
-WorkerHub（Durable Object、Hibernation API）に worker が outbound で WebSocket を張り、
-requests 行の作成を push、worker から status / progress を返します。正本は D1 のままで、
-socket は通知路です。切断後の再接続で一度だけ claim を呼んで追いつきます。stale
-running の回収は DO の alarm が担います。GUI も同じ DO に繋いで step 単位の進捗を
-出します。段階 2 の claim / PATCH はそのまま残り、push はそれの前倒しにすぎません。
+WorkerHub（Durable Object、Hibernation API、単一インスタンスを `idFromName('global')`
+で運用）に worker と GUI が outbound で WebSocket を張り、requests 行の作成を push、
+worker から status / progress を返します。**socket は合図と進捗の通知路であって、
+正本は D1 のままです。claim / PATCH の HTTP 契約（段階 2）は変わりません** — push は
+それの前倒しにすぎず、socket が繋がっていなくても poll だけで段階 2 と同じに動きます。
+
+### エンドポイント
+
+``` text
+GET /api/v1/worker/ws      worker 用アップグレード。Access の Service Token、アプリ内認証は無し
+GET /api/v1/requests/ws    GUI viewer 用アップグレード
+```
+
+いずれも WebSocket アップグレードでない場合は 426 `{ "error": { "code": "upgrade_required", "message": "..." } }`
+を返します。`role`（worker / viewer）はエンドポイントのパスで決まり、chimera 側のルーティングが
+WorkerHub に渡すマーカーで、client 側からは指定できません。
+
+permessage-deflate 等の WebSocket 拡張は一切ネゴシエートしません。フレームは常に生の
+JSON テキストです。
+
+### メッセージ
+
+worker → hub:
+
+``` text
+{"type":"hello","worker_id":"<hostname>","kinds":["generate","finalize"]}   最初の1通
+{"type":"progress","request_id":"...","phase":"submit|sampling|ingest|finalize","step":12,"total":28,"message":"..."}
+{"type":"ping"}
+```
+
+`hello` の `kinds` は省略可（省略した worker は全 kind の `queued` を受け取る）。
+`progress` の `step` / `total` / `message` は任意。`ping` は Hibernation の
+auto-response（`ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'))`）
+が DO を起こさずに `{"type":"pong"}` を返すので、通常は `webSocketMessage` まで届きません。
+
+hub → worker:
+
+``` text
+{"type":"hello_ack","server_time":"<ISO>"}                                  hello への応答
+{"type":"queued","request_id":"...","kind":"...","recipe_ref":"..."}        新規 / 再キュー時
+```
+
+hub → viewer:
+
+``` text
+{"type":"snapshot","progress":[...],"workers":[{"worker_id":...,"kinds":...,"connected_at":...}]}   接続直後
+{"type":"progress","request_id":"...","worker_id":"...","phase":"...","step":...,"total":...,"message":...,"at":"<ISO>"}
+{"type":"status","request_id":"...","status":"queued|running|done|failed|cancelled","kind":"..."}
+```
+
+未知の `type` は無視します。パースできないフレームも無視します。viewer から来たメッセージは
+（`type` を問わず）常に無視します — viewer は読み取り専用です。
+
+### broadcast の規則
+
+- `queued` は接続中の worker のうち、`kinds` にその `kind` を含むものだけに送ります。
+  `hello` をまだ送っていない worker（`kinds` 未設定）は全 kind を受け取ります。
+- `status` は接続中の viewer 全員に送ります（`kinds` によるフィルタはありません）。
+- DO storage には `progress:<request_id>` に最新の progress を1件だけ持ちます。viewer が
+  後から繋いだときの `snapshot` はここから組み立てます。`status` が done / failed /
+  cancelled を運ぶと、そのエントリを削除します（完了した request の進捗をいつまでも
+  返さないため）。
+
+### alarm（stale running の回収）
+
+`hello` の受信、または内部 `/notify` の呼び出しのたびに、alarm が未設定なら
+`ctx.storage.setAlarm(now + 60s)` します。`alarm()` は `requeueStaleRunning`
+（`src/lib/requests.ts`、`claimRequest` と共有する同一の SQL — `status = running` かつ
+`heartbeat_at` が5分より古い行を、`attempt < max_attempts` なら `queued` に、それ以外は
+`error = "heartbeat timeout"` で `failed` にする）を実行し、`queued` に戻った行は
+worker へ `queued` を、`failed` になった行は viewer へ `status` を broadcast してから、
+自身を `now + 60s` で再スケジュールします。段階 2 と同じ回収規則を、claim を待たずに
+定期的にも走らせるだけで、判定条件そのものは変えません。
+
+### 再接続
+
+worker / GUI とも close イベントで 1秒 → 2秒 → 4秒 …と倍々に増やし、上限60秒でリトライします
+（GUI は上限30秒）。worker は再接続後、繋がっていなかった間に届いたはずの `queued` を
+取りこぼしている可能性があるため、一度だけ `POST /api/v1/requests/claim` を呼んで
+追いつきます（以後は通常どおり push を待つ）。
+
+アップグレード時の 403 は Service Token の期限切れです。worker は既存の claim /
+heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側は何もしません。
 
 ## 注意
 

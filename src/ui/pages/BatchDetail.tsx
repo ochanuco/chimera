@@ -41,6 +41,12 @@ export interface FinalizeSummary {
   failed: number;
 }
 
+/** 集計行の下に出す個別行（段階3: /api/v1/requests/ws の progress/status をここに反映する）。 */
+export interface FinalizeRequestStatus {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+}
+
 /** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
@@ -56,6 +62,7 @@ export function BatchDetailPage({
   batchThumbnails,
   diffParent,
   finalizeSummary,
+  finalizeRequests,
 }: {
   batch: BatchDetailData;
   storyNames: Record<string, string>;
@@ -69,6 +76,8 @@ export function BatchDetailPage({
   diffParent?: { shortId: string; prompt: string | null; negative_prompt: string | null } | null;
   /** このBatch配下の全GenerationについてのfinalizeRequest状況の集計。 */
   finalizeSummary: FinalizeSummary;
+  /** 集計行の内訳（段階3のWebSocket progress/statusが更新する個別行）。 */
+  finalizeRequests: FinalizeRequestStatus[];
 }) {
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
   const storyParents = batch.story_relations.filter((r) => r.target_batch_id === batch.id);
@@ -338,6 +347,15 @@ export function BatchDetailPage({
                 finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}
                 {finalizeSummary.failed} failed
               </p>
+              {finalizeRequests.length > 0 ? (
+                <ul class="request-status-list">
+                  {finalizeRequests.map((r) => (
+                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
+                      {r.status} <span class="request-progress"></span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </details>
 

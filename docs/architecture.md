@@ -17,6 +17,7 @@ chimera = control plane
   Management API ──── D1（requests キュー / Experiment / provenance）
        │          └── R2
        │  Web GUI / MCP
+       │  WorkerHub（Durable Object）── WebSocket push / 進捗中継（段階 3、正本は D1 のまま）
        ▲ claim / heartbeat / done（段階 2 は poll、段階 3 は WorkerHub の WebSocket）
        │
 worker（GPU 機）

@@ -254,13 +254,22 @@ export async function listRequests(
 /** heartbeat 途絶の判定閾値: `status = running` かつ `heartbeat_at` がこれより古い。 */
 const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000;
 
-export async function claimRequest(db: D1Database, workerId: string, kinds?: RequestKind[]): Promise<RequestRow | null> {
-  const now = nowIso();
-  const staleThreshold = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString();
+export interface RequeuedRequestRow {
+  id: string;
+  kind: RequestKind;
+  recipe_ref: string;
+  status: RequestStatus;
+}
 
-  // 1) stale な running 行を回収する。claim の直前にだけ走査するので cron は要らない
-  // (worker-protocol.md「状態遷移」節)。
-  await db
+/**
+ * stale な running 行 (`heartbeat_at` が5分より古い) を回収する。`attempt < max_attempts`
+ * なら queued に戻し、それ以外は `error = "heartbeat timeout"` で failed にする
+ * (worker-protocol.md「状態遷移」節)。claimRequest (段階2、claim の直前) と WorkerHub の
+ * alarm (段階3) の両方がこれを呼ぶ — 回収の規則は1つだけ持つ。
+ */
+export async function requeueStaleRunning(db: D1Database, now: string): Promise<RequeuedRequestRow[]> {
+  const staleThreshold = new Date(new Date(now).getTime() - HEARTBEAT_TIMEOUT_MS).toISOString();
+  const { results } = await db
     .prepare(
       `UPDATE requests
        SET status = CASE WHEN attempt >= max_attempts THEN 'failed' ELSE 'queued' END,
@@ -268,10 +277,21 @@ export async function claimRequest(db: D1Database, workerId: string, kinds?: Req
            finished_at = CASE WHEN attempt >= max_attempts THEN ? ELSE finished_at END,
            worker_id = NULL,
            updated_at = ?
-       WHERE status = 'running' AND heartbeat_at < ?`,
+       WHERE status = 'running' AND heartbeat_at < ?
+       RETURNING id, kind, recipe_ref, status`,
     )
     .bind(now, now, staleThreshold)
-    .run();
+    .all<RequeuedRequestRow>();
+  return results ?? [];
+}
+
+export async function claimRequest(
+  db: D1Database,
+  workerId: string,
+  kinds?: RequestKind[],
+): Promise<{ row: RequestRow | null; requeued: RequeuedRequestRow[] }> {
+  // 1) stale な running 行を回収する。claim の直前にだけ走査するので cron は要らない。
+  const requeued = await requeueStaleRunning(db, nowIso());
 
   // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも
   // 同じ行を2度渡さない (worker-protocol.md「Claim」節)。
@@ -290,7 +310,7 @@ export async function claimRequest(db: D1Database, workerId: string, kinds?: Req
     )
     .bind(workerId, claimedAt, claimedAt, claimedAt, ...kindsList)
     .first<RequestRow>();
-  return row ?? null;
+  return { row: row ?? null, requeued };
 }
 
 export interface UpdateRequestInput {

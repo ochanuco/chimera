@@ -127,7 +127,9 @@ Finalize all armsセクションは、このBatch配下の全Generationについ
 同じoptions（`repin` / `recolor` / `keep legwear` / `denoise`）で1 Generation
 1行のfinalize requestを順に積みます（Generation Detailの Finalize
 参照、[worker-protocol.md](worker-protocol.md)）。直下には
-`finalize: N queued · M running · K done · F failed`の集計行を表示します。
+`finalize: N queued · M running · K done · F failed`の集計行と、その下に各requestを
+1行ずつ持つ`request-status-list`を表示します（進捗の反映はGeneration Detailの
+Finalizeセクションと同じ仕組み、後述）。
 
 主な操作:
 
@@ -312,6 +314,15 @@ Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
 した最新のfinalize requestを最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
+
+各行は`data-request-id` / `data-request-status`を持ち、`/api/v1/requests/ws`
+（段階3 WorkerHub、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)参照）に
+繋いだ`initRequestLive()`が接続直後の`snapshot`と以後の`progress` / `status`を
+受けて、行内の`.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、
+`status`変化時は行のクラスと表示statusを書き換えます。Batch Detailの
+Finalize all armsセクションでも、集計行の下に同じ`request-status-list`を出し、
+同じ仕組みで各行が更新されます。WebSocketが張れない環境でも静的な表示のまま
+壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
 
 ## Provenance View
 
