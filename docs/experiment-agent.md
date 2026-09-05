@@ -56,9 +56,14 @@ chimera は中身を検証しません。`base_recipe` と同じく、語彙は 
 GET /api/v1/experiment-runs?pending=true
 ```
 
-`batch_id` が null の Run を Experiment 横断で返します。runner の作業キューです。
+`batch_id` が null の Run を Experiment 横断で返します。
 
 Run は作られた時点で「まだ実行されていない」状態であり、`batch_id` が付いた時点で実行済みになります。この2状態のために別のカラムは持ちません。
+
+runner（worker）の作業キューはこのエンドポイントではなく requests
+テーブルです。Run 作成時に chimera が `kind = generate` の requests 行を自動起票し、worker
+はそれを claim します（[worker-protocol.md](worker-protocol.md)）。このエンドポイントは
+状況確認用の読み取りに留めます。
 
 ## MCP サーバー
 

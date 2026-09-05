@@ -13,8 +13,10 @@ Progressive disclosure
 見る → 選ぶ → Claudeに渡す
 ```
 
-Web GUI から ComfyUI へ生成要求を送りません。ComfyUI workflow の構築・実行は
-comfyui-recipes の責務です。
+Web GUI は ComfyUI へ到達しません。GUI が積んでよいのは semantic 判断を伴わない
+再実行（finalize）だけで、GUI が触るのは自分の D1 の requests 行のみです
+（[worker-protocol.md](worker-protocol.md)）。ComfyUI workflow の構築・実行は
+comfyui-recipes（worker）が担います。
 
 ## Navigation
 
