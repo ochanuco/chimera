@@ -56,9 +56,16 @@ chimera は中身を検証しません。`base_recipe` と同じく、語彙は 
 GET /api/v1/experiment-runs?pending=true
 ```
 
-`batch_id` が null の Run を Experiment 横断で返します。runner の作業キューです。
+`batch_id` が null で、かつ requests 行（status を問わない）を持たない Run を Experiment
+横断で返します。
 
-Run は作られた時点で「まだ実行されていない」状態であり、`batch_id` が付いた時点で実行済みになります。この2状態のために別のカラムは持ちません。
+Run は作られた時点で「まだ実行されていない」状態であり、`batch_id` が付いた時点で実行済みになります。この2状態のために別のカラムは持ちません。実行の待機・実行中・失敗は Run ではなく requests 行の status が表します。
+
+runner（worker）の作業キューはこのエンドポイントではなく requests
+テーブルです。Run 作成時に chimera が `kind = generate` の requests 行を自動起票し、worker
+はそれを claim します（[worker-protocol.md](worker-protocol.md)）。このエンドポイントは
+「requests 行が付かなかった Run」（base_recipe の無い Experiment の Run など）を見つける
+ための読み取りです。
 
 ## MCP サーバー
 
@@ -79,11 +86,23 @@ get_generation_image(short_id, width?)
 attach_generation(run_id, generation_id)
 set_evaluation(run_id, evaluation)
 set_decision(run_id, decision)
+create_request(kind, payload, recipe_ref?, idempotency_key)
+get_request(id)
+list_requests(status?, kind?, run_id?)
 ```
 
 Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから
 キーなしで再試行すると重複 Run が恒久的に残ります。
+
+`create_run` の結果は `run.request_id` を含みます。Experiment に `base_recipe`
+があり status が active / stabilized なら、Run 作成と同じトランザクションで
+requests 行が自動起票され（[worker-protocol.md](worker-protocol.md)
+「ExperimentRun 由来の generate」）、その id が入ります。base_recipe が無ければ
+`null` で、Agent は `create_request(kind: "generate", ...)` で明示的に積む必要が
+あります。`create_request` / `get_request` / `list_requests` は
+`POST /api/v1/requests` などと同じ `src/lib/requests.ts` を呼ぶ薄い別窓口で、
+`created_by` は `mcp` に固定されます。
 
 `get_generation_image` は元画像そのものではなく、Images binding で縮小・JPEG
 再エンコードした画像を返します。MCP クライアント側がレスポンス全体を 1MiB
@@ -117,8 +136,8 @@ API 側は同じ操作を 409 / 404 で拒みます。tool として存在しな
 Agent     list_experiments → get_experiment で過去 Run を読む
           override を決めて create_run
               ↓ 未実行 Run として滞留
-runner    pending を拾う → request.json → comfy-recipes generate → ComfyUI
-              ↓ CLI が batch_id を Run へ紐付ける
+worker    requests 行を claim → request.json → comfy-recipes generate → ComfyUI
+              ↓ done を PATCH、chimera が batch_id を Run へ紐付ける
 Agent     get_run で生成物を見る
           get_generation_image で画像を確認
           attach_generation で代表を選ぶ

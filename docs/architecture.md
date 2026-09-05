@@ -11,20 +11,26 @@ workflow の構築・実行責務は comfyui-recipes に残します。chimera
 ``` text
 Human
   ↓
-semantic 判断主体 (Claude Code / Agent / Human)
-  ↓ request.json
-Python CLI / comfyui-recipes
-  ├── ComfyUI API
-  └── Management API
-        ├── D1
-        └── R2
-             ↓
-          Web GUI
+brain（semantic 判断主体: Claude Code / Agent / Human）
+  ↓ request.json を requests 行として積む      ← brain は chimera としか話さない
+chimera = control plane
+  Management API ──── D1（requests キュー / Experiment / provenance）
+       │          └── R2
+       │  Web GUI / MCP
+       ▲ claim / heartbeat / done（段階 2 は poll、段階 3 は WorkerHub の WebSocket）
+       │
+worker（GPU 機）
+  comfy-recipes watch
+  ├── ComfyUI localhost      ← worker からしか到達できない
+  └── Management API         Batch / Job / ingest / semantic
 
 Management API
   ↓ canonical URL
 Discord
 ```
+
+Mac から ComfyUI への経路は LAN でも持ちません。契約は
+[worker-protocol.md](worker-protocol.md) にあります。
 
 ## Responsibilities
 
@@ -45,7 +51,7 @@ semantic な判断を担当します。
 -   prompt を組み立てる。
 -   Story transition、Batch refinement、Reference の意味を決定する。
 -   必要に応じて生成画像を検品する。
--   `request.json` を生成し Python CLI を実行する。
+-   `request.json` を組み立て、chimera の requests キューに積む。
 -   後から Generation の semantic metadata を生成・更新する。
 -   Experiment の override を提案・変更する。
 -   evaluation・decision を記録する。
@@ -55,11 +61,13 @@ recipe のコードは直接書き換えません。comfyui-recipes への反映
 Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 側のPRとして行われます。
 
-### Python CLI
+### worker（comfy-recipes）
 
-実行と記録を担当します。semantic な意味を極力解釈しません。
+実行と記録を担当します。semantic な意味を極力解釈しません。GPU 機で
+`comfy-recipes watch` が requests 行を claim して動きます。
 
--   `request.json` を検証する。
+-   requests 行を claim し、`request.json` を検証する。
+-   `recipe_ref` の recipe を checkout する。
 -   Management API に Batch を作成する。
 -   seed を生成する（明示 override がなければ）。
 -   ComfyUI に Job を enqueue する。
@@ -67,6 +75,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   生成画像を Management API へ ingest する。
 -   Discord へ Generation ID / canonical URL と画像を通知する。
 -   リトライ・冪等性を担保する。
+-   finalize（納品用の再実行）を requests 行から受けて実行する。
 
 ### Management API
 
@@ -74,6 +83,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   R2 へ画像を保存する。
 -   Generation / Batch / Story / Tag 等を永続化する。
 -   Experiment / ExperimentRun / Promotion を永続化し、提供する。
+-   requests キュー（claim / heartbeat / 状態遷移）を提供する。判断はしない。
 -   canonical URL と Claude 向け semantic context を提供する。
 -   Web GUI の Read / Mutation API を提供する。
 -   LLM 固有処理は持たない。
@@ -86,8 +96,11 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   Story / Provenance を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
 -   Experiment 一覧・詳細を閲覧する。
+-   semantic 判断を伴わない再実行（finalize）を requests 行として積む。
 
-chimera は ComfyUI へ生成要求を送りません。
+chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
+判断を伴わない再実行（finalize）だけで、GUI が触るのは自分の D1 の requests
+行のみです。
 
 ## Storage
 
@@ -100,6 +113,7 @@ chimera は ComfyUI へ生成要求を送りません。
 -   Experiment
 -   ExperimentRun
 -   ExperimentPromotion
+-   Request（worker キュー）
 -   Batch
 -   ComfyJob
 -   Generation
@@ -172,7 +186,7 @@ ComfyUI の prompt/job ID は外部識別子として保持します。
 Cloudflare Access を境界認証として利用します。
 
 -   Human / Web GUI: Cloudflare Access login
--   Python CLI: Cloudflare Access Service Token
+-   worker（comfy-recipes）: Cloudflare Access Service Token
 -   アプリ独自のユーザー認証は実装しない
 
 Service Token は Git 管理せず、ローカル secret として扱います。

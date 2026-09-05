@@ -215,6 +215,51 @@ rejected
 -   ExperimentPromotion は原則物理削除しません。
 -   確定済み Promotion の `promoted_overrides` は変更できません（409）。
 
+## Request
+
+chimera を control plane、GPU 機を worker とする配置（[worker-protocol.md](worker-protocol.md)）の
+ジョブキュー1行です。worker が claim して実行し、結果を ingest してから状態を書き戻します。
+
+主な属性:
+
+``` text
+id
+kind              generate | finalize
+status            queued | running | done | failed | cancelled
+payload_json
+payload_hash
+recipe_ref
+run_id
+worker_id
+attempt
+max_attempts
+claimed_at
+heartbeat_at
+finished_at
+error
+result_json
+idempotency_key
+created_by        brain | mcp | gui | system
+created_at
+updated_at
+```
+
+`run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
+`payload` は kind ごとの request.json v1 相当の内容（generate）または
+`{ generation_id, options }`（finalize）です。契約全体（状態遷移、API、payload
+の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
+
+不変条件:
+
+-   requests 行は物理削除しません。`cancelled` は `queued` からだけ入れる終端です。
+-   `run_id` を持つ generate の `done` は、requests 行の更新と対応する
+    ExperimentRun への `batch_id` の attach を単一トランザクションで行います。
+    request だけが done になって Run に batch が付かない状態は作りません。
+-   ExperimentRun 作成時、Experiment に `base_recipe` があり status が
+    active / stabilized なら、Run の INSERT と同じトランザクションで
+    kind=generate の requests 行を自動起票します（1 Run につき1回、
+    `idempotency_key = run:{run_id}`）。
+
 ## PairwiseJudgment
 
 同じ seed の baseline run / arm run の生成結果を人間が盲検で対比較した記録です。Web GUI の

@@ -33,6 +33,14 @@ export interface BatchDetailData {
   siblings: { batch_id: string; via: 'refinement' | 'reference'; shared_id: string }[];
 }
 
+/** GET /api/v1/requests?kind=finalize&batch_id= の集計。worker-protocol.md の GUI 節参照。 */
+export interface FinalizeSummary {
+  queued: number;
+  running: number;
+  done: number;
+  failed: number;
+}
+
 /** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
@@ -47,6 +55,7 @@ export function BatchDetailPage({
   generationShortIds,
   batchThumbnails,
   diffParent,
+  finalizeSummary,
 }: {
   batch: BatchDetailData;
   storyNames: Record<string, string>;
@@ -58,6 +67,8 @@ export function BatchDetailPage({
   batchThumbnails: Map<string, string>;
   /** retry 元(親)Batchのprompt。Prompt セクションのチップdiff基準。retry元がなければnull。 */
   diffParent?: { shortId: string; prompt: string | null; negative_prompt: string | null } | null;
+  /** このBatch配下の全GenerationについてのfinalizeRequest状況の集計。 */
+  finalizeSummary: FinalizeSummary;
 }) {
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
   const storyParents = batch.story_relations.filter((r) => r.target_batch_id === batch.id);
@@ -299,6 +310,34 @@ export function BatchDetailPage({
                   </tr>
                 ))}
               </table>
+            </div>
+          </details>
+
+          <details class="section" open>
+            <summary>Finalize all arms</summary>
+            <div class="section-body">
+              <form
+                class="finalize-all-form"
+                data-generation-short-ids={batch.generations.map((g) => g.short_id).join(',')}
+              >
+                <label>
+                  <input type="checkbox" name="repin" /> repin
+                </label>
+                <label>
+                  <input type="checkbox" name="recolor" /> recolor
+                </label>
+                <label>
+                  <input type="checkbox" name="keep_legwear" /> keep legwear
+                </label>
+                <label>
+                  denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
+                </label>
+                <button type="submit">Finalize all arms</button>
+              </form>
+              <p class="finalize-summary">
+                finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}
+                {finalizeSummary.failed} failed
+              </p>
             </div>
           </details>
 

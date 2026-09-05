@@ -49,6 +49,15 @@ export interface GenerationDetailData {
 
 const RATINGS = ['bad', 'neutral', 'good'] as const;
 
+/** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
+export interface FinalizeRequestSummary {
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+  created_at: string;
+  error: string | null;
+  /** done の場合の納品 Generation の short_id（resolveGenerationShortIds で解決済み）。 */
+  resultShortId: string | null;
+}
+
 /** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
@@ -137,6 +146,7 @@ export function GenerationDetailPage({
   relationsIncoming,
   relationsOutgoing,
   imageMeta,
+  finalizeRequests,
 }: {
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
@@ -155,6 +165,8 @@ export function GenerationDetailPage({
   /** Retry relations of the owning Batch (target_batch_id = the Batch this one was refined into). */
   relationsOutgoing: { target_batch_id: string; reason: string | null }[];
   imageMeta: ImageMeta | null;
+  /** 最新の finalize request 一覧 (最大5件、新しい順)。段階2の GUI はここに積むだけで進捗はここで見る。 */
+  finalizeRequests: FinalizeRequestSummary[];
 }) {
   const ownBatchId = data.batch?.id;
 
@@ -484,6 +496,43 @@ export function GenerationDetailPage({
                   );
                 })()}
               </div>
+            </div>
+          </details>
+
+          <details class="section" open>
+            <summary>Finalize</summary>
+            <div class="section-body">
+              <form class="finalize-form" data-generation-short-id={data.short_id}>
+                <label>
+                  <input type="checkbox" name="repin" /> repin
+                </label>
+                <label>
+                  <input type="checkbox" name="recolor" /> recolor
+                </label>
+                <label>
+                  <input type="checkbox" name="keep_legwear" /> keep legwear
+                </label>
+                <label>
+                  denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
+                </label>
+                <button type="submit">Finalize</button>
+              </form>
+              {finalizeRequests.length > 0 ? (
+                <ul class="request-status-list">
+                  {finalizeRequests.map((r) => (
+                    <li class={`request-status-${r.status}`}>
+                      {r.status} · {r.created_at}
+                      {r.status === 'done' && r.resultShortId ? (
+                        <>
+                          {' '}
+                          — <a href={`/g/${r.resultShortId}`}>{r.resultShortId}</a>
+                        </>
+                      ) : null}
+                      {r.status === 'failed' && r.error ? <> — {r.error}</> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </details>
 

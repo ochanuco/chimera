@@ -38,8 +38,9 @@ Story の続きなのかを体系的に追跡しにくい問題があります�
 4.  chimera は Generation Experiment Orchestrator である。semantic
     な判断主体は Claude Code / Agent / Human のいずれでもよく、Python CLI
     は実行と記録を担当する。
-5.  ComfyUI workflow の構築・実行は comfyui-recipes に残し、chimera
-    自身は ComfyUI へ生成要求を送らない。
+5.  ComfyUI workflow の構築・実行は comfyui-recipes（worker）に残し、chimera
+    自身は ComfyUI へ到達しない。GUI が積んでよいのは semantic 判断を伴わない
+    再実行（finalize）だけで、GUI が触るのは自分の D1 の requests 行のみ。
 6.  canonical Generation URL を、人間・Claude・Discord・CLI
     の共通参照とする。
 7.  削除よりラベリングを優先し、生成履歴を破壊しない。
@@ -52,6 +53,7 @@ Story の続きなのかを体系的に追跡しにくい問題があります�
 -   `docs/domain-model.md` --- ER/ドメインモデル
 -   `docs/use-cases.md` --- 主要ユースケース
 -   `docs/generation-request.md` --- Claude Code → Python CLI 契約
+-   `docs/worker-protocol.md` --- requests キューと worker の契約
 -   `docs/api.md` --- Management API
 -   `docs/ui.md` --- Web GUI
 

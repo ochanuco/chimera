@@ -10,6 +10,7 @@ import type {
   GenerationRow,
   JudgmentWinner,
   PairwiseJudgmentRow,
+  RequestRow,
   StoryRow,
   StoryRelationRow,
 } from '../types';
@@ -178,6 +179,30 @@ export function serializePairwiseJudgment(row: PairwiseJudgmentRow, winner: Judg
     verdict: row.verdict,
     winner,
     judged_at: row.judged_at,
+  };
+}
+
+/** payload_hash は idempotency 判定の内部実装なので API レスポンスからは省く。 */
+export function serializeRequest(row: RequestRow) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    payload: JSON.parse(row.payload_json),
+    recipe_ref: row.recipe_ref,
+    run_id: row.run_id,
+    worker_id: row.worker_id,
+    attempt: row.attempt,
+    max_attempts: row.max_attempts,
+    claimed_at: row.claimed_at,
+    heartbeat_at: row.heartbeat_at,
+    finished_at: row.finished_at,
+    error: row.error,
+    result: row.result_json ? JSON.parse(row.result_json) : null,
+    idempotency_key: row.idempotency_key,
+    created_by: row.created_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 

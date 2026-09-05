@@ -5,6 +5,15 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Run / Promotion / requests 行の追加・更新も Experiment の「最終活動時刻」なので
+ * updated_at を進める。lib/experiments.ts と lib/requests.ts の両方が使うため、
+ * どちらにも属さないここに置く（両者間の循環 import を避ける）。
+ */
+export async function touchExperiment(db: D1Database, experimentId: string, at: string): Promise<void> {
+  await db.prepare('UPDATE experiments SET updated_at = ? WHERE id = ?').bind(at, experimentId).run();
+}
+
 /** D1 は 1 クエリあたり最大 100 個の bound parameter しか受け付けない。`IN (?, ?, ...)` を
  * 組み立てるヘルパーはこの上限を超えないよう、id 配列を `chunk` でこのサイズ以下に割ってから
  * クエリを複数回実行する。 */

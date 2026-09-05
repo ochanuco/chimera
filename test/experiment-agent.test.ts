@@ -88,7 +88,9 @@ describe('GET /api/v1/experiment-runs?pending=true', () => {
   });
 
   it('returns only runs without a batch, oldest first, with experiment context including base_parameters', async () => {
-    const exp = await createExperiment({ base_recipe: 'yukari', base_parameters: { pose: 'lounge', count: 3 } });
+    // base_recipe が無い Experiment: Run 作成時に requests 行が自動起票されないので
+    // pending=true の対象に残る (base_recipe 有りの場合は別の describe ブロックで検証)。
+    const exp = await createExperiment({ base_parameters: { pose: 'lounge', count: 3 } });
     const r1 = await createRun(exp.body.id);
     const r2 = await createRun(exp.body.id);
     const r3 = await createRun(exp.body.id);
@@ -112,7 +114,7 @@ describe('GET /api/v1/experiment-runs?pending=true', () => {
       id: exp.body.id,
       short_id: exp.body.short_id,
       status: 'active',
-      base_recipe: 'yukari',
+      base_recipe: null,
       base_parameters: { pose: 'lounge', count: 3 },
     });
   });
@@ -156,8 +158,50 @@ describe('GET /api/v1/experiment-runs?pending=true', () => {
   });
 });
 
+describe('Run creation auto-provisions a requests row (worker-protocol.md)', () => {
+  it('with base_recipe: creates a request, returns request_id, and the run is not pending', async () => {
+    const exp = await createExperiment({ base_recipe: 'yukari', base_parameters: { count: 2 } });
+    const run = await postJson<{ id: string; request_id: string | null }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      objective: 'try a variant',
+    });
+    expect(run.status).toBe(201);
+    expect(run.body.request_id).toBeTruthy();
+
+    const requests = await getJson<{ items: { id: string; kind: string; run_id: string | null; created_by: string }[] }>(
+      `/api/v1/requests?run_id=${run.body.id}`,
+    );
+    expect(requests.body.items).toHaveLength(1);
+    expect(requests.body.items[0]).toMatchObject({ id: run.body.request_id, kind: 'generate', created_by: 'system' });
+
+    const pending = await getJson<{ items: PendingRun[] }>('/api/v1/experiment-runs?pending=true&limit=200');
+    expect(pending.body.items.map((r) => r.id)).not.toContain(run.body.id);
+  });
+
+  it('with base_recipe but created with a batch attached: no request (already executed)', async () => {
+    const exp = await createExperiment({ base_recipe: 'yukari' });
+    const { batch } = await createGeneration();
+    const run = await postJson<{ id: string; request_id: string | null }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      batch_id: batch.id,
+    });
+    expect(run.status).toBe(201);
+    expect(run.body.request_id).toBeNull();
+    const requests = await getJson<{ items: unknown[] }>(`/api/v1/requests?run_id=${run.body.id}`);
+    expect(requests.body.items).toHaveLength(0);
+  });
+
+  it('without base_recipe: request_id is null and the run is pending', async () => {
+    const exp = await createExperiment();
+    const run = await postJson<{ id: string; request_id: string | null }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
+    expect(run.status).toBe(201);
+    expect(run.body.request_id).toBeNull();
+
+    const pending = await getJson<{ items: PendingRun[] }>('/api/v1/experiment-runs?pending=true&limit=200');
+    expect(pending.body.items.map((r) => r.id)).toContain(run.body.id);
+  });
+});
+
 describe('MCP server at /mcp', () => {
-  it('initialize succeeds and tools/list returns the eight tool names', async () => {
+  it('initialize succeeds and tools/list returns the eleven tool names', async () => {
     const init = await mcpCall('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
@@ -179,6 +223,9 @@ describe('MCP server at /mcp', () => {
         'attach_generation',
         'set_evaluation',
         'set_decision',
+        'create_request',
+        'get_request',
+        'list_requests',
       ].sort(),
     );
   });
@@ -268,6 +315,23 @@ describe('MCP server at /mcp', () => {
     const call = await mcpToolCall('attach_generation', { run_id: run.body.id, generation_id: otherGeneration.id });
     expect(call.isError).toBe(true);
     expect(call.text).toContain(`not the run's batch ${runBatch.id}`);
+  });
+
+  it('tools/call create_request creates a row with created_by mcp, visible through the REST API', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<{ created: boolean; request: { id: string; created_by: string } }>('create_request', {
+      kind: 'finalize',
+      payload: { generation_id: generation.id, options: { repin: true } },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.created).toBe(true);
+    expect(call.data?.request.created_by).toBe('mcp');
+
+    const viaRest = await getJson<{ created_by: string; kind: string }>(`/api/v1/requests/${call.data?.request.id}`);
+    expect(viaRest.status).toBe(200);
+    expect(viaRest.body.created_by).toBe('mcp');
+    expect(viaRest.body.kind).toBe('finalize');
   });
 });
 

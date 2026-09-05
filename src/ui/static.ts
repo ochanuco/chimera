@@ -428,6 +428,26 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
+.finalize-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.finalize-form input[type="number"] { width: 5rem; }
+.finalize-form button, .finalize-all-form button {
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+.finalize-all-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.finalize-all-form input[type="number"] { width: 5rem; }
+.finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
+.request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
+.request-status-queued { color: var(--accent); }
+.request-status-running { color: var(--neutral); }
+.request-status-done { color: var(--good); }
+.request-status-failed { color: var(--bad); }
+.request-status-cancelled { color: var(--text-dim); }
+
 .batch-row {
   display: flex;
   gap: 1rem;
@@ -1152,6 +1172,61 @@ export const appJs = `
     });
   }
 
+  // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
+  function finalizeOptionsFrom(form) {
+    var denoiseRaw = qs('input[name="denoise"]', form).value;
+    return {
+      repin: qs('input[name="repin"]', form).checked,
+      recolor: qs('input[name="recolor"]', form).checked,
+      keep_legwear: qs('input[name="keep_legwear"]', form).checked ? true : null,
+      denoise: denoiseRaw === '' ? null : Number(denoiseRaw),
+    };
+  }
+
+  function postFinalizeRequest(generationShortId, options) {
+    return api('/api/v1/requests', 'POST', {
+      kind: 'finalize',
+      payload: { generation_id: generationShortId, options: options },
+      idempotency_key: 'gui:finalize:' + generationShortId + ':' + crypto.randomUUID(),
+      created_by: 'gui',
+    });
+  }
+
+  function initFinalize() {
+    document.addEventListener('submit', async function (ev) {
+      const form = ev.target.closest('.finalize-form');
+      if (!form) return;
+      ev.preventDefault();
+      const shortId = form.getAttribute('data-generation-short-id');
+      try {
+        await postFinalizeRequest(shortId, finalizeOptionsFrom(form));
+        location.reload();
+      } catch (e) {
+        alert('finalize failed: ' + e.message);
+      }
+    });
+  }
+
+  // --- Finalize all arms (Batch Detail): 1 Generation につき1つのfinalize requestを順に積む ---
+  function initFinalizeAll() {
+    document.addEventListener('submit', async function (ev) {
+      const form = ev.target.closest('.finalize-all-form');
+      if (!form) return;
+      ev.preventDefault();
+      const idsAttr = form.getAttribute('data-generation-short-ids') || '';
+      const ids = idsAttr.split(',').filter(function (id) { return id.length > 0; });
+      const options = finalizeOptionsFrom(form);
+      try {
+        for (const shortId of ids) {
+          await postFinalizeRequest(shortId, options);
+        }
+        location.reload();
+      } catch (e) {
+        alert('finalize failed: ' + e.message);
+      }
+    });
+  }
+
   // --- Compare selection bar ---
   // Feeds off two independent selection sources: Gallery's checkboxes
   // (.compare-check) and Graph's clicked-to-select thumbnails (.graph-gen-thumb.selected).
@@ -1800,6 +1875,8 @@ export const appJs = `
     initTagRemove();
     initTagSuggestions();
     initNoteForm();
+    initFinalize();
+    initFinalizeAll();
     initCompareBar();
     initStoryRelationEdit();
     initGraphScope();

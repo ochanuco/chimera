@@ -302,6 +302,43 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(404);
   });
 
+  it('GET /g/{short_id} has the Finalize form, and shows queued after posting a finalize request', async () => {
+    const { generation } = await createGeneration();
+
+    const before = await req(`/g/${generation.short_id}`);
+    const beforeHtml = await before.text();
+    expect(beforeHtml).toContain('finalize-form');
+    expect(beforeHtml).toContain(`data-generation-short-id="${generation.short_id}"`);
+
+    await postJson('/api/v1/requests', {
+      kind: 'finalize',
+      payload: { generation_id: generation.id, options: { repin: true } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+
+    const after = await req(`/g/${generation.short_id}`);
+    const afterHtml = await after.text();
+    expect(afterHtml).toContain('request-status-queued');
+  });
+
+  it('GET /b/{short_id} has the Finalize all arms form and the status count line', async () => {
+    const { generation, batch } = await createGeneration();
+    await postJson('/api/v1/requests', {
+      kind: 'finalize',
+      payload: { generation_id: generation.id, options: { repin: true } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+
+    const res = await req(`/b/${batch.id}`);
+    const html = await res.text();
+    expect(html).toContain('Finalize all arms');
+    expect(html).toContain('finalize-all-form');
+    expect(html).toContain(`data-generation-short-ids="${generation.short_id}"`);
+    expect(html).toContain('finalize: 1 queued · 0 running · 0 done · 0 failed');
+  });
+
   it('GET /stories/{id} includes the relation label', async () => {
     const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, getJson, postJson, req } from './helpers';
+import { createBatch, createGeneration, getJson, ingestGeneration, postJson, req } from './helpers';
 
 describe('Batch create + idempotency', () => {
   it('returns 201 for a new batch and 200 with the same id on retry', async () => {
@@ -180,5 +180,71 @@ describe('Job creation idempotency', () => {
     });
     expect(retry.status).toBe(200);
     expect(retry.body.id).toBe(first.body.id);
+  });
+});
+
+describe('Batch / Job replay includes resume info (worker-protocol.md)', () => {
+  it('POST /api/v1/batches replay returns jobs[] with seed/status/generations after one job is ingested', async () => {
+    const batchKey = crypto.randomUUID();
+    const batch = await postJson<{ id: string }>('/api/v1/batches', { idempotency_key: batchKey, prompt: 'a test prompt' });
+    expect(batch.status).toBe(201);
+
+    const jobKey = crypto.randomUUID();
+    const job = await postJson<{ id: string }>(`/api/v1/batches/${batch.body.id}/jobs`, {
+      idempotency_key: jobKey,
+      seed: 123,
+      index: 0,
+    });
+    expect(job.status).toBe(201);
+
+    const ingest = await ingestGeneration(job.body.id, { seed: 123, original_filename: 'out_00001_.png', comfy_output_index: 0 });
+    expect(ingest.status).toBe(201);
+
+    const replay = await postJson<{
+      id: string;
+      jobs: {
+        id: string;
+        index: number;
+        seed: number;
+        status: string;
+        comfy_prompt_id: string | null;
+        generations: { id: string; comfy_output_index: number }[];
+      }[];
+    }>('/api/v1/batches', { idempotency_key: batchKey, prompt: 'a test prompt' });
+    expect(replay.status).toBe(200);
+    expect(replay.body.id).toBe(batch.body.id);
+    expect(replay.body.jobs).toHaveLength(1);
+    expect(replay.body.jobs[0]).toMatchObject({ id: job.body.id, index: 0, seed: 123, status: 'ingested' });
+    expect(replay.body.jobs[0]!.generations).toEqual([{ id: ingest.body.id, comfy_output_index: 0 }]);
+  });
+
+  it('POST /api/v1/batches/{id}/jobs create response has comfy_prompt_id/generations for symmetry, and replay returns ingested generations[]', async () => {
+    const batch = await createBatch();
+
+    const jobKey = crypto.randomUUID();
+    const job = await postJson<{ id: string; comfy_prompt_id: string | null; generations: unknown[] }>(
+      `/api/v1/batches/${batch.body.id}/jobs`,
+      { idempotency_key: jobKey, seed: 123, index: 0 },
+    );
+    expect(job.status).toBe(201);
+    expect(job.body.comfy_prompt_id).toBeNull();
+    expect(job.body.generations).toEqual([]);
+
+    const ingest = await ingestGeneration(job.body.id, { seed: 123, original_filename: 'out_00001_.png', comfy_output_index: 0 });
+    expect(ingest.status).toBe(201);
+
+    const replay = await postJson<{
+      id: string;
+      batch_id: string;
+      seed: number;
+      index: number;
+      status: string;
+      comfy_prompt_id: string | null;
+      generations: { id: string; comfy_output_index: number }[];
+    }>(`/api/v1/batches/${batch.body.id}/jobs`, { idempotency_key: jobKey, seed: 123, index: 0 });
+    expect(replay.status).toBe(200);
+    expect(replay.body.id).toBe(job.body.id);
+    expect(replay.body.status).toBe('ingested');
+    expect(replay.body.generations).toEqual([{ id: ingest.body.id, comfy_output_index: 0 }]);
   });
 });

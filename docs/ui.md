@@ -13,8 +13,10 @@ Progressive disclosure
 見る → 選ぶ → Claudeに渡す
 ```
 
-Web GUI から ComfyUI へ生成要求を送りません。ComfyUI workflow の構築・実行は
-comfyui-recipes の責務です。
+Web GUI は ComfyUI へ到達しません。GUI が積んでよいのは semantic 判断を伴わない
+再実行（finalize）だけで、GUI が触るのは自分の D1 の requests 行のみです
+（[worker-protocol.md](worker-protocol.md)）。ComfyUI workflow の構築・実行は
+comfyui-recipes（worker）が担います。
 
 ## Navigation
 
@@ -121,6 +123,12 @@ retry元Batchのprompt / negative_promptを基準にトークン単位でdiffし
 変化したトークンを黄枠（`0.8→1.3`のように基準値→現在値のバッジ）、削除されたトークンを取り消し線付きの
 別行で表示します。基準にしたBatchのshort_idはセクション内に`diff base: <short_id>`として明示します。
 
+Finalize all armsセクションは、このBatch配下の全GenerationについてFinalizeと
+同じoptions（`repin` / `recolor` / `keep legwear` / `denoise`）で1 Generation
+1行のfinalize requestを順に積みます（Generation Detailの Finalize
+参照、[worker-protocol.md](worker-protocol.md)）。直下には
+`finalize: N queued · M running · K done · F failed`の集計行を表示します。
+
 主な操作:
 
 -   Generation rating
@@ -128,6 +136,7 @@ retry元Batchのprompt / negative_promptを基準にトークン単位でdiffし
 -   Tag
 -   複数Generation選択
 -   Compare
+-   Finalize all arms
 -   provenance確認
 
 ## Compare
@@ -221,6 +230,7 @@ Map
 子
 Story
 Workflow
+Finalize
 ComfyUI Job
 Git
 Note
@@ -293,6 +303,15 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
+
+Workflowの直後のFinalizeセクションは、段階2の唯一の生成要求手段です（不変条件:
+GUIが積んでよいのはsemantic判断を伴わない再実行=finalizeだけ。ComfyUIへは到達しない。
+[worker-protocol.md](worker-protocol.md)参照）。`repin` / `recolor` / `keep
+legwear`のチェックボックスと、空欄がrecipe既定を意味する`denoise`の数値入力を持ち、
+Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
+"gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
+した最新のfinalize requestを最大5件、新しい順に`status · created_at`の行として
+表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
 
 ## Provenance View
 

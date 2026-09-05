@@ -194,6 +194,32 @@ export interface BatchRelationRow {
   created_at: string;
 }
 
+export type RequestKind = 'generate' | 'finalize';
+export type RequestStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+export type RequestCreatedBy = 'brain' | 'mcp' | 'gui' | 'system';
+
+export interface RequestRow {
+  id: string;
+  kind: RequestKind;
+  status: RequestStatus;
+  payload_json: string;
+  payload_hash: string;
+  recipe_ref: string;
+  run_id: string | null;
+  worker_id: string | null;
+  attempt: number;
+  max_attempts: number;
+  claimed_at: string | null;
+  heartbeat_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  result_json: string | null;
+  idempotency_key: string;
+  created_by: RequestCreatedBy;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StoryRelationRow {
   id: string;
   story_id: string;

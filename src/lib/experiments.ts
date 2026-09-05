@@ -10,12 +10,14 @@ import {
   getGenerationByIdOrShortId,
   nowIso,
   resolveBatchThumbnails,
+  touchExperiment,
 } from './db';
 import { parseJsonObjectOrNull, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { listTagsForTarget } from './tags';
 import { isUuid, uuidv7 } from './uuidv7';
 import { resolveBatchRenderFacts } from './render-facts';
+import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import {
   generationImageUrl,
   serializeExperiment,
@@ -24,6 +26,8 @@ import {
   serializeGenerationLight,
 } from './serialize';
 import type { ExperimentPromotionRow, ExperimentRow, ExperimentRunRow, ExperimentStatus, GenerationRow } from '../types';
+
+export { touchExperiment };
 
 export async function getExperimentOr404(db: D1Database, idOrShortId: string): Promise<ExperimentRow> {
   const row = await getExperimentByIdOrShortId(db, idOrShortId);
@@ -35,11 +39,6 @@ export async function getRunOr404(db: D1Database, id: string): Promise<Experimen
   const row = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(id).first<ExperimentRunRow>();
   if (!row) throw notFound('experiment run');
   return row;
-}
-
-/** Run / Promotion の追加・更新も Experiment の「最終活動時刻」なので updated_at を進める。 */
-export async function touchExperiment(db: D1Database, experimentId: string, at: string): Promise<void> {
-  await db.prepare('UPDATE experiments SET updated_at = ? WHERE id = ?').bind(at, experimentId).run();
 }
 
 export async function resolveBatchOr404(db: D1Database, idOrShortId: string) {
@@ -261,10 +260,18 @@ export interface CreateExperimentRunResult {
   row: ExperimentRunRow;
   /** false ならキーの再送で既存 Run をそのまま返した（何も作成・更新していない）。 */
   created: boolean;
+  /** 自動起票された requests 行の id。base_recipe の無い Experiment では null。 */
+  request_id: string | null;
 }
 
 async function findRunByIdempotencyKey(db: D1Database, key: string): Promise<ExperimentRunRow | null> {
   return db.prepare('SELECT * FROM experiment_runs WHERE idempotency_key = ?').bind(key).first<ExperimentRunRow>();
+}
+
+/** Run 作成時に自動起票された requests 行（あれば1件だけ、`run:{run_id}` が unique）。 */
+async function findAutoRequestIdForRun(db: D1Database, runId: string): Promise<string | null> {
+  const row = await db.prepare('SELECT id FROM requests WHERE run_id = ? LIMIT 1').bind(runId).first<{ id: string }>();
+  return row?.id ?? null;
 }
 
 /** POST /api/v1/experiments/{id}/runs と create_run MCP tool が共有する。 */
@@ -283,7 +290,7 @@ export async function createExperimentRun(
           `idempotency_key already used by a run under a different experiment (${existing.experiment_id})`,
         );
       }
-      return { row: existing, created: false };
+      return { row: existing, created: false, request_id: await findAutoRequestIdForRun(db, existing.id) };
     }
   }
 
@@ -316,48 +323,108 @@ export async function createExperimentRun(
   const now = nowIso();
   const id = uuidv7();
 
+  // base_recipe があり status が active/stabilized の Experiment だけ、Run 作成と
+  // 同じトランザクションで kind=generate の requests 行を自動起票する
+  // (worker-protocol.md「ExperimentRun 由来の generate」)。base_recipe の無い
+  // Experiment に後から付けても、既存 Run へは遡って起票しない。batch_id 付きで
+  // 作られた Run は実行済みの記録なので起票しない。
+  const shouldAutoCreateRequest =
+    experiment.base_recipe !== null &&
+    batchId === null &&
+    (experiment.status === 'active' || experiment.status === 'stabilized');
+  let requestId: string | null = null;
+  let requestPayloadJson: string | null = null;
+  let requestPayloadHash: string | null = null;
+  if (shouldAutoCreateRequest) {
+    // run_index は下の INSERT ... SELECT が確定する採番の正本。ここでの概算値は
+    // 自動起票する payload の instruction 文言 (objective 未指定時のフォールバック)
+    // にしか使わないため、同時作成による多少のズレは許容する。
+    const countRow = await db
+      .prepare('SELECT COUNT(*) AS c FROM experiment_runs WHERE experiment_id = ?')
+      .bind(experiment.id)
+      .first<{ c: number }>();
+    const approxRunForPayload: ExperimentRunRow = {
+      id,
+      experiment_id: experiment.id,
+      run_index: (countRow?.c ?? 0) + 1,
+      parent_run_id: parentRunId,
+      batch_id: batchId,
+      generation_id: generationId,
+      overrides_json: JSON.stringify(body.overrides ?? {}),
+      objective: body.objective ?? null,
+      evaluation_json: null,
+      decision_json: null,
+      note: body.note ?? null,
+      idempotency_key: body.idempotency_key ?? null,
+      variables_json: null,
+      created_at: now,
+      updated_at: now,
+    };
+    const payload = buildRunRequestPayload(experiment, approxRunForPayload);
+    requestId = uuidv7();
+    requestPayloadJson = JSON.stringify(payload);
+    requestPayloadHash = await canonicalPayloadHash('generate', payload);
+  }
+
   // run_index の採番を SELECT MAX(...) → INSERT の2ステップに分けると、同じ Experiment への
   // 同時 create が同じ次番号を読み、片方が UNIQUE (experiment_id, run_index) で失敗する。
   // 採番を INSERT ... SELECT の1文に埋め込み、MAX の読み取りと確定を単一の atomic statement にする。
+  const runInsertStatement = db
+    .prepare(
+      `INSERT INTO experiment_runs
+         (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
+          objective, evaluation_json, decision_json, note, idempotency_key, variables_json, created_at, updated_at)
+       SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       FROM experiment_runs WHERE experiment_id = ?`,
+    )
+    .bind(
+      id,
+      experiment.id,
+      parentRunId,
+      batchId,
+      generationId,
+      JSON.stringify(body.overrides ?? {}),
+      body.objective ?? null,
+      body.evaluation ? JSON.stringify(body.evaluation) : null,
+      body.decision ? JSON.stringify(body.decision) : null,
+      body.note ?? null,
+      body.idempotency_key ?? null,
+      body.variables ? JSON.stringify(body.variables) : null,
+      now,
+      now,
+      experiment.id,
+    );
+
+  const statements = [runInsertStatement];
+  if (shouldAutoCreateRequest && requestId && requestPayloadJson && requestPayloadHash) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO requests (
+             id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
+             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at
+           ) VALUES (?, 'generate', 'queued', ?, ?, 'production', ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?)`,
+        )
+        .bind(requestId, requestPayloadJson, requestPayloadHash, id, `run:${id}`, now, now),
+    );
+  }
+
   try {
-    await db
-      .prepare(
-        `INSERT INTO experiment_runs
-           (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
-            objective, evaluation_json, decision_json, note, idempotency_key, variables_json, created_at, updated_at)
-         SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-         FROM experiment_runs WHERE experiment_id = ?`,
-      )
-      .bind(
-        id,
-        experiment.id,
-        parentRunId,
-        batchId,
-        generationId,
-        JSON.stringify(body.overrides ?? {}),
-        body.objective ?? null,
-        body.evaluation ? JSON.stringify(body.evaluation) : null,
-        body.decision ? JSON.stringify(body.decision) : null,
-        body.note ?? null,
-        body.idempotency_key ?? null,
-        body.variables ? JSON.stringify(body.variables) : null,
-        now,
-        now,
-        experiment.id,
-      )
-      .run();
+    // Run の INSERT と requests 行の INSERT を1つの db.batch (= 1トランザクション) に
+    // することで、片方だけが残る状態を作らない。
+    await db.batch(statements);
   } catch (err) {
     // 同じキーでの同時 create が両方この INSERT まで進み、片方が UNIQUE
     // (idempotency_key) で失敗するレース。先に確定した側の行を読み直して返す。
     if (body.idempotency_key && err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
       const raced = await findRunByIdempotencyKey(db, body.idempotency_key);
-      if (raced) return { row: raced, created: false };
+      if (raced) return { row: raced, created: false, request_id: await findAutoRequestIdForRun(db, raced.id) };
     }
     throw err;
   }
   await touchExperiment(db, experiment.id, now);
 
-  return { row: await getRunOr404(db, id), created: true };
+  return { row: await getRunOr404(db, id), created: true, request_id: requestId };
 }
 
 export interface UpdateExperimentRunInput {
@@ -457,9 +524,10 @@ export interface PendingRunRow extends ExperimentRunRow {
 }
 
 /**
- * GET /api/v1/experiment-runs?pending=true の唯一の実装。batch_id が付いていない
- * Run を Experiment 横断で拾う runner の作業キュー。abandoned / promoted な
- * Experiment の Run は拾わない（docs/experiment-agent.md 参照）。
+ * GET /api/v1/experiment-runs?pending=true の唯一の実装。`batch_id` が null かつ
+ * requests 行を持たない Run を Experiment 横断で拾う（base_recipe の無い
+ * Experiment の Run など、requests が自動起票されなかったもの）。abandoned /
+ * promoted な Experiment の Run は拾わない（docs/experiment-agent.md 参照）。
  */
 export async function listPendingRuns(db: D1Database, limit: number, offset: number): Promise<PendingRunRow[]> {
   const { results } = await db
@@ -469,6 +537,7 @@ export async function listPendingRuns(db: D1Database, limit: number, offset: num
        FROM experiment_runs r
        JOIN experiments e ON e.id = r.experiment_id
        WHERE r.batch_id IS NULL AND e.status IN ('active', 'stabilized')
+         AND NOT EXISTS (SELECT 1 FROM requests q WHERE q.run_id = r.id)
        ORDER BY r.created_at ASC, r.id ASC
        LIMIT ? OFFSET ?`,
     )

@@ -30,7 +30,19 @@ POST /api/v1/batches
 
 request.json の内容、Git metadata、idempotency key を送ります。
 
-同一 idempotency key の再送は既存Batchを返し、重複作成しません。
+同一 idempotency key の再送は既存Batchを返し、重複作成しません。再送のレスポンスは
+新規作成時と同じ形に加え、worker が再開に使う `jobs[]` を含みます
+（[worker-protocol.md](worker-protocol.md#再送レスポンスに含めるもの)）。
+
+``` json
+{
+  "id": "...", "short_id": "...", "status": "running",
+  "jobs": [
+    { "id": "...", "index": 0, "seed": 123, "status": "ingested", "comfy_prompt_id": "...",
+      "generations": [{ "id": "...", "comfy_output_index": 0 }] }
+  ]
+}
+```
 
 ### Update Batch
 
@@ -95,6 +107,10 @@ POST /api/v1/batches/{batch_id}/jobs
   "index": 0
 }
 ```
+
+201（新規作成）は `{ id, batch_id, seed, index, status, comfy_prompt_id: null, generations: [] }`
+を返します。同一 idempotency key の再送は200で、当該 Job の `comfy_prompt_id` /
+ingest 済み `generations[]` を含みます（[worker-protocol.md](worker-protocol.md#再送レスポンスに含めるもの)）。
 
 ### Update Job
 
@@ -402,6 +418,12 @@ PATCH /api/v1/experiment-runs/{run_id} で変更できます（`variables: null`
 でクリア）。Experiment View の facts テーブルでは `variables.<key>` という
 追加列として表示されます。
 
+レスポンスは Run の各フィールドに加え `request_id` を含みます。Experiment に
+`base_recipe` があり status が active / stabilized なら、この Run 作成と同じ
+トランザクションで chimera が `kind = generate` の requests 行を自動起票し、
+その id が入ります。それ以外は `null` です
+（[worker-protocol.md](worker-protocol.md)「ExperimentRun 由来の generate」）。
+
 ### List Runs
 
 ``` text
@@ -519,6 +541,34 @@ PATCH /api/v1/promotions/{promotion_id}
 -   `proposed` 以外の状態で `promoted_overrides` を変更しようとした
 
 Experiment の tag / bookmark は Tags / Bookmark 章の endpoint を使います。
+
+## Request
+
+worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキューです。契約の正本は
+[worker-protocol.md](worker-protocol.md)（テーブル定義、状態遷移、payload の形、
+`recipe_ref`、idempotency の導出）で、ここではルーティングとクエリパラメータだけ
+挙げます。
+
+``` text
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容)
+GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&batch_id=&pending=true&limit=&offset=
+POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
+GET    /api/v1/requests/{id}
+PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / done / failed。brain・GUI: cancelled
+```
+
+`GET` のクエリパラメータ:
+
+-   `status` / `kind`: 完全一致
+-   `run_id`: `kind = generate` の行のみ持つ
+-   `generation_id`: `kind = finalize` の行を対象に、その `payload.generation_id`
+    が渡した値（UUID / short_id どちらでも可）と一致するものを返す
+-   `batch_id`: 同様に `kind = finalize` の行を、その Batch 配下の Generation
+    を対象にしたものに絞る（UUID / short_id どちらでも可）
+-   `pending=true`: `status=queued` の別名
+
+レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
+（`payload_hash` は内部実装なので含めません）。
 
 ## PairwiseJudgment
 
@@ -1052,6 +1102,8 @@ APIへ解決可能な設計とします。
 -   Batch create
 -   ComfyJob create
 -   Generation ingest
+-   Request create（同じキーで `kind` / payload が異なれば409。
+    [worker-protocol.md](worker-protocol.md)「idempotency と再実行の再開」参照）
 
 ネットワークエラー後の再送で重複レコードを作らないこと。
 
