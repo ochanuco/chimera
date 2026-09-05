@@ -631,3 +631,38 @@ Experimentの各画面で1操作で切り替えられるようにします。
 画像一覧の密度は重要ですが、metadataを増やして情報密度を上げないこと。
 
 画像サイズと列数をレスポンシブに調整し、semantic情報はDetailへ退避します。
+
+## Telemetry
+
+UI/UXを改善するため、人間がブラウザ上で行った操作のログをPostHogに送ります。
+MCP / APIを直接叩くエージェントの操作はブラウザを通らないため対象外です。
+
+`POSTHOG_KEY` secret（`wrangler secret put POSTHOG_KEY`）を設定すると有効になります。
+未設定の場合、`/assets/telemetry.js`は何も初期化しない空のJSを返し、telemetryは完全に
+無効になります。`POSTHOG_HOST`は省略時`https://us.i.posthog.com`です。
+
+Cloudflare Accessで認証されたメールアドレス（`Cf-Access-Authenticated-User-Email`
+ヘッダ）があれば`posthog.identify`でそのユーザーとして識別します。ヘッダが無い
+リクエスト（Access境界の外、またはヘッダ未設定）は匿名のままです。
+
+autocapture・pageview・pageleaveに加えセッションリプレイも有効化していますが、
+リプレイの記録自体はPostHog側のプロジェクト設定でも有効化が必要です。
+
+イベント名は「名詞.動詞」の形にしています。`ui.error`は各操作が失敗したときの
+共通イベントで、`action`にどの操作が失敗したかを記録します。
+
+| event | properties | 発火箇所 |
+| --- | --- | --- |
+| `rating.set` | `generation_id`, `rating`, `previous` | Generationのrating変更（`initRating`） |
+| `bookmark.toggle` | `kind`, `id`, `bookmarked` | bookmarkの切り替え（`initBookmark`） |
+| `experiment.status` | `experiment_id`, `from`, `to` | Experimentのstatus遷移（`initExperimentStatus`） |
+| `tag.add` | `kind`, `id`, `tag` | tag追加（`initTagAdd`） |
+| `tag.remove` | `kind`, `id`, `tag_id` | tag削除（`initTagRemove`） |
+| `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
+| `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
+| `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
+| `graph.scope` | `scope` | Graphのscope切り替え（`initGraphScope`） |
+| `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
+| `story_relation.save` | `story_id`, `relation_id` | StoryRelationのラベル編集（`initStoryRelationEdit`） |
+| `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
+| `ui.error` | `action`, `message`, `status`, 該当操作のprops | 上記操作の失敗時 |

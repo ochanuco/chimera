@@ -860,6 +860,20 @@ export const appJs = `
     return ct.indexOf('application/json') !== -1 ? res.json() : null;
   }
 
+  // --- Telemetry (docs/ui.md "Telemetry"): /assets/telemetry.js が PostHog を初期化した
+  // ときだけ window.posthog がある。無効時は no-op。
+  // 多くの呼び出し元が capture 直後に reload / 遷移するので、バッチに乗せず即時 beacon で送る。
+  function track(event, props) {
+    try {
+      if (window.posthog && typeof window.posthog.capture === 'function') {
+        window.posthog.capture(event, props || {}, { transport: 'sendBeacon', send_instantly: true });
+      }
+    } catch (e) {}
+  }
+  function trackError(action, e, props) {
+    track('ui.error', Object.assign({ action: action, message: e && e.message ? e.message : String(e), status: e && e.status ? e.status : null }, props || {}));
+  }
+
   // --- Clipboard helpers (used by copy-id buttons and the Graph context menu) ---
   function flashCopied(btn, text) {
     const original = btn.textContent;
@@ -925,7 +939,9 @@ export const appJs = `
         qsa('.rate-btn', group).forEach(function (b) {
           b.classList.toggle('active', b.getAttribute('data-rating') === next);
         });
+        track('rating.set', { generation_id: id, rating: next, previous: current || null });
       } catch (e) {
+        trackError('rating.set', e, { generation_id: id });
         alert('rating update failed: ' + e.message);
       }
     });
@@ -943,7 +959,9 @@ export const appJs = `
       try {
         await api('/api/v1/' + kind + '/' + id + '/bookmark', method);
         btn.setAttribute('data-bookmarked', bookmarked ? 'false' : 'true');
+        track('bookmark.toggle', { kind: kind, id: id, bookmarked: !bookmarked });
       } catch (e) {
+        trackError('bookmark.toggle', e, { kind: kind, id: id });
         alert('bookmark update failed: ' + e.message);
       }
     });
@@ -960,8 +978,10 @@ export const appJs = `
       try {
         await api('/api/v1/experiments/' + id, 'PATCH', { status: next });
         select.setAttribute('data-current', next);
+        track('experiment.status', { experiment_id: id, from: previous, to: next });
         location.reload();
       } catch (e) {
+        trackError('experiment.status', e, { experiment_id: id, from: previous, to: next });
         alert('status update failed: ' + e.message);
         select.value = previous;
       }
@@ -1085,7 +1105,9 @@ export const appJs = `
           }
         }
         input.value = '';
+        track('tag.add', { kind: kind, id: id, tag: tag.name });
       } catch (e) {
+        trackError('tag.add', e, { kind: kind, id: id });
         alert('failed to add tag: ' + e.message);
       }
     });
@@ -1102,7 +1124,9 @@ export const appJs = `
       try {
         await api('/api/v1/' + kind + '/' + id + '/tags/' + tagId, 'DELETE');
         btn.closest('.tag-chip').remove();
+        track('tag.remove', { kind: kind, id: id, tag_id: tagId });
       } catch (e) {
+        trackError('tag.remove', e, { kind: kind, id: id, tag_id: tagId });
         alert('failed to remove tag: ' + e.message);
       }
     });
@@ -1167,7 +1191,9 @@ export const appJs = `
           status.textContent = 'saved';
           setTimeout(function () { status.textContent = ''; }, 1500);
         }
+        track('note.save', { kind: kind, id: id, length: textarea.value.length });
       } catch (e) {
+        trackError('note.save', e, { kind: kind, id: id });
         if (status) status.textContent = 'failed: ' + e.message;
       }
     });
@@ -1199,10 +1225,13 @@ export const appJs = `
       if (!form) return;
       ev.preventDefault();
       const shortId = form.getAttribute('data-generation-short-id');
+      const options = finalizeOptionsFrom(form);
       try {
-        await postFinalizeRequest(shortId, finalizeOptionsFrom(form));
+        await postFinalizeRequest(shortId, options);
+        track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId }, options));
         location.reload();
       } catch (e) {
+        trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
         alert('finalize failed: ' + e.message);
       }
     });
@@ -1221,8 +1250,10 @@ export const appJs = `
         for (const shortId of ids) {
           await postFinalizeRequest(shortId, options);
         }
+        track('finalize.submit', Object.assign({ scope: 'all', count: ids.length }, options));
         location.reload();
       } catch (e) {
+        trackError('finalize.submit', e, { scope: 'all', count: ids.length });
         alert('finalize failed: ' + e.message);
       }
     });
@@ -1328,6 +1359,11 @@ export const appJs = `
     document.addEventListener('change', function (ev) {
       if (ev.target.classList && ev.target.classList.contains('compare-check')) updateCompareBar();
     });
+    document.addEventListener('click', function (ev) {
+      const link = ev.target.closest ? ev.target.closest('#compare-link') : null;
+      if (!link) return;
+      track('compare.open', { count: collectCompareIds().length });
+    });
     updateCompareBar();
   }
 
@@ -1359,6 +1395,7 @@ export const appJs = `
       else if (value === 'all') query = 'all=1';
       else if (value.indexOf('story:') === 0) query = 'story=' + value.slice('story:'.length);
       else if (value.indexOf('root:') === 0) query = 'root=' + value.slice('root:'.length);
+      track('graph.scope', { scope: value });
       goToGraphScope(query);
     });
   }
@@ -1513,7 +1550,9 @@ export const appJs = `
         const display = document.querySelector('.rel-label-display[data-relation-id="' + relationId + '"]');
         if (display) display.textContent = label || '(no label)';
         form.classList.add('hidden');
+        track('story_relation.save', { story_id: storyId, relation_id: relationId });
       } catch (e) {
+        trackError('story_relation.save', e, { story_id: storyId, relation_id: relationId });
         alert('failed to update relation: ' + e.message);
       }
     });
@@ -1893,13 +1932,16 @@ export const appJs = `
         judged += 1;
         updateProgress();
         showReveal(formatReveal(res.reveal));
+        track('judge.pick', { experiment_id: experimentId, verdict: verdict, seed: pair.seed, index: index, judged: judged });
       } catch (e) {
         if (e.status === 409) {
           judged += 1;
           updateProgress();
           showReveal('already judged');
+          track('judge.pick', { experiment_id: experimentId, verdict: verdict, seed: pair.seed, index: index, judged: judged, duplicate: true });
           return;
         }
+        trackError('judge.pick', e, { experiment_id: experimentId, verdict: verdict, seed: pair.seed, index: index });
         alert('judgment failed: ' + e.message);
         setButtonsDisabled(false);
       } finally {
@@ -1938,6 +1980,21 @@ export const appJs = `
     renderCurrent();
   }
 
+  // --- Gallery filter form (src/ui/pages/Gallery.tsx .filter-form) ---
+  // Fires on submit, before the normal GET navigation happens -- preventDefault
+  // is intentionally not called.
+  function initGalleryFilter() {
+    document.addEventListener('submit', function (ev) {
+      const form = ev.target.closest('.filter-form');
+      if (!form) return;
+      const fields = {};
+      new FormData(form).forEach(function (value, key) {
+        if (value !== '') fields[key] = value;
+      });
+      track('gallery.filter', fields);
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -1948,6 +2005,7 @@ export const appJs = `
     initNoteForm();
     initFinalize();
     initFinalizeAll();
+    initGalleryFilter();
     initRequestLive();
     initCompareBar();
     initStoryRelationEdit();
