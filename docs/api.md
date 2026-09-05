@@ -570,6 +570,20 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / done / failed。
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。
 
+## WebSocket
+
+段階3の push / 進捗中継（WorkerHub、Durable Object）。契約の正本は
+[worker-protocol.md](worker-protocol.md#段階-3-workerhub)（メッセージの型、broadcast の規則、
+alarm、再接続）です。
+
+``` text
+GET /api/v1/worker/ws      worker 用アップグレード
+GET /api/v1/requests/ws    GUI viewer 用アップグレード
+```
+
+socket は通知路で、正本は変わらず D1 です。claim / PATCH の HTTP 契約（上記 Request 節）は
+push の有無に関わらず同じままです。
+
 ## PairwiseJudgment
 
 同じseedのbaseline run / arm runの生成結果を人間が盲検で対比較した結果です。

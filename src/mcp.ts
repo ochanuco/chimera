@@ -31,6 +31,7 @@ import {
   evaluationOverall,
 } from './lib/experiments';
 import { createRequest, getRequestOr404, listRequests, defaultRecipeRef } from './lib/requests';
+import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import type { Bindings } from './types';
@@ -90,10 +91,16 @@ const createRequestInputSchema = z
     }
   });
 
-export function createChimeraMcpServer(env: Bindings, origin: string): McpServer {
+export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
   const bucket = env.IMAGES;
   const server = new McpServer({ name: 'chimera', version: '1.0.0' });
+
+  /** hub 通知はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
+  function notifyHubInBackground(...args: Parameters<typeof notifyHub>): void {
+    const promise = notifyHub(...args);
+    if (executionCtx) executionCtx.waitUntil(promise);
+  }
 
   server.registerTool(
     'list_experiments',
@@ -167,6 +174,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
         { overrides, objective, parent_run_id, idempotency_key, variables },
         { recipeRef: defaultRecipeRef(env) },
       );
+      if (created && request_id) {
+        const requestRow = await getRequestOr404(db, request_id);
+        notifyHubInBackground(env, 'queued', requestRow);
+      }
       return jsonResult({ created, run: { ...serializeExperimentRun(row), request_id } });
     },
   );
@@ -311,6 +322,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string): McpServer
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult({ created, request: serializeRequest(row) });
     },
   );

@@ -70,11 +70,12 @@ images.get('/:shortId', async (c) => {
   // Finalize セクション: このGenerationを対象にした最新のfinalize requestを状況表示する
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
   const finalizeRequestsData = (await finalizeRequestsRes.json()) as {
-    items: { status: string; created_at: string; error: string | null; result: { generation_ids: string[] } | null }[];
+    items: { id: string; status: string; created_at: string; error: string | null; result: { generation_ids: string[] } | null }[];
   };
   const finalizeResultGenerationIds = finalizeRequestsData.items.flatMap((r) => r.result?.generation_ids ?? []);
   const finalizeResultShortIds = await resolveGenerationShortIds(db, finalizeResultGenerationIds);
   const finalizeRequests: FinalizeRequestSummary[] = finalizeRequestsData.items.map((r) => ({
+    id: r.id,
     status: r.status as FinalizeRequestSummary['status'],
     created_at: r.created_at,
     error: r.error,

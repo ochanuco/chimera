@@ -17,7 +17,7 @@ import { generationImageUrl } from '../lib/serialize';
 import { listBookmarkedExperiments, listBookmarkedStories } from '../lib/ui-queries';
 import { GalleryPage, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
 import { BatchesPage } from '../ui/pages/Batches';
-import { BatchDetailPage, type BatchDetailData, type FinalizeSummary } from '../ui/pages/BatchDetail';
+import { BatchDetailPage, type BatchDetailData, type FinalizeSummary, type FinalizeRequestStatus } from '../ui/pages/BatchDetail';
 import { StoriesPage, type StoryListItem } from '../ui/pages/Stories';
 import { StoryDetailPage, type StoryDetailData } from '../ui/pages/StoryDetail';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
@@ -156,13 +156,17 @@ pages.get('/b/:shortId', async (c) => {
   // Finalize all arms の状況表示: このBatch配下の全GenerationについてのfinalizeRequestをstatus別に集計する
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
   const finalizeRequestsRes = await internalApiRequest(c, `/api/v1/requests?kind=finalize&batch_id=${data.id}&limit=200`);
-  const finalizeRequestsData = (await finalizeRequestsRes.json()) as { items: { status: string }[] };
+  const finalizeRequestsData = (await finalizeRequestsRes.json()) as { items: { id: string; status: string }[] };
   const finalizeSummary: FinalizeSummary = { queued: 0, running: 0, done: 0, failed: 0 };
   for (const r of finalizeRequestsData.items) {
     if (r.status === 'queued' || r.status === 'running' || r.status === 'done' || r.status === 'failed') {
       finalizeSummary[r.status] += 1;
     }
   }
+  const finalizeRequests: FinalizeRequestStatus[] = finalizeRequestsData.items.map((r) => ({
+    id: r.id,
+    status: r.status as FinalizeRequestStatus['status'],
+  }));
 
   const diffParentPrompt = diffParentId ? diffParentPrompts.get(diffParentId) ?? null : null;
   const diffParent = diffParentId && diffParentPrompt
@@ -204,6 +208,7 @@ pages.get('/b/:shortId', async (c) => {
       batchThumbnails={batchThumbnails}
       diffParent={diffParent}
       finalizeSummary={finalizeSummary}
+      finalizeRequests={finalizeRequests}
     />,
   );
 });

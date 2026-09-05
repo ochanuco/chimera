@@ -8,6 +8,7 @@ import { generations } from './routes/generations';
 import { stories } from './routes/stories';
 import { experiments, experimentRuns, promotions } from './routes/experiments';
 import { requests } from './routes/requests';
+import { workerWs } from './routes/worker-hub';
 import { characters } from './routes/characters';
 import { tags } from './routes/tags';
 import { graph } from './routes/graph';
@@ -15,6 +16,7 @@ import { images } from './routes/images';
 import { assets } from './routes/assets';
 import { pages } from './routes/pages';
 import { createChimeraMcpServer } from './mcp';
+import type { Waitable } from './lib/hub-notify';
 import type { AppEnv } from './types';
 
 export const app = new Hono<AppEnv>();
@@ -27,6 +29,7 @@ app.route('/api/v1/experiments', experiments);
 app.route('/api/v1/experiment-runs', experimentRuns);
 app.route('/api/v1/promotions', promotions);
 app.route('/api/v1/requests', requests);
+app.get('/api/v1/worker/ws', workerWs);
 app.route('/api/v1/characters', characters);
 app.route('/api/v1/tags', tags);
 app.route('/api/v1/graph', graph);
@@ -43,13 +46,13 @@ app.route('/assets', assets);
 // でも動くようガードする（createMcpHandler は ctx が undefined でも動作する）。
 app.all('/mcp', (c) => {
   const origin = new URL(c.req.url).origin;
-  const handler = createMcpHandler(() => createChimeraMcpServer(c.env, origin));
   let executionCtx: unknown;
   try {
     executionCtx = c.executionCtx;
   } catch {
     executionCtx = undefined;
   }
+  const handler = createMcpHandler(() => createChimeraMcpServer(c.env, origin, executionCtx as Waitable | undefined));
   return handler(c.req.raw, c.env, executionCtx as Parameters<typeof handler>[2]);
 });
 

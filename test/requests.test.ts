@@ -236,6 +236,9 @@ describe('POST /api/v1/requests/claim', () => {
     expect(reclaimed.body!.id).toBe(created.body.id);
     expect(reclaimed.body!.attempt).toBe(2);
     expect(reclaimed.body!.worker_id).toBe('worker-b');
+    // claim route が requeueStaleRunning (src/lib/requests.ts, WorkerHub の alarm と共有) を
+    // 経由しても、回収した行を素通りせずちゃんと running に載せ替えていること。
+    expect(reclaimed.body!.heartbeat_at).not.toBe(staleHeartbeat);
   });
 
   it('stale requeue: attempt >= max_attempts fails the row with "heartbeat timeout" instead of requeueing', async () => {

@@ -1,9 +1,13 @@
+import type { WorkerHub } from './worker-hub';
+
 export interface Bindings {
   DB: D1Database;
   IMAGES: R2Bucket;
   IMAGE_TRANSFORM: ImagesBinding;
   /** requests 行の recipe_ref 既定。段階 4 のリリース経路が入るまでは "main"（docs/worker-protocol.md）。 */
   REQUESTS_DEFAULT_RECIPE_REF?: string;
+  /** WorkerHub Durable Object (段階3, src/worker-hub.ts)。単一インスタンスを idFromName('global') で使う。 */
+  WORKER_HUB: DurableObjectNamespace<WorkerHub>;
 }
 
 export type AppEnv = { Bindings: Bindings };

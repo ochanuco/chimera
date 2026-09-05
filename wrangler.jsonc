@@ -36,5 +36,21 @@
   ],
   "images": {
     "binding": "IMAGE_TRANSFORM"
-  }
+  },
+  // WorkerHub (段階3, docs/worker-protocol.md): requests キューの push / 進捗中継用 DO。
+  // 単一インスタンスを idFromName('global') で使う。
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WORKER_HUB",
+        "class_name": "WorkerHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["WorkerHub"]
+    }
+  ]
 }

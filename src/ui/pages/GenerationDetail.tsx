@@ -51,6 +51,7 @@ const RATINGS = ['bad', 'neutral', 'good'] as const;
 
 /** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
 export interface FinalizeRequestSummary {
+  id: string;
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   created_at: string;
   error: string | null;
@@ -520,8 +521,8 @@ export function GenerationDetailPage({
               {finalizeRequests.length > 0 ? (
                 <ul class="request-status-list">
                   {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`}>
-                      {r.status} · {r.created_at}
+                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
+                      {r.status} <span class="request-progress"></span> · {r.created_at}
                       {r.status === 'done' && r.resultShortId ? (
                         <>
                           {' '}
