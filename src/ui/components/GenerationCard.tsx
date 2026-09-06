@@ -31,7 +31,6 @@ export function GenerationCard({ g, showCompare = true }: { g: GenerationCardDat
   return (
     <div class="card">
       <a class="thumb-link" href={`/g/${g.short_id}`}>
-        <img class="thumb-bg" src={g.thumbnail_url} alt="" aria-hidden="true" loading="lazy" />
         <img class="thumb-fg" src={g.thumbnail_url} alt={g.short_id} loading="lazy" />
       </a>
       <div class="card-body">

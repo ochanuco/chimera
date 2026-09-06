@@ -135,7 +135,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: #000; }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.card .thumb-link .thumb-bg { object-fit: cover; filter: blur(14px) brightness(0.7); transform: scale(1.2); }
 .card .thumb-link .thumb-fg { object-fit: contain; }
 .card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
 
