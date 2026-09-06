@@ -30,6 +30,19 @@ Experiments
 Bookmarks
 ```
 
+パスと内容の対応:
+
+| パス | 内容 |
+|---|---|
+| `/gallery` | 画像グリッド。Character / Tag / Date / Rating / Bookmark で検索、カード上で rating・bookmark 変更 |
+| `/batches`, `/b/{short_id}` | 生成リクエスト単位の一覧・詳細 |
+| `/g/{short_id}` | Generation 詳細（canonical URL）。Summary / Semantic / References / Story / Prompt / Seed / Git などは折りたたみ表示 |
+| `/stories`, `/stories/{id}` | Story の一覧・DAG 表示。relation の label はインライン編集可 |
+| `/bookmarks` | Bookmark した Generation / Batch / Story / Experiment |
+| `/compare?ids=a,b` | 2〜9枚比較。aspect を選んで Claude へ渡す指示テキストを生成・コピー |
+| `/graph` | 生成履歴全体の Graph 表示。Reference / Refinement / Story の3種のエッジを視覚的に区別、パン/ズーム可能 |
+| `/experiments`, `/experiments/{short_id}` | Experiment の一覧・詳細。Run ごとの override 差分・評価・Promotion を表示 |
+
 Graph View（`/graph`）はグローバルナビに含めません。Batch Detail / Generation
 Detailの見出し横にある「Graph」リンク（`/graph?root=<short_id>&depth=3`、そのBatch起点のスコープ付き）または直接URLからのみ到達します。
 

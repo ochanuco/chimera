@@ -20,6 +20,24 @@ Web GUI     → Read / user mutation
 -   `references` / `refinement` / `story` は request.json
     と同様、キー省略と明示的な `null` のどちらも「該当なし」として受理する。
 
+代表的な流れ:
+
+``` text
+POST /api/v1/batches                      # 生成リクエスト登録（idempotency_key 必須）
+POST /api/v1/batches/{id}/jobs            # ComfyJob 登録
+POST /api/v1/jobs/{id}/generations        # 画像 ingest（multipart: metadata + image）
+GET  /api/v1/generations?character=...    # 検索
+GET  /api/v1/generations/{id}/context     # Claude 向け軽量 context
+PUT  /api/v1/generations/{id}/semantic    # semantic metadata 保存
+POST /api/v1/experiments/{id}/runs        # 検証試行の記録（overrides / evaluation / decision）
+POST /api/v1/experiments/{id}/promotions  # 安定条件を comfyui-recipes へ昇格する記録
+```
+
+Batch / Job 作成と ingest は冪等で、同一 idempotency_key / 同一 (job, output_index)
+の再送は既存を返します。クライアントは comfyui-recipes の `comfy-recipes generate` CLI
+（`comfyui_recipes` パッケージ、`request.json` 契約は
+[generation-request.md](generation-request.md)）です。
+
 ## Batch
 
 ### Create Batch
