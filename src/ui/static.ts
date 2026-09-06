@@ -133,7 +133,19 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   display: flex;
   flex-direction: column;
 }
-.card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: #000; }
+/* 市松は画像の透過部分と余白を見分けるためのもの。img には filter 等を掛けず枠の背景だけで表現する */
+.card .thumb-link {
+  display: block;
+  position: relative;
+  aspect-ratio: var(--thumb-ar);
+  overflow: hidden;
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%),
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
 .card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
