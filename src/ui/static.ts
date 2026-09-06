@@ -19,6 +19,10 @@ export const styleCss = `
   --graph-experiment: #c77dff;
   --nav-h: 3.25rem;
   --thumb-ar: 2 / 3;
+  /* Generation 画像を置く面すべてに敷く市松。透過部分と余白を見分けるためのもので、img 自体には手を加えない */
+  --checker:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%) 0 0 / 16px 16px,
+    #1a1a1a linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%) 8px 8px / 16px 16px;
 }
 
 * { box-sizing: border-box; }
@@ -133,17 +137,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   display: flex;
   flex-direction: column;
 }
-/* 市松は画像の透過部分と余白を見分けるためのもの。img には filter 等を掛けず背景だけで表現する */
-.card .thumb-link,
-#thumb-preview img {
-  background-color: #1a1a1a;
-  background-image:
-    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%),
-    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%);
-  background-size: 16px 16px;
-  background-position: 0 0, 8px 8px;
-}
-.card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; }
+.card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
 .card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
@@ -161,7 +155,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 /* 親の高さが auto だと max-height: 100% は効かないため、img に直接ビューポート基準の上限を課す。
    26px = 外側マージン 8px×2 + パディング 4px×2 + ボーダー 1px×2（枠ごとビューポートに収める） */
-#thumb-preview img { display: block; max-width: calc(100vw - 26px); max-height: calc(100vh - 26px); border-radius: 6px; }
+#thumb-preview img { display: block; max-width: calc(100vw - 26px); max-height: calc(100vh - 26px); border-radius: 6px; background: var(--checker); }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .card-image-meta { margin: 0; text-align: left; }
@@ -257,7 +251,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   color: inherit;
 }
 .family-card:hover { border-color: var(--accent); }
-.family-card-thumb { flex: none; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #000; }
+.family-card-thumb { flex: none; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: var(--checker); }
 .family-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .family-card-thumb-empty { width: 100%; height: 100%; background: var(--bg); }
 .family-card-body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
@@ -387,7 +381,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .workflow-line { color: var(--text-dim); font-size: 0.85rem; }
 
 .gen-detail-hero { text-align: center; margin-bottom: 1rem; }
-.gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); }
+.gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); background: var(--checker); }
 .image-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--text-dim); text-align: center; }
 
 .detail-layout { display: block; }
@@ -470,7 +464,7 @@ details.section .section-body { margin-top: 0.6rem; }
   padding: 0.6rem;
   margin-bottom: 0.6rem;
 }
-.batch-row img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: #000; }
+.batch-row img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: var(--checker); }
 .batch-row .batch-meta { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
 .batch-row .instruction-excerpt { color: var(--text-dim); font-size: 0.8rem; }
 
@@ -479,7 +473,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .story-tree ul { list-style: none; padding-left: 1.4rem; border-left: 1px dashed var(--border); }
 .story-tree li { margin: 0.5rem 0; }
 .story-node { display: flex; align-items: center; gap: 0.6rem; }
-.story-node img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: #000; }
+.story-node img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: var(--checker); }
 .rel-edit-form { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
 .rel-edit-form input, .rel-edit-form textarea {
   background: var(--bg);
@@ -503,7 +497,7 @@ details.section .section-body { margin-top: 0.6rem; }
    列数指定時は initCompareCols が grid-template-columns をインラインで上書きする */
 .compare-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); gap: 1rem; }
 .compare-col { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
-.compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; }
+.compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; background: var(--checker); }
 .compare-meta { font-size: 0.8rem; color: var(--text-dim); }
 
 .compare-table-wrap { overflow-x: auto; margin-top: 1.25rem; }
@@ -602,7 +596,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .graph-node-status { fill: var(--text-dim); font-size: 11px; }
 
 .graph-gen-thumb { cursor: pointer; }
-.graph-gen-ring { fill: none; stroke: transparent; stroke-width: 2; }
+.graph-gen-ring { fill: url(#graph-checker); stroke: transparent; stroke-width: 2; }
 .graph-gen-thumb.rating-good .graph-gen-ring { stroke: var(--good); }
 .graph-gen-thumb.selected .graph-gen-ring { stroke: var(--accent); stroke-width: 3; }
 .graph-gen-empty { fill: #000; stroke: var(--border); stroke-dasharray: 4 3; }
@@ -722,11 +716,11 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-delta-empty { color: var(--text-dim); font-style: italic; }
 
 .exp-run-thumb { display: flex; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }
-.exp-run-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: #000; }
+.exp-run-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: var(--checker); }
 .exp-run-batch-link { font-size: 0.82rem; }
 
 .exp-base-generation { display: inline-flex; align-items: center; gap: 0.5rem; }
-.exp-base-generation-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: #000; }
+.exp-base-generation-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: var(--checker); }
 
 .exp-evaluation, .exp-decision { margin-top: 0.6rem; font-size: 0.85rem; }
 .exp-evaluation-head, .exp-decision-head { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; margin-bottom: 0.3rem; }
@@ -789,7 +783,7 @@ details.section .section-body { margin-top: 0.6rem; }
   height: auto;
   max-height: calc(100vh - 12rem);
   object-fit: contain;
-  background: var(--bg-elevated);
+  background: var(--checker);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
