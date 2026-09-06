@@ -1122,6 +1122,60 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
   });
 });
 
+describe('Family panel: Experiment badge cards (ExperimentRun-derived, not a stored Relation)', () => {
+  it('GET /b/{short_id} shows an Experiment parent card for the parent run\'s batch', async () => {
+    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
+    const { batch: parentBatch } = await createGeneration();
+    const { batch: childBatch } = await createGeneration();
+
+    const parentRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      batch_id: parentBatch.id,
+    });
+    const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      parent_run_id: parentRun.body.id,
+      batch_id: childBatch.id,
+    });
+
+    const res = await req(`/b/${childBatch.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('rel-badge rel-experiment');
+    expect(html).toContain('>Experiment<');
+    expect(html).toContain(`href="/b/${parentBatch.short_id}"`);
+    expect(html).toContain(`run #${parentRun.body.run_index} → run #${childRun.body.run_index}`);
+  });
+
+  it('GET /g/{short_id} shows an Experiment child card ("via batch") and a 兄弟 section listing only ExperimentRun siblings', async () => {
+    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
+    const { generation: parentGen, batch: parentBatch } = await createGeneration();
+    const { batch: childBatch } = await createGeneration();
+    const { batch: siblingBatch } = await createGeneration();
+
+    await postJson(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: parentBatch.id });
+    const parentRunList = await getJson<{ items: { id: string; batch_id: string | null }[] }>(
+      `/api/v1/experiments/${exp.body.id}/runs`,
+    );
+    const parentRunId = parentRunList.body.items.find((r) => r.batch_id === parentBatch.id)!.id;
+    const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      parent_run_id: parentRunId,
+      batch_id: childBatch.id,
+    });
+    await postJson(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: siblingBatch.id });
+
+    const res = await req(`/g/${parentGen.short_id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('rel-badge rel-experiment');
+    expect(html).toContain('via batch');
+    expect(html).toContain(`href="/b/${childBatch.short_id}"`);
+    expect(html).toContain(`run #${childRun.body.run_index}`);
+    expect(html).toContain('兄弟 (1)');
+    expect(html).toContain(`href="/b/${siblingBatch.short_id}"`);
+  });
+});
+
 describe('系譜ミニマップ (MiniMap)', () => {
   it('GET /g/{short_id} for the middle Batch of a 3-Batch retry chain lists all three short_ids in order, current bracketed and unlinked', async () => {
     const { batch: batchA } = await createGeneration();

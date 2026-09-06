@@ -11,6 +11,7 @@ export interface ExperimentListItem {
   note: string | null;
   status: string;
   base_recipe: string | null;
+  base_generation_id: string | null;
   character_id: string | null;
   bookmark: boolean;
   created_at: string;

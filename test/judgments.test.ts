@@ -199,23 +199,15 @@ describe('Create PairwiseJudgment validation', () => {
     expect(res.status).toBe(409);
   });
 
-  it('400s when baseline and arm runs share the same batch', async () => {
+  it('baseline and arm runs cannot share a batch: the second attach is rejected upstream', async () => {
     const experiment = await createExperiment();
     const baselineRun = await createRun(experiment.body.id);
     const armRun = await createRun(experiment.body.id);
-    const { batch, generations } = await createBatchWithSeeds([11]);
-    await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: batch.id }, 'PATCH');
-    await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { batch_id: batch.id }, 'PATCH');
-
-    const res = await postJson(`/api/v1/experiments/${experiment.body.id}/judgments`, {
-      baseline_run_id: baselineRun.body.id,
-      arm_run_id: armRun.body.id,
-      seed: 11,
-      left_generation_id: generations[11]!.id,
-      right_generation_id: generations[11]!.id,
-      verdict: 'left',
-    });
-    expect(res.status).toBe(400);
+    const { batch } = await createBatchWithSeeds([11]);
+    const first = await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: batch.id }, 'PATCH');
+    expect(first.status).toBe(200);
+    const second = await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { batch_id: batch.id }, 'PATCH');
+    expect(second.status).toBe(409);
   });
 
   it('400s when both generations come from the same batch', async () => {

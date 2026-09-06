@@ -16,6 +16,7 @@ export const styleCss = `
   --graph-reference: #6fa8fd;
   --graph-relation: #e2914f;
   --graph-story: #4fd8a4;
+  --graph-experiment: #c77dff;
   --nav-h: 3.25rem;
   --thumb-ar: 2 / 3;
 }
@@ -230,6 +231,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .rel-badge.rel-reference { background: color-mix(in srgb, var(--graph-reference) 22%, transparent); color: var(--graph-reference); }
 .rel-badge.rel-refinement { background: color-mix(in srgb, var(--graph-relation) 22%, transparent); color: var(--graph-relation); }
 .rel-badge.rel-story { background: color-mix(in srgb, var(--graph-story) 22%, transparent); color: var(--graph-story); }
+.rel-badge.rel-experiment { background: color-mix(in srgb, var(--graph-experiment) 22%, transparent); color: var(--graph-experiment); }
 
 /* 親/子/兄弟 セクションのサムネイルカード（FamilyCard）。GenerationCard/.card より軽量で横並びに畳める。 */
 .family-strip { display: flex; flex-wrap: wrap; gap: 0.6rem; }
@@ -713,6 +715,9 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-run-thumb { display: flex; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }
 .exp-run-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: #000; }
 .exp-run-batch-link { font-size: 0.82rem; }
+
+.exp-base-generation { display: inline-flex; align-items: center; gap: 0.5rem; }
+.exp-base-generation-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: #000; }
 
 .exp-evaluation, .exp-decision { margin-top: 0.6rem; font-size: 0.85rem; }
 .exp-evaluation-head, .exp-decision-head { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; margin-bottom: 0.3rem; }
