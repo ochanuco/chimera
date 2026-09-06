@@ -11,7 +11,7 @@ import {
 } from '../schemas/experiments';
 import { assignTagSchema } from '../schemas/tags';
 import { uuidv7 } from '../lib/uuidv7';
-import { nowIso, parsePagination } from '../lib/db';
+import { getGenerationByIdOrShortId, nowIso, parsePagination } from '../lib/db';
 import { createUniqueShortId } from '../lib/shortid';
 import { EXPERIMENT_STATUS_TRANSITIONS } from '../lib/experiment-status';
 import { assignTag, removeTag } from '../lib/tags';
@@ -76,12 +76,20 @@ async function assertCharacterExists(db: D1Database, characterId: string): Promi
   if (!found) throw notFound('character');
 }
 
+/** short_id / UUID どちらでも受け、他の FK と同様に UUID で保存する。 */
+async function resolveBaseGenerationId(db: D1Database, idOrShortId: string): Promise<string> {
+  const generation = await getGenerationByIdOrShortId(db, idOrShortId);
+  if (!generation) throw notFound('generation');
+  return generation.id;
+}
+
 // --- Experiment ---
 
 experiments.post('/', async (c) => {
   const body = createExperimentSchema.parse(await c.req.json());
   const db = c.env.DB;
   if (body.character_id) await assertCharacterExists(db, body.character_id);
+  const baseGenerationId = body.base_generation_id ? await resolveBaseGenerationId(db, body.base_generation_id) : null;
 
   const now = nowIso();
   const row: ExperimentRow = {
@@ -93,6 +101,7 @@ experiments.post('/', async (c) => {
     status: 'active',
     base_recipe: body.base_recipe ?? null,
     base_parameters_json: body.base_parameters ? JSON.stringify(body.base_parameters) : null,
+    base_generation_id: baseGenerationId,
     character_id: body.character_id ?? null,
     bookmark: 0,
     created_at: now,
@@ -102,8 +111,8 @@ experiments.post('/', async (c) => {
   await db
     .prepare(
       `INSERT INTO experiments
-         (id, short_id, name, description, note, status, base_recipe, base_parameters_json, character_id, bookmark, created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, short_id, name, description, note, status, base_recipe, base_parameters_json, base_generation_id, character_id, bookmark, created_at, updated_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -114,6 +123,7 @@ experiments.post('/', async (c) => {
       row.status,
       row.base_recipe,
       row.base_parameters_json,
+      row.base_generation_id,
       row.character_id,
       row.bookmark,
       row.created_at,
@@ -190,6 +200,12 @@ experiments.patch('/:id', async (c) => {
   if (body.base_parameters !== undefined) {
     assign('base_parameters_json', body.base_parameters === null ? null : JSON.stringify(body.base_parameters));
   }
+  if (body.base_generation_id !== undefined) {
+    assign(
+      'base_generation_id',
+      body.base_generation_id === null ? null : await resolveBaseGenerationId(db, body.base_generation_id),
+    );
+  }
   if (body.character_id !== undefined) assign('character_id', body.character_id);
 
   const now = nowIso();
@@ -257,6 +273,7 @@ experimentRuns.get('/:runId', async (c) => {
       name: experiment.name,
       status: experiment.status,
       base_recipe: experiment.base_recipe,
+      base_generation_id: experiment.base_generation_id,
       character_id: experiment.character_id,
     },
   });

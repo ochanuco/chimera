@@ -51,7 +51,7 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
   const baseParameters = parseJsonObject(experiment.base_parameters_json) as JsonObject & { count?: unknown };
   const { count, ...parameters } = baseParameters;
   const instruction = run.objective ?? `run #${run.run_index} of ${experiment.name}`;
-  return {
+  const payload: JsonObject = {
     schema_version: 1,
     request: { instruction, count: typeof count === 'number' ? count : 1 },
     generation: { recipe: experiment.base_recipe, parameters },
@@ -62,6 +62,12 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
       overrides: parseJsonObject(run.overrides_json),
     },
   };
+  // Experiment が起点とする Generation は「再現(rebuild)したい対象」であって、pose/outfit
+  // などの構図参照 (composition) とは意味が違うため purpose を分ける (docs/generation-request.md)。
+  if (experiment.base_generation_id) {
+    payload.references = [{ generation_id: experiment.base_generation_id, purpose: 'rebuild' }];
+  }
+  return payload;
 }
 
 export async function getRequestOr404(db: D1Database, id: string): Promise<RequestRow> {

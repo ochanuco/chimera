@@ -95,16 +95,26 @@ GenerationそのものをFamilyCardリンク先にします。
 
 -   親: このBatchの材料になったGeneration（バッジ `Reference`、purpose/aspect
     を表示）、このBatchをrefinementした元Batch（バッジ `Refinement`、reason
-    を表示）、StoryRelationで前段にあたるBatch（バッジ `Story`、Story名/labelを表示）
+    を表示）、StoryRelationで前段にあたるBatch（バッジ `Story`、Story名/labelを表示）、
+    このBatchに紐づくExperimentRunの親Run（`parent_run_id`が指すRun）のBatch
+    （バッジ `Experiment`、`run #親 → run #自分`を表示）
 -   子: このBatchのGenerationを材料に使ったBatch（バッジ `Reference`、どの
     Generation経由かを表示）、このBatchをrefinement元とするBatch（バッジ
-    `Refinement`）、StoryRelationで後続にあたるBatch（バッジ `Story`）
+    `Refinement`）、StoryRelationで後続にあたるBatch（バッジ `Story`）、
+    このBatchに紐づくExperimentRunを`parent_run_id`とする子RunのBatch
+    （バッジ `Experiment`、`run #自分 → run #子`を表示）
 -   兄弟: 親を共有する他のBatch。BatchRelationで同じ親からrefinementされた
     Batch、またはBatchReferenceで同じGenerationを材料に使ったBatch。共有の
-    親（Batch短縮IDまたはGeneration短縮ID）をカード補足テキストに表示
+    親（Batch短縮IDまたはGeneration短縮ID）をカード補足テキストに表示。加えて、
+    同じExperimentの他Run（親・子を除く、batch付与済みのRunのみ）のBatch
+    （バッジ `Experiment`）
 
-各カードのリンク先・short_idはshort_id優先（Generation/Story RelationページのGraph凡例と同じ配色: Reference=青、
-Refinement=橙、Story=緑）。
+`Experiment` バッジのカードはBatchReference / BatchRelation / StoryRelationのいずれでもない、
+ExperimentRun（`parent_run_id` / `run_index`）から読み取り時に導出するだけの表示専用の4本目の軸です
+（CLAUDE.mdの3種統合禁止の対象外で、行を作りません）。カードの補足テキストにはExperiment名を表示します。
+
+各カードのリンク先・short_idはshort_id優先（Reference/Refinement/StoryはGraph凡例と同じ配色:
+青・橙・緑。ExperimentはGraphに現れない4本目の軸なので専用の紫）。
 
 親セクションの直前には系譜ミニマップ（Mapセクション）を表示します。画像なし・short_idのみで、このBatch
 自身のBatchReference系譜（行ラベル `References`。材料として遡れる祖先と、このBatchのGenerationを材料に
@@ -230,6 +240,7 @@ Semantic
 Map
 親
 子
+兄弟
 Story
 Workflow
 Finalize
@@ -238,16 +249,23 @@ Git
 Note
 ```
 
-親・子はBatch Detailと同じFamilyCard表示です（兄弟は同Batch内の他Generationに相当し表示不要）。Batch
+親・子・兄弟はBatch Detailと同じFamilyCard表示です。Batch
 Detailと異なり、このGenerationが属するBatch自体のRefinement/Story関係も合わせて表示するため、
 それらのカードには「via batch」という補足を添えて、Generation自身の材料関係（Reference）と区別します。
+兄弟はBatchReference由来のもの（同じ材料Generationを使った他Batch）は出しません。それはこの
+Generationが属するBatchの他のGenerationと実質同じものだからです。ExperimentRunの兄弟（同じ
+Experimentの他Run、親・子を除く）だけを表示します（バッジ `Experiment`、「via batch」）。
 
 -   親: ①このGenerationが属するBatch自身の材料（BatchReference、バッジ `Reference`、Generationカード。
     purpose/aspectを表示） ②そのBatchをrefinementした元Batch（バッジ `Refinement`、Batchカード＝代表
     サムネイル、reasonを表示） ③StoryRelationで前段にあたるBatch（バッジ `Story`、Batchカード）
+    ④このBatchに紐づくExperimentRunの親Run（バッジ `Experiment`、Batchカード）
 -   子: ①このGenerationを材料に使ったBatch一覧（バッジ `Reference`、Batchカード。purpose/aspectを表示）
     ②このGenerationが属するBatchをrefinement元とするBatch（バッジ `Refinement`、Batchカード）
     ③StoryRelationで後続にあたるBatch（バッジ `Story`、Batchカード）
+    ④このBatchに紐づくExperimentRunの子Run（バッジ `Experiment`、Batchカード）
+-   兄弟: このBatchに紐づくExperimentRunと同じExperimentの他Run（親・子を除く、batch付与済みの
+    Runのみ）のBatch（バッジ `Experiment`、Batchカード）
 
 Mapセクションは「Map」の直下、親の直前に表示する系譜ミニマップです。画像なし・short_idのみで、このGenerationが
 属するBatchのBatchReference系譜（行ラベル `References`。材料の祖先と子孫の有向到達集合をBatch単位に集約）、
@@ -380,8 +398,9 @@ updated_at
 
 status で絞り込めます。
 
-`/experiments/{short_id}` は詳細です。Experiment概要（Base Recipe /
-Character / Tag / 各時刻）、Runの一覧、Promotionの順に並べます。
+`/experiments/{short_id}` は詳細です。Experiment概要（Base Recipe / Base
+Generation（サムネイル付きリンク） / Character / Tag / 各時刻）、Runの一覧、
+Promotionの順に並べます。
 
 Runsセクションの一覧の直前には、少なくとも1つのRunがrender_factsまたはvariablesを
 持つときだけ facts テーブル（`exp-facts`）を表示します。列は

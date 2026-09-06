@@ -34,6 +34,7 @@ export interface ExperimentRow {
   status: ExperimentStatus;
   base_recipe: string | null;
   base_parameters_json: string | null;
+  base_generation_id: string | null;
   character_id: string | null;
   bookmark: number;
   created_at: string;

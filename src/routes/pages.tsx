@@ -100,6 +100,13 @@ pages.get('/b/:shortId', async (c) => {
   }
   const data = (await res.json()) as BatchDetailData;
 
+  const experimentRunBatchIds = data.experiment_run
+    ? [
+        ...(data.experiment_run.parent ? [data.experiment_run.parent.batch_id] : []),
+        ...data.experiment_run.children.map((ch) => ch.batch_id),
+        ...data.experiment_run.siblings.map((s) => s.batch_id),
+      ]
+    : [];
   const referencedBatchIds = [
     ...data.relations.outgoing.map((r) => r.target_batch_id),
     ...data.relations.incoming.map((r) => r.source_batch_id),
@@ -108,6 +115,7 @@ pages.get('/b/:shortId', async (c) => {
     ...data.reference_children.map((r) => r.batch_id),
     ...data.siblings.map((s) => s.batch_id),
     ...data.siblings.filter((s) => s.via === 'refinement').map((s) => s.shared_id),
+    ...experimentRunBatchIds,
   ];
   const referencedGenerationIds = [
     ...data.references.map((r) => r.source_generation_id),
@@ -255,7 +263,15 @@ pages.get('/experiments/:id', async (c) => {
   const data = (await res.json()) as ExperimentDetailData;
   const judgmentsRes = await internalApiRequest(c, `/api/v1/experiments/${id}/judgments/summary`);
   const judgments = (await judgmentsRes.json()) as ExperimentJudgmentSummary;
-  return c.html(<ExperimentDetailPage experiment={data} judgments={judgments} />);
+  const baseGenerationShortIds = await resolveGenerationShortIds(
+    c.env.DB,
+    data.base_generation_id ? [data.base_generation_id] : [],
+  );
+  const experiment: ExperimentDetailData = {
+    ...data,
+    base_generation_short_id: data.base_generation_id ? baseGenerationShortIds.get(data.base_generation_id) ?? null : null,
+  };
+  return c.html(<ExperimentDetailPage experiment={experiment} judgments={judgments} />);
 });
 
 pages.get('/experiments/:id/ab', async (c) => {
