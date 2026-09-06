@@ -164,6 +164,13 @@ export function GraphPage({
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           preserveAspectRatio="xMidYMid meet"
         >
+          <defs>
+            <pattern id="graph-checker" width="16" height="16" patternUnits="userSpaceOnUse">
+              <rect width="16" height="16" fill="#1a1a1a" />
+              <rect width="8" height="8" fill="#2a2a2a" />
+              <rect x="8" y="8" width="8" height="8" fill="#2a2a2a" />
+            </pattern>
+          </defs>
           <g class="graph-edges">
             {(() => {
               // 同一 Batch ペア間の複数エッジ（reference と refinement が併存する等）が
