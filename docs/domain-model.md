@@ -83,6 +83,8 @@ Experiment は原則物理削除しません。
 
 Experiment 内の1回の試行です。`run_index` は Experiment
 内で1から連番、`(experiment_id, run_index)` は一意です。
+`batch_id` も Run 間で一意です（1 Batch は 1 Run にしか属さない）。既に他の Run
+に付いている Batch を付けようとすると 409 になります。
 
 主な属性:
 

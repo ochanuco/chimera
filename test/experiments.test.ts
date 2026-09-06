@@ -517,6 +517,24 @@ describe('Generation / Batch linkage', () => {
     expect(decoratedRun.batch).toMatchObject({ short_id: batch.short_id });
   });
 
+  it('409s when attaching a batch that another run already owns (create and PATCH)', async () => {
+    const exp = await createExperiment();
+    const owner = await createRun(exp.body.id);
+    const { batch } = await createGeneration();
+    const attached = await postJson(`/api/v1/experiment-runs/${owner.body.id}`, { batch_id: batch.id }, 'PATCH');
+    expect(attached.status).toBe(200);
+
+    const viaCreate = await postJson(`/api/v1/experiments/${exp.body.id}/runs`, { overrides: {}, batch_id: batch.id });
+    expect(viaCreate.status).toBe(409);
+
+    const other = await createRun(exp.body.id);
+    const viaPatch = await postJson(`/api/v1/experiment-runs/${other.body.id}`, { batch_id: batch.id }, 'PATCH');
+    expect(viaPatch.status).toBe(409);
+
+    const reattachSame = await postJson(`/api/v1/experiment-runs/${owner.body.id}`, { batch_id: batch.id }, 'PATCH');
+    expect(reattachSame.status).toBe(200);
+  });
+
   it('409s when attaching a different generation to a run that already has one', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);

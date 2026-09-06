@@ -179,6 +179,15 @@ export async function getExperimentDetail(db: D1Database, experiment: Experiment
   };
 }
 
+/** 1 Batch は 1 Run にしか属さない (idx_experiment_runs_batch_id_unique)。UNIQUE 違反を D1 の 500 ではなく 409 として返すための事前確認。 */
+async function assertBatchNotAttachedToAnotherRun(db: D1Database, batchId: string, exceptRunId: string | null): Promise<void> {
+  const other = await db
+    .prepare('SELECT id FROM experiment_runs WHERE batch_id = ? AND (? IS NULL OR id != ?) LIMIT 1')
+    .bind(batchId, exceptRunId, exceptRunId)
+    .first<{ id: string }>();
+  if (other) throw conflict(`batch is already attached to run ${other.id}`);
+}
+
 export interface ExperimentRunFamilyMember {
   run_id: string;
   run_index: number;
@@ -381,6 +390,7 @@ export async function createExperimentRun(
   }
 
   const batchId = body.batch_id ? (await resolveBatchOr404(db, body.batch_id)).id : null;
+  if (batchId) await assertBatchNotAttachedToAnotherRun(db, batchId, null);
   // 代表 Generation は Run 自身の Batch から選ぶもの。updateExperimentRun と同じ規則を
   // 作成時にも適用しないと、こちらの経路から provenance の合わない紐付けが入る。
   let generationId: string | null = null;
@@ -549,6 +559,7 @@ export async function updateExperimentRun(
     if (run.batch_id && run.batch_id !== batch.id) {
       throw conflict('run already has a batch attached');
     }
+    await assertBatchNotAttachedToAnotherRun(db, batch.id, run.id);
     assign('batch_id', batch.id);
     effectiveBatchId = batch.id;
   }
