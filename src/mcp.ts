@@ -121,6 +121,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           status: r.status,
           base_recipe: r.base_recipe,
           base_parameters: parseJsonObjectOrNull(r.base_parameters_json),
+          base_generation_id: r.base_generation_id,
           run_count: r.run_count,
           latest_run: latest
             ? {
@@ -201,6 +202,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           name: experiment.name,
           status: experiment.status,
           base_recipe: experiment.base_recipe,
+          base_generation_id: experiment.base_generation_id,
           character_id: experiment.character_id,
         },
         generations,

@@ -47,6 +47,15 @@ export interface GenerationDetailData {
   original_filename: string | null;
 }
 
+/** ExperimentRun 由来の 4 軸目 (docs/domain-model.md「Experiment」節)。BatchReference / BatchRelation / StoryRelation とは別物。 */
+export interface ExperimentRunFamily {
+  experiment: { id: string; short_id: string; name: string };
+  run: { id: string; run_index: number };
+  parent: { run_id: string; run_index: number; batch_id: string } | null;
+  children: { run_id: string; run_index: number; batch_id: string }[];
+  siblings: { run_id: string; run_index: number; batch_id: string }[];
+}
+
 const RATINGS = ['bad', 'neutral', 'good'] as const;
 
 /** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
@@ -146,6 +155,7 @@ export function GenerationDetailPage({
   parentReferences,
   relationsIncoming,
   relationsOutgoing,
+  experimentRun,
   imageMeta,
   finalizeRequests,
 }: {
@@ -165,6 +175,8 @@ export function GenerationDetailPage({
   relationsIncoming: { source_batch_id: string; reason: string | null }[];
   /** Retry relations of the owning Batch (target_batch_id = the Batch this one was refined into). */
   relationsOutgoing: { target_batch_id: string; reason: string | null }[];
+  /** ExperimentRun 由来の 4 軸目 (owning Batch 起点)。所属 Batch が Experiment に属さなければ null。 */
+  experimentRun: ExperimentRunFamily | null;
   imageMeta: ImageMeta | null;
   /** 最新の finalize request 一覧 (最大5件、新しい順)。段階2の GUI はここに積むだけで進捗はここで見る。 */
   finalizeRequests: FinalizeRequestSummary[];
@@ -208,6 +220,18 @@ export function GenerationDetailPage({
           detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
         };
       }),
+    ...(experimentRun?.parent ? [experimentRun.parent] : []).map((p): FamilyCardData => {
+      const link = refLink('/b/', p.batch_id, batchShortIds);
+      const genShortId = batchThumbnails.get(p.batch_id);
+      return {
+        kind: 'experiment',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        caption: 'via batch',
+        detail: `run #${p.run_index} → run #${experimentRun!.run.run_index}`,
+      };
+    }),
   ];
 
   const childCards: FamilyCardData[] = [
@@ -248,7 +272,35 @@ export function GenerationDetailPage({
           detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
         };
       }),
+    ...(experimentRun?.children ?? []).map((ch): FamilyCardData => {
+      const link = refLink('/b/', ch.batch_id, batchShortIds);
+      const genShortId = batchThumbnails.get(ch.batch_id);
+      return {
+        kind: 'experiment',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        caption: 'via batch',
+        detail: `run #${experimentRun!.run.run_index} → run #${ch.run_index}`,
+      };
+    }),
   ];
+
+  // BatchReference 由来の兄弟 (同じ material を参照した他の Batch) は、この Generation の
+  // 所属 Batch にとっての「他の Generation」と実質同じものなのでここには出さない
+  // (docs/ui.md)。ExperimentRun の run_index 兄弟だけを見せる。
+  const siblingCards: FamilyCardData[] = (experimentRun?.siblings ?? []).map((s): FamilyCardData => {
+    const link = refLink('/b/', s.batch_id, batchShortIds);
+    const genShortId = batchThumbnails.get(s.batch_id);
+    return {
+      kind: 'experiment',
+      href: link.href,
+      shortId: link.label,
+      imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+      caption: 'via batch',
+      detail: `run #${s.run_index} of ${experimentRun!.experiment.short_id}`,
+    };
+  });
 
   return (
     <Layout title={`Generation ${data.short_id}`} fullBleed>
@@ -370,6 +422,13 @@ export function GenerationDetailPage({
             <summary>子 ({childCards.length})</summary>
             <div class="section-body">
               <FamilyStrip items={childCards} />
+            </div>
+          </details>
+
+          <details class="section" open>
+            <summary>兄弟 ({siblingCards.length})</summary>
+            <div class="section-body">
+              <FamilyStrip items={siblingCards} />
             </div>
           </details>
 

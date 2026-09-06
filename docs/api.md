@@ -80,7 +80,14 @@ GET /api/v1/batches/{id-or-short-id}
   "siblings": [
     { "batch_id": "...", "via": "refinement", "shared_id": "..." },
     { "batch_id": "...", "via": "reference", "shared_id": "..." }
-  ]
+  ],
+  "experiment_run": {
+    "experiment": { "id": "...", "short_id": "...", "name": "..." },
+    "run": { "id": "...", "run_index": 2 },
+    "parent": { "run_id": "...", "run_index": 1, "batch_id": "..." },
+    "children": [{ "run_id": "...", "run_index": 3, "batch_id": "..." }],
+    "siblings": [{ "run_id": "...", "run_index": 4, "batch_id": "..." }]
+  }
 }
 ```
 
@@ -89,6 +96,13 @@ GET /api/v1/batches/{id-or-short-id}
     は同じrefinement元Batchを持つBatch（`shared_id` はそのBatchのid）、
     `via: "reference"` は同じGenerationを材料に使ったBatch（`shared_id`
     はそのGenerationのid）
+-   `experiment_run`: このBatchに紐づく ExperimentRun（`experiment_runs.batch_id`
+    がこのBatch）があれば、その親/子/兄弟。`parent` は `parent_run_id`
+    の指す Run（batch未付与なら含めない）、`children` は自分を
+    `parent_run_id` に持つ Run、`siblings` はそれ以外の同じ Experiment の
+    Run（いずれも batch 未付与のものは含めない）。該当する ExperimentRun
+    が無ければ `null`。BatchReference / BatchRelation / StoryRelation
+    とは別物の、表示専用の4本目の軸です（[domain-model.md](domain-model.md#experiment)）。
 
 ## ComfyJob
 
@@ -254,11 +268,13 @@ POST /api/v1/experiments
   "name": "黒タイツ+薄紫ソックスの分離",
   "description": "結月ゆかりの脚部で黒タイツと薄紫ソックスを安定して分離する",
   "base_recipe": "dq3",
+  "base_generation_id": "...",
   "character_id": "..."
 }
 ```
 
-`status` は常に `active` で作成されます。
+`status` は常に `active` で作成されます。`base_generation_id`
+はUUID / short_idのどちらでも受け、保存するのはUUIDです。存在しなければ404です。
 
 ### List Experiments
 
@@ -292,6 +308,7 @@ offset
       "note": null,
       "status": "active",
       "base_recipe": "dq3",
+      "base_generation_id": "...",
       "character_id": "...",
       "bookmark": false,
       "created_at": "...",
@@ -328,6 +345,7 @@ List item と同じフィールドに加え、`tags` と `runs`（`run_index`
   "note": null,
   "status": "active",
   "base_recipe": "dq3",
+  "base_generation_id": "...",
   "character_id": "...",
   "bookmark": false,
   "created_at": "...",
@@ -373,6 +391,9 @@ PATCH /api/v1/experiments/{id-or-short-id}
 
 許可されていない status 遷移（`domain-model.md` の Experiment
 遷移表参照）は409です。
+
+`base_generation_id` はUUID / short_idのどちらでも受け、存在しなければ404です。
+明示 `null` でクリアできます。
 
 ## ExperimentRun
 

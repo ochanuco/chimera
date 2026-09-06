@@ -114,6 +114,11 @@ other
 
 aspect は将来拡張可能とします。
 
+Experiment 起点の Run（`experiment.experiment_id` を持つ request）は、その
+Experiment が `base_generation_id` を持っていれば purpose `rebuild` の
+Reference を自動で1件持ちます。人間・Claude Code が組み立てるものではありません
+（[experiment-agent.md](experiment-agent.md#base_generation_id)）。
+
 ## refinement
 
 前Batchを受けた再試行の場合のみ指定します。

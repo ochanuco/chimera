@@ -13,7 +13,12 @@ import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
-import { GenerationDetailPage, type GenerationDetailData, type FinalizeRequestSummary } from '../ui/pages/GenerationDetail';
+import {
+  GenerationDetailPage,
+  type GenerationDetailData,
+  type FinalizeRequestSummary,
+  type ExperimentRunFamily,
+} from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { getImageMeta, type ImageMeta } from '../lib/image-meta';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
@@ -93,6 +98,7 @@ images.get('/:shortId', async (c) => {
   let relationsOutgoing: { target_batch_id: string; reason: string | null }[] = [];
   let storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[] =
     [];
+  let experimentRun: ExperimentRunFamily | null = null;
   if (data.batch) {
     const batchRes = await internalApiRequest(c, `/api/v1/batches/${data.batch.id}`);
     if (batchRes.ok) {
@@ -103,10 +109,12 @@ images.get('/:shortId', async (c) => {
           incoming: { source_batch_id: string; reason: string | null }[];
         };
         story_relations: { story_id: string; label: string | null; source_batch_id: string; target_batch_id: string }[];
+        experiment_run: ExperimentRunFamily | null;
       };
       parentReferences = batchData.references;
       relationsIncoming = batchData.relations.incoming;
       relationsOutgoing = batchData.relations.outgoing;
+      experimentRun = batchData.experiment_run;
 
       const storyIds = Array.from(new Set(batchData.story_relations.map((r) => r.story_id)));
       const storyNames = new Map<string, string>();
@@ -162,6 +170,9 @@ images.get('/:shortId', async (c) => {
     ...relationsOutgoing.map((r) => r.target_batch_id),
     ...storyLinks.map((r) => r.source_batch_id),
     ...storyLinks.map((r) => r.target_batch_id),
+    ...(experimentRun?.parent ? [experimentRun.parent.batch_id] : []),
+    ...(experimentRun?.children.map((ch) => ch.batch_id) ?? []),
+    ...(experimentRun?.siblings.map((s) => s.batch_id) ?? []),
   ];
 
   const [batchShortIds, generationShortIds, batchThumbnails] = await Promise.all([
@@ -185,6 +196,7 @@ images.get('/:shortId', async (c) => {
       parentReferences={parentReferences}
       relationsIncoming={relationsIncoming}
       relationsOutgoing={relationsOutgoing}
+      experimentRun={experimentRun}
       imageMeta={imageMeta}
       finalizeRequests={finalizeRequests}
     />,

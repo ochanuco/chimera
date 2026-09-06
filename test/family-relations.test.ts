@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createBatch, createGeneration, getJson, postJson } from './helpers';
 
+function uniqueName(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
 describe('Batch detail: reference_children', () => {
   it('lists Batches that used one of this Batch\'s Generations as reference material', async () => {
     const { batch: sourceBatch, generation } = await createGeneration();
@@ -94,6 +98,74 @@ describe('Batch detail: siblings', () => {
     );
     // Shares both g1 and g2 with b2, but each distinct (via, shared_id) pair is its own row.
     expect(detail.body.siblings.filter((s) => s.batch_id === b2.body.id)).toHaveLength(2);
+  });
+});
+
+describe('Batch detail: experiment_run', () => {
+  interface ExperimentRunFamilyMember {
+    run_id: string;
+    run_index: number;
+    batch_id: string;
+  }
+  interface ExperimentRunFamily {
+    experiment: { id: string; short_id: string; name: string };
+    run: { id: string; run_index: number };
+    parent: ExperimentRunFamilyMember | null;
+    children: ExperimentRunFamilyMember[];
+    siblings: ExperimentRunFamilyMember[];
+  }
+
+  it('reports parent/children/siblings across 3 runs, and null for a batch outside any experiment', async () => {
+    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: uniqueName('exp') });
+    const { batch: batch1 } = await createGeneration();
+    const { batch: batch2 } = await createGeneration();
+    const { batch: batch3 } = await createGeneration();
+    const { batch: unrelatedBatch } = await createGeneration();
+
+    const run1 = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      batch_id: batch1.id,
+    });
+    const run2 = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      parent_run_id: run1.body.id,
+      batch_id: batch2.id,
+    });
+    const run3 = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      batch_id: batch3.id,
+    });
+    expect(run1.body.run_index).toBe(1);
+    expect(run2.body.run_index).toBe(2);
+    expect(run3.body.run_index).toBe(3);
+
+    const detail1 = await getJson<{ experiment_run: ExperimentRunFamily | null }>(`/api/v1/batches/${batch1.id}`);
+    expect(detail1.body.experiment_run).toMatchObject({
+      run: { id: run1.body.id, run_index: 1 },
+      parent: null,
+      children: [{ run_id: run2.body.id, run_index: 2, batch_id: batch2.id }],
+      siblings: [{ run_id: run3.body.id, run_index: 3, batch_id: batch3.id }],
+    });
+
+    const detail2 = await getJson<{ experiment_run: ExperimentRunFamily | null }>(`/api/v1/batches/${batch2.id}`);
+    expect(detail2.body.experiment_run).toMatchObject({
+      run: { id: run2.body.id, run_index: 2 },
+      parent: { run_id: run1.body.id, run_index: 1, batch_id: batch1.id },
+      children: [],
+      siblings: [{ run_id: run3.body.id, run_index: 3, batch_id: batch3.id }],
+    });
+
+    const detail3 = await getJson<{ experiment_run: ExperimentRunFamily | null }>(`/api/v1/batches/${batch3.id}`);
+    expect(detail3.body.experiment_run).toMatchObject({
+      run: { id: run3.body.id, run_index: 3 },
+      parent: null,
+      children: [],
+    });
+    expect(detail3.body.experiment_run!.siblings.map((s) => s.run_id).sort()).toEqual(
+      [run1.body.id, run2.body.id].sort(),
+    );
+
+    const unrelatedDetail = await getJson<{ experiment_run: ExperimentRunFamily | null }>(
+      `/api/v1/batches/${unrelatedBatch.id}`,
+    );
+    expect(unrelatedDetail.body.experiment_run).toBeNull();
   });
 });
 

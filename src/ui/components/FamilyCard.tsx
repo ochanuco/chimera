@@ -1,8 +1,13 @@
-export type RelKind = 'reference' | 'refinement' | 'story';
+/**
+ * `reference` / `refinement` / `story` are the three stored Relation kinds (see CLAUDE.md
+ * invariants — never merged). `experiment` is a fourth, display-only axis derived from
+ * ExperimentRun.parent_run_id / run_index at read time; it writes no row of its own.
+ */
+export type RelKind = 'reference' | 'refinement' | 'story' | 'experiment';
 
-/** Small rounded label distinguishing which of the three Relation types (see CLAUDE.md invariants) a card comes from. */
+/** Small rounded label distinguishing which family-card kind (see RelKind) a card comes from. */
 export function RelBadge({ kind }: { kind: RelKind }) {
-  const label = kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : 'Story';
+  const label = kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : kind === 'story' ? 'Story' : 'Experiment';
   return <span class={`rel-badge rel-${kind}`}>{label}</span>;
 }
 

@@ -198,6 +198,32 @@ describe('Run creation auto-provisions a requests row (worker-protocol.md)', () 
     const pending = await getJson<{ items: PendingRun[] }>('/api/v1/experiment-runs?pending=true&limit=200');
     expect(pending.body.items.map((r) => r.id)).toContain(run.body.id);
   });
+
+  it('with base_generation_id: the auto-created request payload carries a rebuild reference', async () => {
+    const { generation } = await createGeneration();
+    const exp = await createExperiment({ base_recipe: 'yukari', base_generation_id: generation.id });
+    const run = await postJson<{ id: string; request_id: string | null }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
+    expect(run.status).toBe(201);
+    expect(run.body.request_id).toBeTruthy();
+
+    const requests = await getJson<{ items: { payload: { references?: unknown[] } }[] }>(
+      `/api/v1/requests?run_id=${run.body.id}`,
+    );
+    expect(requests.body.items).toHaveLength(1);
+    expect(requests.body.items[0]!.payload.references).toEqual([{ generation_id: generation.id, purpose: 'rebuild' }]);
+  });
+
+  it('without base_generation_id: the auto-created request payload has no references key', async () => {
+    const exp = await createExperiment({ base_recipe: 'yukari' });
+    const run = await postJson<{ id: string; request_id: string | null }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
+    expect(run.status).toBe(201);
+
+    const requests = await getJson<{ items: { payload: Record<string, unknown> }[] }>(
+      `/api/v1/requests?run_id=${run.body.id}`,
+    );
+    expect(requests.body.items).toHaveLength(1);
+    expect(requests.body.items[0]!.payload).not.toHaveProperty('references');
+  });
 });
 
 describe('MCP server at /mcp', () => {
