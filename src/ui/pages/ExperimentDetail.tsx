@@ -96,12 +96,15 @@ export interface ExperimentDetailData {
   note: string | null;
   status: string;
   base_recipe: string | null;
+  base_generation_id: string | null;
   character_id: string | null;
   bookmark: boolean;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
   character: { id: string; name: string } | null;
+  /** base_generation_id を表示用に解決した short_id。resolveGenerationShortIds (routes/pages.tsx) が引く。 */
+  base_generation_short_id: string | null;
   tags: string[];
   run_count: number;
   runs: ExperimentDetailRun[];
@@ -599,6 +602,19 @@ export function ExperimentDetailPage({
         <tr>
           <td>Base Recipe</td>
           <td>{experiment.base_recipe ?? '-'}</td>
+        </tr>
+        <tr>
+          <td>Base Generation</td>
+          <td>
+            {experiment.base_generation_short_id ? (
+              <a class="exp-base-generation" href={`/g/${experiment.base_generation_short_id}`}>
+                <img src={`/g/${experiment.base_generation_short_id}/image`} alt="" class="exp-base-generation-thumb" />
+                {experiment.base_generation_short_id}
+              </a>
+            ) : (
+              '-'
+            )}
+          </td>
         </tr>
         <tr>
           <td>Character</td>

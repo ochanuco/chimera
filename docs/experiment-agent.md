@@ -50,6 +50,13 @@ Run の `overrides.patches` が変える差分、Experiment の `base_parameters
 
 chimera は中身を検証しません。`base_recipe` と同じく、語彙は comfyui-recipes のものです。
 
+## base_generation_id
+
+Experiment はさらに、その検証が起点とする Generation を1つ持てます
+（`base_generation_id`、nullable）。設定すると、Run 作成時に自動起票される
+request.json（下記）に purpose `rebuild` の Reference として自動で乗ります。
+Agent が個々の Run で参照を組み立てる必要はありません。
+
 ## 未実行 Run
 
 ``` text
@@ -103,6 +110,10 @@ requests 行が自動起票され（[worker-protocol.md](worker-protocol.md)
 あります。`create_request` / `get_request` / `list_requests` は
 `POST /api/v1/requests` などと同じ `src/lib/requests.ts` を呼ぶ薄い別窓口で、
 `created_by` は `mcp` に固定されます。
+
+この自動起票 payload は、Experiment に `base_generation_id` があれば
+`references: [{ generation_id, purpose: "rebuild" }]` を持ちます
+（[generation-request.md](generation-request.md#references)）。
 
 `get_generation_image` は元画像そのものではなく、Images binding で縮小・JPEG
 再エンコードした画像を返します。MCP クライアント側がレスポンス全体を 1MiB

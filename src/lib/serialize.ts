@@ -140,6 +140,7 @@ export function serializeExperiment(row: ExperimentRow) {
     status: row.status,
     base_recipe: row.base_recipe,
     base_parameters: parseJsonObjectOrNull(row.base_parameters_json),
+    base_generation_id: row.base_generation_id,
     character_id: row.character_id,
     bookmark: toBool(row.bookmark),
     created_at: row.created_at,

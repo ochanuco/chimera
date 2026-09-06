@@ -77,6 +77,7 @@ export const createExperimentSchema = z.object({
   note: z.string().optional(),
   base_recipe: z.string().optional(),
   base_parameters: jsonObject.optional(),
+  base_generation_id: z.string().min(1).optional(),
   character_id: z.string().min(1).optional(),
 });
 
@@ -87,6 +88,7 @@ export const updateExperimentSchema = z
     note: z.string().nullable().optional(),
     base_recipe: z.string().nullable().optional(),
     base_parameters: jsonObject.nullable().optional(),
+    base_generation_id: z.string().min(1).nullable().optional(),
     character_id: z.string().min(1).nullable().optional(),
     status: experimentStatusSchema.optional(),
   })

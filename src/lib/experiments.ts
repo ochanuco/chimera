@@ -179,6 +179,77 @@ export async function getExperimentDetail(db: D1Database, experiment: Experiment
   };
 }
 
+export interface ExperimentRunFamilyMember {
+  run_id: string;
+  run_index: number;
+  batch_id: string;
+}
+
+export interface ExperimentRunFamily {
+  experiment: { id: string; short_id: string; name: string };
+  run: { id: string; run_index: number };
+  parent: ExperimentRunFamilyMember | null;
+  children: ExperimentRunFamilyMember[];
+  siblings: ExperimentRunFamilyMember[];
+}
+
+/**
+ * GET /api/v1/batches/{id} 用の ExperimentRun 由来の 4 軸目 (`experiment`)。BatchReference /
+ * BatchRelation / StoryRelation とは別物 (docs/domain-model.md の Relation 3種の不変条件) で、
+ * ここは experiment_runs から読み取るだけの display-only な派生であり、行を作らない。
+ * batch_id が無い ("実行前"の) Run は親/子/兄弟のどれにも出さない — GUI で辿れるのは
+ * Batch 単位のリンクだけなので、リンク先の無い Run を混ぜても意味がない。
+ */
+export async function getExperimentRunFamily(db: D1Database, batchId: string): Promise<ExperimentRunFamily | null> {
+  const run = await db
+    .prepare(
+      `SELECT r.id, r.run_index, r.parent_run_id, r.experiment_id,
+         e.short_id AS experiment_short_id, e.name AS experiment_name
+       FROM experiment_runs r
+       JOIN experiments e ON e.id = r.experiment_id
+       WHERE r.batch_id = ?
+       LIMIT 1`,
+    )
+    .bind(batchId)
+    .first<{
+      id: string;
+      run_index: number;
+      parent_run_id: string | null;
+      experiment_id: string;
+      experiment_short_id: string;
+      experiment_name: string;
+    }>();
+  if (!run) return null;
+
+  const { results } = await db
+    .prepare('SELECT id, run_index, parent_run_id, batch_id FROM experiment_runs WHERE experiment_id = ? ORDER BY run_index ASC')
+    .bind(run.experiment_id)
+    .all<{ id: string; run_index: number; parent_run_id: string | null; batch_id: string | null }>();
+  const allRuns = results ?? [];
+  const byId = new Map(allRuns.map((r) => [r.id, r]));
+
+  const parentRow = run.parent_run_id ? byId.get(run.parent_run_id) : undefined;
+  const parent: ExperimentRunFamilyMember | null =
+    parentRow && parentRow.batch_id ? { run_id: parentRow.id, run_index: parentRow.run_index, batch_id: parentRow.batch_id } : null;
+
+  const children: ExperimentRunFamilyMember[] = allRuns
+    .filter((r) => r.parent_run_id === run.id && r.batch_id !== null)
+    .map((r) => ({ run_id: r.id, run_index: r.run_index, batch_id: r.batch_id! }));
+
+  const excludedIds = new Set([run.id, parent?.run_id, ...children.map((c) => c.run_id)].filter((id): id is string => !!id));
+  const siblings: ExperimentRunFamilyMember[] = allRuns
+    .filter((r) => !excludedIds.has(r.id) && r.batch_id !== null)
+    .map((r) => ({ run_id: r.id, run_index: r.run_index, batch_id: r.batch_id! }));
+
+  return {
+    experiment: { id: run.experiment_id, short_id: run.experiment_short_id, name: run.experiment_name },
+    run: { id: run.id, run_index: run.run_index },
+    parent,
+    children,
+    siblings,
+  };
+}
+
 export interface ExperimentListFilters {
   status?: ExperimentStatus;
   character?: string;
@@ -527,6 +598,7 @@ export interface PendingRunRow extends ExperimentRunRow {
   experiment_status: ExperimentStatus;
   experiment_base_recipe: string | null;
   experiment_base_parameters_json: string | null;
+  experiment_base_generation_id: string | null;
 }
 
 /**
@@ -539,7 +611,8 @@ export async function listPendingRuns(db: D1Database, limit: number, offset: num
   const { results } = await db
     .prepare(
       `SELECT r.*, e.short_id AS experiment_short_id, e.name AS experiment_name, e.status AS experiment_status,
-         e.base_recipe AS experiment_base_recipe, e.base_parameters_json AS experiment_base_parameters_json
+         e.base_recipe AS experiment_base_recipe, e.base_parameters_json AS experiment_base_parameters_json,
+         e.base_generation_id AS experiment_base_generation_id
        FROM experiment_runs r
        JOIN experiments e ON e.id = r.experiment_id
        WHERE r.batch_id IS NULL AND e.status IN ('active', 'stabilized')
@@ -562,6 +635,7 @@ export function serializePendingRun(row: PendingRunRow) {
       status: row.experiment_status,
       base_recipe: row.experiment_base_recipe,
       base_parameters: parseJsonObjectOrNull(row.experiment_base_parameters_json),
+      base_generation_id: row.experiment_base_generation_id,
     },
   };
 }

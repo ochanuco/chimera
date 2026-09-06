@@ -14,6 +14,7 @@ interface Experiment {
   note: string | null;
   status: string;
   base_recipe: string | null;
+  base_generation_id: string | null;
   character_id: string | null;
   bookmark: boolean;
   completed_at: string | null;
@@ -86,6 +87,62 @@ describe('Create Experiment', () => {
 
   it('404s when character_id does not exist', async () => {
     const res = await createExperiment({ character_id: crypto.randomUUID() });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('base_generation_id', () => {
+  it('resolves both short_id and UUID to the stored UUID on create', async () => {
+    const { generation } = await createGeneration();
+
+    const byShortId = await createExperiment({ base_generation_id: generation.short_id });
+    expect(byShortId.status).toBe(201);
+    expect(byShortId.body.base_generation_id).toBe(generation.id);
+
+    const byUuid = await createExperiment({ base_generation_id: generation.id });
+    expect(byUuid.status).toBe(201);
+    expect(byUuid.body.base_generation_id).toBe(generation.id);
+  });
+
+  it('404s on create when base_generation_id does not exist', async () => {
+    const res = await createExperiment({ base_generation_id: crypto.randomUUID() });
+    expect(res.status).toBe(404);
+  });
+
+  it('is null by default', async () => {
+    const res = await createExperiment();
+    expect(res.body.base_generation_id).toBeNull();
+  });
+
+  it('PATCH sets and clears base_generation_id', async () => {
+    const { generation } = await createGeneration();
+    const created = await createExperiment();
+    expect(created.body.base_generation_id).toBeNull();
+
+    const set = await postJson<Experiment>(
+      `/api/v1/experiments/${created.body.id}`,
+      { base_generation_id: generation.short_id },
+      'PATCH',
+    );
+    expect(set.status).toBe(200);
+    expect(set.body.base_generation_id).toBe(generation.id);
+
+    const cleared = await postJson<Experiment>(
+      `/api/v1/experiments/${created.body.id}`,
+      { base_generation_id: null },
+      'PATCH',
+    );
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.base_generation_id).toBeNull();
+  });
+
+  it('404s on PATCH when base_generation_id does not exist', async () => {
+    const created = await createExperiment();
+    const res = await postJson<Experiment>(
+      `/api/v1/experiments/${created.body.id}`,
+      { base_generation_id: crypto.randomUUID() },
+      'PATCH',
+    );
     expect(res.status).toBe(404);
   });
 });

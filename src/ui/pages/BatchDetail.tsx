@@ -31,6 +31,16 @@ export interface BatchDetailData {
   tags: string[];
   reference_children: { batch_id: string; source_generation_id: string; purpose: string | null; aspect: string | null }[];
   siblings: { batch_id: string; via: 'refinement' | 'reference'; shared_id: string }[];
+  experiment_run: ExperimentRunFamily | null;
+}
+
+/** ExperimentRun 由来の 4 軸目 (docs/domain-model.md「Experiment」節)。BatchReference / BatchRelation / StoryRelation とは別物。 */
+export interface ExperimentRunFamily {
+  experiment: { id: string; short_id: string; name: string };
+  run: { id: string; run_index: number };
+  parent: { run_id: string; run_index: number; batch_id: string } | null;
+  children: { run_id: string; run_index: number; batch_id: string }[];
+  siblings: { run_id: string; run_index: number; batch_id: string }[];
 }
 
 /** GET /api/v1/requests?kind=finalize&batch_id= の集計。worker-protocol.md の GUI 節参照。 */
@@ -119,6 +129,17 @@ export function BatchDetailPage({
         detail: `${storyNames[r.story_id] ?? r.story_id}${r.label ? ` — ${r.label}` : ''}`,
       };
     }),
+    ...(batch.experiment_run?.parent ? [batch.experiment_run.parent] : []).map((p): FamilyCardData => {
+      const link = refLink('/b/', p.batch_id, batchShortIds);
+      return {
+        kind: 'experiment',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(p.batch_id),
+        caption: batch.experiment_run!.experiment.name,
+        detail: `run #${p.run_index} → run #${batch.experiment_run!.run.run_index}`,
+      };
+    }),
   ];
 
   const childCards: FamilyCardData[] = [
@@ -153,20 +174,44 @@ export function BatchDetailPage({
         detail: `${storyNames[r.story_id] ?? r.story_id}${r.label ? ` — ${r.label}` : ''}`,
       };
     }),
+    ...(batch.experiment_run?.children ?? []).map((ch): FamilyCardData => {
+      const link = refLink('/b/', ch.batch_id, batchShortIds);
+      return {
+        kind: 'experiment',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(ch.batch_id),
+        caption: batch.experiment_run!.experiment.name,
+        detail: `run #${batch.experiment_run!.run.run_index} → run #${ch.run_index}`,
+      };
+    }),
   ];
 
-  const siblingCards: FamilyCardData[] = batch.siblings.map((s): FamilyCardData => {
-    const link = refLink('/b/', s.batch_id, batchShortIds);
-    const sharedLink =
-      s.via === 'refinement' ? refLink('/b/', s.shared_id, batchShortIds) : refLink('/g/', s.shared_id, generationShortIds);
-    return {
-      kind: s.via as RelKind,
-      href: link.href,
-      shortId: link.label,
-      imageUrl: batchThumb(s.batch_id),
-      detail: `shared parent: ${sharedLink.label}`,
-    };
-  });
+  const siblingCards: FamilyCardData[] = [
+    ...batch.siblings.map((s): FamilyCardData => {
+      const link = refLink('/b/', s.batch_id, batchShortIds);
+      const sharedLink =
+        s.via === 'refinement' ? refLink('/b/', s.shared_id, batchShortIds) : refLink('/g/', s.shared_id, generationShortIds);
+      return {
+        kind: s.via as RelKind,
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(s.batch_id),
+        detail: `shared parent: ${sharedLink.label}`,
+      };
+    }),
+    ...(batch.experiment_run?.siblings ?? []).map((sib): FamilyCardData => {
+      const link = refLink('/b/', sib.batch_id, batchShortIds);
+      return {
+        kind: 'experiment',
+        href: link.href,
+        shortId: link.label,
+        imageUrl: batchThumb(sib.batch_id),
+        caption: batch.experiment_run!.experiment.name,
+        detail: `run #${sib.run_index} of ${batch.experiment_run!.experiment.short_id}`,
+      };
+    }),
+  ];
 
   const parentCount = parentCards.length;
   const childCount = childCards.length;

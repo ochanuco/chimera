@@ -15,6 +15,7 @@ import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeBatch, serializeGenerationLight } from '../lib/serialize';
 import { renderFactsForJob } from '../lib/render-facts';
+import { getExperimentRunFamily } from '../lib/experiments';
 import type {
   AppEnv,
   BatchRelationRow,
@@ -375,6 +376,7 @@ batches.get('/:id', async (c) => {
     referenceChildrenRows,
     siblingsByRefinement,
     siblingsByReference,
+    experimentRun,
   ] = await Promise.all([
     db.prepare('SELECT * FROM comfy_jobs WHERE batch_id = ? ORDER BY job_index ASC').bind(batch.id).all<ComfyJobRow>(),
     db.prepare('SELECT * FROM generations WHERE batch_id = ? ORDER BY created_at ASC').bind(batch.id).all<GenerationRow>(),
@@ -429,6 +431,7 @@ batches.get('/:id', async (c) => {
       )
       .bind(batch.id, batch.id)
       .all<{ batch_id: string; shared_id: string }>(),
+    getExperimentRunFamily(db, batch.id),
   ]);
 
   const siblingsRaw = [
@@ -510,6 +513,7 @@ batches.get('/:id', async (c) => {
       aspect: r.aspect,
     })),
     siblings,
+    experiment_run: experimentRun,
   });
 });
 

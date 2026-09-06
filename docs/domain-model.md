@@ -46,6 +46,7 @@ description
 note
 status
 base_recipe
+base_generation_id
 character_id
 bookmark
 created_at
@@ -70,6 +71,11 @@ Generation を Reference として新しい Experiment / Batch
 に取り込み、現在の prompt / recipe で rebuild します。Experiment
 自体の再開は、この rebuild とは別に、`abandoned` / `promoted` から
 `active` への status 遷移として扱います。
+
+`base_generation_id`（nullable）はこの rebuild 元の Generation です。設定すると、
+自動起票される各 Run の request にも purpose `rebuild` の Reference として渡ります
+（下記 Request 節）。あくまで各 request payload への伝播であり、BatchReference
+そのものは相変わらず唯一の永続化された material relation です。
 
 Experiment は原則物理削除しません。
 
@@ -258,7 +264,9 @@ updated_at
 -   ExperimentRun 作成時、Experiment に `base_recipe` があり status が
     active / stabilized なら、Run の INSERT と同じトランザクションで
     kind=generate の requests 行を自動起票します（1 Run につき1回、
-    `idempotency_key = run:{run_id}`）。
+    `idempotency_key = run:{run_id}`）。Experiment に `base_generation_id`
+    もあれば、この自動起票 payload には `references: [{ generation_id,
+    purpose: "rebuild" }]` が付きます（未設定なら `references` キー自体を省きます）。
 
 ## PairwiseJudgment
 
