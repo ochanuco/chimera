@@ -7,6 +7,7 @@
     "postinstall": "wrangler types",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:production": "wrangler d1 migrations apply chimera --remote && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
