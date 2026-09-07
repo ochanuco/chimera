@@ -1,3 +1,4 @@
+import { finalizeTakesRecolor } from '../finalize-options';
 import { Layout } from '../layout';
 import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
@@ -562,13 +563,15 @@ export function GenerationDetailPage({
           <details class="section" open>
             <summary>Finalize</summary>
             <div class="section-body">
-              <form class="finalize-form" data-generation-short-id={data.short_id}>
+              <form class="finalize-form" data-generation-short-id={data.short_id} autocomplete="off">
                 <label>
                   <input type="checkbox" name="repin" /> repin
                 </label>
-                <label>
-                  <input type="checkbox" name="recolor" /> recolor
-                </label>
+                {finalizeTakesRecolor(data.batch?.recipe ?? null) ? (
+                  <label>
+                    <input type="checkbox" name="recolor" /> recolor
+                  </label>
+                ) : null}
                 <label>
                   <input type="checkbox" name="keep_legwear" /> keep legwear
                 </label>

@@ -395,6 +395,24 @@ describe('Web GUI pages', () => {
     expect(html).toContain('finalize: 1 queued · 0 running · 0 done · 0 failed');
   });
 
+  it('the Finalize forms omit the recolor checkbox for a yukari-sketch batch', async () => {
+    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari-sketch' } });
+
+    const genHtml = await (await req(`/g/${generation.short_id}`)).text();
+    expect(genHtml).toContain('name="repin"');
+    expect(genHtml).not.toContain('name="recolor"');
+
+    const batchHtml = await (await req(`/b/${batch.id}`)).text();
+    expect(batchHtml).toContain('name="repin"');
+    expect(batchHtml).not.toContain('name="recolor"');
+  });
+
+  it('the Finalize forms keep the recolor checkbox for a yukari batch', async () => {
+    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
+    expect(await (await req(`/g/${generation.short_id}`)).text()).toContain('name="recolor"');
+    expect(await (await req(`/b/${batch.id}`)).text()).toContain('name="recolor"');
+  });
+
   it('GET /stories/{id} includes the relation label', async () => {
     const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();

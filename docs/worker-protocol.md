@@ -281,7 +281,8 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）
-だけを持ち、他は省略します。`denoise` の入力欄は空が既定で、空のまま積めば
+だけを持ち、他は省略します。`recolor` は recipe `yukari` の Batch でだけ選べ、
+`yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定）です。
 
 ## idempotency と再実行の再開
