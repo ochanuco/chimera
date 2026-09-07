@@ -1,7 +1,7 @@
 # Worker Protocol
 
 chimera を control plane、GPU 機を worker とする配置での repo をまたぐ契約です。requests
-キューのスキーマ、状態遷移、API、finalize / generate の payload、`recipe_ref`
+キューのスキーマ、状態遷移、API、generate / finalize / repair の payload、`recipe_ref`
 を定めます。段階 2（poll 方式）を対象とし、段階 3 の WorkerHub は概略だけ触れます。
 
 決定の経緯は oolong `notes/2026-09-05_note-comfyui-recipes-mac-off-the-path.md`。
@@ -37,7 +37,7 @@ backfill 行（後述「ExperimentRun 由来の generate」の移行手順）の
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize
+kind              TEXT NOT NULL               generate | finalize | repair
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -111,14 +111,14 @@ POST /api/v1/requests
 
 `run_id` は `kind = generate` かつ `payload.experiment.run_id` があるときに chimera が
 転記します。転記の前に、Run の存在、`payload.experiment.experiment_id` との所属一致、
-`kind = generate` をサーバー側で検証し、外れていれば 400 です。`kind = finalize` の payload
-に `experiment` があっても無視します。
+`kind = generate` をサーバー側で検証し、外れていれば 400 です。`kind = finalize` /
+`kind = repair` の payload に `experiment` があっても無視します。
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
-Token）を区別せず、いずれも全 `kind` を積めます。「GUI は finalize しか積まない」は GUI
-のコードが finalize 用の form しか持たないことで保っており、API が `created_by` を見て
-拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
+Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize / repair
+だけ」は GUI のコードがその2つの form しか持たないことで保っており、API が `created_by`
+を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
 サーバー側で確定し、`created_by` ごとの `kind` / `generation.graph` の受理可否を設けます
 （後述の注意と同じ）。
@@ -144,11 +144,11 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize", "repair"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。段階 2 の box は
-両方を受けます。
+3つとも受けます。
 
 queued の最古の 1 件を `running` にして 200 で返します。無ければ 204。1 文の
 `UPDATE ... WHERE id = (SELECT id FROM requests WHERE status = 'queued' AND kind IN (...) ORDER BY created_at LIMIT 1) RETURNING *`
@@ -211,7 +211,8 @@ GET /api/v1/requests/{id}
 
 generate は作った Batch と ingest した Generation。finalize は納品 Batch（source
 Generation への `rebuild` Reference と source Batch への Refinement を持つ、現行
-`finalize.py` と同じ）と、その Generation です。
+`finalize.py` と同じ）と、その Generation です。repair も同じ形（納品 Batch と
+その Generation）で、finalize と同じ Refinement 系譜を持ちます。
 
 ## payload
 
@@ -299,6 +300,45 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 `yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定）です。
 
+### repair
+
+既存 Generation の手足（hands / feet）だけをマスクして局所的に redraw する
+worker 実行です。finalize と同じく semantic 判断を伴わない再実行で、GUI が積んで
+よい2種類目の kind です（comfyui-recipes 側の実装は別リポジトリ）。
+
+``` json
+{
+  "kind": "repair",
+  "payload": {
+    "generation_id": "abc123",
+    "options": {
+      "parts": ["hands", "feet"],
+      "regions": [[0.1, 0.7, 0.5, 0.95]],
+      "denoise": 0.6,
+      "seeds": [1, 2, 3, 4],
+      "size": 1024,
+      "pad": 1.0
+    }
+  }
+}
+```
+
+`generation_id` は finalize と同じく UUID / short_id のどちらでもよく、finalize
+バッチの sibling（source Generation または納品 Generation のどちらか）でもよい
+— worker が `GET /api/v1/generations/{id}/context` で解決して redraw 対象を決めます。
+
+  options    型                              意味
+  ---------- ------------------------------- ----------------------------------------------
+  parts      array\<"hands" \| "feet"\>      redraw するパーツ（省略時 worker 既定で両方）
+  regions    array\<[x0, y0, x1, y1]\>       width/height に対する分数の矩形（省略時 worker が自動検出）。x0<x1 かつ y0<y1
+  denoise    number (0, 1]                   redraw の denoise 強度（省略時 recipe 既定）
+  seeds      array\<integer\>（最大16件）    試す seed の列（省略時 worker 既定）
+  size       integer（256 以上、8 の倍数）   redraw 解像度の長辺（省略時 recipe 既定）
+  pad        number (0.5-3)                  検出領域の外側マージン係数（省略時 worker 既定）
+
+省略したキーは worker 既定です。chimera が検証するのは型だけで、組み合わせの
+妥当性は worker が判定して `failed` にします。
+
 ## idempotency と再実行の再開
 
 ### キーの導出
@@ -356,8 +396,8 @@ worker が claim した requests 行（`attempt >= 2`）に対して:
 4. ingest は通常通り。既存 `(comfy_job_id, comfy_output_index)` は 200 で戻る
 5. 全 Job が ingested になったら `PATCH /requests/{id}` に `done`
 
-finalize の再実行も同じ規則です。source Generation ごとに新しい納品 Batch を作るのは
-仕様で、同じ requests 行の再実行だけが同じ Batch に戻ります。
+finalize / repair の再実行も同じ規則です。source Generation ごとに新しい納品 Batch を
+作るのは仕様で、同じ requests 行の再実行だけが同じ Batch に戻ります。
 
 ## ExperimentRun 由来の generate
 
@@ -406,14 +446,19 @@ worker は requests だけを見ます。
   `denoise`（空 = recipe 既定）を持ち、`POST /api/v1/requests`（`created_by = gui`）を積む。
   積んだ後はボタンの横に最新 request の status（queued / running / done / failed）と、
   done なら納品 Generation へのリンクを出す。
+- Generation Detail: `Repair` ボタン。`hands` / `feet` のチェックボックス（既定両方 on）、
+  `denoise` / `seeds` / `pad`（空 = worker 既定）、`regions`（1行1矩形のテキスト入力、
+  空 = worker 自動検出）を持ち、同じく `POST /api/v1/requests`（`kind = repair`,
+  `created_by = gui`）を積む。ボタン横の status 表示は Finalize と同じ。
 - Batch Detail: `Finalize all arms`。その Batch の全 Generation について同じ options で
-  requests 行を積む（1 Generation 1 行）。
+  requests 行を積む（1 Generation 1 行）。repair に「all arms」相当は無い（Generation 単位
+  でしか積めない）。
 - 進捗の step 表示は段階 3。
 
 不変条件の文言は次の通り改めます。
 
-> GUI が積んでよいのは semantic 判断を伴わない再実行（finalize）だけ。GUI が触るのは自分の
-> D1 の requests 行のみで、ComfyUI へは到達しない。
+> GUI が積んでよいのは semantic 判断を伴わない再実行（finalize / repair）だけ。GUI が触る
+> のは自分の D1 の requests 行のみで、ComfyUI へは到達しない。
 
 Compare が比較表示のみである点は変わりません。
 
@@ -456,7 +501,7 @@ JSON テキストです。
 worker → hub:
 
 ``` text
-{"type":"hello","worker_id":"<hostname>","kinds":["generate","finalize"]}   最初の1通
+{"type":"hello","worker_id":"<hostname>","kinds":["generate","finalize","repair"]}   最初の1通
 {"type":"progress","request_id":"...","phase":"submit|sampling|ingest|finalize","step":12,"total":28,"message":"..."}
 {"type":"ping"}
 ```

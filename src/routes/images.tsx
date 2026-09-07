@@ -17,6 +17,7 @@ import {
   GenerationDetailPage,
   type GenerationDetailData,
   type FinalizeRequestSummary,
+  type RepairRequestSummary,
   type ExperimentRunFamily,
 } from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
@@ -32,6 +33,28 @@ async function resolveImageMeta(bucket: R2Bucket, generation: GenerationRow): Pr
     return { width: generation.image_width, height: generation.image_height, size: generation.image_size };
   }
   return getImageMeta(bucket, generation.r2_object_key);
+}
+
+/** Shape shared by FinalizeRequestSummary / RepairRequestSummary: both requests kinds carry generation_id + options-only payloads. */
+async function requestSummaries<T extends { id: string; status: string; created_at: string; error: string | null; resultShortId: string | null }>(
+  db: D1Database,
+  res: Response,
+): Promise<T[]> {
+  const data = (await res.json()) as {
+    items: { id: string; status: string; created_at: string; error: string | null; result: { generation_ids: string[] } | null }[];
+  };
+  const resultGenerationIds = data.items.flatMap((r) => r.result?.generation_ids ?? []);
+  const resultShortIds = await resolveGenerationShortIds(db, resultGenerationIds);
+  return data.items.map(
+    (r) =>
+      ({
+        id: r.id,
+        status: r.status,
+        created_at: r.created_at,
+        error: r.error,
+        resultShortId: r.result?.generation_ids[0] ? (resultShortIds.get(r.result.generation_ids[0]) ?? null) : null,
+      }) as T,
+  );
 }
 
 /** Explicit JSON opt-out from the default HTML Generation Detail page. */
@@ -64,28 +87,19 @@ images.get('/:shortId', async (c) => {
     });
   }
 
-  const [detailRes, tagRows, imageMeta, finalizeRequestsRes] = await Promise.all([
+  const [detailRes, tagRows, imageMeta, finalizeRequestsRes, repairRequestsRes] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
     resolveImageMeta(c.env.IMAGES, generation),
     internalApiRequest(c, `/api/v1/requests?kind=finalize&generation_id=${generation.id}&limit=5`),
+    internalApiRequest(c, `/api/v1/requests?kind=repair&generation_id=${generation.id}&limit=5`),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
-  // Finalize セクション: このGenerationを対象にした最新のfinalize requestを状況表示する
+  // Finalize / Repair セクション: このGenerationを対象にした最新のrequestを状況表示する
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
-  const finalizeRequestsData = (await finalizeRequestsRes.json()) as {
-    items: { id: string; status: string; created_at: string; error: string | null; result: { generation_ids: string[] } | null }[];
-  };
-  const finalizeResultGenerationIds = finalizeRequestsData.items.flatMap((r) => r.result?.generation_ids ?? []);
-  const finalizeResultShortIds = await resolveGenerationShortIds(db, finalizeResultGenerationIds);
-  const finalizeRequests: FinalizeRequestSummary[] = finalizeRequestsData.items.map((r) => ({
-    id: r.id,
-    status: r.status as FinalizeRequestSummary['status'],
-    created_at: r.created_at,
-    error: r.error,
-    resultShortId: r.result?.generation_ids[0] ? finalizeResultShortIds.get(r.result.generation_ids[0]) ?? null : null,
-  }));
+  const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
+  const repairRequests = await requestSummaries<RepairRequestSummary>(db, repairRequestsRes);
 
   // "親" (parent) material for a Generation is its own Batch's reference material
   // (batch_references where target_batch_id = the owning Batch), not `data.references`
@@ -199,6 +213,7 @@ images.get('/:shortId', async (c) => {
       experimentRun={experimentRun}
       imageMeta={imageMeta}
       finalizeRequests={finalizeRequests}
+      repairRequests={repairRequests}
     />,
   );
 });
