@@ -342,8 +342,10 @@ GUIが積んでよいのはsemantic判断を伴わない再実行=finalizeだけ
 [worker-protocol.md](worker-protocol.md)参照）。`repin` / `recolor` / `keep
 legwear`のチェックボックスと、空欄がrecipe既定を意味する`denoise`の数値入力を持ち、
 `recolor`はBatchのrecipeが`yukari`のときだけ表示します（`yukari-sketch`の
-finalizeはrecolorを受け付けず、workerが`failed`にします）。Finalize all
-armsも同じ条件です。
+finalizeはrecolorを受け付けず、workerが`failed`にします）。続けて`backdrop`の
+select（`stripes`既定 / `transparent` / `color`。`color`を選ぶと隣に`#RRGGBB`の
+テキスト入力が現れ、空か形式違いなら送信せずalertします）と`stroke light`の
+select（`none`既定と8方位）を持ちます。Finalize all armsも同じ項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
 した最新のfinalize requestを最大5件、新しい順に`status · created_at`の行として
