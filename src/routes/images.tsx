@@ -17,7 +17,6 @@ import {
   GenerationDetailPage,
   type GenerationDetailData,
   type FinalizeRequestSummary,
-  type RepairRequestSummary,
   type ExperimentRunFamily,
 } from '../ui/pages/GenerationDetail';
 import { NotFoundPage } from '../ui/pages/NotFound';
@@ -87,19 +86,17 @@ images.get('/:shortId', async (c) => {
     });
   }
 
-  const [detailRes, tagRows, imageMeta, finalizeRequestsRes, repairRequestsRes] = await Promise.all([
+  const [detailRes, tagRows, imageMeta, finalizeRequestsRes] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
     resolveImageMeta(c.env.IMAGES, generation),
-    internalApiRequest(c, `/api/v1/requests?kind=finalize&generation_id=${generation.id}&limit=5`),
-    internalApiRequest(c, `/api/v1/requests?kind=repair&generation_id=${generation.id}&limit=5`),
+    internalApiRequest(c, `/api/v1/requests?generation_id=${generation.id}&limit=5`),
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
-  // Finalize / Repair セクション: このGenerationを対象にした最新のrequestを状況表示する
+  // Finalize セクション: このGenerationを対象にした最新のrequest (finalize / repair) を状況表示する
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
   const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
-  const repairRequests = await requestSummaries<RepairRequestSummary>(db, repairRequestsRes);
 
   // "親" (parent) material for a Generation is its own Batch's reference material
   // (batch_references where target_batch_id = the owning Batch), not `data.references`
@@ -213,7 +210,6 @@ images.get('/:shortId', async (c) => {
       experimentRun={experimentRun}
       imageMeta={imageMeta}
       finalizeRequests={finalizeRequests}
-      repairRequests={repairRequests}
     />,
   );
 });

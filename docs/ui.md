@@ -351,7 +351,7 @@ select（`none`既定と8方位）を持ちます。続けて`repair hands` / `r
 も同じ項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
-した最新のfinalize requestを最大5件、新しい順に`status · created_at`の行として
+した最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
 
 各行は`data-request-id` / `data-request-status`を持ち、`/api/v1/requests/ws`
@@ -363,18 +363,10 @@ Finalize all armsセクションでも、集計行の下に同じ`request-status
 同じ仕組みで各行が更新されます。WebSocketが張れない環境でも静的な表示のまま
 壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
 
-Finalizeセクションの直後のRepairセクションは、既存Generationの手足（hands / feet）
-だけをマスクして局所的にredrawするための、もう1つのsemantic判断を伴わない再実行
-手段です（[worker-protocol.md](worker-protocol.md#repair)参照）。`hands` / `feet`の
-チェックボックス（既定どちらもon）、`denoise` / `pad`の数値入力（空欄がworker既定）、
-カンマ区切りの`seeds`テキスト入力（既定`1,2,3,4`）、1行1矩形（`x0 y0 x1 y1`、
-width/heightに対する分数）の`regions`テキストエリア（空欄はworker側の自動検出）を
-持ちます。`regions`の行が4つの数値でなければ送信せずalertします。Repairボタンで
-`POST /api/v1/requests`（`kind: "repair"`, `created_by: "gui"`）を1件積んでページを
-再読み込みし、その下にはこのGenerationを対象とした最新のrepair requestを最大5件、
-Finalizeセクションと同じ`request-status-list`の形式・同じ`initRequestLive()`の
-仕組みで表示します。Batch Detailに「Repair all arms」相当はありません（Generation
-単位でのみ積めます）。
+手足の局所redraw（[worker-protocol.md](worker-protocol.md#repair)の`repair`）は
+GUIでは独立したセクションを持たず、Finalizeフォームの`repair hands` / `repair feet`
+から同じfinalize requestに乗せます。`kind: "repair"`のrequestはAPI / MCPからだけ積め、
+このGenerationを対象にした行はFinalizeセクションのrequest一覧にfinalizeと並んで出ます。
 
 ## Provenance View
 
@@ -713,7 +705,6 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `tag.remove` | `kind`, `id`, `tag_id` | tag削除（`initTagRemove`） |
 | `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
-| `repair.submit` | `generation_id`, repairオプション | repair送信（`initRepair`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `graph.scope` | `scope` | Graphのscope切り替え（`initGraphScope`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
