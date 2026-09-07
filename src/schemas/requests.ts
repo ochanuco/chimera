@@ -27,6 +27,12 @@ export const finalizeOptionsSchema = z
     skin: z.boolean().optional(),
     toe_guard: z.union([z.literal(true), z.number()]).nullable().optional(),
     keep_scene: z.boolean().optional(),
+    transparent: z.boolean().nullable().optional(),
+    backdrop: z.string().nullable().optional(),
+    upscale: z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional(),
+    lora_strength: z.number().nullable().optional(),
+    deliver_size: z.number().int().nullable().optional(),
+    stroke_light: z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional(),
   })
   .strict();
 
