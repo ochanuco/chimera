@@ -1255,7 +1255,7 @@ export const appJs = `
       }
     }
     var strokeLight = qs('select[name="stroke_light"]', form).value;
-    return {
+    var options = {
       repin: qs('input[name="repin"]', form).checked,
       recolor: recolor ? recolor.checked : false,
       keep_legwear: qs('input[name="keep_legwear"]', form).checked ? true : null,
@@ -1263,6 +1263,16 @@ export const appJs = `
       backdrop: backdrop,
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
+
+    var repair = [];
+    if (qs('input[name="repair_hands"]', form).checked) repair.push('hands');
+    if (qs('input[name="repair_feet"]', form).checked) repair.push('feet');
+    if (repair.length > 0) options.repair = repair;
+
+    var repairPadRaw = qs('input[name="repair_pad"]', form).value;
+    if (repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
+
+    return options;
   }
 
   // The color input stays disabled while hidden so the browser's pattern check

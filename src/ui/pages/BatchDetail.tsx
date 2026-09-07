@@ -417,6 +417,15 @@ export function BatchDetailPage({
                     <option value="nw">nw (↖)</option>
                   </select>
                 </label>
+                <label>
+                  <input type="checkbox" name="repair_hands" /> repair hands
+                </label>
+                <label>
+                  <input type="checkbox" name="repair_feet" /> repair feet
+                </label>
+                <label>
+                  repair pad <input type="number" name="repair_pad" step="0.1" min="0.5" max="3" placeholder="1.0" />
+                </label>
                 <button type="submit">Finalize all arms</button>
               </form>
               <p class="finalize-summary">
