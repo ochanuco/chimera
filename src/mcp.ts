@@ -313,7 +313,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       description:
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
-        'schema_version/request/generation required) or "finalize" (payload {generation_id, options?}). created_by is ' +
+        'schema_version/request/generation required), "finalize" (payload {generation_id, options?}), or "repair" ' +
+        '(payload {generation_id, options?}, a masked local redraw of hands/feet). created_by is ' +
         'forced to "mcp". Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       inputSchema: createRequestInputSchema,

@@ -74,7 +74,7 @@ function trackMessages(ws: WebSocket): Tracker {
   return { messages, waitFor };
 }
 
-function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize')[]): void {
+function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize' | 'repair')[]): void {
   ws.send(JSON.stringify({ type: 'hello', worker_id: workerId, kinds }));
 }
 
@@ -96,6 +96,15 @@ async function createFinalizeRequest(generationId: string) {
   return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
     kind: 'finalize',
     payload: { generation_id: generationId, options: { repin: true } },
+    idempotency_key: crypto.randomUUID(),
+    created_by: 'gui',
+  });
+}
+
+async function createRepairRequest(generationId: string) {
+  return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
+    kind: 'repair',
+    payload: { generation_id: generationId, options: { parts: ['hands', 'feet'] } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'gui',
   });
@@ -243,6 +252,23 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     // 届かないのが正しい結果なので、待ちきる方を積極的に待たない)。
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(workerT.messages.find((m) => m.type === 'queued' && m.request_id === requestId)).toBeUndefined();
+
+    worker.close();
+  });
+
+  it('hello kinds accepts repair: a worker with kinds ["repair"] gets a repair request queued', async () => {
+    const worker = await connectWs('/api/v1/worker/ws');
+    const workerT = trackMessages(worker);
+    hello(worker, 'w-repair-only', ['repair']);
+    await workerT.waitFor((m) => m.type === 'hello_ack');
+
+    const { generation } = await createGeneration();
+    const created = await createRepairRequest(generation.id);
+    expect(created.status).toBe(201);
+    const requestId = created.body.id;
+
+    const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
+    expect(queuedMsg.kind).toBe('repair');
 
     worker.close();
   });

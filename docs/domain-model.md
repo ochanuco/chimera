@@ -232,7 +232,7 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 
 ``` text
 id
-kind              generate | finalize
+kind              generate | finalize | repair
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -254,7 +254,7 @@ updated_at
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
-`{ generation_id, options }`（finalize）です。契約全体（状態遷移、API、payload
+`{ generation_id, options }`（finalize / repair）です。契約全体（状態遷移、API、payload
 の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
 
 不変条件:

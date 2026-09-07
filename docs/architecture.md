@@ -76,7 +76,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   生成画像を Management API へ ingest する。
 -   Discord へ Generation ID / canonical URL と画像を通知する。
 -   リトライ・冪等性を担保する。
--   finalize（納品用の再実行）を requests 行から受けて実行する。
+-   finalize / repair（納品用の再実行）を requests 行から受けて実行する。
 
 ### Management API
 
@@ -97,10 +97,10 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   Story / Provenance を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
 -   Experiment 一覧・詳細を閲覧する。
--   semantic 判断を伴わない再実行（finalize）を requests 行として積む。
+-   semantic 判断を伴わない再実行（finalize / repair）を requests 行として積む。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（finalize）だけで、GUI が触るのは自分の D1 の requests
+判断を伴わない再実行（finalize / repair）だけで、GUI が触るのは自分の D1 の requests
 行のみです。
 
 ## Storage
