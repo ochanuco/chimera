@@ -407,6 +407,18 @@ describe('Web GUI pages', () => {
     expect(batchHtml).not.toContain('name="recolor"');
   });
 
+  it('the Finalize forms offer backdrop and stroke light on both pages', async () => {
+    const { generation, batch } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+      const html = await (await req(path)).text();
+      expect(html).toContain('name="backdrop"');
+      expect(html).toContain('<option value="stripes" selected');
+      expect(html).toContain('name="backdrop_color"');
+      expect(html).toContain('name="stroke_light"');
+      expect(html).toContain('<option value="nw"');
+    }
+  });
+
   it('the Finalize forms keep the recolor checkbox for a yukari batch', async () => {
     const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
     expect(await (await req(`/g/${generation.short_id}`)).text()).toContain('name="recolor"');

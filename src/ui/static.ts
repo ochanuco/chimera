@@ -445,6 +445,16 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .finalize-all-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 .finalize-all-form input[type="number"] { width: 5rem; }
+.finalize-form select, .finalize-all-form select,
+.finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.85rem;
+}
+.finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] { width: 6.5rem; }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 .request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
 .request-status-queued { color: var(--accent); }
@@ -1208,15 +1218,44 @@ export const appJs = `
   }
 
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
+  // Returns null (after alerting) when the form cannot be turned into options.
   function finalizeOptionsFrom(form) {
     var denoiseRaw = qs('input[name="denoise"]', form).value;
     var recolor = qs('input[name="recolor"]', form);
+    var backdropMode = qs('select[name="backdrop"]', form).value;
+    var backdrop = backdropMode === 'transparent' ? null : backdropMode;
+    if (backdropMode === 'color') {
+      backdrop = qs('input[name="backdrop_color"]', form).value.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(backdrop)) {
+        alert('backdrop color must be #RRGGBB');
+        return null;
+      }
+    }
+    var strokeLight = qs('select[name="stroke_light"]', form).value;
     return {
       repin: qs('input[name="repin"]', form).checked,
       recolor: recolor ? recolor.checked : false,
       keep_legwear: qs('input[name="keep_legwear"]', form).checked ? true : null,
       denoise: denoiseRaw === '' ? null : Number(denoiseRaw),
+      backdrop: backdrop,
+      stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
+  }
+
+  // The color input stays disabled while hidden so the browser's pattern check
+  // cannot block submit on a control it has no way to show.
+  function initFinalizeBackdropColor() {
+    document.addEventListener('change', function (ev) {
+      var select = ev.target;
+      if (!(select instanceof HTMLSelectElement) || select.name !== 'backdrop') return;
+      var form = select.closest('.finalize-form, .finalize-all-form');
+      if (!form) return;
+      var color = qs('input[name="backdrop_color"]', form);
+      var on = select.value === 'color';
+      color.hidden = !on;
+      color.disabled = !on;
+      if (on) color.focus();
+    });
   }
 
   function postFinalizeRequest(generationShortId, options) {
@@ -1235,6 +1274,7 @@ export const appJs = `
       ev.preventDefault();
       const shortId = form.getAttribute('data-generation-short-id');
       const options = finalizeOptionsFrom(form);
+      if (!options) return;
       try {
         await postFinalizeRequest(shortId, options);
         track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId }, options));
@@ -1255,6 +1295,7 @@ export const appJs = `
       const idsAttr = form.getAttribute('data-generation-short-ids') || '';
       const ids = idsAttr.split(',').filter(function (id) { return id.length > 0; });
       const options = finalizeOptionsFrom(form);
+      if (!options) return;
       try {
         for (const shortId of ids) {
           await postFinalizeRequest(shortId, options);
@@ -2014,6 +2055,7 @@ export const appJs = `
     initNoteForm();
     initFinalize();
     initFinalizeAll();
+    initFinalizeBackdropColor();
     initGalleryFilter();
     initRequestLive();
     initCompareBar();
