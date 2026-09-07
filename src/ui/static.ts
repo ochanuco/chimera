@@ -1210,9 +1210,10 @@ export const appJs = `
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
   function finalizeOptionsFrom(form) {
     var denoiseRaw = qs('input[name="denoise"]', form).value;
+    var recolor = qs('input[name="recolor"]', form);
     return {
       repin: qs('input[name="repin"]', form).checked,
-      recolor: qs('input[name="recolor"]', form).checked,
+      recolor: recolor ? recolor.checked : false,
       keep_legwear: qs('input[name="keep_legwear"]', form).checked ? true : null,
       denoise: denoiseRaw === '' ? null : Number(denoiseRaw),
     };
