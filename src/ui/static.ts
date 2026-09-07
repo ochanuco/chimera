@@ -457,28 +457,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] { width: 6.5rem; }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
-.repair-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
-.repair-form input[type="number"] { width: 5rem; }
-.repair-form input[name="seeds"] { width: 8rem; }
-.repair-form button {
-  background: var(--accent);
-  color: #10131c;
-  border: none;
-  border-radius: 6px;
-  padding: 0.35rem 0.9rem;
-  cursor: pointer;
-}
-.repair-regions-label { display: flex; flex-direction: column; gap: 0.2rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
-.repair-form textarea[name="regions"] {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 0.25rem 0.4rem;
-  font-size: 0.85rem;
-  font-family: inherit;
-  resize: vertical;
-}
 .request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
 .request-status-queued { color: var(--accent); }
 .request-status-running { color: var(--neutral); }
@@ -1342,85 +1320,6 @@ export const appJs = `
     });
   }
 
-  // --- Repair (worker-protocol.md: GUI が積んでよいのは semantic 判断を伴わない再実行 —
-  // finalize / repair だけ)。hands/feet のマスク局所 redraw。
-  // Returns null (after alerting) when the form cannot be turned into options.
-  function repairOptionsFrom(form) {
-    var options = {};
-
-    var parts = [];
-    if (qs('input[name="parts_hands"]', form).checked) parts.push('hands');
-    if (qs('input[name="parts_feet"]', form).checked) parts.push('feet');
-    if (parts.length > 0) options.parts = parts;
-
-    var denoiseRaw = qs('input[name="denoise"]', form).value;
-    if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);
-
-    var seedsRaw = qs('input[name="seeds"]', form).value.trim();
-    if (seedsRaw !== '') {
-      var seedFields = seedsRaw.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
-      var seeds = [];
-      for (var i = 0; i < seedFields.length; i++) {
-        var seed = Number(seedFields[i]);
-        if (!Number.isInteger(seed) || seed < 0) {
-          alert('seeds must be a comma-separated list of non-negative integers, got "' + seedFields[i] + '"');
-          return null;
-        }
-        seeds.push(seed);
-      }
-      if (seeds.length > 0) options.seeds = seeds;
-    }
-
-    var padRaw = qs('input[name="pad"]', form).value;
-    if (padRaw !== '') options.pad = Number(padRaw);
-
-    var regionsRaw = qs('textarea[name="regions"]', form).value.trim();
-    if (regionsRaw !== '') {
-      var lines = regionsRaw.split('\\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
-      var regions = [];
-      for (var j = 0; j < lines.length; j++) {
-        var fields = lines[j].split(/\\s+/);
-        var nums = fields.map(Number);
-        if (fields.length !== 4 || nums.some(function (n) { return isNaN(n); })) {
-          alert('malformed region line "' + lines[j] + '" (expected "x0 y0 x1 y1")');
-          return null;
-        }
-        regions.push(nums);
-      }
-      if (regions.length > 0) options.regions = regions;
-    }
-
-    return options;
-  }
-
-  function postRepairRequest(generationShortId, options) {
-    return api('/api/v1/requests', 'POST', {
-      kind: 'repair',
-      payload: { generation_id: generationShortId, options: options },
-      idempotency_key: 'gui:repair:' + generationShortId + ':' + crypto.randomUUID(),
-      created_by: 'gui',
-    });
-  }
-
-  function initRepair() {
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.repair-form');
-      if (!form) return;
-      ev.preventDefault();
-      const shortId = form.getAttribute('data-generation-short-id');
-      const options = repairOptionsFrom(form);
-      if (!options) return;
-      try {
-        await postRepairRequest(shortId, options);
-        track('repair.submit', Object.assign({ generation_id: shortId }, options));
-        location.reload();
-      } catch (e) {
-        trackError('repair.submit', e, { generation_id: shortId });
-        alert('repair failed: ' + e.message);
-      }
-    });
-  }
-
   // --- Request live status (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws
   // から progress / status を受けて [data-request-id] 要素の表示を更新する。対象要素が
   // ページに無ければ何もしない。
@@ -2168,7 +2067,6 @@ export const appJs = `
     initFinalize();
     initFinalizeAll();
     initFinalizeBackdropColor();
-    initRepair();
     initGalleryFilter();
     initRequestLive();
     initCompareBar();
