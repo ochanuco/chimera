@@ -1,3 +1,4 @@
+import { finalizeTakesRecolor } from '../finalize-options';
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { CopyIdButton } from '../components/CopyIdButton';
@@ -373,13 +374,16 @@ export function BatchDetailPage({
               <form
                 class="finalize-all-form"
                 data-generation-short-ids={batch.generations.map((g) => g.short_id).join(',')}
+                autocomplete="off"
               >
                 <label>
                   <input type="checkbox" name="repin" /> repin
                 </label>
-                <label>
-                  <input type="checkbox" name="recolor" /> recolor
-                </label>
+                {finalizeTakesRecolor(batch.recipe) ? (
+                  <label>
+                    <input type="checkbox" name="recolor" /> recolor
+                  </label>
+                ) : null}
                 <label>
                   <input type="checkbox" name="keep_legwear" /> keep legwear
                 </label>
