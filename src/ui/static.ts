@@ -1366,10 +1366,10 @@ export const appJs = `
 
     var regionsRaw = qs('textarea[name="regions"]', form).value.trim();
     if (regionsRaw !== '') {
-      var lines = regionsRaw.split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+      var lines = regionsRaw.split('\\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
       var regions = [];
       for (var j = 0; j < lines.length; j++) {
-        var fields = lines[j].split(/\s+/);
+        var fields = lines[j].split(/\\s+/);
         var nums = fields.map(Number);
         if (fields.length !== 4 || nums.some(function (n) { return isNaN(n); })) {
           alert('malformed region line "' + lines[j] + '" (expected "x0 y0 x1 y1")');
