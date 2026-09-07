@@ -272,6 +272,46 @@ export function BatchDetailPage({
           <datalist id="tag-suggestions"></datalist>
 
           <details class="section" open>
+            <summary>Finalize all arms</summary>
+            <div class="section-body">
+              <form
+                class="finalize-all-form"
+                data-generation-short-ids={batch.generations.map((g) => g.short_id).join(',')}
+                autocomplete="off"
+              >
+                <label>
+                  <input type="checkbox" name="repin" /> repin
+                </label>
+                {finalizeTakesRecolor(batch.recipe) ? (
+                  <label>
+                    <input type="checkbox" name="recolor" /> recolor
+                  </label>
+                ) : null}
+                <label>
+                  <input type="checkbox" name="keep_legwear" /> keep legwear
+                </label>
+                <label>
+                  denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
+                </label>
+                <button type="submit">Finalize all arms</button>
+              </form>
+              <p class="finalize-summary">
+                finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}
+                {finalizeSummary.failed} failed
+              </p>
+              {finalizeRequests.length > 0 ? (
+                <ul class="request-status-list">
+                  {finalizeRequests.map((r) => (
+                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
+                      {r.status} <span class="request-progress"></span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </details>
+
+          <details class="section" open>
             <summary>Tags</summary>
             <div class="section-body">
               <div class="tag-chips">
@@ -368,45 +408,6 @@ export function BatchDetailPage({
             </div>
           </details>
 
-          <details class="section" open>
-            <summary>Finalize all arms</summary>
-            <div class="section-body">
-              <form
-                class="finalize-all-form"
-                data-generation-short-ids={batch.generations.map((g) => g.short_id).join(',')}
-                autocomplete="off"
-              >
-                <label>
-                  <input type="checkbox" name="repin" /> repin
-                </label>
-                {finalizeTakesRecolor(batch.recipe) ? (
-                  <label>
-                    <input type="checkbox" name="recolor" /> recolor
-                  </label>
-                ) : null}
-                <label>
-                  <input type="checkbox" name="keep_legwear" /> keep legwear
-                </label>
-                <label>
-                  denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
-                </label>
-                <button type="submit">Finalize all arms</button>
-              </form>
-              <p class="finalize-summary">
-                finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}
-                {finalizeSummary.failed} failed
-              </p>
-              {finalizeRequests.length > 0 ? (
-                <ul class="request-status-list">
-                  {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
-                      {r.status} <span class="request-progress"></span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </details>
 
           <details class="section" open>
             <summary>Git</summary>
