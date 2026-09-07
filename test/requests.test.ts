@@ -122,6 +122,26 @@ describe('POST /api/v1/requests', () => {
     expect(conflicting.status).toBe(409);
   });
 
+  it('finalize: repair/repair_pad options are 201, unknown repair part is 400, bad repair_regions (x0 > x1) is 400', async () => {
+    const { generation } = await createGeneration();
+
+    const created = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_pad: 1.2 } },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['feet'], repair_pad: 1.2 } });
+
+    const unknownPart = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['toes'] } },
+    });
+    expect(unknownPart.status).toBe(400);
+
+    const badRegion = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair_regions: [[0.5, 0.5, 0.2, 0.9]] } },
+    });
+    expect(badRegion.status).toBe(400);
+  });
+
   it('repair: 201 create with parts/regions/denoise/seeds/pad, unknown option key is 400, bad region (x0 > x1) is 400', async () => {
     const { generation } = await createGeneration();
 

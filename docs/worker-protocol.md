@@ -260,7 +260,12 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
       "upscale": null,
       "lora_strength": null,
       "deliver_size": null,
-      "stroke_light": null
+      "stroke_light": null,
+      "repair": null,
+      "repair_regions": null,
+      "repair_denoise": null,
+      "repair_pad": null,
+      "repair_size": null
     }
   }
 }
@@ -289,16 +294,25 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
   lora_strength       null | number             `--lora-strength 0..2`
   deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
   stroke_light        null | "n".."nw"          `--stroke-light DIR`（8 方位、紫縁を光源側で細く影側で太く）
+  repair              null | array\<"hands" \| "feet"\>  `--repair hands,feet`（同じ finalize request に相乗りする repair。null / 省略 / 空配列は off）
+  repair_regions      null | array\<[x0, y0, x1, y1]\>   `--repair-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1）
+  repair_denoise      null | number (0, 1]      `--repair-denoise 0.6`
+  repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
+  repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
-妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。
+妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
+の語彙は単体の repair request（後述）と揃えてあります。
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
-`backdrop` / `stroke_light` を持ち、他は省略します。`backdrop` は select の
+`backdrop` / `stroke_light` に加えて、repair のチェックボックスを使った場合は
+`repair` / `repair_pad` を持ち、他は省略します。`backdrop` は select の
 `stripes`（既定）→ `"stripes"`、`transparent` → `null`、`color` → 入力した
 `#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は recipe `yukari` の Batch でだけ選べ、
 `yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
-`null`（recipe 既定）です。
+`null`（recipe 既定）です。「repair hands」「repair feet」はどちらも既定オフで、
+チェックした分だけ `repair` に積みます。`repair pad` の入力欄は空が既定で、
+空のまま積めば省略（worker 既定）です。
 
 ### repair
 
