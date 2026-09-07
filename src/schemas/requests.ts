@@ -10,9 +10,22 @@ export const jsonObject = z.record(z.string(), z.unknown());
 export const RECIPE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
 /**
+ * repair の region は width/height に対する分数の矩形 [x0, y0, x1, y1] で、
+ * x0<x1 かつ y0<y1 を要求する。単体の repair request (`regions`) と finalize
+ * に相乗りする repair (`repair_regions`) が共有する。
+ */
+const repairRegionSchema = z
+  .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
+  .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
+    message: 'region must have x0 < x1 and y0 < y1',
+  });
+
+/**
  * finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す
  * (docs/worker-protocol.md「finalize」節の表)。組み合わせの妥当性 (recipe が
  * route を持つか等) は worker が判定して failed にする — chimera が見るのは型だけ。
+ * `repair*` は同じリクエストに相乗りする repair (masked local redraw) の引数で、
+ * 単体の repair request の options と語彙を揃えている。
  */
 export const finalizeOptionsSchema = z
   .object({
@@ -33,6 +46,11 @@ export const finalizeOptionsSchema = z
     lora_strength: z.number().nullable().optional(),
     deliver_size: z.number().int().nullable().optional(),
     stroke_light: z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional(),
+    repair: z.array(z.enum(['hands', 'feet'])).nullable().optional(),
+    repair_regions: z.array(repairRegionSchema).nullable().optional(),
+    repair_denoise: z.number().gt(0).lte(1).nullable().optional(),
+    repair_pad: z.number().min(0.5).max(3).nullable().optional(),
+    repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
   })
   .strict();
 
@@ -46,20 +64,11 @@ export const finalizePayloadSchema = z
 /**
  * repair の options は masked local redraw (hands/feet) の worker 側引数に写す
  * (docs/worker-protocol.md「repair」節の表)。finalize と同じく chimera が見るのは型だけ。
- * `regions` は width/height に対する分数の矩形 [x0, y0, x1, y1] で、x0<x1 かつ y0<y1 を要求する。
  */
 export const repairOptionsSchema = z
   .object({
     parts: z.array(z.enum(['hands', 'feet'])).optional(),
-    regions: z
-      .array(
-        z
-          .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
-          .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
-            message: 'region must have x0 < x1 and y0 < y1',
-          }),
-      )
-      .optional(),
+    regions: z.array(repairRegionSchema).optional(),
     denoise: z.number().gt(0).lte(1).nullable().optional(),
     seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
     size: z.number().int().min(256).multipleOf(8).nullable().optional(),
