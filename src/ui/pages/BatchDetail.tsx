@@ -390,6 +390,33 @@ export function BatchDetailPage({
                 <label>
                   denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
                 </label>
+                <label>
+                  backdrop{' '}
+                  <select name="backdrop">
+                    <option value="stripes" selected>
+                      stripes
+                    </option>
+                    <option value="transparent">transparent</option>
+                    <option value="color">color</option>
+                  </select>
+                </label>
+                <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
+                <label>
+                  stroke light{' '}
+                  <select name="stroke_light">
+                    <option value="none" selected>
+                      none
+                    </option>
+                    <option value="n">n (↑)</option>
+                    <option value="ne">ne (↗)</option>
+                    <option value="e">e (→)</option>
+                    <option value="se">se (↘)</option>
+                    <option value="s">s (↓)</option>
+                    <option value="sw">sw (↙)</option>
+                    <option value="w">w (←)</option>
+                    <option value="nw">nw (↖)</option>
+                  </select>
+                </label>
                 <button type="submit">Finalize all arms</button>
               </form>
               <p class="finalize-summary">
