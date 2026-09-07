@@ -69,16 +69,6 @@ export interface FinalizeRequestSummary {
   resultShortId: string | null;
 }
 
-/** Latest repair requests targeting this Generation (GET /api/v1/requests?kind=repair&generation_id=). Same shape as FinalizeRequestSummary. */
-export interface RepairRequestSummary {
-  id: string;
-  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
-  created_at: string;
-  error: string | null;
-  /** done の場合の納品 Generation の short_id（resolveGenerationShortIds で解決済み）。 */
-  resultShortId: string | null;
-}
-
 /** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
@@ -169,7 +159,6 @@ export function GenerationDetailPage({
   experimentRun,
   imageMeta,
   finalizeRequests,
-  repairRequests,
 }: {
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
@@ -192,8 +181,6 @@ export function GenerationDetailPage({
   imageMeta: ImageMeta | null;
   /** 最新の finalize request 一覧 (最大5件、新しい順)。段階2の GUI はここに積むだけで進捗はここで見る。 */
   finalizeRequests: FinalizeRequestSummary[];
-  /** 最新の repair request 一覧 (最大5件、新しい順)。hands/feet のマスク局所 redraw、semantic 判断を伴わない再実行。 */
-  repairRequests: RepairRequestSummary[];
 }) {
   const ownBatchId = data.batch?.id;
 
@@ -632,50 +619,6 @@ export function GenerationDetailPage({
               {finalizeRequests.length > 0 ? (
                 <ul class="request-status-list">
                   {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
-                      {r.status} <span class="request-progress"></span> · {r.created_at}
-                      {r.status === 'done' && r.resultShortId ? (
-                        <>
-                          {' '}
-                          — <a href={`/g/${r.resultShortId}`}>{r.resultShortId}</a>
-                        </>
-                      ) : null}
-                      {r.status === 'failed' && r.error ? <> — {r.error}</> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </details>
-
-          <details class="section" open>
-            <summary>Repair</summary>
-            <div class="section-body">
-              <form class="repair-form" data-generation-short-id={data.short_id} autocomplete="off">
-                <label>
-                  <input type="checkbox" name="parts_hands" checked /> hands
-                </label>
-                <label>
-                  <input type="checkbox" name="parts_feet" checked /> feet
-                </label>
-                <label>
-                  denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="0.6" />
-                </label>
-                <label>
-                  seeds <input type="text" name="seeds" value="1,2,3,4" />
-                </label>
-                <label>
-                  pad <input type="number" name="pad" step="0.1" min="0.5" max="3" placeholder="1.0" />
-                </label>
-                <label class="repair-regions-label">
-                  regions (one rectangle per line, "x0 y0 x1 y1" as fractions of width/height)
-                  <textarea name="regions" rows={3} placeholder="0.1 0.7 0.5 0.95"></textarea>
-                </label>
-                <button type="submit">Repair</button>
-              </form>
-              {repairRequests.length > 0 ? (
-                <ul class="request-status-list">
-                  {repairRequests.map((r) => (
                     <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
                       {r.status} <span class="request-progress"></span> · {r.created_at}
                       {r.status === 'done' && r.resultShortId ? (

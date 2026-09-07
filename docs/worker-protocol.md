@@ -116,8 +116,9 @@ POST /api/v1/requests
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
-Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize / repair
-だけ」は GUI のコードがその2つの form しか持たないことで保っており、API が `created_by`
+Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize
+だけ（手足の repair は finalize の option として乗せる）」は GUI のコードが finalize の
+form しか持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
 サーバー側で確定し、`created_by` ごとの `kind` / `generation.graph` の受理可否を設けます
