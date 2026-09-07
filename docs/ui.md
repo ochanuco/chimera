@@ -345,7 +345,10 @@ legwear`のチェックボックスと、空欄がrecipe既定を意味する`de
 finalizeはrecolorを受け付けず、workerが`failed`にします）。続けて`backdrop`の
 select（`stripes`既定 / `transparent` / `color`。`color`を選ぶと隣に`#RRGGBB`の
 テキスト入力が現れ、空か形式違いなら送信せずalertします）と`stroke light`の
-select（`none`既定と8方位）を持ちます。Finalize all armsも同じ項目・同じ条件です。
+select（`none`既定と8方位）を持ちます。続けて`repair hands` / `repair feet`の
+チェックボックス（既定どちらもoff。1つ以上チェックすると`repair`配列を積みます）と、
+空欄が省略（worker既定）を意味する`repair pad`の数値入力を持ちます。Finalize all arms
+も同じ項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
 した最新のfinalize requestを最大5件、新しい順に`status · created_at`の行として
