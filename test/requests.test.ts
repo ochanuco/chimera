@@ -75,6 +75,20 @@ async function createFinalizeRequest(generationId: string, overrides: Record<str
   return postJson<RequestBody>('/api/v1/requests', finalizeRequestBody(generationId, overrides));
 }
 
+function repairRequestBody(generationId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'repair',
+    payload: { generation_id: generationId, options: { parts: ['hands', 'feet'] } },
+    idempotency_key: crypto.randomUUID(),
+    created_by: 'gui',
+    ...overrides,
+  };
+}
+
+async function createRepairRequest(generationId: string, overrides: Record<string, unknown> = {}) {
+  return postJson<RequestBody>('/api/v1/requests', repairRequestBody(generationId, overrides));
+}
+
 async function claim(workerId: string, kinds?: string[]): Promise<{ status: number; body: RequestBody | null }> {
   const res = await req('/api/v1/requests/claim', {
     method: 'POST',
@@ -106,6 +120,34 @@ describe('POST /api/v1/requests', () => {
       finalizeRequestBody(generation.id, { idempotency_key: key, payload: { generation_id: generation.id, options: { repin: false } } }),
     );
     expect(conflicting.status).toBe(409);
+  });
+
+  it('repair: 201 create with parts/regions/denoise/seeds/pad, unknown option key is 400, bad region (x0 > x1) is 400', async () => {
+    const { generation } = await createGeneration();
+
+    const created = await createRepairRequest(generation.id, {
+      payload: {
+        generation_id: generation.id,
+        options: { parts: ['hands', 'feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2, 3, 4], size: 1024, pad: 1.0 },
+      },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.kind).toBe('repair');
+    expect(created.body.status).toBe('queued');
+    expect(created.body.payload).toEqual({
+      generation_id: generation.id,
+      options: { parts: ['hands', 'feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2, 3, 4], size: 1024, pad: 1.0 },
+    });
+
+    const unknownKey = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { bogus: true } },
+    });
+    expect(unknownKey.status).toBe(400);
+
+    const badRegion = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { regions: [[0.5, 0.7, 0.1, 0.95]] } },
+    });
+    expect(badRegion.status).toBe(400);
   });
 
   it('recipe_ref defaults to the REQUESTS_DEFAULT_RECIPE_REF var (production), for POST and for run auto-provisioning', async () => {
@@ -205,6 +247,22 @@ describe('POST /api/v1/requests/claim', () => {
     const claimed = await claim('worker-a', ['finalize']);
     expect(claimed.status).toBe(200);
     expect(claimed.body!.id).toBe(finalizeReq.body.id);
+  });
+
+  it('kinds filter: claims a repair row when kinds includes only repair', async () => {
+    const { generation: g1 } = await createGeneration();
+    const finalizeReq = await createFinalizeRequest(g1.id);
+    const { generation: g2 } = await createGeneration();
+    const repairReq = await createRepairRequest(g2.id);
+
+    const claimed = await claim('worker-a', ['repair']);
+    expect(claimed.status).toBe(200);
+    expect(claimed.body!.id).toBe(repairReq.body.id);
+    expect(claimed.body!.kind).toBe('repair');
+
+    // finalize row stays queued, untouched by the repair-only claim.
+    const stillQueued = await getJson<RequestBody>(`/api/v1/requests/${finalizeReq.body.id}`);
+    expect(stillQueued.body.status).toBe('queued');
   });
 
   it('heartbeat: PATCH status=running refreshes heartbeat_at', async () => {
@@ -462,5 +520,21 @@ describe('GET /api/v1/requests', () => {
     // batch_id: both generations belong to the same batch
     const byBatch = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${batch.id}`);
     expect(byBatch.body.items.map((r) => r.id).sort()).toEqual([finalizeA.body.id, finalizeB.body.id].sort());
+  });
+
+  it('generation_id / batch_id also return repair rows alongside finalize rows', async () => {
+    const { batch, generation } = await createGeneration();
+    const finalizeReq = await createFinalizeRequest(generation.id);
+    const repairReq = await createRepairRequest(generation.id);
+
+    const byGenerationId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}`);
+    expect(byGenerationId.body.items.map((r) => r.id).sort()).toEqual([finalizeReq.body.id, repairReq.body.id].sort());
+
+    const byBatchId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${batch.id}`);
+    expect(byBatchId.body.items.map((r) => r.id).sort()).toEqual([finalizeReq.body.id, repairReq.body.id].sort());
+
+    // kind narrows within the generation_id / batch_id set as usual.
+    const repairOnly = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=repair`);
+    expect(repairOnly.body.items.map((r) => r.id)).toEqual([repairReq.body.id]);
   });
 });

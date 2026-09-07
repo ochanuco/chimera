@@ -158,7 +158,7 @@ export async function createRequest(
       runId = run.id;
     }
   }
-  // kind = finalize の payload に experiment があっても無視する（上の分岐に入らない）。
+  // kind = finalize / repair の payload に experiment があっても無視する（上の分岐に入らない）。
 
   const id = uuidv7();
   const now = nowIso();
@@ -204,7 +204,7 @@ export interface RequestListFilters {
   run_id?: string;
   /** UUID / short_id どちらでも受ける。該当する Generation が無ければ空リストを返す。 */
   generation_id?: string;
-  /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize request を集約する。 */
+  /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair request を集約する。 */
   batch_id?: string;
 }
 
@@ -232,7 +232,7 @@ export async function listRequests(
   if (filters.generation_id) {
     const generation = await getGenerationByIdOrShortId(db, filters.generation_id);
     if (!generation) return [];
-    conditions.push("kind = 'finalize' AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
+    conditions.push("kind IN ('finalize', 'repair') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
     binds.push(generation.id, generation.short_id);
   }
   if (filters.batch_id) {
@@ -245,7 +245,7 @@ export async function listRequests(
     const idsAndShortIds = (results ?? []).flatMap((g) => [g.id, g.short_id]);
     if (idsAndShortIds.length === 0) return [];
     const placeholders = idsAndShortIds.map(() => '?').join(', ');
-    conditions.push(`kind = 'finalize' AND json_extract(payload_json, '$.generation_id') IN (${placeholders})`);
+    conditions.push(`kind IN ('finalize', 'repair') AND json_extract(payload_json, '$.generation_id') IN (${placeholders})`);
     binds.push(...idsAndShortIds);
   }
 
@@ -301,7 +301,7 @@ export async function claimRequest(
 
   // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも
   // 同じ行を2度渡さない (worker-protocol.md「Claim」節)。
-  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize'] as RequestKind[]);
+  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'repair'] as RequestKind[]);
   const placeholders = kindsList.map(() => '?').join(', ');
   const claimedAt = nowIso();
   const row = await db

@@ -600,10 +600,10 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / done / failed。
 
 -   `status` / `kind`: 完全一致
 -   `run_id`: `kind = generate` の行のみ持つ
--   `generation_id`: `kind = finalize` の行を対象に、その `payload.generation_id`
-    が渡した値（UUID / short_id どちらでも可）と一致するものを返す
--   `batch_id`: 同様に `kind = finalize` の行を、その Batch 配下の Generation
-    を対象にしたものに絞る（UUID / short_id どちらでも可）
+-   `generation_id`: `kind = finalize` / `kind = repair` の行を対象に、その
+    `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
+-   `batch_id`: 同様に `kind = finalize` / `kind = repair` の行を、その Batch 配下の
+    Generation を対象にしたものに絞る（UUID / short_id どちらでも可）
 -   `pending=true`: `status=queued` の別名
 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します

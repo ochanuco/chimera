@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const requestKindSchema = z.enum(['generate', 'finalize']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'repair']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -44,6 +44,37 @@ export const finalizePayloadSchema = z
   .strict();
 
 /**
+ * repair の options は masked local redraw (hands/feet) の worker 側引数に写す
+ * (docs/worker-protocol.md「repair」節の表)。finalize と同じく chimera が見るのは型だけ。
+ * `regions` は width/height に対する分数の矩形 [x0, y0, x1, y1] で、x0<x1 かつ y0<y1 を要求する。
+ */
+export const repairOptionsSchema = z
+  .object({
+    parts: z.array(z.enum(['hands', 'feet'])).optional(),
+    regions: z
+      .array(
+        z
+          .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
+          .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
+            message: 'region must have x0 < x1 and y0 < y1',
+          }),
+      )
+      .optional(),
+    denoise: z.number().gt(0).lte(1).nullable().optional(),
+    seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
+    size: z.number().int().min(256).multipleOf(8).nullable().optional(),
+    pad: z.number().min(0.5).max(3).nullable().optional(),
+  })
+  .strict();
+
+export const repairPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: repairOptionsSchema.optional(),
+  })
+  .strict();
+
+/**
  * generate の payload は request.json v1 をそのまま包む (generation-request.md)。
  * chimera が検証するのは封筒の形 (schema_version=1 と request/generation の存在)
  * だけで、中身の語彙は comfyui-recipes 側のものなので検証しない。
@@ -57,8 +88,9 @@ export const generatePayloadSchema = z
   .passthrough();
 
 /** REST (`POST /api/v1/requests`) と MCP `create_request` の両方が使う、kind に応じた payload 封筒の検証。 */
-export function payloadEnvelopeIssues(kind: 'generate' | 'finalize', payload: unknown) {
-  const parsed = kind === 'finalize' ? finalizePayloadSchema.safeParse(payload) : generatePayloadSchema.safeParse(payload);
+export function payloadEnvelopeIssues(kind: 'generate' | 'finalize' | 'repair', payload: unknown) {
+  const schema = kind === 'finalize' ? finalizePayloadSchema : kind === 'repair' ? repairPayloadSchema : generatePayloadSchema;
+  const parsed = schema.safeParse(payload);
   return parsed.success ? [] : parsed.error.issues;
 }
 

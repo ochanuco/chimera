@@ -14,7 +14,7 @@ Progressive disclosure
 ```
 
 Web GUI は ComfyUI へ到達しません。GUI が積んでよいのは semantic 判断を伴わない
-再実行（finalize）だけで、GUI が触るのは自分の D1 の requests 行のみです
+再実行（finalize / repair）だけで、GUI が触るのは自分の D1 の requests 行のみです
 （[worker-protocol.md](worker-protocol.md)）。ComfyUI workflow の構築・実行は
 comfyui-recipes（worker）が担います。
 
@@ -337,9 +337,9 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-Workflowの直後のFinalizeセクションは、段階2の唯一の生成要求手段です（不変条件:
-GUIが積んでよいのはsemantic判断を伴わない再実行=finalizeだけ。ComfyUIへは到達しない。
-[worker-protocol.md](worker-protocol.md)参照）。`repin` / `recolor` / `keep
+Workflowの直後のFinalize / Repairセクションは、段階2の唯一の生成要求手段です（不変条件:
+GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / repairだけ。ComfyUIへは
+到達しない。[worker-protocol.md](worker-protocol.md)参照）。`repin` / `recolor` / `keep
 legwear`のチェックボックスと、空欄がrecipe既定を意味する`denoise`の数値入力を持ち、
 `recolor`はBatchのrecipeが`yukari`のときだけ表示します（`yukari-sketch`の
 finalizeはrecolorを受け付けず、workerが`failed`にします）。続けて`backdrop`の
@@ -359,6 +359,19 @@ Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 Finalize all armsセクションでも、集計行の下に同じ`request-status-list`を出し、
 同じ仕組みで各行が更新されます。WebSocketが張れない環境でも静的な表示のまま
 壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
+
+Finalizeセクションの直後のRepairセクションは、既存Generationの手足（hands / feet）
+だけをマスクして局所的にredrawするための、もう1つのsemantic判断を伴わない再実行
+手段です（[worker-protocol.md](worker-protocol.md#repair)参照）。`hands` / `feet`の
+チェックボックス（既定どちらもon）、`denoise` / `pad`の数値入力（空欄がworker既定）、
+カンマ区切りの`seeds`テキスト入力（既定`1,2,3,4`）、1行1矩形（`x0 y0 x1 y1`、
+width/heightに対する分数）の`regions`テキストエリア（空欄はworker側の自動検出）を
+持ちます。`regions`の行が4つの数値でなければ送信せずalertします。Repairボタンで
+`POST /api/v1/requests`（`kind: "repair"`, `created_by: "gui"`）を1件積んでページを
+再読み込みし、その下にはこのGenerationを対象とした最新のrepair requestを最大5件、
+Finalizeセクションと同じ`request-status-list`の形式・同じ`initRequestLive()`の
+仕組みで表示します。Batch Detailに「Repair all arms」相当はありません（Generation
+単位でのみ積めます）。
 
 ## Provenance View
 
@@ -697,6 +710,7 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `tag.remove` | `kind`, `id`, `tag_id` | tag削除（`initTagRemove`） |
 | `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
+| `repair.submit` | `generation_id`, repairオプション | repair送信（`initRepair`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `graph.scope` | `scope` | Graphのscope切り替え（`initGraphScope`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
