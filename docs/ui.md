@@ -97,7 +97,7 @@ good  🔖
 [img][img][img] | Batch B001
 [img][img][img] | "結月ゆかりをseed違いで9枚"
 [img][img][img] | 親 2 · 子 1 · 兄弟 0 · Story: yk-line
-                | Tags / 親 / 子 / 兄弟 / Prompt / ...
+                | Finalize all arms / Tags / 親 / 子 / 兄弟 / Prompt / ...
 ```
 
 Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
@@ -248,6 +248,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 Batch Detail の Parameters）のみ既定で畳みます。
 
 ``` text
+Finalize
 Summary
 Semantic
 Map
@@ -256,7 +257,6 @@ Map
 兄弟
 Story
 Workflow
-Finalize
 ComfyUI Job
 Git
 Note
@@ -337,7 +337,8 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-Workflowの直後のFinalizeセクションは、段階2の唯一の生成要求手段です（不変条件:
+先頭のFinalizeセクションは、段階2の唯一の生成要求手段です。画面を見て下す判断の
+出口なので最上部に置き、スクロールで探させません（不変条件:
 GUIが積んでよいのはsemantic判断を伴わない再実行=finalizeだけ。ComfyUIへは到達しない。
 [worker-protocol.md](worker-protocol.md)参照）。`repin` / `recolor` / `keep
 legwear`のチェックボックスと、空欄がrecipe既定を意味する`denoise`の数値入力を持ち、
