@@ -253,7 +253,13 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
       "handdrawn": false,
       "skin": false,
       "toe_guard": null,
-      "keep_scene": false
+      "keep_scene": false,
+      "transparent": null,
+      "backdrop": null,
+      "upscale": null,
+      "lora_strength": null,
+      "deliver_size": null,
+      "stroke_light": null
     }
   }
 }
@@ -276,6 +282,12 @@ worker は payload を `request.json` として書き出し `comfy-recipes gener
   skin                bool                      `--skin`
   toe_guard           null | true | number      `--toe-guard [WEIGHT]`
   keep_scene          bool                      `--keep-scene`
+  transparent         null | bool               `--opaque` が false（null は recipe 既定）
+  backdrop            null | string             `--backdrop #RRGGBB`
+  upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
+  lora_strength       null | number             `--lora-strength 0..2`
+  deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
+  stroke_light        null | "n".."nw"          `--stroke-light DIR`（8 方位、紫縁を光源側で細く影側で太く）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。
