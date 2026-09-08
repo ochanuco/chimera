@@ -119,12 +119,18 @@ Batch」(`via: "relation"`、`purpose_or_kind` は BatchRelation の type、
 二度訪れず、`depth` 段目で階層が尽きればそこで止まります。
 
 `derive_request` は既存の Generation を起点に `kind: "generate"` の
-requests 行を積みます。親 Batch の `recipe` / `parameters` /
-（親 Generation の `semantic.attributes.patches` にある）`patches` を
+requests 行を積みます。`from_generation_id` が finalize / repair 済みの
+Generation なら、その元になった raw の Generation まで遡ってから起点にします
+（finalize / repair の Batch は `parameters` が仕上げ payload で generate
+parameters ではないため）。起点 Batch の `recipe` / `parameters` /
+（起点 Generation の `semantic.attributes.patches` にある）`patches` を
 引き継ぎ、`parameters` は上書きマージ、`patches` は既定で追記、
-`replace_patches: true` なら丸ごと置き換えます。親 Batch が recipe を
-持たない graph-mode の Batch なら 409 です。`reference` はそのまま
-purpose `"derive"` の Reference として payload に載ります。
+`replace_patches: true` なら丸ごと置き換えます。起点 Batch が recipe を
+持たない graph-mode の Batch なら 409 です。`reference` は起点 Generation への
+purpose `"derive"` の Reference として payload に載り、遡った場合は指定した
+Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
+併せて載ります。レスポンスの `derived_from` に、指定した Generation と
+実際の起点 Generation の両方（id / short_id）が入ります。
 
 `list_catalog` / `get_catalog_pose` は
 [api.md「Recipe Catalog」](api.md#recipe-catalog)で公開する recipe catalog
