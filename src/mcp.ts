@@ -30,7 +30,14 @@ import {
   updateExperimentRun,
   evaluationOverall,
 } from './lib/experiments';
-import { createRequest, getRequestOr404, listRequests, defaultRecipeRef, buildDerivedRequestPayload } from './lib/requests';
+import {
+  createRequest,
+  getRequestOr404,
+  listRequests,
+  defaultRecipeRef,
+  buildDerivedRequestPayload,
+  resolveDerivationSource,
+} from './lib/requests';
 import { getGenerationDetail } from './lib/generations';
 import { getBatchDigest } from './lib/batches';
 import { getGenerationLineage } from './lib/lineage';
@@ -455,10 +462,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         'Enqueue a generate request derived from an existing Generation: carries the parent Batch\'s recipe/parameters/patches ' +
         'forward, merging `parameters` over the parent\'s and appending (or, with replace_patches, replacing) `patches`. ' +
-        '404s if from_generation_id does not resolve; 409s if the parent Batch has no single recipe (graph-mode). ' +
+        'If from_generation_id is a finalized or repaired Generation, it is resolved back to the raw Generation it was made ' +
+        'from before deriving (finalize/repair payloads are not generate parameters). ' +
+        '404s if from_generation_id does not resolve; 409s if the resolved source Batch has no single recipe (graph-mode) ' +
+        'or if a refinement Batch in the chain has no rebuild reference to resolve through. ' +
         'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
-        'parent Generation. Pass a stable idempotency_key — the same key replays the original request (created: false) instead ' +
-        'of creating a duplicate.',
+        'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
+        'when it differs from the source). Pass a stable idempotency_key — the same key replays the original request ' +
+        '(created: false) instead of creating a duplicate.',
       inputSchema: deriveRequestInputSchema,
     },
     async ({
@@ -474,13 +485,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       idempotency_key,
       recipe_ref,
     }) => {
-      const parentGeneration = await resolveGenerationOr404(db, from_generation_id);
-      const parentBatch = await getBatchByIdOrShortId(db, parentGeneration.batch_id);
+      const requestedGeneration = await resolveGenerationOr404(db, from_generation_id);
+      const { generation: sourceGeneration, batch: sourceBatch } = await resolveDerivationSource(db, requestedGeneration);
 
       let parentPatches: unknown[] = [];
-      if (parentGeneration.semantic_json) {
+      if (sourceGeneration.semantic_json) {
         try {
-          const parsed = JSON.parse(parentGeneration.semantic_json) as { attributes?: { patches?: unknown } };
+          const parsed = JSON.parse(sourceGeneration.semantic_json) as { attributes?: { patches?: unknown } };
           const candidate = parsed.attributes?.patches;
           if (Array.isArray(candidate)) parentPatches = candidate;
         } catch {
@@ -489,9 +500,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       }
 
       const payload = buildDerivedRequestPayload({
-        parentGenerationId: parentGeneration.id,
-        parentRecipe: parentBatch?.recipe ?? null,
-        parentParameters: parseJsonObjectOrNull(parentBatch?.parameters_json ?? null) ?? {},
+        parentGenerationId: sourceGeneration.id,
+        requestedGenerationId: requestedGeneration.id,
+        parentRecipe: sourceBatch?.recipe ?? null,
+        parentParameters: parseJsonObjectOrNull(sourceBatch?.parameters_json ?? null) ?? {},
         parentPatches,
         instruction,
         count,
@@ -509,7 +521,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult({ created, request: serializeRequest(row), payload });
+      return jsonResult({
+        created,
+        request: serializeRequest(row),
+        payload,
+        derived_from: {
+          requested: { id: requestedGeneration.id, short_id: requestedGeneration.short_id },
+          source: { id: sourceGeneration.id, short_id: sourceGeneration.short_id },
+        },
+      });
     },
   );
 

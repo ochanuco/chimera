@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
+import { createBatch, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
 
 interface GenerationDetail {
   id: string;
@@ -148,6 +148,36 @@ describe('MCP derive_request', () => {
     return createGeneration({ batchOverrides });
   }
 
+  /**
+   * Builds a refinement Batch (the shape finalize/repair leave behind): a Batch whose
+   * `parameters` is a finalize-style payload (not generate parameters), with a generation in
+   * it, wired back to `source` via `batch_relations` (type=refinement) and `batch_references`
+   * (purpose=rebuild) — the same two tables lib/lineage.ts walks.
+   */
+  async function createRefinementBatch(source: { batch: { id: string }; generation: { id: string } }) {
+    const refinementBatch = await createBatch({
+      parameters: { kind: 'hires-chain', base_generation: source.generation.id, size: 2560 },
+    });
+    const job = await createJob(refinementBatch.body.id);
+    const ingest = await ingestGeneration(job.body.id, {
+      seed: 123,
+      original_filename: 'out_00001_.png',
+      comfy_output_index: 0,
+    });
+
+    await postJson(`/api/v1/batches/${refinementBatch.body.id}/relations`, {
+      source_batch_id: source.batch.id,
+      type: 'refinement',
+      actor: 'claude',
+    });
+    await postJson(`/api/v1/batches/${refinementBatch.body.id}/references`, {
+      source_generation_id: source.generation.id,
+      purpose: 'rebuild',
+    });
+
+    return { batch: refinementBatch.body, generation: ingest.body };
+  }
+
   it('merges the parent batch recipe/parameters and carries parent patches forward', async () => {
     const { generation } = await createParent();
     await postJson(
@@ -261,5 +291,105 @@ describe('MCP derive_request', () => {
     });
     expect(call.isError).toBe(false);
     expect(call.data?.payload.references).toEqual([{ generation_id: generation.id, purpose: 'derive' }]);
+  });
+
+  it('resolves a raw parent as its own derivation source (single reference, derived_from.requested === source)', async () => {
+    const { generation } = await createParent();
+    const call = await mcpToolCall<{
+      payload: { references: { generation_id: string; purpose: string }[] };
+      derived_from: { requested: { id: string; short_id: string }; source: { id: string; short_id: string } };
+    }>('derive_request', {
+      from_generation_id: generation.id,
+      instruction: 'try a variant',
+      count: 1,
+      semantic: { summary: 'x' },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.references).toEqual([{ generation_id: generation.id, purpose: 'derive' }]);
+    expect(call.data?.derived_from).toEqual({
+      requested: { id: generation.id, short_id: generation.short_id },
+      source: { id: generation.id, short_id: generation.short_id },
+    });
+  });
+
+  it('resolves a finalized parent back to the raw generation it was made from', async () => {
+    const raw = await createParent({ parameters: { pose: 'date' } });
+    await postJson(
+      `/api/v1/generations/${raw.generation.id}/semantic`,
+      { schema_version: 1, attributes: { patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }] } },
+      'PUT',
+    );
+    const finalized = await createRefinementBatch(raw);
+
+    const call = await mcpToolCall<{
+      payload: { generation: Record<string, unknown>; references: { generation_id: string; purpose: string; aspect?: string }[] };
+      derived_from: { requested: { id: string; short_id: string }; source: { id: string; short_id: string } };
+    }>('derive_request', {
+      from_generation_id: finalized.generation.short_id,
+      instruction: 'try a variant',
+      count: 1,
+      semantic: { summary: 'variant of date' },
+      idempotency_key: crypto.randomUUID(),
+    });
+
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation).toEqual({
+      recipe: 'yukari',
+      parameters: { pose: 'date' },
+      patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }],
+    });
+    expect(call.data?.payload.references).toEqual([
+      { generation_id: raw.generation.id, purpose: 'derive' },
+      { generation_id: finalized.generation.id, purpose: 'derive', aspect: 'finalized' },
+    ]);
+    expect(call.data?.derived_from).toEqual({
+      requested: { id: finalized.generation.id, short_id: finalized.generation.short_id },
+      source: { id: raw.generation.id, short_id: raw.generation.short_id },
+    });
+  });
+
+  it('resolves a two-hop chain (finalize of a finalize) back to the raw generation', async () => {
+    const raw = await createParent({ parameters: { pose: 'date' } });
+    const finalized = await createRefinementBatch(raw);
+    const refinalized = await createRefinementBatch({ batch: finalized.batch, generation: finalized.generation });
+
+    const call = await mcpToolCall<{ payload: { generation: Record<string, unknown> } }>('derive_request', {
+      from_generation_id: refinalized.generation.short_id,
+      instruction: 'try a variant',
+      count: 1,
+      semantic: { summary: 'variant of date' },
+      idempotency_key: crypto.randomUUID(),
+    });
+
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation).toEqual({ recipe: 'yukari', parameters: { pose: 'date' } });
+  });
+
+  it('409s when a refinement batch in the chain has no rebuild reference', async () => {
+    const raw = await createParent({ parameters: { pose: 'date' } });
+    const orphanRefinement = await createBatch({ parameters: { kind: 'hires-chain' } });
+    const job = await createJob(orphanRefinement.body.id);
+    const orphanGeneration = await ingestGeneration(job.body.id, {
+      seed: 123,
+      original_filename: 'out_00001_.png',
+      comfy_output_index: 0,
+    });
+    await postJson(`/api/v1/batches/${orphanRefinement.body.id}/relations`, {
+      source_batch_id: raw.batch.id,
+      type: 'refinement',
+      actor: 'claude',
+    });
+    // No batch_references (rebuild) row — the chain cannot be resolved past this batch.
+
+    const call = await mcpToolCall('derive_request', {
+      from_generation_id: orphanGeneration.body.short_id,
+      instruction: 'try a variant',
+      count: 1,
+      semantic: { summary: 'x' },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(true);
+    expect(call.text).toContain('rebuild reference');
   });
 });
