@@ -30,7 +30,12 @@ import {
   updateExperimentRun,
   evaluationOverall,
 } from './lib/experiments';
-import { createRequest, getRequestOr404, listRequests, defaultRecipeRef } from './lib/requests';
+import { createRequest, getRequestOr404, listRequests, defaultRecipeRef, buildDerivedRequestPayload } from './lib/requests';
+import { getGenerationDetail } from './lib/generations';
+import { getBatchDigest } from './lib/batches';
+import { getGenerationLineage } from './lib/lineage';
+import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
+import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { parseJsonObjectOrNull } from './lib/overrides';
@@ -90,6 +95,44 @@ const createRequestInputSchema = z
       ctx.addIssue({ code: 'custom', message: issue.message, path: ['payload', ...issue.path] });
     }
   });
+
+/** `derive_request` の入力。count と seeds の対応は request.json v1 (docs/generation-request.md) の request.seeds が Job 数と一致する必要があるための整合チェック。 */
+const deriveRequestInputSchema = z
+  .object({
+    from_generation_id: z.string().min(1),
+    instruction: z.string().min(1),
+    count: z.number().int().min(1).default(1),
+    seeds: z.array(z.number().int()).optional(),
+    parameters: jsonObject.optional(),
+    patches: z.array(z.unknown()).optional(),
+    replace_patches: z.boolean().default(false),
+    semantic: z.object({ summary: z.string().min(1) }).passthrough(),
+    reference: z.object({ aspect: z.string().optional(), instruction: z.string().optional() }).optional(),
+    idempotency_key: z.string().min(1),
+    recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.seeds && value.seeds.length !== value.count) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `seeds length (${value.seeds.length}) must equal count (${value.count})`,
+        path: ['seeds'],
+      });
+    }
+  });
+
+const generationLineageInputSchema = z.object({
+  generation_id: z.string().min(1),
+  depth: z.number().int().min(0).max(10).optional(),
+});
+
+const listCatalogInputSchema = z.object({ recipe_ref: z.string().regex(RECIPE_REF_RE).default('production') });
+
+const getCatalogPoseInputSchema = z.object({
+  recipe: z.string().min(1),
+  pose: z.string().min(1),
+  recipe_ref: z.string().regex(RECIPE_REF_RE).default('production'),
+});
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
@@ -357,6 +400,154 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ status, kind, run_id }) => {
       const rows = await listRequests(db, { status, kind, run_id }, 200, 0);
       return jsonResult({ items: rows.map(serializeRequest) });
+    },
+  );
+
+  server.registerTool(
+    'get_generation',
+    {
+      description: 'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}.',
+      inputSchema: z.object({ generation_id: z.string().min(1) }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ generation_id }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      return jsonResult(await getGenerationDetail(db, origin, generation));
+    },
+  );
+
+  server.registerTool(
+    'list_batch',
+    {
+      description:
+        'Get a Batch (by id or short_id) with its jobs, generations (rating/bookmark/tags/semantic_summary/semantic_attributes/seed), ' +
+        'references, relations (outgoing/incoming) and its ExperimentRun family, if any.',
+      inputSchema: z.object({ batch_id: z.string().min(1) }),
+      annotations: { readOnlyHint: true },
+    },
+    async ({ batch_id }) => {
+      const batch = await getBatchByIdOrShortId(db, batch_id);
+      if (!batch) throw notFound('batch');
+      return jsonResult(await getBatchDigest(db, origin, batch));
+    },
+  );
+
+  server.registerTool(
+    'get_generation_lineage',
+    {
+      description:
+        'Walk a Generation\'s Batch lineage: ancestors (material Batches it referenced, and the Batch it was refined/retried from) ' +
+        'and descendants (Batches that referenced or were refined from it), each annotated with how they connect ' +
+        "(via 'reference' or 'relation', with the reference purpose or relation type) and its own Generations " +
+        '(short_id/rating/semantic_summary). depth defaults to 5, capped at 10.',
+      inputSchema: generationLineageInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ generation_id, depth }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      return jsonResult(await getGenerationLineage(db, generation, depth));
+    },
+  );
+
+  server.registerTool(
+    'derive_request',
+    {
+      description:
+        'Enqueue a generate request derived from an existing Generation: carries the parent Batch\'s recipe/parameters/patches ' +
+        'forward, merging `parameters` over the parent\'s and appending (or, with replace_patches, replacing) `patches`. ' +
+        '404s if from_generation_id does not resolve; 409s if the parent Batch has no single recipe (graph-mode). ' +
+        'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
+        'parent Generation. Pass a stable idempotency_key — the same key replays the original request (created: false) instead ' +
+        'of creating a duplicate.',
+      inputSchema: deriveRequestInputSchema,
+    },
+    async ({
+      from_generation_id,
+      instruction,
+      count,
+      seeds,
+      parameters,
+      patches,
+      replace_patches,
+      semantic,
+      reference,
+      idempotency_key,
+      recipe_ref,
+    }) => {
+      const parentGeneration = await resolveGenerationOr404(db, from_generation_id);
+      const parentBatch = await getBatchByIdOrShortId(db, parentGeneration.batch_id);
+
+      let parentPatches: unknown[] = [];
+      if (parentGeneration.semantic_json) {
+        try {
+          const parsed = JSON.parse(parentGeneration.semantic_json) as { attributes?: { patches?: unknown } };
+          const candidate = parsed.attributes?.patches;
+          if (Array.isArray(candidate)) parentPatches = candidate;
+        } catch {
+          parentPatches = [];
+        }
+      }
+
+      const payload = buildDerivedRequestPayload({
+        parentGenerationId: parentGeneration.id,
+        parentRecipe: parentBatch?.recipe ?? null,
+        parentParameters: parseJsonObjectOrNull(parentBatch?.parameters_json ?? null) ?? {},
+        parentPatches,
+        instruction,
+        count,
+        seeds,
+        parameters,
+        patches,
+        replacePatches: replace_patches,
+        semantic,
+        reference,
+      });
+
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'generate', payload, recipe_ref, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult({ created, request: serializeRequest(row), payload });
+    },
+  );
+
+  server.registerTool(
+    'list_catalog',
+    {
+      description:
+        'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
+        'pose/costume/expression NAMES, per-recipe parameters, the patches vocabulary, and git info. No prompt bodies — ' +
+        'use get_catalog_pose for a single pose\'s full record.',
+      inputSchema: listCatalogInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ recipe_ref }) => {
+      const found = await getCatalog(db, recipe_ref);
+      if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
+      return jsonResult({
+        recipe_ref: found.row.recipe_ref,
+        published_at: found.row.published_at,
+        updated_at: found.row.updated_at,
+        ...summarizeCatalog(found.doc),
+      });
+    },
+  );
+
+  server.registerTool(
+    'get_catalog_pose',
+    {
+      description: 'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production").',
+      inputSchema: getCatalogPoseInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ recipe, pose, recipe_ref }) => {
+      const found = await getCatalog(db, recipe_ref);
+      if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
+      const record = findCatalogPose(found.doc, recipe, pose);
+      if (!record) throw notFound(`pose '${pose}' in recipe '${recipe}'`);
+      return jsonResult(record);
     },
   );
 

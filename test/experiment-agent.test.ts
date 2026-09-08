@@ -227,7 +227,7 @@ describe('Run creation auto-provisions a requests row (worker-protocol.md)', () 
 });
 
 describe('MCP server at /mcp', () => {
-  it('initialize succeeds and tools/list returns the eleven tool names', async () => {
+  it('initialize succeeds and tools/list returns every registered tool name', async () => {
     const init = await mcpCall('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
@@ -252,6 +252,12 @@ describe('MCP server at /mcp', () => {
         'create_request',
         'get_request',
         'list_requests',
+        'get_generation',
+        'list_batch',
+        'get_generation_lineage',
+        'derive_request',
+        'list_catalog',
+        'get_catalog_pose',
       ].sort(),
     );
   });
@@ -476,11 +482,21 @@ describe('MCP tool annotations', () => {
       {},
     );
     const byName = new Map((body.result?.tools ?? []).map((t) => [t.name, t]));
-    for (const name of ['list_experiments', 'get_experiment', 'get_run', 'get_generation_image']) {
+    for (const name of [
+      'list_experiments',
+      'get_experiment',
+      'get_run',
+      'get_generation_image',
+      'get_generation',
+      'list_batch',
+      'get_generation_lineage',
+      'list_catalog',
+      'get_catalog_pose',
+    ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint, name).toBe(true);
     }
     // 副作用のある tool は承認キューに入るべきなので、readOnlyHint を主張しない。
-    for (const name of ['create_run', 'attach_generation', 'set_evaluation', 'set_decision']) {
+    for (const name of ['create_run', 'attach_generation', 'set_evaluation', 'set_decision', 'derive_request']) {
       expect(byName.get(name)?.annotations?.readOnlyHint, name).not.toBe(true);
     }
   });
