@@ -1,7 +1,7 @@
 # Worker Protocol
 
 chimera を control plane、GPU 機を worker とする配置での repo をまたぐ契約です。requests
-キューのスキーマ、状態遷移、API、generate / finalize / repair の payload、`recipe_ref`
+キューのスキーマ、状態遷移、API、generate / finalize / repair / masked_redraw の payload、`recipe_ref`
 を定めます。段階 2（poll 方式）を対象とし、段階 3 の WorkerHub は概略だけ触れます。
 
 決定の経緯は oolong `notes/2026-09-05_note-comfyui-recipes-mac-off-the-path.md`。
@@ -37,7 +37,7 @@ backfill 行（後述「ExperimentRun 由来の generate」の移行手順）の
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | repair
+kind              TEXT NOT NULL               generate | finalize | repair | masked_redraw
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -112,7 +112,7 @@ POST /api/v1/requests
 `run_id` は `kind = generate` かつ `payload.experiment.run_id` があるときに chimera が
 転記します。転記の前に、Run の存在、`payload.experiment.experiment_id` との所属一致、
 `kind = generate` をサーバー側で検証し、外れていれば 400 です。`kind = finalize` /
-`kind = repair` の payload に `experiment` があっても無視します。
+`kind = repair` / `kind = masked_redraw` の payload に `experiment` があっても無視します。
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
@@ -145,11 +145,13 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize", "repair"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize", "repair", "masked_redraw"] }
 ```
 
-`worker_id` は worker のホスト名です。`kinds` は省略すると全種です。段階 2 の box は
-3つとも受けます。
+`worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
+段階 2 の box は4つとも受けます。旧 worker を混在させる場合は、旧 worker に
+`kinds: ["generate", "finalize", "repair"]` を指定して masked_redraw を claim しないようにし、
+対応版 worker だけが `masked_redraw` を含めます。
 
 queued の最古の 1 件を `running` にして 200 で返します。無ければ 204。1 文の
 `UPDATE ... WHERE id = (SELECT id FROM requests WHERE status = 'queued' AND kind IN (...) ORDER BY created_at LIMIT 1) RETURNING *`
@@ -213,7 +215,9 @@ GET /api/v1/requests/{id}
 generate は作った Batch と ingest した Generation。finalize は納品 Batch（source
 Generation への `rebuild` Reference と source Batch への Refinement を持つ、現行
 `finalize.py` と同じ）と、その Generation です。repair も同じ形（納品 Batch と
-その Generation）で、finalize と同じ Refinement 系譜を持ちます。
+その Generation）で、finalize と同じ Refinement 系譜を持ちます。masked_redraw も
+同じ形ですが、元 Generation を変更せず、明示したマスク領域だけを worker が
+`comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
 
 ## payload
 
@@ -354,6 +358,69 @@ worker 実行です。finalize と同じく semantic 判断を伴わない再実
 省略したキーは worker 既定です。chimera が検証するのは型だけで、組み合わせの
 妥当性は worker が判定して `failed` にします。
 
+### masked_redraw
+
+既存 Generation の任意の矩形領域を、comfyui-recipes の masked-img2img / inpaint
+adapter で局所 redraw する worker 実行です。`repair` とは別の request kind であり、
+`repair_generation` の hands / feet 専用 semantics は変わりません。GUI には追加せず、
+semantic 判断主体が MCP `masked_redraw_generation` から積みます。
+
+``` json
+{
+  "kind": "masked_redraw",
+  "payload": {
+    "generation_id": "abc123",
+    "options": {
+      "regions": [[0.18, 0.42, 0.86, 0.96]],
+      "prompt_patch": "replace only the waist-to-hem garment with a long loose A-line mid-calf dress",
+      "denoise": 0.48,
+      "mask_padding": 24,
+      "mask_feather": 8,
+      "size": 768,
+      "seeds": [101, 202]
+    }
+  }
+}
+```
+
+  options          型                                      意味
+  ---------------- --------------------------------------- ----------------------------------------------
+  regions          array\<[x0, y0, x1, y1]\>               width/height に対する分数の矩形。1件以上必須。各値は0..1、x0<x1かつy0<y1、矩形同士は重複不可
+  prompt_patch     non-empty string                        source prompt に適用する instruction / prompt patch。空文字は400
+  denoise          number (0, 0.75]                        masked-img2img の denoise。低〜中程度は0.2〜0.65を推奨
+  mask_padding     number (0..512)                         mask の外側へ足す pixel 数。省略時 worker / recipe 既定
+  mask_feather     number (0..256)                         mask 境界をぼかす pixel 数。省略時 worker / recipe 既定
+  pad              number (0..512)                         `mask_padding` の API 短縮 alias（受け付け後に canonicalize）
+  feather          number (0..256)                         `mask_feather` の API 短縮 alias（受け付け後に canonicalize）
+  size             integer（256以上、8の倍数）              redraw 解像度の長辺。省略時 recipe 既定
+  seeds            array\<integer\>（最大16件）            試す seed の列。省略時 worker 既定
+
+`mask_padding` と `pad`、`mask_feather` と `feather` はそれぞれ同時に指定できません。
+alias は chimera が canonical key に正規化して保存・hash し、worker へは canonical key
+だけを渡します。矩形の bounds / empty / overlap は chimera が400で拒否します。省略した optional key は
+worker 既定です。chimera は prompt の意味や recipe の graph を解釈せず、worker は
+`generation_id` を UUID / short_id で解決して元画像を読みます。
+
+worker の永続化は次の形を必須とします。
+
+1. source Generation は更新せず、request id から `Batch` / `ComfyJob` の idempotency key
+   を導出して新しい refinement Batch を作る。
+2. target Batch に `refinement` (`source_batch_id` = source Batch、`type` = `refinement`)
+   と `references` (`source_generation_id` = source Generation、`purpose` = `rebuild`)
+   を同じ作成リクエストで渡す。`aspect` は `masked_redraw`、`instruction` と
+   `raw_instruction` は `prompt_patch` とする。
+3. `parameters` / `prompt` に resolved source と masked-redraw options（regions、prompt
+   patch、denoise、padding、feather、size、seeds）を保存し、後から request と Batch の
+   両方だけで再現できるようにする。
+4. 新しい Generation を target Batch に ingest し、`PATCH /requests/{id}` の `done.result`
+   に target `batch_id` と ingest 済み `generation_ids` を返す。source の id を result に
+   入れたり、source の画像を差し替えたりしてはいけない。
+
+これは chimera 内に ComfyUI graph を複製する契約ではなく、comfyui-recipes 側の
+inpaint/masked-img2img adapter に渡す narrow boundary です。recipe `yukari-sketch` を使う
+場合も、finalize 後の確定サイズを source として扱い、手描き線・simple/grey background を
+維持するかは worker/recipe の責務です。chimera は新しい画像生成や rating を行いません。
+
 ## idempotency と再実行の再開
 
 ### キーの導出
@@ -411,7 +478,7 @@ worker が claim した requests 行（`attempt >= 2`）に対して:
 4. ingest は通常通り。既存 `(comfy_job_id, comfy_output_index)` は 200 で戻る
 5. 全 Job が ingested になったら `PATCH /requests/{id}` に `done`
 
-finalize / repair の再実行も同じ規則です。source Generation ごとに新しい納品 Batch を
+finalize / repair / masked_redraw の再実行も同じ規則です。source Generation ごとに新しい納品 Batch を
 作るのは仕様で、同じ requests 行の再実行だけが同じ Batch に戻ります。
 
 ## ExperimentRun 由来の generate
@@ -485,6 +552,7 @@ Compare が比較表示のみである点は変わりません。
 create_request(kind, payload, recipe_ref?, idempotency_key)
 finalize_generation(generation_id, options?, idempotency_key)
 repair_generation(generation_id, options?, idempotency_key)
+masked_redraw_generation(generation_id, options, idempotency_key)
 get_request(id)
 list_requests(status?, kind?, run_id?)
 derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
@@ -492,17 +560,18 @@ derive_request(from_generation_id, instruction, count?, seeds?, parameters?, pat
 
 `create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
 
-`finalize_generation` / `repair_generation` は `create_request` と同じ `kind: "finalize"` /
-`"repair"` の requests 行を積む別窓口です。`generation_id`（UUID / short_id どちらでも
+`finalize_generation` / `repair_generation` / `masked_redraw_generation` は `create_request` と同じ
+`kind: "finalize"` / `"repair"` / `"masked_redraw"` の requests 行を積む別窓口です。`generation_id`（UUID / short_id どちらでも
 可）を解決して `payload.generation_id` に short_id を詰め、`options` を渡された場合だけ
-そのまま `payload.options` に載せます（上記「finalize」「repair」節の options 表と同じ
-語彙、zod スキーマも共有）。手で payload の封筒を組み立てる `create_request` に対して、
-この2つは finalize / repair に特化した窓口です。
+そのまま `payload.options` に載せます（各 kind の options 表と zod スキーマを共有）。
+masked redraw の `pad` / `feather` alias は canonical key に正規化されます。手で payload の封筒を組み立てる `create_request` に対して、
+この3つは finalize / repair / masked redraw に特化した窓口です。masked redraw は options
+（regions / prompt_patch / denoise / mask_padding / mask_feather）が必須です。
 
 `derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
 別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から
 `recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます。
-指定した Generation が finalize / repair 済みなら、その元になった raw の Generation
+指定した Generation が finalize / repair / masked_redraw 済みなら、その元になった raw の Generation
 まで遡ってから引き継ぎます（[experiment-agent.md](experiment-agent.md#tool)）。worker
 から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
 
@@ -533,7 +602,7 @@ JSON テキストです。
 worker → hub:
 
 ``` text
-{"type":"hello","worker_id":"<hostname>","kinds":["generate","finalize","repair"]}   最初の1通
+{"type":"hello","worker_id":"<hostname>","kinds":["generate","finalize","repair","masked_redraw"]}   最初の1通
 {"type":"progress","request_id":"...","phase":"submit|sampling|ingest|finalize","step":12,"total":28,"message":"..."}
 {"type":"ping"}
 ```

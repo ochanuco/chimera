@@ -10,6 +10,7 @@ import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso, touchExperim
 import { parseJsonObject, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
+import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
 import type {
   BatchRow,
   ExperimentRow,
@@ -250,7 +251,11 @@ export async function createRequest(
   options: CreateRequestOptions = {},
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
-  const payloadHash = await canonicalPayloadHash(input.kind, input.payload);
+  // Keep the persisted/hashed worker contract stable when callers use the short
+  // masked-redraw aliases. REST and MCP validate the envelope before reaching here;
+  // this shared normalization also covers internal callers and idempotency replays.
+  const payload = input.kind === 'masked_redraw' ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject) : input.payload;
+  const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
   const existing = await db
     .prepare('SELECT * FROM requests WHERE idempotency_key = ?')
@@ -274,7 +279,8 @@ export async function createRequest(
       runId = run.id;
     }
   }
-  // kind = finalize / repair の payload に experiment があっても無視する（上の分岐に入らない）。
+  // kind = finalize / repair / masked_redraw の payload に experiment があっても無視する
+  // （上の分岐に入らない）。
 
   const id = uuidv7();
   const now = nowIso();
@@ -291,7 +297,7 @@ export async function createRequest(
       .bind(
         id,
         input.kind,
-        JSON.stringify(input.payload),
+        JSON.stringify(payload),
         payloadHash,
         recipeRef,
         runId,
@@ -320,7 +326,7 @@ export interface RequestListFilters {
   run_id?: string;
   /** UUID / short_id どちらでも受ける。該当する Generation が無ければ空リストを返す。 */
   generation_id?: string;
-  /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair request を集約する。 */
+  /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair / masked_redraw request を集約する。 */
   batch_id?: string;
 }
 
@@ -348,7 +354,7 @@ export async function listRequests(
   if (filters.generation_id) {
     const generation = await getGenerationByIdOrShortId(db, filters.generation_id);
     if (!generation) return [];
-    conditions.push("kind IN ('finalize', 'repair') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
+    conditions.push("kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
     binds.push(generation.id, generation.short_id);
   }
   if (filters.batch_id) {
@@ -361,7 +367,9 @@ export async function listRequests(
     const idsAndShortIds = (results ?? []).flatMap((g) => [g.id, g.short_id]);
     if (idsAndShortIds.length === 0) return [];
     const placeholders = idsAndShortIds.map(() => '?').join(', ');
-    conditions.push(`kind IN ('finalize', 'repair') AND json_extract(payload_json, '$.generation_id') IN (${placeholders})`);
+    conditions.push(
+      `kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (${placeholders})`,
+    );
     binds.push(...idsAndShortIds);
   }
 
@@ -417,7 +425,7 @@ export async function claimRequest(
 
   // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも
   // 同じ行を2度渡さない (worker-protocol.md「Claim」節)。
-  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'repair'] as RequestKind[]);
+  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'repair', 'masked_redraw'] as RequestKind[]);
   const placeholders = kindsList.map(() => '?').join(', ');
   const claimedAt = nowIso();
   const row = await db

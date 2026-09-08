@@ -252,6 +252,7 @@ describe('MCP server at /mcp', () => {
         'create_request',
         'finalize_generation',
         'repair_generation',
+        'masked_redraw_generation',
         'get_request',
         'list_requests',
         'get_generation',
@@ -509,6 +510,7 @@ describe('MCP tool annotations', () => {
       'derive_request',
       'finalize_generation',
       'repair_generation',
+      'masked_redraw_generation',
     ]) {
       const annotations = byName.get(name)?.annotations as
         | { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean }
