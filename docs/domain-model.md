@@ -232,7 +232,7 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 
 ``` text
 id
-kind              generate | finalize | repair
+kind              generate | finalize | repair | masked_redraw
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -254,7 +254,9 @@ updated_at
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
-`{ generation_id, options }`（finalize / repair）です。契約全体（状態遷移、API、payload
+`{ generation_id, options }`（finalize / repair / masked_redraw）です。masked_redraw の
+options は明示的な矩形 `regions` と非空の `prompt_patch` を必須とし、低〜中程度の
+`denoise`、`mask_padding`、`mask_feather` を保持します。契約全体（状態遷移、API、payload
 の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
 
 不変条件:

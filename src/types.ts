@@ -205,7 +205,7 @@ export interface BatchRelationRow {
   created_at: string;
 }
 
-export type RequestKind = 'generate' | 'finalize' | 'repair';
+export type RequestKind = 'generate' | 'finalize' | 'repair' | 'masked_redraw';
 export type RequestStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export type RequestCreatedBy = 'brain' | 'mcp' | 'gui' | 'system';
 

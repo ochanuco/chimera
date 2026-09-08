@@ -74,7 +74,7 @@ function trackMessages(ws: WebSocket): Tracker {
   return { messages, waitFor };
 }
 
-function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize' | 'repair')[]): void {
+function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize' | 'repair' | 'masked_redraw')[]): void {
   ws.send(JSON.stringify({ type: 'hello', worker_id: workerId, kinds }));
 }
 
@@ -107,6 +107,18 @@ async function createRepairRequest(generationId: string) {
     payload: { generation_id: generationId, options: { parts: ['hands', 'feet'] } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'gui',
+  });
+}
+
+async function createMaskedRedrawRequest(generationId: string) {
+  return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
+    kind: 'masked_redraw',
+    payload: {
+      generation_id: generationId,
+      options: { regions: [[0.2, 0.4, 0.8, 0.9]], prompt_patch: 'replace the garment', denoise: 0.5 },
+    },
+    idempotency_key: crypto.randomUUID(),
+    created_by: 'mcp',
   });
 }
 
@@ -269,6 +281,23 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
 
     const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
     expect(queuedMsg.kind).toBe('repair');
+
+    worker.close();
+  });
+
+  it('hello kinds accepts masked_redraw: a masked-redraw worker gets only that request', async () => {
+    const worker = await connectWs('/api/v1/worker/ws');
+    const workerT = trackMessages(worker);
+    hello(worker, 'w-masked-redraw-only', ['masked_redraw']);
+    await workerT.waitFor((m) => m.type === 'hello_ack');
+
+    const { generation } = await createGeneration();
+    const created = await createMaskedRedrawRequest(generation.id);
+    expect(created.status).toBe(201);
+    const requestId = created.body.id;
+
+    const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
+    expect(queuedMsg.kind).toBe('masked_redraw');
 
     worker.close();
   });
