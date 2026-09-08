@@ -10,7 +10,7 @@ import {
   getGenerationByIdOrShortId,
 } from '../lib/db';
 import { isUuid, uuidv7 } from '../lib/uuidv7';
-import { assignTag, listTagsForTarget, removeTag } from '../lib/tags';
+import { assignTag, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import {
@@ -19,16 +19,8 @@ import {
   serializeGenerationAsset,
 } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
-import { renderFactsForJob } from '../lib/render-facts';
-import type {
-  AppEnv,
-  BatchReferenceRow,
-  BatchRow,
-  CharacterRow,
-  ComfyJobRow,
-  GenerationAssetRow,
-  GenerationRow,
-} from '../types';
+import { buildContext, getGenerationDetail } from '../lib/generations';
+import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 
 export const generations = new Hono<AppEnv>();
 
@@ -40,11 +32,6 @@ async function getGenerationOr404(db: D1Database, idOrShortId: string): Promise<
   const row = await getGenerationByIdOrShortId(db, idOrShortId);
   if (!row) throw notFound('generation');
   return row;
-}
-
-function parseSemantic(row: GenerationRow) {
-  if (!row.semantic_json) return null;
-  return JSON.parse(row.semantic_json) as unknown;
 }
 
 generations.get('/', async (c) => {
@@ -144,55 +131,6 @@ generations.get('/', async (c) => {
   return c.json({ items, total: countRow?.total ?? 0 });
 });
 
-async function buildContext(db: D1Database, org: string, generation: GenerationRow) {
-  const [character, tags, references] = await Promise.all([
-    generation.character_id
-      ? db.prepare('SELECT * FROM characters WHERE id = ?').bind(generation.character_id).first<CharacterRow>()
-      : Promise.resolve(null),
-    listTagsForTarget(db, 'generation_tags', generation.id),
-    db
-      .prepare('SELECT * FROM batch_references WHERE source_generation_id = ? ORDER BY created_at ASC')
-      .bind(generation.id)
-      .all<BatchReferenceRow>(),
-  ]);
-
-  return {
-    id: generation.id,
-    short_id: generation.short_id,
-    canonical_url: canonicalGenerationUrl(org, generation.short_id),
-    image: { url: generationImageUrl(org, generation.short_id) },
-    character: character ? { id: character.id, name: character.name } : null,
-    created_at: generation.created_at,
-    rating: generation.rating,
-    bookmark: toBool(generation.bookmark),
-    tags: tags.map((t) => t.name),
-    note: generation.note,
-    summary: generation.summary,
-    semantic: parseSemantic(generation),
-    batch: { id: generation.batch_id },
-    references: (references.results ?? []).map((r) => ({
-      id: r.id,
-      target_batch_id: r.target_batch_id,
-      purpose: r.purpose,
-      aspect: r.aspect,
-      instruction: r.instruction,
-      created_at: r.created_at,
-    })),
-    // Batches that used this Generation as reference material ("children" via Reference).
-    // Same underlying batch_references rows as `references` above (both keyed by
-    // source_generation_id = this Generation), kept as a separate field so callers
-    // reading "who used me as material" don't have to infer it from `references`.
-    used_by: (references.results ?? []).map((r) => ({
-      id: r.id,
-      batch_id: r.target_batch_id,
-      purpose: r.purpose,
-      aspect: r.aspect,
-      instruction: r.instruction,
-      created_at: r.created_at,
-    })),
-  };
-}
-
 generations.get('/:id/context', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
@@ -203,40 +141,7 @@ generations.get('/:id/context', async (c) => {
 generations.get('/:id', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
-  const context = await buildContext(db, origin(c), generation);
-
-  const [batch, job] = await Promise.all([
-    db.prepare('SELECT * FROM batches WHERE id = ?').bind(generation.batch_id).first<BatchRow>(),
-    db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
-  ]);
-  const renderFacts = job ? await renderFactsForJob(db, job) : null;
-
-  return c.json({
-    ...context,
-    batch: batch
-      ? {
-          id: batch.id,
-          short_id: batch.short_id,
-          prompt: batch.prompt,
-          negative_prompt: batch.negative_prompt,
-          recipe: batch.recipe,
-          raw_instruction: batch.raw_instruction,
-          git_commit: batch.git_commit,
-          git_dirty: toBool(batch.git_dirty),
-        }
-      : null,
-    comfy_job: job
-      ? {
-          id: job.id,
-          seed: job.seed,
-          comfy_prompt_id: job.comfy_prompt_id,
-          status: job.status,
-          graph: job.graph ? JSON.parse(job.graph) : null,
-          render_facts: renderFacts,
-        }
-      : null,
-    original_filename: generation.original_filename,
-  });
+  return c.json(await getGenerationDetail(db, origin(c), generation));
 });
 
 generations.patch('/:id', async (c) => {

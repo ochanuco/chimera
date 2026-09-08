@@ -70,6 +70,57 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
   return payload;
 }
 
+export interface BuildDerivedRequestPayloadInput {
+  parentGenerationId: string;
+  /** null/empty means the parent Batch is graph-mode (no single recipe) and cannot be derived. */
+  parentRecipe: string | null;
+  parentParameters: JsonObject;
+  /** Parent's `semantic_json.attributes.patches`, or `[]` if absent. */
+  parentPatches: unknown[];
+  instruction: string;
+  count: number;
+  seeds?: number[];
+  parameters?: JsonObject;
+  patches?: unknown[];
+  replacePatches: boolean;
+  semantic: JsonObject;
+  reference?: { aspect?: string; instruction?: string };
+}
+
+/**
+ * request.json v1 payload (docs/generation-request.md) for MCP `derive_request`: the parent
+ * Generation's recipe/parameters/patches carried forward and merged with the caller's diff.
+ * Pure so it can be unit-tested without D1 — the parent lookup happens in the caller.
+ */
+export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInput): JsonObject {
+  if (!input.parentRecipe) {
+    throw conflict('parent batch has no recipe; a graph-mode batch cannot be derived');
+  }
+
+  const mergedParameters: JsonObject = { ...input.parentParameters, ...(input.parameters ?? {}) };
+  const mergedPatches: unknown[] = input.replacePatches
+    ? (input.patches ?? [])
+    : [...input.parentPatches, ...(input.patches ?? [])];
+
+  const generation: JsonObject = { recipe: input.parentRecipe, parameters: mergedParameters };
+  if (mergedPatches.length > 0) generation.patches = mergedPatches;
+
+  const request: JsonObject = { instruction: input.instruction, count: input.count };
+  if (input.seeds) request.seeds = input.seeds;
+
+  const reference: JsonObject = { generation_id: input.parentGenerationId, purpose: 'derive' };
+  if (input.reference?.aspect !== undefined) reference.aspect = input.reference.aspect;
+  if (input.reference?.instruction !== undefined) reference.instruction = input.reference.instruction;
+
+  return {
+    schema_version: 1,
+    request,
+    generation,
+    references: [reference],
+    semantic: input.semantic,
+  };
+}
+
 export async function getRequestOr404(db: D1Database, id: string): Promise<RequestRow> {
   const row = await db.prepare('SELECT * FROM requests WHERE id = ?').bind(id).first<RequestRow>();
   if (!row) throw notFound('request');
