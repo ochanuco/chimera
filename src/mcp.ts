@@ -204,6 +204,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'create_run',
     {
       description:
+        "Non-destructive: only adds a new Run record under an Experiment. Never deletes or overwrites existing data. Idempotent by idempotency_key. " +
         'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no batch attached). ' +
         'overrides is a diff against the Experiment\'s base recipe, shaped {"patches": [...]}. Each patch is ' +
         '{target, op, reason, plus value and/or old depending on op} — reason is required on every patch. ' +
@@ -215,6 +216,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'with the same key returns the original Run instead of creating a duplicate — Runs cannot be deleted, so a duplicate is permanent. ' +
         'variables: optional flat map of factor names to values that the graph cannot express, e.g. {"prompt_variant": "socks-v2"}; ' +
         'shown as extra columns in the Experiment facts table.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: createRunInputSchema,
     },
     async ({ experiment_id, overrides, objective, parent_run_id, idempotency_key, variables }) => {
@@ -322,7 +324,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'attach_generation',
     {
       description:
+        "Non-destructive: records which Generation represents a Run; it does not modify or delete the Generation or the Batch. " +
         'Attach a Generation (the representative result) to a Run. The Run must already have a Batch attached, and the Generation must belong to that Batch. 409s if the Run already has a different Generation attached, if no Batch is attached yet, or if the Generation belongs to a different Batch.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: z.object({ run_id: z.string().min(1), generation_id: z.string().min(1) }),
     },
     async ({ run_id, generation_id }) => {
@@ -335,7 +339,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'set_evaluation',
     {
-      description: 'Set (or clear with null) a Run’s evaluation. Arbitrary JSON object; chimera does not validate its shape.',
+      description:
+        "Non-destructive: writes a note-like evaluation object on a Run; nothing is deleted, published or sent. " + 'Set (or clear with null) a Run’s evaluation. Arbitrary JSON object; chimera does not validate its shape.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: z.object({ run_id: z.string().min(1), evaluation: jsonObject.nullable() }),
     },
     async ({ run_id, evaluation }) => {
@@ -348,7 +354,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'set_decision',
     {
-      description: 'Set (or clear with null) a Run’s decision. Arbitrary JSON object; chimera does not validate its shape.',
+      description:
+        "Non-destructive: writes a note-like decision object on a Run; nothing is deleted, published or sent. " + 'Set (or clear with null) a Run’s decision. Arbitrary JSON object; chimera does not validate its shape.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: z.object({ run_id: z.string().min(1), decision: jsonObject.nullable() }),
     },
     async ({ run_id, decision }) => {
@@ -362,11 +370,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'create_request',
     {
       description:
+        "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "finalize" (payload {generation_id, options?}), or "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet). created_by is ' +
         'forced to "mcp". Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: createRequestInputSchema,
     },
     async ({ kind, payload, recipe_ref, idempotency_key }) => {
@@ -460,6 +470,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'derive_request',
     {
       description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything, and never modifies the parent Generation. Idempotent by idempotency_key. " +
         'Enqueue a generate request derived from an existing Generation: carries the parent Batch\'s recipe/parameters/patches ' +
         'forward, merging `parameters` over the parent\'s and appending (or, with replace_patches, replacing) `patches`. ' +
         'If from_generation_id is a finalized or repaired Generation, it is resolved back to the raw Generation it was made ' +
@@ -470,6 +481,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
         'when it differs from the source). Pass a stable idempotency_key — the same key replays the original request ' +
         '(created: false) instead of creating a duplicate.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: deriveRequestInputSchema,
     },
     async ({
