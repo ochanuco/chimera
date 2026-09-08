@@ -11,8 +11,10 @@ import { parseJsonObject, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
 import type {
+  BatchRow,
   ExperimentRow,
   ExperimentRunRow,
+  GenerationRow,
   RequestCreatedBy,
   RequestKind,
   RequestRow,
@@ -70,8 +72,66 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
   return payload;
 }
 
+/** `resolveDerivationSource` が遡れる refinement Batch の連鎖の上限。循環データに対する安全弁。 */
+const MAX_DERIVATION_HOPS = 10;
+
+export interface DerivationSource {
+  generation: GenerationRow;
+  batch: BatchRow;
+}
+
+/**
+ * `derive_request` の起点解決。finalize/repair (comfyui-recipes) が積む refinement Batch
+ * は `parameters_json` が hires-chain 等の仕上げ payload であって generate parameters では
+ * ないため、これを親として carry forward すると worker 側の parameters バリデーションに
+ * 落ちる。incoming `batch_relations` (`type = 'refinement'`) を遡り、対になる
+ * `batch_references` (`purpose = 'rebuild'`) が指す raw Generation/Batch まで戻す
+ * (lib/lineage.ts の祖先探索と同じ2テーブル)。raw Batch (incoming refinement relation が
+ * 無い) に着いたら停止する。
+ */
+export async function resolveDerivationSource(db: D1Database, generation: GenerationRow): Promise<DerivationSource> {
+  let currentGeneration = generation;
+  let currentBatch = await getBatchByIdOrShortId(db, generation.batch_id);
+  if (!currentBatch) throw notFound(`batch '${generation.batch_id}'`);
+
+  for (let hop = 0; hop < MAX_DERIVATION_HOPS; hop++) {
+    const relation = await db
+      .prepare(`SELECT source_batch_id FROM batch_relations WHERE target_batch_id = ? AND type = 'refinement' LIMIT 1`)
+      .bind(currentBatch.id)
+      .first<{ source_batch_id: string }>();
+    if (!relation) return { generation: currentGeneration, batch: currentBatch };
+
+    const rebuild = await db
+      .prepare(
+        `SELECT br.source_generation_id AS generation_id
+         FROM batch_references br
+         JOIN generations g ON g.id = br.source_generation_id
+         WHERE br.target_batch_id = ? AND br.purpose = 'rebuild' AND g.batch_id = ?
+         LIMIT 1`,
+      )
+      .bind(currentBatch.id, relation.source_batch_id)
+      .first<{ generation_id: string }>();
+    if (!rebuild) {
+      throw conflict(`refinement batch '${currentBatch.short_id}' has no rebuild reference; cannot resolve a derivation source`);
+    }
+
+    const nextGeneration = await getGenerationByIdOrShortId(db, rebuild.generation_id);
+    const nextBatch = await getBatchByIdOrShortId(db, relation.source_batch_id);
+    if (!nextGeneration || !nextBatch) {
+      throw conflict(`refinement batch '${currentBatch.short_id}' has no rebuild reference; cannot resolve a derivation source`);
+    }
+
+    currentGeneration = nextGeneration;
+    currentBatch = nextBatch;
+  }
+
+  throw conflict(`refinement batch '${currentBatch.short_id}' derivation chain exceeds ${MAX_DERIVATION_HOPS} hops`);
+}
+
 export interface BuildDerivedRequestPayloadInput {
   parentGenerationId: string;
+  /** Set only when the caller (derive_request) resolved a different Generation than the one requested — the finalized/repaired pick the agent looked at. Adds a second purpose="derive" reference. */
+  requestedGenerationId?: string;
   /** null/empty means the parent Batch is graph-mode (no single recipe) and cannot be derived. */
   parentRecipe: string | null;
   parentParameters: JsonObject;
@@ -112,11 +172,16 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
   if (input.reference?.aspect !== undefined) reference.aspect = input.reference.aspect;
   if (input.reference?.instruction !== undefined) reference.instruction = input.reference.instruction;
 
+  const references: JsonObject[] = [reference];
+  if (input.requestedGenerationId && input.requestedGenerationId !== input.parentGenerationId) {
+    references.push({ generation_id: input.requestedGenerationId, purpose: 'derive', aspect: 'finalized' });
+  }
+
   return {
     schema_version: 1,
     request,
     generation,
-    references: [reference],
+    references,
     semantic: input.semantic,
   };
 }
