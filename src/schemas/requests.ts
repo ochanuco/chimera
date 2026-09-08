@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const requestKindSchema = z.enum(['generate', 'finalize', 'repair']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -19,6 +19,17 @@ const repairRegionSchema = z
   .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
     message: 'region must have x0 < x1 and y0 < y1',
   });
+
+/**
+ * Generic masked redraw rectangles use the same normalized coordinate convention as repair,
+ * but are deliberately a separate schema: a masked redraw must name at least one rectangle,
+ * and overlapping rectangles are rejected so the worker receives an unambiguous mask union.
+ */
+export const maskedRedrawRegionSchema = repairRegionSchema;
+
+function regionsOverlap(a: readonly [number, number, number, number], b: readonly [number, number, number, number]): boolean {
+  return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+}
 
 /**
  * finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す
@@ -83,6 +94,70 @@ export const repairPayloadSchema = z
   })
   .strict();
 
+/** Generic masked redraw keeps its strength in the low-to-medium inpaint range. */
+export const MASKED_REDRAW_MAX_DENOISE = 0.75;
+
+/**
+ * Generic masked-img2img/inpaint options. `mask_padding` and `mask_feather` are pixel
+ * distances applied by the worker after resolving the source image dimensions. `pad` and
+ * `feather` are accepted as compatibility aliases for workers that use the shorter repair
+ * vocabulary; both aliases are canonicalized before a request is persisted.
+ */
+export const maskedRedrawOptionsSchema = z
+  .object({
+    regions: z.array(maskedRedrawRegionSchema).min(1, 'at least one region is required'),
+    prompt_patch: z.string().trim().min(1, 'prompt_patch must not be empty').max(4096),
+    denoise: z.number().gt(0).lte(MASKED_REDRAW_MAX_DENOISE).optional(),
+    mask_padding: z.number().min(0).max(512).optional(),
+    mask_feather: z.number().min(0).max(256).optional(),
+    // Narrow aliases keep the contract easy to adapt to comfyui-recipes' existing masked
+    // redraw helper without changing the repair_generation semantics.
+    pad: z.number().min(0).max(512).optional(),
+    feather: z.number().min(0).max(256).optional(),
+    size: z.number().int().min(256).multipleOf(8).nullable().optional(),
+    seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.mask_padding !== undefined && value.pad !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'use either mask_padding or pad, not both', path: ['mask_padding'] });
+    }
+    if (value.mask_feather !== undefined && value.feather !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'use either mask_feather or feather, not both', path: ['mask_feather'] });
+    }
+    for (let i = 0; i < value.regions.length; i += 1) {
+      for (let j = i + 1; j < value.regions.length; j += 1) {
+        if (regionsOverlap(value.regions[i]!, value.regions[j]!)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `region overlaps region ${j}`,
+            path: ['regions', i],
+          });
+        }
+      }
+    }
+  });
+
+export const maskedRedrawPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: maskedRedrawOptionsSchema,
+  })
+  .strict();
+
+/**
+ * Store one stable vocabulary in the queue even when a caller uses the short aliases.
+ * Validation happens at the REST/MCP boundary; parsing here also protects direct callers
+ * such as request helpers from persisting an invalid masked-redraw payload.
+ */
+export function canonicalizeMaskedRedrawPayload(payload: unknown): Record<string, unknown> {
+  const parsed = maskedRedrawPayloadSchema.parse(payload);
+  const { pad, feather, ...options } = parsed.options;
+  if (options.mask_padding === undefined && pad !== undefined) options.mask_padding = pad;
+  if (options.mask_feather === undefined && feather !== undefined) options.mask_feather = feather;
+  return { generation_id: parsed.generation_id, options };
+}
+
 /**
  * generate の payload は request.json v1 をそのまま包む (generation-request.md)。
  * chimera が検証するのは封筒の形 (schema_version=1 と request/generation の存在)
@@ -97,8 +172,15 @@ export const generatePayloadSchema = z
   .passthrough();
 
 /** REST (`POST /api/v1/requests`) と MCP `create_request` の両方が使う、kind に応じた payload 封筒の検証。 */
-export function payloadEnvelopeIssues(kind: 'generate' | 'finalize' | 'repair', payload: unknown) {
-  const schema = kind === 'finalize' ? finalizePayloadSchema : kind === 'repair' ? repairPayloadSchema : generatePayloadSchema;
+export function payloadEnvelopeIssues(kind: 'generate' | 'finalize' | 'repair' | 'masked_redraw', payload: unknown) {
+  const schema =
+    kind === 'finalize'
+      ? finalizePayloadSchema
+      : kind === 'repair'
+        ? repairPayloadSchema
+        : kind === 'masked_redraw'
+          ? maskedRedrawPayloadSchema
+          : generatePayloadSchema;
   const parsed = schema.safeParse(payload);
   return parsed.success ? [] : parsed.error.issues;
 }

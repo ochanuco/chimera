@@ -96,6 +96,7 @@ set_decision(run_id, decision)
 create_request(kind, payload, recipe_ref?, idempotency_key)
 finalize_generation(generation_id, options?, idempotency_key)   create_request の finalize 版、payload を組み立てずに済む
 repair_generation(generation_id, options?, idempotency_key)     create_request の repair 版
+masked_redraw_generation(generation_id, options, idempotency_key)  任意矩形の garment / local inpaint。source は不変
 get_request(id)
 list_requests(status?, kind?, run_id?)
 get_generation(generation_id)            GET /api/v1/generations/{id} と同じ形
@@ -121,9 +122,9 @@ Batch」(`via: "relation"`、`purpose_or_kind` は BatchRelation の type、
 二度訪れず、`depth` 段目で階層が尽きればそこで止まります。
 
 `derive_request` は既存の Generation を起点に `kind: "generate"` の
-requests 行を積みます。`from_generation_id` が finalize / repair 済みの
+requests 行を積みます。`from_generation_id` が finalize / repair / masked_redraw 済みの
 Generation なら、その元になった raw の Generation まで遡ってから起点にします
-（finalize / repair の Batch は `parameters` が仕上げ payload で generate
+（finalize / repair / masked_redraw の Batch は `parameters` が仕上げ payload で generate
 parameters ではないため）。起点 Batch の `recipe` / `parameters` /
 （起点 Generation の `semantic.attributes.patches` にある）`patches` を
 引き継ぎ、`parameters` は上書きマージ、`patches` は既定で追記、
@@ -134,14 +135,17 @@ Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
 併せて載ります。レスポンスの `derived_from` に、指定した Generation と
 実際の起点 Generation の両方（id / short_id）が入ります。
 
-`finalize_generation` / `repair_generation` は `create_request(kind: "finalize" | "repair", ...)`
+`finalize_generation` / `repair_generation` / `masked_redraw_generation` は `create_request(kind: "finalize" | "repair" | "masked_redraw", ...)`
 と同じ requests 行を積む専用窓口で、`generation_id` を解決して
 `payload.generation_id` に short_id を詰め、`options` を渡された場合だけ
 payload に載せます（[worker-protocol.md](worker-protocol.md)「finalize」
-「repair」節の options 表）。`generation_id` は UUID / short_id どちらでも
-受け、`repair_generation` は raw / finalize 済みのどちらの Generation でも
+「repair」節の options 表）。`pad` / `feather` alias は canonical key に正規化されます。
+`generation_id` は UUID / short_id どちらでも
+受け、`repair_generation` / `masked_redraw_generation` は raw / finalize 済みのどちらの Generation でも
 指定できます。`create_request` を使って手で payload を組み立てる代わりに、
-これら2つの語彙付き tool を使います。
+これら3つの語彙付き tool を使います。masked redraw は `regions`（空でない非重複矩形）
+と `prompt_patch` を必須とし、`denoise`（0超〜0.75以下）、`mask_padding`、`mask_feather` を保持します。
+既存の `repair_generation` は hands / feet 専用のままです。
 
 `list_catalog` / `get_catalog_pose` は
 [api.md「Recipe Catalog」](api.md#recipe-catalog)で公開する recipe catalog
@@ -180,7 +184,7 @@ requests 行が自動起票され（[worker-protocol.md](worker-protocol.md)
 
 tool annotations: 読み取り tool は `readOnlyHint: true`、書き込み tool（create_run / attach_generation /
 set_evaluation / set_decision / create_request / derive_request / finalize_generation /
-repair_generation）は `destructiveHint: false` と
+repair_generation / masked_redraw_generation）は `destructiveHint: false` と
 `idempotentHint: true` を付け、description の先頭で「追記のみ、削除・上書き・送信はしない」と
 明示する。ChatGPT の MCP クライアントは未注釈の書き込み tool を安全性チェックで呼び出し前に
 落とすため、この注釈と文言が無いと書き込み系が一切通らない。
