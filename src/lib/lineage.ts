@@ -162,7 +162,7 @@ async function walk(
       });
     }
 
-    frontier = levelIds;
+    frontier = levelIds.filter((id) => batchInfos.has(id));
   }
 
   nodes.sort((a, b) => a.depth - b.depth || a.batch.created_at.localeCompare(b.batch.created_at));

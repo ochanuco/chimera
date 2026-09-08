@@ -526,7 +526,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ recipe_ref }) => {
       const found = await getCatalog(db, recipe_ref);
       if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
-      return jsonResult(summarizeCatalog(found.doc));
+      return jsonResult({
+        recipe_ref: found.row.recipe_ref,
+        published_at: found.row.published_at,
+        updated_at: found.row.updated_at,
+        ...summarizeCatalog(found.doc),
+      });
     },
   );
 

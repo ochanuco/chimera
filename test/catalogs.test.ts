@@ -49,17 +49,20 @@ describe('Recipe Catalog REST', () => {
     expect(JSON.stringify(res.body)).not.toContain('reclining on a beanbag');
   });
 
-  it('GET list surfaces recipe names and pose counts without the catalog body', async () => {
+  it('GET list returns each catalog as its prompt-free summary with both timestamps', async () => {
     const recipeRef = uniqueRecipeRef();
     await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(), 'PUT');
 
-    const list = await getJson<{ items: { recipe_ref: string; recipes: { name: string; pose_count: number }[] }[] }>(
-      '/api/v1/catalogs',
-    );
+    const list = await getJson<{
+      items: { recipe_ref: string; published_at: string; updated_at: string; recipes: { name: string; poses: string[] }[]; patches: unknown }[];
+    }>('/api/v1/catalogs');
     expect(list.status).toBe(200);
     const item = list.body.items.find((i) => i.recipe_ref === recipeRef);
     expect(item).toBeTruthy();
-    expect(item?.recipes).toEqual([{ name: 'yukari', pose_count: 2 }]);
+    expect(item?.recipes.map((r) => [r.name, r.poses])).toEqual([['yukari', ['lounge', 'seated']]]);
+    expect(item?.patches).toBeTruthy();
+    expect(typeof item?.published_at).toBe('string');
+    expect(typeof item?.updated_at).toBe('string');
     expect(JSON.stringify(item)).not.toContain('reclining on a beanbag');
   });
 

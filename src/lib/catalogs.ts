@@ -61,38 +61,26 @@ export async function getCatalog(db: D1Database, recipeRef: string): Promise<Cat
   return { row, doc: JSON.parse(row.catalog_json) as RecipeCatalogDoc };
 }
 
-export interface CatalogListItem {
+export interface CatalogListItem extends ReturnType<typeof summarizeCatalog> {
   recipe_ref: string;
-  git_commit: string | null;
-  git_branch: string | null;
+  worker_id: string | null;
   published_at: string;
-  recipes: { name: string; pose_count: number }[];
+  updated_at: string;
 }
 
-/** Every published catalog, without any catalog body — recipe_ref / git info / pose counts only. */
+/** Every published catalog as its prompt-free summary, plus when it was first published and last replaced. */
 export async function listCatalogs(db: D1Database): Promise<CatalogListItem[]> {
   const { results } = await db
-    .prepare('SELECT recipe_ref, catalog_json, git_commit, git_branch, published_at FROM recipe_catalogs ORDER BY recipe_ref ASC')
-    .all<Pick<RecipeCatalogRow, 'recipe_ref' | 'catalog_json' | 'git_commit' | 'git_branch' | 'published_at'>>();
+    .prepare('SELECT * FROM recipe_catalogs ORDER BY recipe_ref ASC')
+    .all<RecipeCatalogRow>();
 
-  return (results ?? []).map((r) => {
-    let doc: RecipeCatalogDoc | null = null;
-    try {
-      doc = JSON.parse(r.catalog_json) as RecipeCatalogDoc;
-    } catch {
-      doc = null;
-    }
-    return {
-      recipe_ref: r.recipe_ref,
-      git_commit: r.git_commit,
-      git_branch: r.git_branch,
-      published_at: r.published_at,
-      recipes: (doc?.recipes ?? []).map((recipe) => ({
-        name: (recipe as { name: string }).name,
-        pose_count: extractNames((recipe as { poses?: unknown }).poses).length,
-      })),
-    };
-  });
+  return (results ?? []).map((r) => ({
+    recipe_ref: r.recipe_ref,
+    worker_id: r.worker_id,
+    published_at: r.published_at,
+    updated_at: r.updated_at,
+    ...summarizeCatalog(JSON.parse(r.catalog_json) as RecipeCatalogDoc),
+  }));
 }
 
 /**

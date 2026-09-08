@@ -618,7 +618,7 @@ git 情報）を worker が起動のたびに公開するスナップショッ�
 
 ``` text
 PUT  /api/v1/catalogs/{recipe_ref}   カタログ全体を丸ごと差し替える。200 (要約を返す)
-GET  /api/v1/catalogs                公開済みカタログの一覧（本文なし）
+GET  /api/v1/catalogs                公開済みカタログの一覧（各件 prompt 本文なしの要約 + published_at / updated_at）
 GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）。無ければ404
 ```
 

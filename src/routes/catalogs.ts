@@ -23,6 +23,7 @@ catalogs.put('/:recipe_ref', async (c) => {
   const row = await putCatalog(c.env.DB, recipeRef, doc);
   return c.json({
     recipe_ref: row.recipe_ref,
+    worker_id: row.worker_id,
     published_at: row.published_at,
     updated_at: row.updated_at,
     ...summarizeCatalog(doc),
