@@ -94,6 +94,8 @@ attach_generation(run_id, generation_id)
 set_evaluation(run_id, evaluation)
 set_decision(run_id, decision)
 create_request(kind, payload, recipe_ref?, idempotency_key)
+finalize_generation(generation_id, options?, idempotency_key)   create_request の finalize 版、payload を組み立てずに済む
+repair_generation(generation_id, options?, idempotency_key)     create_request の repair 版
 get_request(id)
 list_requests(status?, kind?, run_id?)
 get_generation(generation_id)            GET /api/v1/generations/{id} と同じ形
@@ -132,6 +134,15 @@ Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
 併せて載ります。レスポンスの `derived_from` に、指定した Generation と
 実際の起点 Generation の両方（id / short_id）が入ります。
 
+`finalize_generation` / `repair_generation` は `create_request(kind: "finalize" | "repair", ...)`
+と同じ requests 行を積む専用窓口で、`generation_id` を解決して
+`payload.generation_id` に short_id を詰め、`options` を渡された場合だけ
+payload に載せます（[worker-protocol.md](worker-protocol.md)「finalize」
+「repair」節の options 表）。`generation_id` は UUID / short_id どちらでも
+受け、`repair_generation` は raw / finalize 済みのどちらの Generation でも
+指定できます。`create_request` を使って手で payload を組み立てる代わりに、
+これら2つの語彙付き tool を使います。
+
 `list_catalog` / `get_catalog_pose` は
 [api.md「Recipe Catalog」](api.md#recipe-catalog)で公開する recipe catalog
 の読み取り側です。`list_catalog` は pose / costume / expression の名前と
@@ -168,7 +179,8 @@ requests 行が自動起票され（[worker-protocol.md](worker-protocol.md)
 変わりません。
 
 tool annotations: 読み取り tool は `readOnlyHint: true`、書き込み tool（create_run / attach_generation /
-set_evaluation / set_decision / create_request / derive_request）は `destructiveHint: false` と
+set_evaluation / set_decision / create_request / derive_request / finalize_generation /
+repair_generation）は `destructiveHint: false` と
 `idempotentHint: true` を付け、description の先頭で「追記のみ、削除・上書き・送信はしない」と
 明示する。ChatGPT の MCP クライアントは未注釈の書き込み tool を安全性チェックで呼び出し前に
 落とすため、この注釈と文言が無いと書き込み系が一切通らない。
