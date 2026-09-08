@@ -167,6 +167,12 @@ requests 行が自動起票され（[worker-protocol.md](worker-protocol.md)
 生成パラメータは Experiment 作成時の `base_parameters` に属し、Run ごとには
 変わりません。
 
+tool annotations: 読み取り tool は `readOnlyHint: true`、書き込み tool（create_run / attach_generation /
+set_evaluation / set_decision / create_request / derive_request）は `destructiveHint: false` と
+`idempotentHint: true` を付け、description の先頭で「追記のみ、削除・上書き・送信はしない」と
+明示する。ChatGPT の MCP クライアントは未注釈の書き込み tool を安全性チェックで呼び出し前に
+落とすため、この注釈と文言が無いと書き込み系が一切通らない。
+
 生やさないもの:
 
 ``` text
