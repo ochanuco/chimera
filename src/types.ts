@@ -231,6 +231,16 @@ export interface RequestRow {
   updated_at: string;
 }
 
+export interface RecipeCatalogRow {
+  recipe_ref: string;
+  catalog_json: string;
+  git_commit: string | null;
+  git_branch: string | null;
+  worker_id: string | null;
+  published_at: string;
+  updated_at: string;
+}
+
 export interface StoryRelationRow {
   id: string;
   story_id: string;

@@ -96,7 +96,42 @@ set_decision(run_id, decision)
 create_request(kind, payload, recipe_ref?, idempotency_key)
 get_request(id)
 list_requests(status?, kind?, run_id?)
+get_generation(generation_id)            GET /api/v1/generations/{id} と同じ形
+list_batch(batch_id)                     jobs / generations (rating・tags・semantic・seed 込み) / references / relations / experiment_run
+get_generation_lineage(generation_id, depth?)   Batch 単位の祖先・子孫 (reference / relation 両方)、depth 既定 5・上限 10
+derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
+list_catalog(recipe_ref?)                公開済み recipe catalog の要約 (既定 "production")
+get_catalog_pose(recipe, pose, recipe_ref?)   単一 pose のフルレコード
 ```
+
+Run の代表 Generation を選ぶだけでなく、その Generation を見て次の一手を決める段になったら `get_generation` / `list_batch` / `get_generation_lineage` を使います。Experiment を経由しない単発の派生 (「この Generation のポーズを少し変えて3枚」) には `derive_request` を使い、`create_run` は Experiment のサイクルに乗せる場合に使い分けます。
+
+`get_generation` / `list_batch` は REST の `GET /api/v1/generations/{id}` /
+`GET /api/v1/batches/{id}` と同じ `src/lib/generations.ts` /
+`src/lib/batches.ts` を呼ぶ薄い別窓口です（`list_batch` は UI 向けの
+siblings 等を持たない subset）。
+
+`get_generation_lineage` は Batch 単位で祖先・子孫を辿ります。祖先は
+「このBatchが材料に使った Generation の Batch」(`via: "reference"`、
+`purpose_or_kind` は Reference の purpose) と「このBatchの直接の起点
+Batch」(`via: "relation"`、`purpose_or_kind` は BatchRelation の type、
+例えば `refinement`) の両方を含み、子孫はその逆方向です。同じ Batch を
+二度訪れず、`depth` 段目で階層が尽きればそこで止まります。
+
+`derive_request` は既存の Generation を起点に `kind: "generate"` の
+requests 行を積みます。親 Batch の `recipe` / `parameters` /
+（親 Generation の `semantic.attributes.patches` にある）`patches` を
+引き継ぎ、`parameters` は上書きマージ、`patches` は既定で追記、
+`replace_patches: true` なら丸ごと置き換えます。親 Batch が recipe を
+持たない graph-mode の Batch なら 409 です。`reference` はそのまま
+purpose `"derive"` の Reference として payload に載ります。
+
+`list_catalog` / `get_catalog_pose` は
+[api.md「Recipe Catalog」](api.md#recipe-catalog)で公開する recipe catalog
+の読み取り側です。`list_catalog` は pose / costume / expression の名前と
+`parameters`、`patches` の語彙、git 情報だけを返し（prompt 本文は含まない）、
+特定の pose の中身が要るときだけ `get_catalog_pose` でフルレコードを引きます。
+どちらも recipe_ref を省略すると `"production"` を見ます。
 
 Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから
