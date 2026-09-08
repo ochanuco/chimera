@@ -600,14 +600,55 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / done / failed。
 
 -   `status` / `kind`: 完全一致
 -   `run_id`: `kind = generate` の行のみ持つ
--   `generation_id`: `kind = finalize` / `kind = repair` の行を対象に、その
+-   `generation_id`: `kind = finalize` / `kind = repair` / `kind = masked_redraw` の行を対象に、その
     `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
--   `batch_id`: 同様に `kind = finalize` / `kind = repair` の行を、その Batch 配下の
+-   `batch_id`: 同様に `kind = finalize` / `kind = repair` / `kind = masked_redraw` の行を、その Batch 配下の
     Generation を対象にしたものに絞る（UUID / short_id どちらでも可）
 -   `pending=true`: `status=queued` の別名
 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。
+
+### Generic masked redraw
+
+MCP の `masked_redraw_generation` は、既存 Generation を変更せずに任意の矩形領域を
+inpaint する `kind = masked_redraw` request を積みます。REST からも同じ payload を
+`POST /api/v1/requests` へ渡せます。
+
+``` json
+{
+  "kind": "masked_redraw",
+  "payload": {
+    "generation_id": "xbbw2y",
+    "options": {
+      "regions": [[0.18, 0.42, 0.86, 0.96]],
+      "prompt_patch": "replace only the waist-to-hem garment with a qwdgne-like long loose A-line mid-calf dress",
+      "denoise": 0.48,
+      "mask_padding": 24,
+      "mask_feather": 8
+    }
+  },
+  "recipe_ref": "production",
+  "idempotency_key": "mcp:masked-redraw:xbbw2y:...",
+  "created_by": "mcp"
+}
+```
+
+`regions` は width/height に対する分数 `[x0, y0, x1, y1]` の1件以上の配列で、値は
+0..1、x0<x1、y0<y1、矩形同士の重複なしを要求します。`prompt_patch` は空でない
+instruction / prompt patch、`denoise` は (0, 0.75]（低〜中程度は0.2〜0.65を推奨）、
+`mask_padding` / `mask_feather` は pixel 数です。`pad` / `feather` は API の短縮 alias
+で、受け付け後はそれぞれ canonical key に正規化して request payload に保存されます。
+canonical key と同時には指定できません。
+
+worker は source Generation を変更せず、新しい refinement Batch、source への
+`purpose = rebuild` Reference、source Batch への `type = refinement` Relation、および
+新しい Generation を作ります。request payload と target Batch の `parameters` / `prompt`
+には patch、regions、denoise、padding、feather を残し、再現可能性を保ちます。chimera
+自体は ComfyUI graph を実行せず、comfyui-recipes の masked-img2img / inpaint adapter
+境界を worker protocol として公開します（詳細は
+[worker-protocol.md](worker-protocol.md#masked_redraw)）。既存の `repair_generation`
+（hands / feet 専用）は別 kind のままです。
 
 ## Recipe Catalog
 

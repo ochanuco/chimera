@@ -22,6 +22,7 @@ import {
   payloadEnvelopeIssues,
   finalizeOptionsSchema,
   repairOptionsSchema,
+  maskedRedrawOptionsSchema,
 } from './schemas/requests';
 import { notFound } from './lib/errors';
 import {
@@ -121,6 +122,13 @@ const finalizeGenerationInputSchema = z.object({
 const repairGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   options: repairOptionsSchema.optional(),
+  idempotency_key: z.string().min(1),
+});
+
+/** `masked_redraw_generation` requires explicit regions and a prompt patch. */
+const maskedRedrawGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  options: maskedRedrawOptionsSchema,
   idempotency_key: z.string().min(1),
 });
 
@@ -394,7 +402,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "finalize" (payload {generation_id, options?}), or "repair" ' +
-        '(payload {generation_id, options?}, a masked local redraw of hands/feet). created_by is ' +
+        '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
+        '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). created_by is ' +
         'forced to "mcp". Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -476,6 +485,34 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const { row, created } = await createRequest(
         db,
         { kind: 'repair', payload, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult({ created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'masked_redraw_generation',
+    {
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a generic masked redraw / garment inpaint request (docs/worker-protocol.md "masked_redraw"): ' +
+        'the source Generation is left unchanged and the worker creates a new refinement Batch with a rebuild ' +
+        'Reference back to it. generation_id accepts a short_id. options requires one or more non-overlapping ' +
+        'normalized [x0,y0,x1,y1] rectangles and a non-empty prompt_patch; denoise is (0,0.75], ' +
+        'mask_padding/mask_feather are pixel distances (pad/feather are accepted and canonicalized aliases), and size/seeds are optional. ' +
+        'Use this for arbitrary garment or local redraw regions; use repair_generation for the hands/feet-specific compatibility API. ' +
+        'Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: maskedRedrawGenerationInputSchema,
+    },
+    async ({ generation_id, options, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const payload: Record<string, unknown> = { generation_id: generation.short_id, options };
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'masked_redraw', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
