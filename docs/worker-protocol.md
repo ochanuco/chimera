@@ -491,10 +491,11 @@ derive_request(from_generation_id, instruction, count?, seeds?, parameters?, pat
 `create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
 
 `derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
-別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の親 Batch から
-`recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます
-（[experiment-agent.md](experiment-agent.md#tool)）。worker から見える requests 行の形・
-claim/状態遷移は `create_request` 由来のものと変わりません。
+別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から
+`recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます。
+指定した Generation が finalize / repair 済みなら、その元になった raw の Generation
+まで遡ってから引き継ぎます（[experiment-agent.md](experiment-agent.md#tool)）。worker
+から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
 
 ## 段階 3: WorkerHub
 
