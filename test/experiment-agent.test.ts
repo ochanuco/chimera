@@ -250,6 +250,8 @@ describe('MCP server at /mcp', () => {
         'set_evaluation',
         'set_decision',
         'create_request',
+        'finalize_generation',
+        'repair_generation',
         'get_request',
         'list_requests',
         'get_generation',
@@ -498,7 +500,16 @@ describe('MCP tool annotations', () => {
     // 副作用のある tool は承認キューに入るべきなので、readOnlyHint を主張しない。
     // 追記専用なので destructiveHint: false と idempotentHint: true は主張する (ChatGPT の
     // 安全性チェックは未注釈の書き込み tool を破壊的とみなして呼び出し前に落とす)。
-    for (const name of ['create_run', 'attach_generation', 'set_evaluation', 'set_decision', 'create_request', 'derive_request']) {
+    for (const name of [
+      'create_run',
+      'attach_generation',
+      'set_evaluation',
+      'set_decision',
+      'create_request',
+      'derive_request',
+      'finalize_generation',
+      'repair_generation',
+    ]) {
       const annotations = byName.get(name)?.annotations as
         | { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean }
         | undefined;
