@@ -483,12 +483,21 @@ Compare が比較表示のみである点は変わりません。
 
 ``` text
 create_request(kind, payload, recipe_ref?, idempotency_key)
+finalize_generation(generation_id, options?, idempotency_key)
+repair_generation(generation_id, options?, idempotency_key)
 get_request(id)
 list_requests(status?, kind?, run_id?)
 derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
 ```
 
 `create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
+
+`finalize_generation` / `repair_generation` は `create_request` と同じ `kind: "finalize"` /
+`"repair"` の requests 行を積む別窓口です。`generation_id`（UUID / short_id どちらでも
+可）を解決して `payload.generation_id` に short_id を詰め、`options` を渡された場合だけ
+そのまま `payload.options` に載せます（上記「finalize」「repair」節の options 表と同じ
+語彙、zod スキーマも共有）。手で payload の封筒を組み立てる `create_request` に対して、
+この2つは finalize / repair に特化した窓口です。
 
 `derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
 別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から

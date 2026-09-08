@@ -15,7 +15,14 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
-import { requestKindSchema, requestStatusSchema, RECIPE_REF_RE, payloadEnvelopeIssues } from './schemas/requests';
+import {
+  requestKindSchema,
+  requestStatusSchema,
+  RECIPE_REF_RE,
+  payloadEnvelopeIssues,
+  finalizeOptionsSchema,
+  repairOptionsSchema,
+} from './schemas/requests';
 import { notFound } from './lib/errors';
 import {
   createExperimentRun,
@@ -102,6 +109,20 @@ const createRequestInputSchema = z
       ctx.addIssue({ code: 'custom', message: issue.message, path: ['payload', ...issue.path] });
     }
   });
+
+/** `finalize_generation` の入力。options は finalizePayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+const finalizeGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  options: finalizeOptionsSchema.optional(),
+  idempotency_key: z.string().min(1),
+});
+
+/** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+const repairGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  options: repairOptionsSchema.optional(),
+  idempotency_key: z.string().min(1),
+});
 
 /** `derive_request` の入力。count と seeds の対応は request.json v1 (docs/generation-request.md) の request.seeds が Job 数と一致する必要があるための整合チェック。 */
 const deriveRequestInputSchema = z
@@ -383,6 +404,78 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const { row, created } = await createRequest(
         db,
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult({ created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'finalize_generation',
+    {
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a finalize request (docs/worker-protocol.md "finalize"): one ComfyUI graph that redraws the pick ' +
+        'at delivery size, cuts a matte, and composites the backdrop and purple stroke; recorded as a refinement ' +
+        "Batch of the source Generation, with a rebuild Reference back to it. generation_id accepts a short_id. " +
+        'options is optional; every field defaults to the worker/recipe default when omitted: ' +
+        'denoise (redraw strength; recipe default, e.g. 0.55 for an IL finalize, 0.75 for Anima alone), ' +
+        'repin (accent-compression recolor pass), recolor (palette recolor, yukari recipe only), ' +
+        'keep_legwear (keep tights/legwear — true for the worker default weight 0.62, or a number), ' +
+        'route ("latent" or "pixel", worker default), size (redraw longest side, worker default), ' +
+        'handdrawn (handdrawn-look pass), skin (skin pass), ' +
+        'toe_guard (toe-repair guard — true for the worker default weight, or a number), ' +
+        'keep_scene (keep background/scene), transparent (cut alpha instead of an opaque backdrop, worker default), ' +
+        'backdrop (backdrop, e.g. "stripes" or a #RRGGBB color), ' +
+        'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
+        'lora_strength (finalize LoRA strength, 0-2), deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
+        'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw), ' +
+        "repair (array of \"hands\"/\"feet\" to also mask-redraw in this same request), " +
+        'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
+        'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
+        'repair_size (repair redraw longest side). Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: finalizeGenerationInputSchema,
+    },
+    async ({ generation_id, options, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const payload: Record<string, unknown> = { generation_id: generation.short_id };
+      if (options) payload.options = options;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'finalize', payload, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult({ created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'repair_generation',
+    {
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a repair request (docs/worker-protocol.md "repair"): a masked local redraw of hands and/or feet ' +
+        'on an already finalized or raw Generation; recorded as a refinement Batch of the source Generation, the ' +
+        'same lineage shape as finalize. generation_id accepts a short_id and may be either sibling of a finalize ' +
+        "batch (the raw or the delivered Generation). options is optional; every field defaults to the worker/recipe " +
+        'default when omitted: parts (array of "hands"/"feet" to redraw, worker default both), ' +
+        'regions (explicit [x0,y0,x1,y1] fraction rectangles, worker auto-detects when omitted), ' +
+        'denoise (redraw strength, recipe default), seeds (up to 16 seeds to try, worker default), ' +
+        'size (redraw longest side, recipe default), pad (detected-region padding factor, worker default). ' +
+        'Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: repairGenerationInputSchema,
+    },
+    async ({ generation_id, options, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const payload: Record<string, unknown> = { generation_id: generation.short_id };
+      if (options) payload.options = options;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'repair', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
