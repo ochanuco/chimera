@@ -609,6 +609,40 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / done / failed。
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。
 
+## Recipe Catalog
+
+comfyui-recipes 側の recipe（pose / costume / expression の一覧、patches の語彙、
+git 情報）を worker が起動のたびに公開するスナップショットです。recipe_ref
+単位で最新の1件だけを持ち（履歴は持ちません）、chimera は語彙を検証も解釈もせず
+そのまま保存・返却します。
+
+``` text
+PUT  /api/v1/catalogs/{recipe_ref}   カタログ全体を丸ごと差し替える。200 (要約を返す)
+GET  /api/v1/catalogs                公開済みカタログの一覧（本文なし）
+GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）。無ければ404
+```
+
+`recipe_ref` は requests の `recipe_ref` と同じ形式検証（origin のブランチ名相当）を
+使います。`PUT` の body は封筒だけを検証します：
+
+``` json
+{
+  "schema_version": 1,
+  "recipes": [{ "name": "...", "poses": [...] }],
+  "patches": {},
+  "git_commit": "...",
+  "git_branch": "...",
+  "generated_at": "..."
+}
+```
+
+`recipes[].poses` 以外のキー（`costumes` / `expressions` / `parameters` など）は
+recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
+MCP `list_catalog` は pose / costume / expression の名前と `parameters`、
+`patches` の語彙、git 情報だけを返し、prompt 本文は含めません。特定の pose の
+中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
+MCP `get_catalog_pose` で1件だけ引きます。
+
 ## WebSocket
 
 段階3の push / 進捗中継（WorkerHub、Durable Object）。契約の正本は
@@ -913,6 +947,12 @@ BatchReferenceそのもの（`target_batch_id`
 キーで返す簡易版です（どちらもこのGenerationを材料に使ったBatchの一覧）。
 
 ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
+
+`GET /api/v1/generations/{id}` はこの内容に `batch`（`prompt` / `recipe` /
+`raw_instruction` 込み）と `comfy_job`（`graph` / `render_facts`）、
+`original_filename` を加えたフルの detail です。ロジックは
+`src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
+`get_generation` もここを呼ぶ同じ形を返します。
 
 ## Generation Search
 
