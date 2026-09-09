@@ -48,7 +48,14 @@ export const createBatchSchema = z.object({
   patches: z.array(
     z.object({ target: z.string().min(1), op: z.string().min(1), reason: z.string().min(1) }).passthrough(),
   ).optional(),
-  pose_fingerprint: z.string().optional(),
+  pose_fingerprint: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  // patches があるのに fingerprint が無い Batch から昇格すると base_fingerprint が NULL に
+  // なり、その preset だけ base の drift を検出できなくなる (docs/domain-model.md「Preset」
+  // base が動くことへの備え)。昇格の材料になる Batch では両方を揃える。
+  if ((value.patches?.length ?? 0) > 0 && !value.pose_fingerprint) {
+    ctx.addIssue({ code: 'custom', message: 'pose_fingerprint is required when patches is non-empty', path: ['pose_fingerprint'] });
+  }
 });
 
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;

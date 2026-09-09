@@ -147,7 +147,11 @@ describe('MCP derive_request', () => {
     // `recipe` is an optional string field (not nullable) — omit the key entirely to get a
     // graph-mode batch (recipe stays NULL) instead of sending an explicit null.
     if (overrides.recipe !== null) batchOverrides.recipe = overrides.recipe ?? 'yukari';
-    if (overrides.patches) batchOverrides.patches = overrides.patches;
+    if (overrides.patches) {
+      batchOverrides.patches = overrides.patches;
+      // patches のある Batch は pose_fingerprint も要る (schemas/batches.ts の superRefine)。
+      batchOverrides.pose_fingerprint = 'sha256:fixture';
+    }
     return createGeneration({ batchOverrides });
   }
 

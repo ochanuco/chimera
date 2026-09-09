@@ -47,10 +47,20 @@ function findPin(payloadJson: string, kind: PresetKind): { name: string; version
 
 export async function promoteGenerationToPreset(db: D1Database, input: PromoteGenerationToPresetInput) {
   const existing = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
-  if (existing) return serializeResolvedPreset(existing, await resolvePreset(db, existing));
 
   const generation = await getGenerationByIdOrShortId(db, input.generation_id);
   if (!generation) throw notFound('generation');
+
+  // 再送は同じ入力のときだけ既存の版を返す。key を使い回して別の Generation や別の名前を
+  // 渡すと、無関係な版が 200 で返って「昇格できた」と読まれる。createRequest が
+  // payload_hash の不一致を conflict にするのと同じ規則。
+  if (existing) {
+    const sameInput =
+      existing.source_generation_id === generation.id && existing.kind === input.kind && existing.name === input.name;
+    if (!sameInput) throw conflict('idempotency_key already used for a different promotion');
+    return serializeResolvedPreset(existing, await resolvePreset(db, existing));
+  }
+
   if (generation.rating !== 'good') throw conflict('promote requires rating good');
 
   const { batch: sourceBatch } = await resolveDerivationSource(db, generation);
@@ -77,7 +87,8 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   const parameterName = batchParameters[input.kind];
   const baseName = pin?.name ?? (typeof parameterName === 'string' ? parameterName : undefined);
   if (baseName === undefined) {
-    throw conflict('no pinned preset for this generation; pass base_version');
+    // base_version を渡しても名前が決まらないので、そちらを促すメッセージにはしない。
+    throw conflict(`the source batch names no ${input.kind}; nothing to promote from`);
   }
 
   const baseRow = await getPresetRow(db, recipe, input.kind, baseName, baseVersion);

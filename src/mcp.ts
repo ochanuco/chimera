@@ -838,6 +838,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'promote_to_pose',
     {
       description:
+        'Non-destructive: only appends one new Preset version. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
         'Turn a rating=good Generation into a new Preset version (docs/worker-protocol.md「preset の移行」段階 B). ' +
         'Never rewrites an existing version — always appends the next version of (recipe, kind, name); pass an ' +
         'existing name for a new version of it, or a new name to start it at version 1. base is the preset version ' +

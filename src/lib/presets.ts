@@ -160,16 +160,26 @@ function isJsonObject(value: unknown): value is JsonObject {
  * (docs/worker-protocol.md「preset の pin」). A kind missing from `parameters` is unchecked —
  * omission is allowed.
  */
-/** The pins the caller supplied, or null when `generation.presets` is absent or not an array. */
+/**
+ * The pins the caller supplied, or null when `generation.presets` is absent or not an array.
+ * A malformed entry is rejected rather than skipped: dropping it would silently re-resolve that
+ * kind from `parameters` and pin the latest active version instead of the one the caller named.
+ */
 function existingPins(generation: JsonObject): { kind: PresetKind; name: string; version: number }[] | null {
   const presets = generation.presets;
   if (!Array.isArray(presets)) return null;
   const pins: { kind: PresetKind; name: string; version: number }[] = [];
   for (const entry of presets) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw badRequest('generation.presets entry must be an object');
+    }
     const e = entry as Record<string, unknown>;
-    if (typeof e.kind !== 'string' || typeof e.name !== 'string' || typeof e.version !== 'number') continue;
-    if (!(PIN_KINDS as readonly string[]).includes(e.kind)) continue;
+    if (typeof e.kind !== 'string' || typeof e.name !== 'string' || typeof e.version !== 'number') {
+      throw badRequest('generation.presets entry requires kind, name and a numeric version');
+    }
+    if (!(PIN_KINDS as readonly string[]).includes(e.kind)) {
+      throw badRequest(`generation.presets has an unknown kind: ${e.kind}`);
+    }
     pins.push({ kind: e.kind as PresetKind, name: e.name, version: e.version });
   }
   return pins;

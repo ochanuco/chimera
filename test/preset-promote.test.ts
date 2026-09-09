@@ -144,7 +144,9 @@ async function setupGeneration(
   recipe: string,
   options: { withPin?: boolean; parameters?: Record<string, unknown>; patches?: unknown[]; poseFingerprint?: string } = {},
 ) {
-  const { withPin = true, parameters = { pose: 'lounge' }, patches, poseFingerprint } = options;
+  // patches のある Batch は pose_fingerprint も要る (schemas/batches.ts の superRefine)。
+  const { withPin = true, parameters = { pose: 'lounge' }, patches } = options;
+  const poseFingerprint = options.poseFingerprint ?? (patches ? 'sha256:fixture' : undefined);
   const { batch, generation } = await createGeneration({
     batchOverrides: {
       recipe,
@@ -187,7 +189,7 @@ async function setupGeneration(
  */
 async function setupPinnedDerivationSource(recipe: string, patches: unknown[]) {
   const { batch, generation } = await createGeneration({
-    batchOverrides: { recipe, parameters: { pose: 'lounge' }, patches },
+    batchOverrides: { recipe, parameters: { pose: 'lounge' }, patches, pose_fingerprint: 'sha256:fixture' },
   });
 
   const genReq = await createGenerateRequest(recipe, {
@@ -335,6 +337,15 @@ describe('preset pin (createRequest / generate)', () => {
       { kind: 'pose', name: 'lounge', version: 1 },
       { kind: 'expression', name: 'smile', version: 1 },
     ]);
+  });
+
+  it('400s creating a Batch that carries patches without a pose_fingerprint', async () => {
+    const res = await postJson('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      recipe: 'yukari',
+      patches: [{ target: 'pose', op: 'append', reason: 'no fingerprint', value: 'x' }],
+    });
+    expect(res.status).toBe(400);
   });
 
   it('400s when an explicit generation.presets pin does not match parameters for that kind', async () => {
@@ -601,6 +612,31 @@ describe('POST /api/v1/presets/promote', () => {
 
     const versions = await getJson<{ items: { version: number }[] }>(`/api/v1/presets/${recipe}/pose/lounge`);
     expect(versions.body.items.map((v) => v.version)).toEqual([2, 1]);
+  });
+
+  it('409s reusing an idempotency_key for a different promotion instead of returning the old version', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImportTwoPoses(recipe);
+    const patches = [{ target: 'pose', op: 'append', reason: 'promote v2', value: 'a bit more relaxed' }];
+    const { generation } = await setupGeneration(recipe, { patches });
+    await setRatingGood(generation.id);
+
+    const idempotencyKey = crypto.randomUUID();
+    const first = await postJson<PresetView>('/api/v1/presets/promote', {
+      generation_id: generation.id,
+      name: 'lounge',
+      kind: 'pose',
+      idempotency_key: idempotencyKey,
+    });
+    expect(first.status).toBe(200);
+
+    const reused = await postJson('/api/v1/presets/promote', {
+      generation_id: generation.id,
+      name: 'lounge-relaxed',
+      kind: 'pose',
+      idempotency_key: idempotencyKey,
+    });
+    expect(reused.status).toBe(409);
   });
 
   it('ignores semantic.attributes.patches: the Batch patches_json is what gets promoted', async () => {

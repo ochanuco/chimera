@@ -293,6 +293,11 @@ worker が Batch に記録する `patches` は request 自身の分（α）だ�
 含みません。preset の分は `preset_versions_json` の版を解決すれば出るので、両方書くと
 昇格と派生がそれを二重に取り込みます。
 
+`POST /api/v1/batches` は `patches` が空でないとき `pose_fingerprint` を必須にします
+（無ければ 400）。patches を持つ Batch は昇格の材料なので、fingerprint を欠くとその
+preset だけ base の drift を検出できなくなります。graph モードの Batch はどちらも
+持たないので、両方省けば通ります。
+
 `generation.prompt` / `negative_prompt` による全文上書きと preset の併用は、今まで通り
 禁止です。全文上書きは patch の積み上げと順序が定義できません。
 
