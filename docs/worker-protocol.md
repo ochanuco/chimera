@@ -69,6 +69,9 @@ queued ──claim──▶ running ──PATCH done──▶ done
   │                  │
   │                  ├──PATCH failed──▶ failed
   │                  │
+  │                  ├──PATCH queued（release）──▶ queued（attempt < max_attempts）
+  │                  │                          └▶ failed（attempt >= max_attempts）
+  │                  │
   │                  └──heartbeat 途絶──▶ queued（attempt < max_attempts）
   │                                    └▶ failed（attempt >= max_attempts、error = "heartbeat timeout"）
   └──PATCH cancelled──▶ cancelled
@@ -78,6 +81,13 @@ heartbeat 途絶の判定は「`status = running` かつ `heartbeat_at` が 5 �
 では cron を持たず、claim の直前に stale 行を戻します（claim を呼ぶ worker が
 いる限り回収され、いなければ回収の必要もありません）。段階 3 では WorkerHub の
 alarm が同じ規則で回収します。
+
+release は worker が自分から手放す遷移で、途絶の判定を待たずに同じ結果へ行きます。
+再起動から戻った worker は、自分が落ちたことを知っている唯一の主体です。それを閾値で
+推測させると、回線が一瞬切れただけの worker から仕事を取り上げないための 5 分の余裕と、
+自分の再起動を早く申告したいという要求が、同じつまみの取り合いになります。申告できる
+なら閾値は触りません。`worker_id` が claim 時のものと一致する `running` 行だけが対象で、
+attempt の扱いは途絶と同じ規則です。
 
 戻す先を queued にするのは、途絶の大半が worker の再起動・回線断で、生成自体は
 やり直せるためです。ただし再実行が重複 Batch を作ってはいけないので、worker
@@ -132,11 +142,17 @@ form しか持たないことで保っており、API が `created_by`
 ### List Requests
 
 ``` text
-GET /api/v1/requests?status=queued|running|done|failed|cancelled&kind=&run_id=&limit=&offset=
+GET /api/v1/requests?status=queued|running|done|failed|cancelled&kind=&run_id=&worker_id=&limit=&offset=
 ```
 
 読み取り専用。GUI と brain の状況確認用で、claim は伴いません。`?pending=true` は
 `status=queued` の別名です。
+
+`worker_id` は worker が起動時に自分の取りこぼしを拾うためのものです。
+`?status=running&worker_id=<self>` が、自分が claim したまま落ちた行を返します。それぞれに
+release を投げれば、途絶の 5 分を待たずに queued へ戻せます。bulk の口は持ちません。
+落ちた worker が抱えている行は多くて数件で、まとめる利得より、1 行ずつ 409 で弾かれる
+ことの分かりやすさの方が勝ります。
 
 ### Claim
 
@@ -178,7 +194,14 @@ worker が書く遷移:
 { "status": "running", "worker_id": "gpu-box-1" }
 { "status": "done", "worker_id": "gpu-box-1", "result": { "batch_id": "...", "generation_ids": ["..."] } }
 { "status": "failed", "worker_id": "gpu-box-1", "error": "..." }
+{ "status": "queued", "worker_id": "gpu-box-1" }
 ```
+
+`{ "status": "queued" }` は release です。自分が claim したまま落ちた行を、途絶の 5 分を
+待たずに手放します。`running` 以外からは 409、`worker_id` が claim 時と違えば 409。
+`attempt >= max_attempts` なら `failed`（error は `released after max attempts`）になり、
+そうでなければ `queued` に戻って `worker_id` が外れます。attempt はここでは動きません
+（次の claim で増えます）。
 
 `{ "status": "running" }` は heartbeat です。worker は実行中 30 秒ごとに送り（ComfyUI
 の完了待ち 10 秒 poll の中から打つ）、chimera は `heartbeat_at` を更新します。`worker_id` が claim 時のものと異なる PATCH は 409
@@ -795,6 +818,17 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
 -   段階 D、worker の畳み込み。loop を ComfyUI の custom node pack の thread にします。
     GPU 機の常駐が ComfyUI 一つになり、deploy は custom_nodes の git pull と restart だけに
     なります。chimera 側の契約はここでは変わりません。
+
+段階 D は、今の構成が持っている性質を1つ失います。deploy は work を無条件に kill しますが、
+ComfyUI の再起動は node pack や imaging が変わった deploy でしか起きません。つまり今は、
+deploy で work が死んでも ComfyUI の生成は走り続け、再 claim した worker が state に残った
+`comfy_prompt_id` を見て、ComfyUI がまだその prompt を知っていれば再投入せず待ちに戻ります。
+5 分の途絶は待ち時間であって、GPU の仕事は失われていません。
+
+worker が ComfyUI の thread になると、worker の再起動は必ず ComfyUI の再起動です。走行中の
+生成はプロセスと一緒に死に、再 claim しても復帰先がありません。5 分の遅延だったものが、
+GPU の遊休と生成のやり直しになります。得るもの（常駐が1つ、deploy が git pull と restart
+だけ、移行先を変えるとき差し替える層が1つ）と引き換えに失うのはこれです。
 
 `poses.py` と catalog publish はどの段でも残ります。pose 本文の組み立ては costume に依存
 する条件分岐を持っていて、catalog が publish できるのはそれを実行した後の prompt ペア

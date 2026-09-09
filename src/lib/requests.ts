@@ -329,6 +329,8 @@ export interface RequestListFilters {
   status?: RequestStatus;
   kind?: RequestKind;
   run_id?: string;
+  /** claim した worker。自分が握ったまま落ちた行を起動時に拾うために使う。 */
+  worker_id?: string;
   /** UUID / short_id どちらでも受ける。該当する Generation が無ければ空リストを返す。 */
   generation_id?: string;
   /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair / masked_redraw request を集約する。 */
@@ -355,6 +357,10 @@ export async function listRequests(
   if (filters.run_id) {
     conditions.push('run_id = ?');
     binds.push(filters.run_id);
+  }
+  if (filters.worker_id) {
+    conditions.push('worker_id = ?');
+    binds.push(filters.worker_id);
   }
   if (filters.generation_id) {
     const generation = await getGenerationByIdOrShortId(db, filters.generation_id);
@@ -449,7 +455,7 @@ export async function claimRequest(
 }
 
 export interface UpdateRequestInput {
-  status: 'running' | 'done' | 'failed' | 'cancelled';
+  status: 'running' | 'queued' | 'done' | 'failed' | 'cancelled';
   worker_id?: string;
   result?: { batch_id: string; generation_ids: string[]; recipe_commit?: string };
   error?: string;
@@ -481,6 +487,22 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
 
   if (body.status === 'running') {
     await db.prepare('UPDATE requests SET heartbeat_at = ?, updated_at = ? WHERE id = ?').bind(now, now, row.id).run();
+    return getRequestOr404(db, row.id);
+  }
+
+  // release。自分が claim したまま落ちた行を、途絶の 5 分を待たずに手放す。行き先は
+  // 途絶と同じ規則にする — 手放す理由が違うだけで、結果として起きることは同じなので、
+  // 規則を 2 つ持つと attempt の扱いが 2 通りに割れる (docs/worker-protocol.md「状態遷移」)。
+  if (body.status === 'queued') {
+    const exhausted = row.attempt >= row.max_attempts;
+    await db
+      .prepare(
+        exhausted
+          ? `UPDATE requests SET status = 'failed', error = ?, finished_at = ?, worker_id = NULL, updated_at = ? WHERE id = ?`
+          : `UPDATE requests SET status = 'queued', worker_id = NULL, updated_at = ? WHERE id = ?`,
+      )
+      .bind(...(exhausted ? ['released after max attempts', now, now, row.id] : [now, row.id]))
+      .run();
     return getRequestOr404(db, row.id);
   }
 

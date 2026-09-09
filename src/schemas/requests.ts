@@ -215,12 +215,12 @@ export const updateRequestResultSchema = z.object({
 });
 
 /**
- * worker が書く running/done/failed は claim 済みの worker_id を伴う (409 の元にする
+ * worker が書く running/queued/done/failed は claim 済みの worker_id を伴う (409 の元にする
  * ため)。brain/GUI が書く cancelled だけは worker_id を持たない。
  */
 export const updateRequestSchema = z
   .object({
-    status: z.enum(['running', 'done', 'failed', 'cancelled']),
+    status: z.enum(['running', 'queued', 'done', 'failed', 'cancelled']),
     worker_id: z.string().min(1).optional(),
     result: updateRequestResultSchema.optional(),
     error: z.string().optional(),
