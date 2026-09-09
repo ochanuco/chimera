@@ -314,9 +314,24 @@ publish されておらず、参照にしても行が増えるだけで何も足
 
 patches の text op（replace / remove）は本文の needle に依存し、needle が消えると worker
 側で落ちます。base が参照である以上この結合は避けられないので、昇格した版にはその時点の
-pose レコードの digest を `base_fingerprint` として一緒に記録します。worker が Batch を作る
-ときに送ってくる同じ digest と突き合わせれば、その preset を使う前に「record X に対して
-昇格されたが worker は今 Y を持っている」と言えます。
+本文の digest を `base_fingerprint` として一緒に記録します。worker が Batch を作るときに
+送ってくる同じ digest と突き合わせれば、その preset を使う前に「本文 X に対して昇格された
+が worker は今 Y を組み立てる」と言えます。
+
+digest の対象は pose レコードではなく、その pose を既定 costume で組み立てた prompt ペア
+です。patches の needle が結び付いているのは組み上がった本文であり、組み立てには pose
+レコード以外（style の共通部、costume の連結順序）も効くためです。既定 costume に固定
+するのは、`parameters.costume` の上書きが正規の機能である以上、上書きして描いた本文の
+digest を送ると「上書きした」と「base が動いた」が区別できなくなるからです。
+
+``` text
+sha256( canonical_json({ recipe, pose, positive, negative }) )
+```
+
+canonical JSON はキー昇順・空白なし・UTF-8 で、値は既定 costume での組み立て結果です。
+chimera はこの文字列を不透明に保存し、突き合わせにしか使いません。既定以外の costume に
+だけ効く編集の drift はここには出ませんが、その場合も needle 不在は worker の probe が
+必ず捕まえます。
 
 落ち方自体は静かではありません。worker は claim 直後の probe で patch の適用を試し、
 落ちれば Batch を1つも作らずに request を `failed` にします。fingerprint は、使おうとする

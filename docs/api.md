@@ -668,8 +668,8 @@ POST /api/v1/presets/promote                            rating good の Generati
 `kind` は `pose` / `costume` / `expression` です。一覧は既定で `status = active` の版だけを
 返し、`?include_deprecated=1` で全部返します。
 
-解決済みの本文は `base` の連鎖を根まで辿った結果です。`record` は根の pose への参照で、
-本文ではありません。参照を本文に解決して patches を畳むのは worker 側の graph compiler で、
+解決済みの本文は `base` の連鎖を根まで辿った結果です。`patches` は常に配列で、空でも
+キーを省きません。`record` は根の pose への参照で、本文ではありません。参照を本文に解決して patches を畳むのは worker 側の graph compiler で、
 `parameters.costume` の上書きはそこで今まで通り効きます。
 
 ``` json
