@@ -1,11 +1,12 @@
-// Generation detail のドメインロジック。REST (src/routes/generations.ts) と
-// MCP tool `get_generation` (src/mcp.ts) の両方がここを呼ぶ — どちらも
-// GET /api/v1/generations/{id} と同じ形を返す。
+// Generation detail / 一覧のドメインロジック。REST (src/routes/generations.ts) と
+// MCP tool `get_generation` / `list_generations` (src/mcp.ts) の両方がここを呼ぶ —
+// どちらも GET /api/v1/generations{,/id} と同じ形を返す。
 
-import { toBool } from './db';
+import { normalizeDateRange, parsePagination, toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { renderFactsForJob } from './render-facts';
+import { isUuid } from './uuidv7';
 import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow } from '../types';
 
 function parseSemantic(row: GenerationRow) {
@@ -98,4 +99,121 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
       : null,
     original_filename: generation.original_filename,
   };
+}
+
+export interface GenerationListItem {
+  id: string;
+  short_id: string;
+  canonical_url: string;
+  image_url: string;
+  thumbnail_url: string;
+  rating: GenerationRow['rating'];
+  bookmark: boolean;
+  summary: string | null;
+  character: { id: string; name: string | null } | null;
+  tags: string[];
+  created_at: string;
+  batch_id: string;
+  image_width: number | null;
+  image_height: number | null;
+  image_size: number | null;
+}
+
+/** GET /api/v1/generations の一覧 + フィルタ。MCP tool `list_generations` もここを呼ぶ。 */
+export async function queryGenerations(
+  db: D1Database,
+  query: Record<string, string | undefined>,
+  org: string,
+): Promise<{ items: GenerationListItem[]; total: number }> {
+  const { limit, offset } = parsePagination(query);
+
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+
+  if (query.character) {
+    if (isUuid(query.character)) {
+      conditions.push('g.character_id = ?');
+      binds.push(query.character);
+    } else {
+      conditions.push('g.character_id IN (SELECT id FROM characters WHERE name = ?)');
+      binds.push(query.character);
+    }
+  }
+  if (query.tag) {
+    conditions.push(
+      'EXISTS (SELECT 1 FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id AND t.name = ?)',
+    );
+    binds.push(query.tag);
+  }
+  if (query.rating) {
+    conditions.push('g.rating = ?');
+    binds.push(query.rating);
+  }
+  if (query.bookmark !== undefined) {
+    conditions.push('g.bookmark = ?');
+    binds.push(query.bookmark === 'true' ? 1 : 0);
+  }
+  if (query.comfy_prompt_id) {
+    conditions.push('g.comfy_job_id IN (SELECT id FROM comfy_jobs WHERE comfy_prompt_id = ?)');
+    binds.push(query.comfy_prompt_id);
+  }
+  if (query.original_filename) {
+    conditions.push('g.original_filename = ?');
+    binds.push(query.original_filename);
+  }
+  const { from, to } = normalizeDateRange(query.from, query.to);
+  if (from) {
+    conditions.push('g.created_at >= ?');
+    binds.push(from);
+  }
+  if (to) {
+    conditions.push('g.created_at <= ?');
+    binds.push(to);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) AS total FROM generations g ${where}`)
+    .bind(...binds)
+    .first<{ total: number }>();
+
+  const { results } = await db
+    .prepare(
+      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json
+       FROM generations g
+       LEFT JOIN characters ch ON ch.id = g.character_id
+       LEFT JOIN generation_tags gt ON gt.generation_id = g.id
+       LEFT JOIN tags t ON t.id = gt.tag_id
+       ${where}
+       GROUP BY g.id
+       ORDER BY g.created_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .bind(...binds, limit, offset)
+    .all<GenerationRow & { character_name: string | null; tag_names_json: string }>();
+
+  const items = (results ?? []).map((r) => {
+    const tagArray = r.tag_names_json ? JSON.parse(r.tag_names_json) : [];
+    const tags = Array.isArray(tagArray) ? tagArray.filter((t) => t !== null) : [];
+    return {
+      id: r.id,
+      short_id: r.short_id,
+      canonical_url: canonicalGenerationUrl(org, r.short_id),
+      image_url: generationImageUrl(org, r.short_id),
+      thumbnail_url: generationImageUrl(org, r.short_id),
+      rating: r.rating,
+      bookmark: toBool(r.bookmark),
+      summary: r.summary,
+      character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
+      tags,
+      created_at: r.created_at,
+      batch_id: r.batch_id,
+      image_width: r.image_width,
+      image_height: r.image_height,
+      image_size: r.image_size,
+    };
+  });
+
+  return { items, total: countRow?.total ?? 0 };
 }
