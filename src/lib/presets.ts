@@ -1,20 +1,16 @@
 // Preset のクエリ。REST (src/routes/presets.ts) と MCP tools `list_presets` /
-// `get_preset` (src/mcp.ts) の両方がここを呼ぶ。段階 A の範囲は読み取りと catalog
-// からの取り込みだけ — 版の pin、受領時 lint、promote は段階 B (docs/worker-protocol.md
-// 「preset の移行」)。
+// `get_preset` (src/mcp.ts) の両方がここを呼ぶ。読み取りと catalog からの取り込み
+// (段階 A) に加え、版の pin (段階 B, docs/worker-protocol.md「preset の pin」) もここに
+// 置く。promote は resolveDerivationSource (lib/requests.ts) を要るため、この
+// ファイルから requests.ts への依存を作らないよう lib/promote.ts に分けている。
 
 import { nowIso } from './db';
 import { getCatalog } from './catalogs';
-import { conflict, notFound } from './errors';
+import { badRequest, conflict, notFound } from './errors';
 import { presetBodySchema, type PresetBody } from '../schemas/presets';
 import { uuidv7 } from './uuidv7';
+import type { JsonObject } from './overrides';
 import type { PresetKind, PresetRow, PresetSource, PresetStatus } from '../types';
-
-const CATALOG_KIND_MAP: Record<string, PresetKind> = {
-  poses: 'pose',
-  costumes: 'costume',
-  expressions: 'expression',
-};
 
 // src/lib/catalogs.ts の extractNames と同じ判定。catalogs.ts は段階 C で消えるので
 // 共有せず、preset 側が自分の抽出を持つ。
@@ -35,6 +31,7 @@ export interface PresetSummary {
   status: PresetStatus;
   source: PresetSource;
   source_generation_id: string | null;
+  base_fingerprint: string | null;
   note: string | null;
   created_at: string;
 }
@@ -49,6 +46,7 @@ function summarizePreset(row: PresetRow): PresetSummary {
     status: row.status,
     source: row.source,
     source_generation_id: row.source_generation_id,
+    base_fingerprint: row.base_fingerprint,
     note: row.note,
     created_at: row.created_at,
   };
@@ -81,68 +79,164 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
 
   const inserts: D1PreparedStatement[] = [];
   const insertStatement = db.prepare(
-    `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, base_fingerprint)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
+  // costume / expression は import しない。catalog がそれらに publish できるのは名前の
+  // 配列だけで、参照にしても行が増えるだけで何も足さない (docs/domain-model.md「Preset」
+  // body の形)。
+  const kind: PresetKind = 'pose';
   for (const recipe of found.doc.recipes) {
     const r = recipe as Record<string, unknown>;
     if (typeof r.name !== 'string') continue;
     const recipeName = r.name;
 
-    for (const [catalogKey, kind] of Object.entries(CATALOG_KIND_MAP)) {
-      const entries = r[catalogKey];
-      if (!Array.isArray(entries)) continue;
+    const entries = r.poses;
+    if (!Array.isArray(entries)) continue;
 
-      for (const entry of entries) {
-        const name = extractEntryName(entry);
-        if (name === null) continue;
+    for (const entry of entries) {
+      const name = extractEntryName(entry);
+      if (name === null) continue;
 
-        const key = [recipeName, kind, name].join('\u0000');
-        if (seen.has(key)) {
-          skipped.push({ recipe: recipeName, kind, name });
-          continue;
-        }
-        seen.add(key);
-
-        const row: PresetRow = {
-          id: uuidv7(),
-          recipe: recipeName,
-          kind,
-          name,
-          version: 1,
-          body_json: JSON.stringify({ record: entry }),
-          status: 'active',
-          source: 'import',
-          source_generation_id: null,
-          note: null,
-          created_by: 'system',
-          created_at: now,
-        };
-        inserts.push(
-          insertStatement.bind(
-            row.id,
-            row.recipe,
-            row.kind,
-            row.name,
-            row.version,
-            row.body_json,
-            row.status,
-            row.source,
-            row.source_generation_id,
-            row.note,
-            row.created_by,
-            row.created_at,
-          ),
-        );
-        imported.push(summarizePreset(row));
+      const key = [recipeName, kind, name].join('\u0000');
+      if (seen.has(key)) {
+        skipped.push({ recipe: recipeName, kind, name });
+        continue;
       }
+      seen.add(key);
+
+      const row: PresetRow = {
+        id: uuidv7(),
+        recipe: recipeName,
+        kind,
+        name,
+        version: 1,
+        body_json: JSON.stringify({ recipe_pose: name }),
+        status: 'active',
+        source: 'import',
+        source_generation_id: null,
+        note: null,
+        created_by: 'system',
+        created_at: now,
+        idempotency_key: null,
+        base_fingerprint: null,
+      };
+      inserts.push(
+        insertStatement.bind(
+          row.id,
+          row.recipe,
+          row.kind,
+          row.name,
+          row.version,
+          row.body_json,
+          row.status,
+          row.source,
+          row.source_generation_id,
+          row.note,
+          row.created_by,
+          row.created_at,
+          row.base_fingerprint,
+        ),
+      );
+      imported.push(summarizePreset(row));
     }
   }
 
   if (inserts.length > 0) await db.batch(inserts);
 
   return { imported, skipped };
+}
+
+const PIN_KINDS: PresetKind[] = ['pose', 'costume', 'expression'];
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Explicit `generation.presets` bypasses resolution from `parameters`, but the two must still
+ * agree per kind: worker decides `parameters.{kind}` vs. the pin's `name` by fiat, not chimera
+ * (docs/worker-protocol.md「preset の pin」). A kind missing from `parameters` is unchecked —
+ * omission is allowed.
+ */
+/**
+ * The pins the caller supplied, or null when `generation.presets` is absent or not an array.
+ * A malformed entry is rejected rather than skipped: dropping it would silently re-resolve that
+ * kind from `parameters` and pin the latest active version instead of the one the caller named.
+ */
+function existingPins(generation: JsonObject): { kind: PresetKind; name: string; version: number }[] | null {
+  const presets = generation.presets;
+  if (!Array.isArray(presets)) return null;
+  const pins: { kind: PresetKind; name: string; version: number }[] = [];
+  for (const entry of presets) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw badRequest('generation.presets entry must be an object');
+    }
+    const e = entry as Record<string, unknown>;
+    if (typeof e.kind !== 'string' || typeof e.name !== 'string' || typeof e.version !== 'number') {
+      throw badRequest('generation.presets entry requires kind, name and a numeric version');
+    }
+    if (!(PIN_KINDS as readonly string[]).includes(e.kind)) {
+      throw badRequest(`generation.presets has an unknown kind: ${e.kind}`);
+    }
+    pins.push({ kind: e.kind as PresetKind, name: e.name, version: e.version });
+  }
+  return pins;
+}
+
+function assertPinsMatchParameters(generation: JsonObject): void {
+  const presets = generation.presets;
+  if (!Array.isArray(presets)) return;
+  const parameters = isJsonObject(generation.parameters) ? generation.parameters : {};
+
+  for (const entry of presets) {
+    if (!entry || typeof entry !== 'object') continue;
+    const kind = (entry as Record<string, unknown>).kind;
+    const name = (entry as Record<string, unknown>).name;
+    if (typeof kind !== 'string' || typeof name !== 'string') continue;
+
+    const paramValue = parameters[kind];
+    if (typeof paramValue !== 'string') continue;
+    if (paramValue !== name) throw badRequest(`parameters.${kind} does not match the pinned preset`);
+  }
+}
+
+/**
+ * Pure transform: resolves `generation.parameters.{pose,costume,expression}` to pinned
+ * `{kind, name, version}` entries under `generation.presets` (docs/worker-protocol.md
+ * 「preset の pin」). Never mutates `payload` — returns it unchanged (by reference) when
+ * there is nothing to pin, so callers hashing the result don't see spurious differences.
+ */
+export async function pinPresets(db: D1Database, payload: JsonObject): Promise<JsonObject> {
+  const generation = payload.generation;
+  if (!isJsonObject(generation)) return payload;
+  if (generation.graph || typeof generation.recipe !== 'string') return payload;
+  // 明示された pin は版ごと尊重し、pin されていない kind だけ parameters から解決する。
+  // derive_request が「一部の kind だけ pin を引き継ぎ、残りは呼び出し側の指名」という
+  // payload を組むため、明示があったら丸ごと手を引くと残りが pin されないまま通る。
+  const given = existingPins(generation);
+  if (given) assertPinsMatchParameters(generation);
+
+  const recipe = generation.recipe;
+  const hasAnyPreset = await db.prepare('SELECT 1 FROM presets WHERE recipe = ? LIMIT 1').bind(recipe).first();
+  if (!hasAnyPreset) return payload;
+
+  const parameters = isJsonObject(generation.parameters) ? generation.parameters : {};
+  const pinnedKinds = new Set((given ?? []).map((pin) => pin.kind));
+  const pins = [...(given ?? [])];
+  for (const kind of PIN_KINDS) {
+    if (pinnedKinds.has(kind)) continue;
+    const name = parameters[kind];
+    if (typeof name !== 'string' || name === '') continue;
+    const row = await getPresetRow(db, recipe, kind, name);
+    if (!row) throw badRequest(`preset not found: ${recipe}/${kind}/${name}`);
+    pins.push({ kind, name, version: row.version });
+  }
+
+  if (pins.length === (given?.length ?? 0)) return payload;
+
+  return { ...payload, generation: { ...generation, presets: pins } };
 }
 
 export interface ListPresetsFilters {
@@ -238,10 +332,10 @@ export interface ResolvedPreset {
 }
 
 /**
- * Follows body_json.base up to the root ({ record }) row and flattens the patches of every
- * promote hop along the way, oldest first — the shape the worker's graph compiler needs to
- * fold into one prompt (docs/domain-model.md「Preset」body の形). Depth is capped well above
- * any real chain length, as a guard against a corrupted or cyclic base reference.
+ * Follows body_json.base up to the root ({ recipe_pose }) row and flattens the patches of
+ * every promote hop along the way, oldest first — the shape the worker's graph compiler
+ * needs to fold into one prompt (docs/domain-model.md「Preset」body の形). Depth is capped
+ * well above any real chain length, as a guard against a corrupted or cyclic base reference.
  */
 export async function resolvePreset(db: D1Database, row: PresetRow): Promise<ResolvedPreset> {
   const bodies: PresetBody[] = [];
@@ -251,13 +345,13 @@ export async function resolvePreset(db: D1Database, row: PresetRow): Promise<Res
     const body = presetBodySchema.parse(JSON.parse(current.body_json));
     bodies.push(body);
 
-    if ('record' in body) {
+    if ('recipe_pose' in body) {
       const patches: unknown[] = [];
       for (let i = bodies.length - 2; i >= 0; i--) {
         const hop = bodies[i];
         if (hop && 'patches' in hop) patches.push(...hop.patches);
       }
-      return { record: body.record, patches };
+      return { record: body, patches };
     }
 
     const { base } = body;
@@ -274,4 +368,13 @@ export async function resolvePreset(db: D1Database, row: PresetRow): Promise<Res
 /** The JSON shape both GET /presets/{recipe}/{kind}/{name}/{version} and MCP get_preset return. */
 export function serializeResolvedPreset(row: PresetRow, resolved: ResolvedPreset) {
   return { ...summarizePreset(row), ...resolved };
+}
+
+/** The `{kind, name, version}[]` pinned onto `payload.generation.presets`, if any (set by pinPresets at request-creation time). */
+export function extractPins(payload: unknown): { kind: string; name: string; version: number }[] | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const generation = (payload as Record<string, unknown>).generation;
+  if (!generation || typeof generation !== 'object') return undefined;
+  const presets = (generation as Record<string, unknown>).presets;
+  return Array.isArray(presets) ? (presets as { kind: string; name: string; version: number }[]) : undefined;
 }

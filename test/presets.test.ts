@@ -84,16 +84,16 @@ async function insertPromoteRow(row: {
 }
 
 describe('Preset import', () => {
-  it('imports catalog poses/costumes/expressions as version 1 (string and object entries)', async () => {
+  it('imports only catalog poses as version 1 (string and object entries); costume/expression are not imported', async () => {
     const recipeRef = uniqueRecipeRef();
     const recipe = uniqueRecipe();
     const { imported, skipped } = await publishAndImport(recipeRef, recipe);
 
     expect(skipped).toEqual([]);
-    expect(imported).toHaveLength(6);
+    expect(imported).toHaveLength(2);
 
     const byKindName = new Map(imported.map((p) => [`${p.kind}/${p.name}`, p]));
-    for (const key of ['pose/lounge', 'pose/seated', 'costume/default', 'costume/swimsuit', 'expression/smile', 'expression/neutral']) {
+    for (const key of ['pose/lounge', 'pose/seated']) {
       const p = byKindName.get(key);
       expect(p, key).toBeTruthy();
       expect(p?.version).toBe(1);
@@ -102,18 +102,23 @@ describe('Preset import', () => {
       expect(p?.recipe).toBe(recipe);
       expect(p?.source_generation_id).toBeNull();
     }
+
+    const costumes = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets?recipe=${recipe}&kind=costume`);
+    expect(costumes.body.items).toEqual([]);
+    const expressions = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets?recipe=${recipe}&kind=expression`);
+    expect(expressions.body.items).toEqual([]);
   });
 
   it('is idempotent: a second import of the same recipe_ref skips everything and adds no rows', async () => {
     const recipeRef = uniqueRecipeRef();
     const recipe = uniqueRecipe();
     const first = await publishAndImport(recipeRef, recipe);
-    expect(first.imported).toHaveLength(6);
+    expect(first.imported).toHaveLength(2);
 
     const second = await postJson<ImportResult>('/api/v1/presets/import', { recipe_ref: recipeRef });
     expect(second.status).toBe(200);
     expect(second.body.imported).toEqual([]);
-    expect(second.body.skipped).toHaveLength(6);
+    expect(second.body.skipped).toHaveLength(2);
 
     const versions = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets/${recipe}/pose/lounge`);
     expect(versions.body.items).toHaveLength(1);
@@ -133,7 +138,7 @@ describe('Preset REST reads', () => {
 
     const list = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets?recipe=${recipe}`);
     expect(list.status).toBe(200);
-    expect(list.body.items).toHaveLength(6);
+    expect(list.body.items).toHaveLength(2);
     expect(JSON.stringify(list.body)).not.toContain('reclining on a beanbag');
     expect(JSON.stringify(list.body)).not.toContain('gentle smile');
   });
@@ -143,11 +148,11 @@ describe('Preset REST reads', () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipeRef, recipe);
 
-    const got = await getJson<{ record: { name: string; prompt: string }; patches: unknown[] }>(
+    const got = await getJson<{ record: { recipe_pose: string }; patches: unknown[] }>(
       `/api/v1/presets/${recipe}/pose/lounge/1`,
     );
     expect(got.status).toBe(200);
-    expect(got.body.record).toEqual({ name: 'lounge', prompt: 'reclining on a beanbag, warm light' });
+    expect(got.body.record).toEqual({ recipe_pose: 'lounge' });
     expect(got.body.patches).toEqual([]);
   });
 
@@ -190,7 +195,7 @@ describe('Preset REST reads', () => {
 
     const got = await getJson<{ record: unknown; patches: { reason: string }[] }>(`/api/v1/presets/${recipe}/pose/lounge/3`);
     expect(got.status).toBe(200);
-    expect(got.body.record).toEqual({ name: 'lounge', prompt: 'reclining on a beanbag, warm light' });
+    expect(got.body.record).toEqual({ recipe_pose: 'lounge' });
     expect(got.body.patches.map((p) => p.reason)).toEqual(['v2', 'v3']);
 
     const list = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets/${recipe}/pose/lounge`);
@@ -221,11 +226,11 @@ describe('MCP list_presets / get_preset', () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipeRef, recipe);
 
-    const rest = await getJson<{ record: unknown; patches: unknown[] }>(`/api/v1/presets/${recipe}/costume/default/1`);
+    const rest = await getJson<{ record: unknown; patches: unknown[] }>(`/api/v1/presets/${recipe}/pose/lounge/1`);
     const tool = await mcpToolCall<{ record: unknown; patches: unknown[] }>('get_preset', {
       recipe,
-      kind: 'costume',
-      name: 'default',
+      kind: 'pose',
+      name: 'lounge',
       version: 1,
     });
     expect(tool.isError).toBe(false);
