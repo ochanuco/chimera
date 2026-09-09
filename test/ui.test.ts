@@ -425,6 +425,36 @@ describe('Web GUI pages', () => {
     expect(await (await req(`/b/${batch.id}`)).text()).toContain('name="recolor"');
   });
 
+  it('the Finalize forms group controls into three fieldsets', async () => {
+    const { generation, batch } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+      const html = await (await req(path)).text();
+      expect(html).toContain('<legend>Finish</legend>');
+      expect(html).toContain('<legend>Delivery look</legend>');
+      expect(html).toContain('<legend>Repair</legend>');
+      expect((html.match(/class="finalize-group"/g) ?? []).length).toBe(3);
+    }
+  });
+
+  it('the Finalize forms disable repair_pad until a repair region is checked', async () => {
+    const { generation, batch } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+      const html = await (await req(path)).text();
+      expect(html).toMatch(/<input type="number" name="repair_pad"[^>]*disabled/);
+    }
+  });
+
+  it('the Finalize forms offer all 8 stroke light directions', async () => {
+    const { generation, batch } = await createGeneration();
+    const directions = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+      const html = await (await req(path)).text();
+      for (const dir of directions) {
+        expect(html).toContain(`<option value="${dir}"`);
+      }
+    }
+  });
+
   it('GET /stories/{id} includes the relation label', async () => {
     const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
     const b1 = await createBatch();

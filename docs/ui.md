@@ -339,16 +339,34 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 
 Workflowの直後のFinalize / Repairセクションは、段階2の唯一の生成要求手段です（不変条件:
 GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / repairだけ。ComfyUIへは
-到達しない。[worker-protocol.md](worker-protocol.md)参照）。`repin` / `recolor` / `keep
-legwear`のチェックボックスと、空欄がrecipe既定を意味する`denoise`の数値入力を持ち、
-`recolor`はBatchのrecipeが`yukari`のときだけ表示します（`yukari-sketch`の
-finalizeはrecolorを受け付けず、workerが`failed`にします）。続けて`backdrop`の
-select（`stripes`既定 / `transparent` / `color`。`color`を選ぶと隣に`#RRGGBB`の
-テキスト入力が現れ、空か形式違いなら送信せずalertします）と`stroke light`の
-select（`none`既定と8方位）を持ちます。続けて`repair hands` / `repair feet`の
-チェックボックス（既定どちらもoff。1つ以上チェックすると`repair`配列を積みます）と、
-空欄が省略（worker既定）を意味する`repair pad`の数値入力を持ちます。Finalize all arms
-も同じ項目・同じ条件です。
+到達しない。[worker-protocol.md](worker-protocol.md)参照）。フォームは3つの
+`fieldset`（`Finish` / `Delivery look` / `Repair`）にグループ化され、各コントロールの
+すぐ横には`finalize-hint`のdimな一行説明が付きます。
+
+Finishグループは`repin` / `recolor` / `keep legwear`のチェックボックスと、空欄が
+recipe既定を意味する`denoise`の数値入力を持ちます。`recolor`はBatchのrecipeが
+`yukari`のときだけ表示します（`yukari-sketch`のfinalizeはrecolorを受け付けず、
+workerが`failed`にします）。
+
+Delivery lookグループは`backdrop`のselect（`stripes`既定 / `transparent` /
+`color`）を持ち、`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
+現れます（空か形式違いなら送信せずalertします）。続けて`stroke light`の
+select（`none`既定と8方位）を持ち、各方位の選択肢は「n (↑ from top)」のように
+光源の位置を明示した表記です（矢印は光源側を指す向きのままで、読み違えない
+ようテキストだけ拡張しています）。
+
+Repairグループは`repair hands` / `repair feet`のチェックボックス（既定どちらも
+off。1つ以上チェックすると`repair`配列を積みます）と、`repair pad`の数値入力
+（空欄が省略=worker既定を意味する）を持ちます。`repair pad`はrepair hands /
+repair feetのどちらもチェックされていない間`disabled`で、どちらかをチェックすると
+有効になります。
+
+送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
+積まれるoptionsのkeyだけを`will queue: repin, backdrop=stripes`のように表示します
+（backdropが不正な値のときは`will queue: —`）。`backdrop`は常に送るキーなので
+必ず出し、`transparent`を選んで`null`を送る場合も`backdrop=transparent`と表示します。この表示はsubmit時と同じ
+serializer（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all
+armsも同じ項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
 した最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
