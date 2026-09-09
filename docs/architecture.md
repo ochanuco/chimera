@@ -69,7 +69,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 
 -   requests 行を claim し、`request.json` を検証する。
 -   `recipe_ref` の recipe を checkout する。
--   pin された Preset の版を chimera から解決し、受領時 lint をかける。
+-   pin された Preset の版を chimera から解決し、patches を畳んで受領時 lint をかける。
 -   Management API に Batch を作成する。
 -   seed を生成する（明示 override がなければ）。
 -   ComfyUI に Job を enqueue する。
@@ -86,8 +86,8 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   Generation / Batch / Story / Tag 等を永続化する。
 -   Experiment / ExperimentRun / Promotion を永続化し、提供する。
 -   requests キュー（claim / heartbeat / 状態遷移）を提供する。判断はしない。
--   Preset（pose / costume / expression）の正本を持ち、版を管理する。prompt 本文は
-    解釈しない。
+-   Preset（承認済み Generation から昇格した派生）の正本を持ち、版を管理する。base の
+    pose 本文は comfyui-recipes 側に残り、chimera は参照と patches だけを持つ。
 -   canonical URL と Claude 向け semantic context を提供する。
 -   Web GUI の Read / Mutation API を提供する。
 -   LLM 固有処理は持たない。

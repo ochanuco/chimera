@@ -108,6 +108,9 @@ export interface BatchRow {
   idempotency_key: string;
   created_at: string;
   updated_at: string;
+  patches_json: string | null;
+  pose_fingerprint: string | null;
+  preset_versions_json: string | null;
 }
 
 export interface ComfyJobRow {
@@ -259,6 +262,8 @@ export interface PresetRow {
   note: string | null;
   created_by: PresetCreatedBy;
   created_at: string;
+  idempotency_key: string | null;
+  base_fingerprint: string | null;
 }
 
 export interface StoryRelationRow {

@@ -18,6 +18,7 @@ import { listTagsForTarget } from './tags';
 import { isUuid, uuidv7 } from './uuidv7';
 import { resolveBatchRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
+import { pinPresets } from './presets';
 import {
   generationImageUrl,
   serializeExperiment,
@@ -447,7 +448,10 @@ export async function createExperimentRun(
       created_at: now,
       updated_at: now,
     };
-    const payload = buildRunRequestPayload(experiment, approxRunForPayload);
+    // pinPresets を hash の前に適用する: request 側 (createRequest) の pin と同じ規則で
+    // 版を焼き込んでから payload_hash を取らないと、Run 経由と create_request 経由で
+    // 同じ内容の request が別 hash になってしまう (docs/worker-protocol.md「preset の pin」)。
+    const payload = await pinPresets(db, buildRunRequestPayload(experiment, approxRunForPayload));
     requestId = uuidv7();
     requestPayloadJson = JSON.stringify(payload);
     requestPayloadHash = await canonicalPayloadHash('generate', payload);

@@ -40,6 +40,22 @@ export const createBatchSchema = z.object({
   references: z.array(referenceInputSchema).nullish(),
   refinement: refinementInputSchema.nullish(),
   story: storyInputSchema.nullish(),
+  // worker が実際に適用した patches とそのときの pose レコードの digest。promote は
+  // これを正本として読む (semantic.attributes.patches は使わない、docs/domain-model.md
+  // 「Preset」不変条件)。patch の語彙 (op/value 等) は検証しない — passthrough で
+  // 素通しし、chimera が見るのは target/op/reason の封筒だけ (schemas/experiments.ts の
+  // overridesSchema と同じ方針)。
+  patches: z.array(
+    z.object({ target: z.string().min(1), op: z.string().min(1), reason: z.string().min(1) }).passthrough(),
+  ).optional(),
+  pose_fingerprint: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  // patches があるのに fingerprint が無い Batch から昇格すると base_fingerprint が NULL に
+  // なり、その preset だけ base の drift を検出できなくなる (docs/domain-model.md「Preset」
+  // base が動くことへの備え)。昇格の材料になる Batch では両方を揃える。
+  if ((value.patches?.length ?? 0) > 0 && !value.pose_fingerprint) {
+    ctx.addIssue({ code: 'custom', message: 'pose_fingerprint is required when patches is non-empty', path: ['pose_fingerprint'] });
+  }
 });
 
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;

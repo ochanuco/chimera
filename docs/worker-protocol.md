@@ -24,7 +24,7 @@ worker（Windows GPU 機、LAN）
   主体      持つもの                                                                     持たないもの
   --------- ---------------------------------------------------------------------------- ---------------------------------------------
   brain     生成意図の解釈、request.json、rating / semantic の読み書き                   ComfyUI への経路
-  chimera   requests 行と preset の正本、claim / heartbeat / 状態遷移、GUI、MCP          生成の判断、graph の解釈、prompt 本文の解釈
+  chimera   requests 行と派生 preset の正本、claim / 状態遷移、GUI、MCP                  生成の判断、graph の解釈、prompt 本文の解釈
   worker    recipe の checkout、preset の解決と lint、graph 構築、ComfyUI 実行、ingest   Experiment の意味論、evaluation
 
 Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁止」は構造で担保されます。
@@ -254,8 +254,27 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
 （[domain-model.md](domain-model.md#preset)）。
 
 -   版を明示されなければ、その名前の最新の `active` 版を pin します。
--   `presets` を明示して渡された場合はそれを尊重し、`parameters` からの解決はしません。
+-   `presets` を明示して渡された場合、その pin は版ごと尊重し、pin されていない kind だけを
+    `parameters` から解決します。`derive_request` が「一部の kind だけ pin を引き継ぎ、残りは
+    呼び出し側の指名」という payload を組むので、明示があったら丸ごと手を引くと残りが pin
+    されないまま通ります。
 -   名前が presets に無ければ 400（`preset not found: {recipe}/{kind}/{name}`）です。
+-   ただしその `recipe` の preset が presets に1件も無ければ、何も pin せずに通します。
+    段階 A の import をまだ流していない recipe で generate が止まらないようにするためで、
+    1件でも入っていれば上の 400 が効きます。
+-   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
+    pin の対象外です。
+
+`parameters.pose` は pin 後も残ります。省きません。preset の名前と、その下にある recipe の
+pose 名は別の事実だからです。`lounge@1` は `recipe_pose` も `lounge` ですが、そこから
+`lounge-relaxed` という名前で昇格した版の `recipe_pose` は `lounge` のままです。
+`parameters.pose` が持つのは前者（呼び出し側が指名した preset の名前）で、worker は preset を
+解決したあとこれを `recipe_pose` で置き換えてから graph を組みます。
+
+呼び出し側が `generation.presets` を明示した場合だけ、両者が食い違いえます。その場合は
+`parameters` の同じ kind の値と pin の `name` が一致することを chimera が検証し、違えば 400
+（`parameters.{kind} does not match the pinned preset`）です。どちらが勝つかを worker に
+決めさせません。
 
 pin は request 作成時に一度だけ行います。heartbeat 途絶で queued へ戻って再実行されても
 版は動きません。版は `payload_hash` に入るので、版が違えば別の request です。
@@ -263,14 +282,41 @@ pin は request 作成時に一度だけ行います。heartbeat 途絶で queue
 worker は pin された版を `GET /api/v1/presets/{recipe}/{kind}/{name}/{version}` で引きます。
 版は不変なので、一度引いた本文はローカルに永続 cache して構いません。
 
+#### patches の順序
+
+preset が patches を持つので、patch の入口は preset・`generation.patches`・
+`experiment.overrides.patches` の3つになります。適用順は preset が常に先で、その後に
+`generation.patches` / `experiment.overrides.patches` です。この順は派生の意味そのもの
+（派生 = 派生元 + α）なので、preset と `generation.patches` の併用は禁止しません。
+
+worker が Batch に記録する `patches` は request 自身の分（α）だけで、preset 側の分は
+含みません。preset の分は `preset_versions_json` の版を解決すれば出るので、両方書くと
+昇格と派生がそれを二重に取り込みます。
+
+`POST /api/v1/batches` は `patches` が空でないとき `pose_fingerprint` を必須にします
+（無ければ 400）。patches を持つ Batch は昇格の材料なので、fingerprint を欠くとその
+preset だけ base の drift を検出できなくなります。graph モードの Batch はどちらも
+持たないので、両方省けば通ります。
+
+`generation.prompt` / `negative_prompt` による全文上書きと preset の併用は、今まで通り
+禁止です。全文上書きは patch の積み上げと順序が定義できません。
+
 #### 受領時 lint
 
-worker は claim した request の preset を解決した直後に lint をかけます。今まで
-comfyui-recipes の CI が prompt に対してかけていた検証（costume hash、語彙の存在確認）が
-ここへ移ります。落ちたら ComfyUI へは行かず、request を `failed`
-（error: `preset lint failed: {理由}`）にします。
+worker は claim した request の preset を解決した直後に lint をかけます。落ちたら ComfyUI へは
+行かず、request を `failed`（error: `preset lint failed: {理由}`）にします。
 
-CI と違って、実際に走る prompt に対して、走る直前に効きます。
+これは検査の移設ではなく新設です。comfyui-recipes の CI が守っているのは costume block の
+fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / graph の sha256 snapshot
+（`tests/test_yukari_contract.py`）で、どちらも checkout の中身に対する検査です。prompt の
+矛盾検査（`conflicts()`）が実行時に走るのは `generation.prompt` と `negative_prompt` が両方
+明示されたときだけで、`--force` で外せます。受領時 lint は、その checkout 由来の検査が
+届かない「chimera から来た preset」に対して、実際に走る prompt を走る直前に見ます。
+
+意図的に矛盾する prompt ペアを組む必要は実在するので、逃げ道を payload 側に持ちます。
+`generation.lint_waiver` に理由の文字列を渡すと worker は lint を飛ばし、`result` に理由を
+残します。非空文字列であること自体が waiver で、真偽値ではなく理由を要求するのは、patch が
+全件 `reason` を要求しているのと同じ理由です。粒度は request 全体で、既定は省略（= lint する）。
 
 ### finalize
 
@@ -602,6 +648,13 @@ masked redraw の `pad` / `feather` alias は canonical key に正規化され�
 この3つは finalize / repair / masked redraw に特化した窓口です。masked redraw は options
 （regions / prompt_patch / denoise / mask_padding / mask_feather）が必須です。
 
+`derive_request` が preset の pin を引き継ぐ元は Batch の `preset_versions_json` です。
+Batch の `parameters` は worker が preset を解決した後の値なので、`parameters.pose` には
+preset の名前ではなく `recipe_pose` が入っています。ここをコピーすると pin が外れ、
+`lounge-relaxed@3` からの派生が素の `lounge` になります。`preset_versions_json` には名前と
+版の両方が残るので、派生は pin ごと引き継げます。patches の引き継ぎ元も Batch の
+`patches_json`（α の分だけ）で、preset の分は pin が運びます。
+
 `derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
 別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から
 `recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます。
@@ -610,12 +663,24 @@ masked redraw の `pad` / `feather` alias は canonical key に正規化され�
 から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
 
 `promote_to_pose` は `rating = good` の Generation を新しい Preset の版にします。起点
-Generation の Batch から `recipe` と pin されていた preset の版を、Generation から
-`semantic.attributes.patches` を取り、`{ base, patches }` の body を組み立てて
-`(recipe, kind, name)` の次の版として INSERT します。`name` を既存の名前にすれば
+Generation の Batch から `recipe`・pin されていた preset の版・patches・pose レコードの
+fingerprint を取り、`{ base, patches }` の body を組み立てて `(recipe, kind, name)` の
+次の版として INSERT します。patches を Batch から取るのは、`semantic.attributes.patches` が
+後から書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。Batch が
+patches を持たなければ 409（`promote requires a batch with patches`）で、全文上書きと
+finalize / repair / masked_redraw の出力はこれで弾かれます。`name` を既存の名前にすれば
 その名前の新版、新しい名前にすればその名前の version 1 です。`kind` の既定は `pose`。
 rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
 graph-mode で recipe を持たなければ 409 です。既存の版は書き換えません。
+
+指定した Generation が finalize / repair / masked_redraw 済みなら、`derive_request` と同じ規則で
+元になった raw の Generation まで遡ってから起点にします。rating を見るのは指定された
+Generation で、`recipe`・base・patches・fingerprint は遡った先の Batch から取ります。
+
+base になる版は、その Batch を作った generate request が pin していた版です。段階 B より
+前に作られた Generation には pin が無いので、その場合は `base_version` で明示します。
+どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です。
+chimera は base を推測しません。`idempotency_key` の再送は、既に作られた版をそのまま返します。
 
 `list_presets` / `get_preset` は preset の読み取り側です。`list_presets` は名前と版の
 一覧（`record` の本文は含まない）、`get_preset` は解決済みの本文（`record` 1件と平坦化
@@ -710,29 +775,31 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
 
 ## preset の移行
 
-catalog の publish（recipes → chimera）を止め、preset の正本を chimera に置くまでの段です。
-段は独立して merge でき、A と B の間はどちらの経路でも動きます。上の「段階 2 / 3 / 4」
+昇格（承認済み Generation → 名前と版の付いた patches）を comfyui-recipes の PR 無しで
+回せるようにするまでの段です。段は独立して merge でき、上の「段階 2 / 3 / 4」
 （poll / WorkerHub / ref ごとの worktree）とは別軸なので、字で呼び分けます。
 
--   段階 A、catalog の取り込み。publish 済みの catalog を presets へ入れます。
-    `POST /api/v1/presets/import` が `recipe_catalogs` の recipes[].poses / costumes /
-    expressions を `source = import` の version 1 として INSERT します。同じ
-    `(recipe, kind, name)` が既にあれば飛ばすので、何度呼んでも同じ結果です。
-    comfyui-recipes 側は変えません。この時点で catalog と presets の両方から同じ
-    preset が見えます。
--   段階 B、正本の切り替え。chimera が request に版を pin し、worker が `poses.py` では
-    なく presets を読みます。受領時 lint をここで入れ、`promote_to_pose` を MCP に足します。
--   段階 C、旧経路の撤去。`poses.py` と catalog publish を落とします。
-    `PUT /api/v1/catalogs/{recipe_ref}` と MCP `list_catalog` / `get_catalog_pose` を廃止し、
-    `recipe_catalogs` テーブルを deprecate します。experiments JSONL の書き先も chimera の
-    Experiment / Run に寄せます。この時点で comfyui-recipes に残るのは compiler、imaging、
-    loop、lint だけです。
+-   段階 A、pose の登録。publish 済み catalog の pose 名を `{ recipe_pose }` の参照として
+    presets へ入れます（`POST /api/v1/presets/import`）。同じ `(recipe, kind, name)` が
+    既にあれば飛ばすので、何度呼んでも同じ結果です。本文は持たないので、この時点で
+    comfyui-recipes 側の動作は何も変わりません。
+-   段階 B、pin と昇格。chimera が request に版を pin し、worker が pin された preset を
+    解決して patches を `generation.patches` の前に畳みます。受領時 lint と
+    `promote_to_pose` をここで入れ、worker は Batch 作成時に patches と pose レコードの
+    fingerprint を送るようになります。
+-   段階 C、記録の集約。experiments JSONL の書き先を chimera の Experiment / Run に
+    寄せます。
 -   段階 D、worker の畳み込み。loop を ComfyUI の custom node pack の thread にします。
     GPU 機の常駐が ComfyUI 一つになり、deploy は custom_nodes の git pull と restart だけに
     なります。chimera 側の契約はここでは変わりません。
 
-段階 B で失うのは「prompt がコードと同じ commit に乗る」ことだけです。preset が版を持ち、
-request が版を pin し、`payload_hash` に版が入るので、再現性は今と同じです。
+`poses.py` と catalog publish はどの段でも残ります。pose 本文の組み立ては costume に依存
+する条件分岐を持っていて、catalog が publish できるのはそれを実行した後の prompt ペア
+だけです。それを chimera に保存すると `parameters.costume` の上書きが成立しなくなり、
+分岐そのものをデータにすると chimera が prompt の語彙を解釈することになります
+（[domain-model.md](domain-model.md#preset)）。catalog は pose 名に加えて recipe ごとの
+`parameters` の可否、`patches` の語彙、model、canvas を運ぶ capability document でもあり、
+chimera が patch を検証するのにこれが要ります。
 
 リスクと対応:
 
@@ -740,8 +807,9 @@ request が版を pin し、`payload_hash` に版が入るので、再現性は�
     Rating は人間しか書けません。PR review より審査は厳しくなります。
 -   agent が preset を壊す。promote は非破壊で新しい版を足すだけです。既存の版は残り、
     request 側が版を指名します。
--   lint が CI から消えて気付きにくい。受領時 lint の失敗は request を `failed` にするので、
-    CI より遅く気付くことはありません。
+-   base が動いて patches が当たらなくなる。text op は needle 不在で落ちますが、worker の
+    claim 直後の probe が Batch を作る前に落とし、request が `failed` になります。
+    `base_fingerprint` の突き合わせで、使う前に気付けるようにします。
 -   chimera が落ちると preset を引けない。claim 自体 chimera を要するので、cache が効く窓は
     「claim 済みで preset 未解決の request」だけです。版が不変なので cache は素直に効きます。
 
@@ -750,6 +818,9 @@ request が版を pin し、`payload_hash` に版が入るので、再現性は�
 - worker は `generation.graph` を受け取った場合そのまま ComfyUI へ流します。request の
   書き手を自分のエージェント以外に広げる場合は、graph モードを worker 側で許可制にし、
   chimera 側でも `created_by` ごとに `generation.graph` の受理可否を設ける。
+- `recipe_ref` は preset が chimera に移った後は「何が描かれたか」を特定しません。特定するのは
+  `(git_commit, 解決済みの preset の版)` の組で、worker は Batch を作るときに解決した版を
+  記録します。`recipe_ref` が指すのはコードのブランチだけになります。
 - `recipe_ref` は origin のブランチ名に限ります。段階 2 の worker は自分の checkout
   のブランチと一致する `recipe_ref` だけを受け、違えば `failed`
   （error: `recipe_ref not served: {ref}`）にします。watch プロセス自身がその checkout
