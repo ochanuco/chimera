@@ -403,7 +403,9 @@ created_at
     （「先の accepted を測り直したら再現しなかった」）、構造化された参照が無いためです。
     `supersedes_id` が入るのは MCP / GUI から書かれた Observation だけです。
 -   `pose` と `component` の少なくとも一方が必要です。どちらも持たない記録は
-    Observation ではありません。
+    Observation ではありません。レコード自身がどちらも持たないときは、送り手が
+    `component` を添えます。chimera はファイル名から推測しません。ファイル名は中身を
+    代表しないことがあり、推測すると誤ったラベルが付きます。
 -   Observation は履歴であって現在の規則ではありません。現在の規則は pose recipe の
     コメント側にあります。
 -   どの `reason` も、その pose / seed / tag ブロック / canvas の下での観測であって、

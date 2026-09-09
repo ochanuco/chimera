@@ -743,8 +743,21 @@ POST /api/v1/observations          MCP / GUI から1件書く
 }
 ```
 
+`line` はファイル先頭を 1 とする物理行番号で、空行も数えます。送り手が明示する以上、
+数え方が揃っていないと同じファイルから別の `id` が出て全行が重複します。
+
+`record` が `pose` も `component` も持たない場合だけ、送り手が同じ要素に `component` を
+添えられます。chimera はファイル名から推測しません。`delivery_style.jsonl` が
+`delivery_style` / `delivery` / `recolor` / `refinement_graph` の4種類の観測を持つように、
+ファイル名は中身を代表しません。
+
+``` json
+{ "line": 48, "component": "prompt_style", "record": { "axis": "...", "arms": { "...": [] } } }
+```
+
 chimera が `{ path, line, record }` を正規化して SHA-256 を取り、それを `id` にして upsert
-します。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
+します。`component` は `id` に入りません。同じ行に後から正しい `component` を付け直しても、
+新しい行にはなりません。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
 構いません。payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }`
 で、`skipped` には受理しなかったレコードとその理由が入ります。
 
