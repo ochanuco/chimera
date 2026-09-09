@@ -255,6 +255,7 @@ describe('MCP server at /mcp', () => {
         'masked_redraw_generation',
         'get_request',
         'list_requests',
+        'list_generations',
         'get_generation',
         'list_batch',
         'get_generation_lineage',
