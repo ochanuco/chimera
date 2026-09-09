@@ -746,20 +746,26 @@ POST /api/v1/observations          MCP / GUI から1件書く（idempotency_key 
 `line` はファイル先頭を 1 とする物理行番号で、空行も数えます。送り手が明示する以上、
 数え方が揃っていないと同じファイルから別の `id` が出て全行が重複します。
 
-`record` が `pose` も `component` も持たない場合だけ、送り手が同じ要素に `component` を
-添えられます。chimera はファイル名から推測しません。`delivery_style.jsonl` が
-`delivery_style` / `delivery` / `recolor` / `refinement_graph` の4種類の観測を持つように、
-ファイル名は中身を代表しません。
+`record` がそれ自身では持たない `character` と `component` を、送り手が同じ要素に添え
+られます。chimera はパスから推測しません。`experiments/yukari/` の下にあるから
+`character` は `yukari` だ、`delivery_style.jsonl` だから `component` は `delivery_style` だ、
+という推測はどちらも当たりません。実際 `delivery_style.jsonl` は `delivery_style` /
+`delivery` / `recolor` / `refinement_graph` の4種類の観測を持ちます。
 
 ``` json
-{ "line": 48, "component": "prompt_style", "record": { "axis": "...", "arms": { "...": [] } } }
+{ "line": 48, "character": "yukari", "component": "prompt_style", "record": { "axis": "...", "arms": {} } }
 ```
 
+添えた値は `record` 自身が同じキーを持たないときだけ使われます。
+
 chimera が `{ path, line, record }` を正規化して SHA-256 を取り、それを `id` にして upsert
-します。`component` は `id` に入りません。同じ行に後から正しい `component` を付け直しても、
-新しい行にはなりません。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
+します。添えた `character` と `component` は `id` に入りません。同じ行に後から正しい値を
+付け直しても、新しい行にはなりません。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
 構いません。payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }`
 で、`skipped` には受理しなかったレコードとその理由が入ります。
+
+`GET /api/v1/observations` は `{ items, total }` を返します。`total` は絞り込み条件に
+一致する全件数で、ページングの外側の数です。
 
 受理しないのは次の2つです。`pose` と `component` のどちらも無いレコード（Observation の
 語彙に乗らない実装メモが混ざるため）と、`outcome` が語彙外のものです。ただし

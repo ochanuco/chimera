@@ -31,7 +31,7 @@ interface SyncResult {
   skipped: { path: string; line: number; reason: string; record: unknown }[];
 }
 
-function sync(files: { path: string; records: { line: number; component?: string; record: unknown }[] }[]) {
+function sync(files: { path: string; records: { line: number; character?: string; component?: string; record: unknown }[] }[]) {
   return postJson<SyncResult>('/api/v1/observations/sync', { files });
 }
 
@@ -115,6 +115,49 @@ describe('Observation sync', () => {
     expect(res.body.inserted).toBe(0);
     expect(res.body.skipped).toHaveLength(1);
     expect(res.body.skipped[0]?.reason).toBe('experiment arm, not an observation');
+  });
+
+  it('reports an experiment arm as such even when it carries neither pose nor component', async () => {
+    const character = uniqueCharacter();
+    // 実データの choza.jsonl はこの形。ラベルを足せば入ると読まれないよう、アームだと言う。
+    const record = { date: '2026-08-30', arm: 'choza-rest', batch: '1mei70', seeds: [1, 2], verdict: 'rejected', observation: 'palette gate FAIL' };
+
+    const res = await sync([{ path: `experiments/${character}/choza.jsonl`, records: [{ line: 1, character, record }] }]);
+    expect(res.body.inserted).toBe(0);
+    expect(res.body.skipped[0]?.reason).toBe('experiment arm, not an observation');
+  });
+
+  it('takes character from the sync entry when the record does not carry one', async () => {
+    const character = uniqueCharacter();
+    // 実データの形 C は character を持たない (ディレクトリ名に含意されている)。
+    const record = {
+      date: '2026-09-02',
+      axis: 'eye identity on the flat rebuild',
+      arms: { resting: ['7dcp7i'], jitome: ['wbe4oi'] },
+      picked: ['rr7aed'],
+      observation: 'resting read cleaner',
+    };
+
+    const res = await sync([
+      { path: `experiments/${character}/prompt_style.jsonl`, records: [{ line: 33, character, component: 'prompt_style', record }] },
+    ]);
+    expect(res.body.inserted).toBe(1);
+    expect(res.body.skipped).toEqual([]);
+
+    const list = await getJson<{ items: Observation[]; total: number }>(`/api/v1/observations?character=${character}`);
+    expect(list.body.total).toBe(1);
+    expect(list.body.items[0]?.character).toBe(character);
+    expect(list.body.items[0]?.component).toBe('prompt_style');
+    expect(list.body.items[0]?.parameter).toBe('eye identity on the flat rebuild');
+  });
+
+  it('names the fields a record is missing rather than saying only that one is', async () => {
+    const character = uniqueCharacter();
+    const record = { pose: 'stand', outcome: 'accepted' };
+
+    const res = await sync([{ path: `experiments/${character}/stand.jsonl`, records: [{ line: 1, record }] }]);
+    expect(res.body.inserted).toBe(0);
+    expect(res.body.skipped[0]?.reason).toBe('missing required field: character, parameter, value, reason');
   });
 
   it('normalizes "not adopted" to "rejected"', async () => {
