@@ -331,6 +331,63 @@ describe('POST /api/v1/requests/claim', () => {
     expect(third.status).toBe(204);
   });
 
+  it('release puts a claimed row back on the queue without waiting for the heartbeat timeout', async () => {
+    const { generation } = await createGeneration();
+    const created = await createFinalizeRequest(generation.id);
+
+    const claimed = await claim('worker-a');
+    expect(claimed.body!.id).toBe(created.body.id);
+    expect(claimed.body!.attempt).toBe(1);
+
+    const released = await postJson<RequestBody>(
+      `/api/v1/requests/${created.body.id}`,
+      { status: 'queued', worker_id: 'worker-a' },
+      'PATCH',
+    );
+    expect(released.status).toBe(200);
+    expect(released.body.status).toBe('queued');
+    expect(released.body.worker_id).toBeNull();
+    // attempt はここでは動かない。次の claim で増える。
+    expect(released.body.attempt).toBe(1);
+
+    const again = await claim('worker-b');
+    expect(again.body!.id).toBe(created.body.id);
+    expect(again.body!.attempt).toBe(2);
+  });
+
+  it('release from a worker that does not hold the claim is a conflict', async () => {
+    const { generation } = await createGeneration();
+    const created = await createFinalizeRequest(generation.id);
+    await claim('worker-a');
+
+    const released = await postJson(
+      `/api/v1/requests/${created.body.id}`,
+      { status: 'queued', worker_id: 'worker-b' },
+      'PATCH',
+    );
+    expect(released.status).toBe(409);
+  });
+
+  it('release fails the row once its attempts are spent, the same rule the heartbeat timeout uses', async () => {
+    const { generation } = await createGeneration();
+    const created = await createFinalizeRequest(generation.id);
+
+    for (let i = 0; i < 3; i++) {
+      const claimed = await claim(`worker-${i}`);
+      expect(claimed.body!.id).toBe(created.body.id);
+      const released = await postJson<RequestBody>(
+        `/api/v1/requests/${created.body.id}`,
+        { status: 'queued', worker_id: `worker-${i}` },
+        'PATCH',
+      );
+      if (i < 2) expect(released.body.status).toBe('queued');
+      else {
+        expect(released.body.status).toBe('failed');
+        expect(released.body.error).toBe('released after max attempts');
+      }
+    }
+  });
+
   it('kinds filter: only claims rows of the requested kind', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);

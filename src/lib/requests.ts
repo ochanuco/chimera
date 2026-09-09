@@ -449,7 +449,7 @@ export async function claimRequest(
 }
 
 export interface UpdateRequestInput {
-  status: 'running' | 'done' | 'failed' | 'cancelled';
+  status: 'running' | 'queued' | 'done' | 'failed' | 'cancelled';
   worker_id?: string;
   result?: { batch_id: string; generation_ids: string[]; recipe_commit?: string };
   error?: string;
@@ -481,6 +481,22 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
 
   if (body.status === 'running') {
     await db.prepare('UPDATE requests SET heartbeat_at = ?, updated_at = ? WHERE id = ?').bind(now, now, row.id).run();
+    return getRequestOr404(db, row.id);
+  }
+
+  // release。自分が claim したまま落ちた行を、途絶の 5 分を待たずに手放す。行き先は
+  // 途絶と同じ規則にする — 手放す理由が違うだけで、結果として起きることは同じなので、
+  // 規則を 2 つ持つと attempt の扱いが 2 通りに割れる (docs/worker-protocol.md「状態遷移」)。
+  if (body.status === 'queued') {
+    const exhausted = row.attempt >= row.max_attempts;
+    await db
+      .prepare(
+        exhausted
+          ? `UPDATE requests SET status = 'failed', error = ?, finished_at = ?, worker_id = NULL, updated_at = ? WHERE id = ?`
+          : `UPDATE requests SET status = 'queued', worker_id = NULL, updated_at = ? WHERE id = ?`,
+      )
+      .bind(...(exhausted ? ['released after max attempts', now, now, row.id] : [now, row.id]))
+      .run();
     return getRequestOr404(db, row.id);
   }
 

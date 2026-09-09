@@ -593,7 +593,7 @@ POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/crea
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&batch_id=&pending=true&limit=&offset=
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
-PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / done / failed。brain・GUI: cancelled
+PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
 ```
 
 `GET` のクエリパラメータ:
