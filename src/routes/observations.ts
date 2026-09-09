@@ -30,7 +30,7 @@ observations.post('/', async (c) => {
 
 observations.get('/', async (c) => {
   const query = c.req.query();
-  const items = await listObservations(
+  const { items, total } = await listObservations(
     c.env.DB,
     {
       character: query.character,
@@ -42,7 +42,7 @@ observations.get('/', async (c) => {
     },
     parsePagination(query),
   );
-  return c.json({ items });
+  return c.json({ items, total });
 });
 
 observations.get('/:id', async (c) => {

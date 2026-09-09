@@ -83,10 +83,11 @@ function transformFormC(r: Record<string, unknown>): Record<string, unknown> {
 
 export interface NormalizeOptions {
   /**
-   * record 自身が pose も component も持たないときだけ使う既定 component。sync の
-   * records 要素が明示したもの — ファイル名からは推測しない (docs/domain-model.md
-   * 「Observation」)。id の計算には入らない。
+   * record 自身が同じキーを持たないときだけ使う値。sync の records 要素が明示したもので、
+   * パスからは推測しない — ディレクトリ名が character を、ファイル名が component を代表する
+   * とは限らない (docs/api.md「Observation」)。どちらも id の計算には入らない。
    */
+  character?: string;
   component?: string;
 }
 
@@ -99,6 +100,12 @@ export function normalizeRecord(record: unknown, options: NormalizeOptions = {})
 
   const hasAxisArms = 'axis' in r && 'arms' in r;
 
+  // アームの判定を先に置く。pose も component も持たないアームに 'no pose or component' を
+  // 返すと、読んだ人が「ラベルを足せば入る」と読む。実際は形が違うので入らない。
+  if (!hasAxisArms && ('verdict' in r || 'observation' in r || 'arms' in r)) {
+    return { ok: false, reason: 'experiment arm, not an observation' };
+  }
+
   let pose = nonEmptyString(r.pose);
   let component = nonEmptyString(r.component);
   if (pose === null && component === null) {
@@ -106,10 +113,6 @@ export function normalizeRecord(record: unknown, options: NormalizeOptions = {})
   }
   if (pose === null && component === null) {
     return { ok: false, reason: 'no pose or component' };
-  }
-
-  if (!hasAxisArms && ('verdict' in r || 'observation' in r || 'arms' in r)) {
-    return { ok: false, reason: 'experiment arm, not an observation' };
   }
 
   const fields = hasAxisArms ? transformFormC(r) : r;
@@ -124,12 +127,20 @@ export function normalizeRecord(record: unknown, options: NormalizeOptions = {})
     return { ok: false, reason: `unknown outcome: ${outcome}` };
   }
 
-  const character = nonEmptyString(fields.character);
+  const character = nonEmptyString(fields.character) ?? nonEmptyString(options.character);
   const parameter = nonEmptyString(fields.parameter);
   const reason = nonEmptyString(fields.reason);
   const value = stringifyValue(fields.value);
   if (character === null || parameter === null || value === null || reason === null) {
-    return { ok: false, reason: 'missing required field' };
+    // どのフィールドかを言う。送り手が封筒に足せば直るのか、レコード自体が観測でないのかを
+    // レスポンスだけで判断できるようにするため。
+    const missing = [
+      character === null ? 'character' : null,
+      parameter === null ? 'parameter' : null,
+      value === null ? 'value' : null,
+      reason === null ? 'reason' : null,
+    ].filter((f): f is string => f !== null);
+    return { ok: false, reason: `missing required field: ${missing.join(', ')}` };
   }
 
   return {
@@ -153,6 +164,7 @@ export function normalizeRecord(record: unknown, options: NormalizeOptions = {})
 
 export interface SyncFileRecord {
   line: number;
+  character?: string;
   component?: string;
   record: unknown;
 }
@@ -198,7 +210,7 @@ export async function syncObservations(db: D1Database, files: SyncFile[]): Promi
 
   for (const file of files) {
     for (const entry of file.records) {
-      const normalized = normalizeRecord(entry.record, { component: entry.component });
+      const normalized = normalizeRecord(entry.record, { character: entry.character, component: entry.component });
       if (!normalized.ok) {
         skipped.push({ path: file.path, line: entry.line, reason: normalized.reason, record: entry.record });
         continue;
@@ -355,7 +367,7 @@ export async function listObservations(
   db: D1Database,
   filters: ListObservationsFilters,
   pagination: Pagination,
-): Promise<ObservationSummary[]> {
+): Promise<{ items: ObservationSummary[]; total: number }> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -390,6 +402,10 @@ export async function listObservations(
     .prepare(`SELECT * FROM observations ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
     .bind(...params, pagination.limit, pagination.offset)
     .all<ObservationRow>();
+  const counted = await db
+    .prepare(`SELECT COUNT(*) AS total FROM observations ${where}`)
+    .bind(...params)
+    .first<{ total: number }>();
 
-  return (results ?? []).map(serializeObservation);
+  return { items: (results ?? []).map(serializeObservation), total: counted?.total ?? 0 };
 }

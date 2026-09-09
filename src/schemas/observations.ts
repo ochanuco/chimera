@@ -14,8 +14,10 @@ export const observationSyncRequestSchema = z.object({
       records: z.array(
         z.object({
           line: z.number().int().positive(),
-          // record 自身が pose も component も持たないときだけ使う既定 component。
-          // ファイル名からは推測しない (docs/domain-model.md「Observation」)。id には入らない。
+          // record 自身が同じキーを持たないときだけ使う。パスからは推測しない — ディレクトリ名が
+          // character を、ファイル名が component を代表するとは限らない (docs/api.md「Observation」)。
+          // どちらも id の計算には入らない。
+          character: z.string().min(1).optional(),
           component: z.string().min(1).optional(),
           record: z.unknown(),
         }),

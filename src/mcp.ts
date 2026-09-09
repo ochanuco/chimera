@@ -901,12 +901,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       annotations: { readOnlyHint: true },
     },
     async ({ character, pose, component, parameter, outcome, q, limit }) => {
-      const items = await listObservations(
+      const { items, total } = await listObservations(
         db,
         { character, pose, component, parameter, outcome, q },
         { limit: limit ?? 50, offset: 0 },
       );
-      return jsonResult({ items });
+      return jsonResult({ items, total });
     },
   );
 
