@@ -819,16 +819,34 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
     GPU 機の常駐が ComfyUI 一つになり、deploy は custom_nodes の git pull と restart だけに
     なります。chimera 側の契約はここでは変わりません。
 
-段階 D は、今の構成が持っている性質を1つ失います。deploy は work を無条件に kill しますが、
+段階 D は deploy の作法を変えることを要求します。今 deploy は work を無条件に kill しますが、
 ComfyUI の再起動は node pack や imaging が変わった deploy でしか起きません。つまり今は、
 deploy で work が死んでも ComfyUI の生成は走り続け、再 claim した worker が state に残った
 `comfy_prompt_id` を見て、ComfyUI がまだその prompt を知っていれば再投入せず待ちに戻ります。
-5 分の途絶は待ち時間であって、GPU の仕事は失われていません。
+走行中の生成が deploy を生き延びるのは、worker が別プロセスだからです。
 
-worker が ComfyUI の thread になると、worker の再起動は必ず ComfyUI の再起動です。走行中の
-生成はプロセスと一緒に死に、再 claim しても復帰先がありません。5 分の遅延だったものが、
-GPU の遊休と生成のやり直しになります。得るもの（常駐が1つ、deploy が git pull と restart
-だけ、移行先を変えるとき差し替える層が1つ）と引き換えに失うのはこれです。
+worker が ComfyUI の thread になるとこれが成立しません。worker の再起動は必ず ComfyUI の
+再起動で、走行中の生成はプロセスと一緒に死に、再 claim しても復帰先がありません。
+
+代わりに deploy が drain します。restart の前に worker へ停止を伝え、worker は新しい claim を
+止めて走行中の request を描き切ってから抜けます。復帰は失敗からの回復ですが、drain は
+失敗を起こしません。今より良くなる方向で、GPU の仕事は 1 枚も捨てません。
+
+drain は稀に起きることではなく毎回起きることです。今 ComfyUI を再起動するのは
+`comfy_nodes` / imaging / `delivery_style.py` が変わった deploy だけですが、worker のコードが
+ComfyUI のプロセスに import される以上、どこが変わっても再起動しないと反映されません。
+段階 D では全 deploy が再起動になり、全 deploy が drain を待ちます。だから drain は
+安く済む形にします。待つのは走行中の request 1 件だけで、キュー全体ではありません。
+新しい claim を止めて、今抱えている 1 件を描き切って抜けます。
+
+drain が待てる時間には上限を置きます。上限を超えたら worker は走行中の request を release
+（`PATCH { "status": "queued", "worker_id": ... }`）してから抜け、行は queued に戻って再起動後の
+claim で拾われます。ここで失うのはその 1 枚の描き直しだけで、release があるので途絶の 5 分を
+待つ必要もありません。上限の値は deploy の運用（生成中に当てるか）で決めるもので、契約には
+入れません。
+
+chimera 側の契約はこの段でも変わりません。drain は worker と deploy スクリプトの間の話で、
+release は既に段階 D と独立に入っています。
 
 `poses.py` と catalog publish はどの段でも残ります。pose 本文の組み立ては costume に依存
 する条件分岐を持っていて、catalog が publish できるのはそれを実行した後の prompt ペア
