@@ -2,24 +2,14 @@ import { Hono } from 'hono';
 import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
 import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
-import {
-  nowIso,
-  parsePagination,
-  normalizeDateRange,
-  toBool,
-  getGenerationByIdOrShortId,
-} from '../lib/db';
-import { isUuid, uuidv7 } from '../lib/uuidv7';
+import { nowIso, getGenerationByIdOrShortId } from '../lib/db';
+import { uuidv7 } from '../lib/uuidv7';
 import { assignTag, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
-import {
-  canonicalGenerationUrl,
-  generationImageUrl,
-  serializeGenerationAsset,
-} from '../lib/serialize';
+import { serializeGenerationAsset } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
-import { buildContext, getGenerationDetail } from '../lib/generations';
+import { buildContext, getGenerationDetail, queryGenerations } from '../lib/generations';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 
 export const generations = new Hono<AppEnv>();
@@ -34,102 +24,7 @@ async function getGenerationOr404(db: D1Database, idOrShortId: string): Promise<
   return row;
 }
 
-generations.get('/', async (c) => {
-  const db = c.env.DB;
-  const query = c.req.query();
-  const { limit, offset } = parsePagination(query);
-  const org = origin(c);
-
-  const conditions: string[] = [];
-  const binds: unknown[] = [];
-
-  if (query.character) {
-    if (isUuid(query.character)) {
-      conditions.push('g.character_id = ?');
-      binds.push(query.character);
-    } else {
-      conditions.push('g.character_id IN (SELECT id FROM characters WHERE name = ?)');
-      binds.push(query.character);
-    }
-  }
-  if (query.tag) {
-    conditions.push(
-      'EXISTS (SELECT 1 FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id AND t.name = ?)',
-    );
-    binds.push(query.tag);
-  }
-  if (query.rating) {
-    conditions.push('g.rating = ?');
-    binds.push(query.rating);
-  }
-  if (query.bookmark !== undefined) {
-    conditions.push('g.bookmark = ?');
-    binds.push(query.bookmark === 'true' ? 1 : 0);
-  }
-  if (query.comfy_prompt_id) {
-    conditions.push('g.comfy_job_id IN (SELECT id FROM comfy_jobs WHERE comfy_prompt_id = ?)');
-    binds.push(query.comfy_prompt_id);
-  }
-  if (query.original_filename) {
-    conditions.push('g.original_filename = ?');
-    binds.push(query.original_filename);
-  }
-  const { from, to } = normalizeDateRange(query.from, query.to);
-  if (from) {
-    conditions.push('g.created_at >= ?');
-    binds.push(from);
-  }
-  if (to) {
-    conditions.push('g.created_at <= ?');
-    binds.push(to);
-  }
-
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const countRow = await db
-    .prepare(`SELECT COUNT(*) AS total FROM generations g ${where}`)
-    .bind(...binds)
-    .first<{ total: number }>();
-
-  const { results } = await db
-    .prepare(
-      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json
-       FROM generations g
-       LEFT JOIN characters ch ON ch.id = g.character_id
-       LEFT JOIN generation_tags gt ON gt.generation_id = g.id
-       LEFT JOIN tags t ON t.id = gt.tag_id
-       ${where}
-       GROUP BY g.id
-       ORDER BY g.created_at DESC
-       LIMIT ? OFFSET ?`,
-    )
-    .bind(...binds, limit, offset)
-    .all<GenerationRow & { character_name: string | null; tag_names_json: string }>();
-
-  const items = (results ?? []).map((r) => {
-    const tagArray = r.tag_names_json ? JSON.parse(r.tag_names_json) : [];
-    const tags = Array.isArray(tagArray) ? tagArray.filter((t) => t !== null) : [];
-    return {
-      id: r.id,
-      short_id: r.short_id,
-      canonical_url: canonicalGenerationUrl(org, r.short_id),
-      image_url: generationImageUrl(org, r.short_id),
-      thumbnail_url: generationImageUrl(org, r.short_id),
-      rating: r.rating,
-      bookmark: toBool(r.bookmark),
-      summary: r.summary,
-      character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
-      tags,
-      created_at: r.created_at,
-      batch_id: r.batch_id,
-      image_width: r.image_width,
-      image_height: r.image_height,
-      image_size: r.image_size,
-    };
-  });
-
-  return c.json({ items, total: countRow?.total ?? 0 });
-});
+generations.get('/', async (c) => c.json(await queryGenerations(c.env.DB, c.req.query(), origin(c))));
 
 generations.get('/:id/context', async (c) => {
   const db = c.env.DB;
