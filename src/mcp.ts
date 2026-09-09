@@ -46,7 +46,7 @@ import {
   buildDerivedRequestPayload,
   resolveDerivationSource,
 } from './lib/requests';
-import { getGenerationDetail } from './lib/generations';
+import { getGenerationDetail, queryGenerations } from './lib/generations';
 import { getBatchDigest } from './lib/batches';
 import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
@@ -160,6 +160,18 @@ const deriveRequestInputSchema = z
 const generationLineageInputSchema = z.object({
   generation_id: z.string().min(1),
   depth: z.number().int().min(0).max(10).optional(),
+});
+
+/** 1:1 with GET /api/v1/generations's filters (src/lib/generations.ts queryGenerations). */
+const listGenerationsInputSchema = z.object({
+  tag: z.string().min(1).optional(),
+  rating: z.enum(['bad', 'neutral', 'good']).optional(),
+  bookmark: z.boolean().optional(),
+  character: z.string().min(1).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  limit: z.number().int().min(1).optional(),
+  offset: z.number().int().min(0).optional(),
 });
 
 const listCatalogInputSchema = z.object({ recipe_ref: z.string().regex(RECIPE_REF_RE).default('production') });
@@ -547,6 +559,50 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ status, kind, run_id }) => {
       const rows = await listRequests(db, { status, kind, run_id }, 200, 0);
       return jsonResult({ items: rows.map(serializeRequest) });
+    },
+  );
+
+  server.registerTool(
+    'list_generations',
+    {
+      description:
+        'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
+        '(get_generation, get_generation_lineage, get_generation_image, finalize_generation, repair_generation, ' +
+        "masked_redraw_generation, derive_request) assumes you already have one. Filters mirror the gallery's own " +
+        'filters (character, tag, rating, bookmark, created_at range) and combine freely; tag="publish" marks a ' +
+        'look that was delivered. rating is written by the human only, never by an agent — read it as the human\'s ' +
+        'verdict on the image, not something to set. Results are newest-first (created_at desc), paginated via ' +
+        'limit/offset (limit caps at 200, defaults to 50). Pick a short_id from the results and follow up with ' +
+        'get_generation / get_generation_lineage / get_generation_image.',
+      inputSchema: listGenerationsInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ tag, rating, bookmark, character, from, to, limit, offset }) => {
+      const query: Record<string, string | undefined> = {
+        tag,
+        rating,
+        character,
+        from,
+        to,
+        bookmark: bookmark === undefined ? undefined : bookmark ? 'true' : 'false',
+        limit: limit === undefined ? undefined : String(limit),
+        offset: offset === undefined ? undefined : String(offset),
+      };
+      const { items, total } = await queryGenerations(db, query, origin);
+      return jsonResult({
+        items: items.map((item) => ({
+          short_id: item.short_id,
+          rating: item.rating,
+          bookmark: item.bookmark,
+          tags: item.tags,
+          summary: item.summary,
+          character: item.character,
+          created_at: item.created_at,
+          batch_id: item.batch_id,
+          canonical_url: item.canonical_url,
+        })),
+        total,
+      });
     },
   );
 
