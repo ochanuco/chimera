@@ -266,6 +266,28 @@ export interface PresetRow {
   base_fingerprint: string | null;
 }
 
+export type ObservationOutcome = 'accepted' | 'rejected' | 'inconclusive';
+export type ObservationSource = 'import' | 'mcp' | 'gui';
+
+export interface ObservationRow {
+  id: string;
+  character: string;
+  pose: string | null;
+  component: string | null;
+  parameter: string;
+  value: string;
+  outcome: ObservationOutcome;
+  reason: string;
+  seed: number | null;
+  render_id: string | null;
+  generation_ids_json: string | null;
+  recipe: string | null;
+  observed_at: string | null;
+  supersedes_id: string | null;
+  source: ObservationSource;
+  created_at: string;
+}
+
 export interface StoryRelationRow {
   id: string;
   story_id: string;
