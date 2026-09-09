@@ -835,8 +835,15 @@ worker が ComfyUI の thread になるとこれが成立しません。worker �
 drain は稀に起きることではなく毎回起きることです。今 ComfyUI を再起動するのは
 `comfy_nodes` / imaging / `delivery_style.py` が変わった deploy だけですが、worker のコードが
 ComfyUI のプロセスに import される以上、どこが変わっても再起動しないと反映されません。
-段階 D では全 deploy が再起動になり、全 deploy が drain を待ちます。だから drain は
-安く済む形にします。待つのは走行中の request 1 件だけで、キュー全体ではありません。
+段階 D では全 deploy が再起動になり、全 deploy が drain を待ちます。
+
+再起動は選べなくなります。drain は loop を終わらせるので、drain したのに再起動しない
+deploy は、箱から worker を消すだけで終わります。今の条件付き再起動は「node pack を
+触ったときだけ」という最適化でしたが、段階 D では条件そのものが成立しません。段階 D の
+代償は「走行中のレンダーが道連れになる」だけでなく、「再起動するかどうかの判断が deploy
+から選択肢として消える」でもあります。
+
+だから drain は安く済む形にします。待つのは走行中の request 1 件だけで、キュー全体ではありません。
 新しい claim を止めて、今抱えている 1 件を描き切って抜けます。
 
 drain が待てる時間には上限を置きます。上限を超えたら worker は走行中の request を release
