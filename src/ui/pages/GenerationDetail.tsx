@@ -373,6 +373,31 @@ export function GenerationDetailPage({
           </form>
 
           <details class="section" open>
+            <summary>Finalize</summary>
+            <div class="section-body">
+              <form class="finalize-form" data-generation-short-id={data.short_id} autocomplete="off">
+                <FinalizeFields recipe={data.batch?.recipe ?? null} submitLabel="Finalize" />
+              </form>
+              {finalizeRequests.length > 0 ? (
+                <ul class="request-status-list">
+                  {finalizeRequests.map((r) => (
+                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
+                      {r.status} <span class="request-progress"></span> · {r.created_at}
+                      {r.status === 'done' && r.resultShortId ? (
+                        <>
+                          {' '}
+                          — <a href={`/g/${r.resultShortId}`}>{r.resultShortId}</a>
+                        </>
+                      ) : null}
+                      {r.status === 'failed' && r.error ? <> — {r.error}</> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </details>
+
+          <details class="section" open>
             <summary>Summary</summary>
             <div class="section-body">{data.summary ?? 'No summary yet.'}</div>
           </details>
@@ -557,31 +582,6 @@ export function GenerationDetailPage({
                   );
                 })()}
               </div>
-            </div>
-          </details>
-
-          <details class="section" open>
-            <summary>Finalize</summary>
-            <div class="section-body">
-              <form class="finalize-form" data-generation-short-id={data.short_id} autocomplete="off">
-                <FinalizeFields recipe={data.batch?.recipe ?? null} submitLabel="Finalize" />
-              </form>
-              {finalizeRequests.length > 0 ? (
-                <ul class="request-status-list">
-                  {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
-                      {r.status} <span class="request-progress"></span> · {r.created_at}
-                      {r.status === 'done' && r.resultShortId ? (
-                        <>
-                          {' '}
-                          — <a href={`/g/${r.resultShortId}`}>{r.resultShortId}</a>
-                        </>
-                      ) : null}
-                      {r.status === 'failed' && r.error ? <> — {r.error}</> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
             </div>
           </details>
 

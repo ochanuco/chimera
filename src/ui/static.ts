@@ -464,9 +464,36 @@ details.section .section-body { margin-top: 0.6rem; }
   border-radius: 6px;
   padding: 0.6rem 0.8rem 0.8rem;
   margin: 0;
+  /* 吹き出しの位置基準。マーカー基準にすると、右ペインが overflow-y: auto で
+     横もクリップするため右寄りのマーカーで切れる */
+  position: relative;
 }
 .finalize-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
-.finalize-hint { font-size: 0.8rem; color: var(--text-dim); }
+.finalize-help {
+  display: inline-block;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: help;
+}
+.finalize-help::after {
+  content: attr(data-help);
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin-top: 0.3rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  white-space: normal;
+  pointer-events: none;
+}
+.finalize-help:hover::after, .finalize-help:focus::after { display: block; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
@@ -1302,7 +1329,7 @@ export const appJs = `
     if (!preview) return;
     var options = finalizeOptionsFrom(form, true);
     if (!options) {
-      preview.textContent = 'will queue: —';
+      preview.textContent = '送信内容: —';
       return;
     }
     // backdrop is always sent and always meaningful, null included: null is the transparent choice.
@@ -1318,7 +1345,7 @@ export const appJs = `
         parts.push(key + '=' + value);
       }
     });
-    preview.textContent = 'will queue: ' + parts.join(', ');
+    preview.textContent = '送信内容: ' + parts.join(', ');
   }
 
   function initFinalizePreview() {
