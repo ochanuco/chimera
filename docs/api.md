@@ -650,12 +650,64 @@ worker は source Generation を変更せず、新しい refinement Batch、sour
 [worker-protocol.md](worker-protocol.md#masked_redraw)）。既存の `repair_generation`
 （hands / feet 専用）は別 kind のままです。
 
+## Preset
+
+recipe の pose / costume / expression の正本です（[domain-model.md](domain-model.md#preset)）。
+catalog と違って版を持ち、履歴が残ります。`recipe_ref` では分けません。
+
+``` text
+GET  /api/v1/presets                                    名前ごとの最新版の一覧（record 本文なし）
+GET  /api/v1/presets/{recipe}/{kind}/{name}             その名前の全版（record 本文なし）
+GET  /api/v1/presets/{recipe}/{kind}/{name}/{version}   解決済みの本文。無ければ404
+POST /api/v1/presets/import                             catalog を presets へ取り込む（冪等）
+POST /api/v1/presets/promote                            rating good の Generation から新しい版を足す
+```
+
+`kind` は `pose` / `costume` / `expression` です。一覧は既定で `status = active` の版だけを
+返し、`?include_deprecated=1` で全部返します。
+
+解決済みの本文は `base` の連鎖を根まで辿った結果です。chimera は `record` の中身も patch の
+`op` の意味も解釈せず、畳むのは worker 側の graph compiler です。
+
+``` json
+{
+  "id": "0199...",
+  "recipe": "yukari",
+  "kind": "pose",
+  "name": "lounge",
+  "version": 8,
+  "status": "active",
+  "source": "promote",
+  "source_generation_id": "abc123",
+  "note": null,
+  "record": { "name": "lounge", "prompt": "reclining on a beanbag, warm light" },
+  "patches": [{ "target": "pose", "op": "append", "reason": "...", "value": "..." }],
+  "created_at": "..."
+}
+```
+
+`POST /api/v1/presets/promote` の body は次の通りです。`kind` の既定は `pose`。`name` が
+既存なら次の版、新しい名前ならその名前の version 1 になります。
+
+``` json
+{ "generation_id": "abc123", "name": "lounge", "kind": "pose", "note": "...", "idempotency_key": "..." }
+```
+
+起点 Generation の rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
+recipe を持たない graph-mode なら 409 です。既存の版は書き換えません。
+
+`POST /api/v1/presets/import` は `recipe_catalogs` に publish 済みの catalog を
+`source = import` の version 1 として取り込みます（body は `{ "recipe_ref": "production" }`）。
+同じ `(recipe, kind, name)` が既にあれば飛ばすので、何度呼んでも同じ結果です。移行の段は
+[worker-protocol.md](worker-protocol.md#preset-の移行)。
+
 ## Recipe Catalog
 
 comfyui-recipes 側の recipe（pose / costume / expression の一覧、patches の語彙、
 git 情報）を worker が起動のたびに公開するスナップショットです。recipe_ref
 単位で最新の1件だけを持ち（履歴は持ちません）、chimera は語彙を検証も解釈もせず
-そのまま保存・返却します。
+そのまま保存・返却します。preset の正本が chimera へ移った後（移行の段階 C）に
+廃止します。
 
 ``` text
 PUT  /api/v1/catalogs/{recipe_ref}   カタログ全体を丸ごと差し替える。200 (要約を返す)
