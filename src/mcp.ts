@@ -58,6 +58,7 @@ import { createObservation, getObservation, listObservations } from './lib/obser
 import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
+import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import type { Bindings } from './types';
 
@@ -81,8 +82,14 @@ function clampImageWidth(width: number | undefined): number {
   return Math.min(MAX_IMAGE_WIDTH, Math.max(MIN_IMAGE_WIDTH, Math.round(width)));
 }
 
+// text と structuredContent の両方を返す。outputSchema を宣言した tool は
+// structuredContent が無いと SDK が ProtocolError にするし、outputSchema を読まない
+// client のために text も要る（MCP 仕様 SEP-2106 §4.3 と同じ二重掲載）。
 function jsonResult(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+    structuredContent: data as Record<string, unknown>,
+  };
 }
 
 /** Parses a stored JSON array column (`patches_json` / `preset_versions_json`); NULL や非配列は `[]`。 */
@@ -254,6 +261,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_experiments',
     {
+      outputSchema: mcpOutputSchemas.list_experiments,
       description: 'List Experiments, optionally filtered by status. Each item carries its base_recipe/base_parameters and latest Run.',
       inputSchema: z.object({ status: experimentStatusSchema.optional() }),
       annotations: { readOnlyHint: true },
@@ -289,6 +297,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_experiment',
     {
+      outputSchema: mcpOutputSchemas.get_experiment,
       description: 'Get an Experiment (by id or short_id) with its runs, promotions and tags — same shape as GET /api/v1/experiments/{id}.',
       inputSchema: z.object({ id: z.string().min(1) }),
       annotations: { readOnlyHint: true },
@@ -302,6 +311,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'create_run',
     {
+      outputSchema: mcpOutputSchemas.create_run,
       description:
         "Non-destructive: only adds a new Run record under an Experiment. Never deletes or overwrites existing data. Idempotent by idempotency_key. " +
         'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no batch attached). ' +
@@ -337,6 +347,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_run',
     {
+      outputSchema: mcpOutputSchemas.get_run,
       description: "Get a Run, its attached batch, and that batch's generations (short_id, rating, image dimensions).",
       inputSchema: z.object({ run_id: z.string().min(1) }),
       annotations: { readOnlyHint: true },
@@ -364,6 +375,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_generation_image',
     {
+      outputSchema: mcpOutputSchemas.get_generation_image,
       description:
         'Fetch a Generation image by short_id (or id). Returns it downscaled and re-encoded as JPEG — the MCP ' +
         "client caps a whole response at 1MB, which a full-size PNG blows past once base64-encoded — so it's for " +
@@ -380,6 +392,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const canonicalUrl = canonicalGenerationUrl(origin, generation.short_id);
       const pointer = (reason: string) => ({
         content: [{ type: 'text' as const, text: `${reason} See ${canonicalUrl}` }],
+        structuredContent: {
+          short_id: generation.short_id,
+          canonical_url: canonicalUrl,
+          inlined: false,
+          mime_type: null,
+          reason,
+        },
       });
 
       if (head.size > MAX_TRANSFORM_INPUT_BYTES) {
@@ -415,6 +434,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
 
       return {
         content: [{ type: 'image' as const, data: toBase64(bytes), mimeType }],
+        structuredContent: {
+          short_id: generation.short_id,
+          canonical_url: canonicalUrl,
+          inlined: true,
+          mime_type: mimeType,
+          reason: null,
+        },
       };
     },
   );
@@ -422,6 +448,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'attach_generation',
     {
+      outputSchema: mcpOutputSchemas.attach_generation,
       description:
         "Non-destructive: records which Generation represents a Run; it does not modify or delete the Generation or the Batch. " +
         'Attach a Generation (the representative result) to a Run. The Run must already have a Batch attached, and the Generation must belong to that Batch. 409s if the Run already has a different Generation attached, if no Batch is attached yet, or if the Generation belongs to a different Batch.',
@@ -438,6 +465,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'set_evaluation',
     {
+      outputSchema: mcpOutputSchemas.set_evaluation,
       description:
         "Non-destructive: writes a note-like evaluation object on a Run; nothing is deleted, published or sent. " + 'Set (or clear with null) a Run’s evaluation. Arbitrary JSON object; chimera does not validate its shape.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -453,6 +481,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'set_decision',
     {
+      outputSchema: mcpOutputSchemas.set_decision,
       description:
         "Non-destructive: writes a note-like decision object on a Run; nothing is deleted, published or sent. " + 'Set (or clear with null) a Run’s decision. Arbitrary JSON object; chimera does not validate its shape.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -468,6 +497,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'create_request',
     {
+      outputSchema: mcpOutputSchemas.create_request,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
@@ -493,6 +523,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'finalize_generation',
     {
+      outputSchema: mcpOutputSchemas.finalize_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a finalize request (docs/worker-protocol.md "finalize"): one ComfyUI graph that redraws the pick ' +
@@ -534,6 +565,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'repair_generation',
     {
+      outputSchema: mcpOutputSchemas.repair_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a repair request (docs/worker-protocol.md "repair"): a masked local redraw of hands and/or feet ' +
@@ -565,6 +597,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'masked_redraw_generation',
     {
+      outputSchema: mcpOutputSchemas.masked_redraw_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a generic masked redraw / garment inpaint request (docs/worker-protocol.md "masked_redraw"): ' +
@@ -593,6 +626,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_request',
     {
+      outputSchema: mcpOutputSchemas.get_request,
       description: 'Get a requests row by id, including its payload and (once done/failed) result/error.',
       inputSchema: z.object({ id: z.string().min(1) }),
       annotations: { readOnlyHint: true },
@@ -606,6 +640,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_requests',
     {
+      outputSchema: mcpOutputSchemas.list_requests,
       description: 'List requests rows, optionally filtered by status, kind, or run_id. Read-only; does not claim.',
       inputSchema: z.object({
         status: requestStatusSchema.optional(),
@@ -623,6 +658,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_generations',
     {
+      outputSchema: mcpOutputSchemas.list_generations,
       description:
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
         '(get_generation, get_generation_lineage, get_generation_image, finalize_generation, repair_generation, ' +
@@ -667,6 +703,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_generation',
     {
+      outputSchema: mcpOutputSchemas.get_generation,
       description: 'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}.',
       inputSchema: z.object({ generation_id: z.string().min(1) }),
       annotations: { readOnlyHint: true },
@@ -680,6 +717,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_batch',
     {
+      outputSchema: mcpOutputSchemas.list_batch,
       description:
         'Get a Batch (by id or short_id) with its jobs, generations (rating/bookmark/tags/semantic_summary/semantic_attributes/seed), ' +
         'references, relations (outgoing/incoming) and its ExperimentRun family, if any.',
@@ -696,6 +734,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_generation_lineage',
     {
+      outputSchema: mcpOutputSchemas.get_generation_lineage,
       description:
         'Walk a Generation\'s Batch lineage: ancestors (material Batches it referenced, and the Batch it was refined/retried from) ' +
         'and descendants (Batches that referenced or were refined from it), each annotated with how they connect ' +
@@ -713,6 +752,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'derive_request',
     {
+      outputSchema: mcpOutputSchemas.derive_request,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything, and never modifies the parent Generation. Idempotent by idempotency_key. " +
         'Enqueue a generate request derived from an existing Generation: carries the parent Batch\'s recipe/parameters/patches ' +
@@ -785,6 +825,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_catalog',
     {
+      outputSchema: mcpOutputSchemas.list_catalog,
       description:
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
         'pose/costume/expression NAMES, per-recipe parameters, the patches vocabulary, and git info. No prompt bodies — ' +
@@ -807,6 +848,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_catalog_pose',
     {
+      outputSchema: mcpOutputSchemas.get_catalog_pose,
       description: 'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production").',
       inputSchema: getCatalogPoseInputSchema,
       annotations: { readOnlyHint: true },
@@ -816,13 +858,16 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
       const record = findCatalogPose(found.doc, recipe, pose);
       if (!record) throw notFound(`pose '${pose}' in recipe '${recipe}'`);
-      return jsonResult(record);
+      // catalog は本文を持たない pose を裸の名前文字列で書ける。structuredContent は
+      // object でなければならないので、その形だけここで {name} に揃える。
+      return jsonResult(typeof record === 'string' ? { name: record } : record);
     },
   );
 
   server.registerTool(
     'list_presets',
     {
+      outputSchema: mcpOutputSchemas.list_presets,
       description:
         'List Presets (pose/costume/expression), one row per name at its latest version — no record body. ' +
         "Unlike list_catalog/get_catalog_pose, which read the comfyui-recipes catalog snapshot, Presets are " +
@@ -840,6 +885,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_preset',
     {
+      outputSchema: mcpOutputSchemas.get_preset,
       description:
         'Get a Preset resolved to its full body: record plus, for a promoted version, the patches accumulated ' +
         "from its base chain (oldest first). version defaults to the name's latest active version; an explicit " +
@@ -859,6 +905,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'promote_to_pose',
     {
+      outputSchema: mcpOutputSchemas.promote_to_pose,
       description:
         'Non-destructive: only appends one new Preset version. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
         'Turn a rating=good Generation into a new Preset version (docs/worker-protocol.md「preset の移行」段階 B). ' +
@@ -891,6 +938,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_observations',
     {
+      outputSchema: mcpOutputSchemas.list_observations,
       description:
         "List Observations, chimera's index of comfyui-recipes' experiments/ records (docs/domain-model.md#observation). " +
         'The index is not the source of truth — it can lag the JSONL files. Observation is history, not the current rule; ' +
@@ -913,6 +961,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_observation',
     {
+      outputSchema: mcpOutputSchemas.get_observation,
       description: 'Get one Observation by id (docs/domain-model.md#observation). 404s (as a tool error) when not found.',
       inputSchema: getObservationInputSchema,
       annotations: { readOnlyHint: true },
@@ -927,6 +976,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'record_observation',
     {
+      outputSchema: mcpOutputSchemas.record_observation,
       description:
         'Non-destructive: only appends one new Observation. Never deletes, overwrites, publishes or sends anything. ' +
         'Records what was tried for one parameter and what happened (docs/domain-model.md#observation). Requires pose and/or ' +
