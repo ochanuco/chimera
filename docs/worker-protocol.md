@@ -832,6 +832,13 @@ worker が ComfyUI の thread になるとこれが成立しません。worker �
 止めて走行中の request を描き切ってから抜けます。復帰は失敗からの回復ですが、drain は
 失敗を起こしません。今より良くなる方向で、GPU の仕事は 1 枚も捨てません。
 
+drain は稀に起きることではなく毎回起きることです。今 ComfyUI を再起動するのは
+`comfy_nodes` / imaging / `delivery_style.py` が変わった deploy だけですが、worker のコードが
+ComfyUI のプロセスに import される以上、どこが変わっても再起動しないと反映されません。
+段階 D では全 deploy が再起動になり、全 deploy が drain を待ちます。だから drain は
+安く済む形にします。待つのは走行中の request 1 件だけで、キュー全体ではありません。
+新しい claim を止めて、今抱えている 1 件を描き切って抜けます。
+
 drain が待てる時間には上限を置きます。上限を超えたら worker は走行中の request を release
 （`PATCH { "status": "queued", "worker_id": ... }`）してから抜け、行は queued に戻って再起動後の
 claim で拾われます。ここで失うのはその 1 枚の描き直しだけで、release があるので途絶の 5 分を
