@@ -70,6 +70,7 @@ export async function mcpCall<T = unknown>(
 
 export interface McpToolCallResult {
   content: { type: string; text?: string; data?: string; mimeType?: string }[];
+  structuredContent?: unknown;
   isError?: boolean;
 }
 
@@ -86,7 +87,7 @@ export async function mcpToolCall<T = unknown>(name: string, args: unknown, id: 
       data = undefined;
     }
   }
-  return { status, result, data, isError: result?.isError === true, text: firstText };
+  return { status, result, data, structured: result?.structuredContent, isError: result?.isError === true, text: firstText };
 }
 
 // 1x1 transparent PNG.
