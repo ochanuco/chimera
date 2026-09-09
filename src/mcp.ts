@@ -50,6 +50,8 @@ import { getGenerationDetail, queryGenerations } from './lib/generations';
 import { getBatchDigest } from './lib/batches';
 import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
+import { presetKindSchema } from './schemas/presets';
+import { getPresetRow, listPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
 import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
@@ -180,6 +182,19 @@ const getCatalogPoseInputSchema = z.object({
   recipe: z.string().min(1),
   pose: z.string().min(1),
   recipe_ref: z.string().regex(RECIPE_REF_RE).default('production'),
+});
+
+const listPresetsInputSchema = z.object({
+  recipe: z.string().min(1).optional(),
+  kind: presetKindSchema.optional(),
+  include_deprecated: z.boolean().optional(),
+});
+
+const getPresetInputSchema = z.object({
+  recipe: z.string().min(1),
+  kind: presetKindSchema,
+  name: z.string().min(1),
+  version: z.number().int().positive().optional(),
 });
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
@@ -766,6 +781,42 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const record = findCatalogPose(found.doc, recipe, pose);
       if (!record) throw notFound(`pose '${pose}' in recipe '${recipe}'`);
       return jsonResult(record);
+    },
+  );
+
+  server.registerTool(
+    'list_presets',
+    {
+      description:
+        'List Presets (pose/costume/expression), one row per name at its latest version — no record body. ' +
+        "Unlike list_catalog/get_catalog_pose, which read the comfyui-recipes catalog snapshot, Presets are " +
+        "chimera's own versioned source of truth for prompt bodies (docs/domain-model.md#preset). Defaults to " +
+        'status=active only; include_deprecated also surfaces names whose latest version has been deprecated.',
+      inputSchema: listPresetsInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ recipe, kind, include_deprecated }) => {
+      const items = await listPresets(db, { recipe, kind, includeDeprecated: include_deprecated });
+      return jsonResult({ items });
+    },
+  );
+
+  server.registerTool(
+    'get_preset',
+    {
+      description:
+        'Get a Preset resolved to its full body: record plus, for a promoted version, the patches accumulated ' +
+        "from its base chain (oldest first). version defaults to the name's latest active version; an explicit " +
+        'version can still be read once deprecated. Presets are chimera\'s own versioned source of truth for ' +
+        'prompt bodies (docs/domain-model.md#preset) — unlike get_catalog_pose, which reads a comfyui-recipes snapshot.',
+      inputSchema: getPresetInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ recipe, kind, name, version }) => {
+      const row = await getPresetRow(db, recipe, kind, name, version);
+      if (!row) throw notFound(`preset '${recipe}/${kind}/${name}'`);
+      const resolved = await resolvePreset(db, row);
+      return jsonResult(serializeResolvedPreset(row, resolved));
     },
   );
 

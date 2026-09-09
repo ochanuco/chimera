@@ -671,6 +671,7 @@ POST /api/v1/presets/promote                            rating good の Generati
 
 ``` json
 {
+  "id": "0199...",
   "recipe": "yukari",
   "kind": "pose",
   "name": "lounge",
@@ -678,6 +679,7 @@ POST /api/v1/presets/promote                            rating good の Generati
   "status": "active",
   "source": "promote",
   "source_generation_id": "abc123",
+  "note": null,
   "record": { "name": "lounge", "prompt": "reclining on a beanbag, warm light" },
   "patches": [{ "target": "pose", "op": "append", "reason": "...", "value": "..." }],
   "created_at": "..."
