@@ -249,7 +249,7 @@ kind                  pose | costume | expression
 name                  lounge
 version               1 以上。(recipe, kind, name) の中で単調増加
 body_json             { recipe_pose } または { base, patches }
-base_fingerprint      昇格時点の pose レコードの digest（import 由来は null）
+base_fingerprint      昇格時点の組み立て済み本文の digest（import 由来は null）
 status                active | deprecated
 source                import | promote
 source_generation_id  promote の起点 Generation（import は null）
@@ -298,8 +298,8 @@ publish されておらず、参照にしても行が増えるだけで何も足
 -   promote の起点 Generation は `rating = good` でなければなりません。Rating を書ける
     のは人間だけなので（[Rating](#rating)）、preset の審査は人間に残ります。
 -   chimera は preset の器の形だけを知り、patch の `op` の意味も pose の本文も
-    解釈しません。器の形を知るのは、起点 Generation の Batch `parameters` と
-    `semantic.attributes.patches` から promote 後の body を組み立てるためです。
+    解釈しません。器の形を知るのは、起点 Generation の Batch から promote 後の body を
+    組み立てるためです。
 -   base の再現性は preset の版ではなく `git_commit` が担います。`recipe_pose` が指す
     本文は comfyui-recipes の checkout の中にあり、版が固定するのは patches の層だけです。
     版が不変でも、指す先の pose は commit で動きます。
@@ -314,6 +314,9 @@ publish されておらず、参照にしても行が増えるだけで何も足
     Batch の patches」で、この形なら昇格が preset 自身の patches を二重に取り込みません。
     Batch は `preset_versions_json` と `patches_json` の2つで、何が適用されたかを
     重複なく記録します。
+-   Batch は自分が実際に解決した preset の版を記録します。`recipe_ref` はコードの
+    ブランチしか指さないので、何が描かれたかを特定するのは
+    `(git_commit, 解決済みの preset の版)` の組です。
 
 ### base が動くことへの備え
 
@@ -341,9 +344,6 @@ chimera はこの文字列を不透明に保存し、突き合わせにしか使
 落ち方自体は静かではありません。worker は claim 直後の probe で patch の適用を試し、
 落ちれば Batch を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
 より前に気付くための層です。
--   Batch は自分が実際に解決した preset の版を記録します。`recipe_ref` はコードの
-    ブランチしか指さないので、何が描かれたかを特定するのは
-    `(git_commit, 解決済みの preset の版)` の組です。
 
 ## Request
 
