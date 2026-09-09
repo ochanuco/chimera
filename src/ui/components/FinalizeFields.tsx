@@ -5,31 +5,51 @@ export function FinalizeFields({ recipe, submitLabel }: { recipe: string | null;
   return (
     <>
       <fieldset class="finalize-group">
-        <legend>Finish</legend>
+        <legend>仕上げ</legend>
         <label>
           <input type="checkbox" name="repin" /> repin
         </label>
-        <span class="finalize-hint">re-pin the pose</span>
+        <span class="finalize-help" tabindex={0} role="note" aria-label="ポーズのピン留めをやり直す" data-help="ポーズのピン留めをやり直す">
+          ?
+        </span>
         {finalizeTakesRecolor(recipe) ? (
           <>
             <label>
               <input type="checkbox" name="recolor" /> recolor
             </label>
-            <span class="finalize-hint">assert the yukari palette</span>
+            <span
+              class="finalize-help"
+              tabindex={0}
+              role="note"
+              aria-label="yukari のパレットに揃える。recipe が yukari の Batch でだけ出る"
+              data-help="yukari のパレットに揃える。recipe が yukari の Batch でだけ出る"
+            >
+              ?
+            </span>
           </>
         ) : null}
         <label>
           <input type="checkbox" name="keep_legwear" /> keep legwear
         </label>
-        <span class="finalize-hint">keep legwear at 0.62</span>
+        <span class="finalize-help" tabindex={0} role="note" aria-label="脚衣を残す（強度 0.62）" data-help="脚衣を残す（強度 0.62）">
+          ?
+        </span>
         <label>
           denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
         </label>
-        <span class="finalize-hint">blank = recipe default</span>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="空欄なら recipe の既定値。0〜1 の範囲"
+          data-help="空欄なら recipe の既定値。0〜1 の範囲"
+        >
+          ?
+        </span>
       </fieldset>
 
       <fieldset class="finalize-group">
-        <legend>Delivery look</legend>
+        <legend>納品の見た目</legend>
         <label>
           backdrop{' '}
           <select name="backdrop">
@@ -41,7 +61,15 @@ export function FinalizeFields({ recipe, submitLabel }: { recipe: string | null;
           </select>
           <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
         </label>
-        <span class="finalize-hint">stripes (default), transparent, or a solid #RRGGBB</span>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="背景。stripes が既定、transparent は背景なし、color は #RRGGBB を指定する"
+          data-help="背景。stripes が既定、transparent は背景なし、color は #RRGGBB を指定する"
+        >
+          ?
+        </span>
         <label>
           stroke light{' '}
           <select name="stroke_light">
@@ -58,22 +86,46 @@ export function FinalizeFields({ recipe, submitLabel }: { recipe: string | null;
             <option value="nw">nw (↖ from top-left)</option>
           </select>
         </label>
-        <span class="finalize-hint">where the light sits; the purple stroke goes thin on that side, thick opposite</span>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="光源の位置。紫縁がその側で細く、反対側で太くなる。none なら一定の太さ"
+          data-help="光源の位置。紫縁がその側で細く、反対側で太くなる。none なら一定の太さ"
+        >
+          ?
+        </span>
       </fieldset>
 
       <fieldset class="finalize-group">
-        <legend>Repair</legend>
+        <legend>部分描き直し</legend>
         <label>
           <input type="checkbox" name="repair_hands" /> repair hands
         </label>
         <label>
           <input type="checkbox" name="repair_feet" /> repair feet
         </label>
-        <span class="finalize-hint">mask and redraw just that region, on this same finalize request</span>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="その部位だけマスクして描き直す。この finalize request に相乗りする"
+          data-help="その部位だけマスクして描き直す。この finalize request に相乗りする"
+        >
+          ?
+        </span>
         <label>
           repair pad <input type="number" name="repair_pad" step="0.1" min="0.5" max="3" placeholder="1.0" disabled />
         </label>
-        <span class="finalize-hint">mask padding 0.5-3.0; blank = worker default</span>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="マスクの余白 0.5〜3.0。空欄なら worker の既定値。repair hands か repair feet のどちらかが必要"
+          data-help="マスクの余白 0.5〜3.0。空欄なら worker の既定値。repair hands か repair feet のどちらかが必要"
+        >
+          ?
+        </span>
       </fieldset>
 
       <p class="finalize-preview"></p>

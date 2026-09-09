@@ -97,7 +97,7 @@ good  🔖
 [img][img][img] | Batch B001
 [img][img][img] | "結月ゆかりをseed違いで9枚"
 [img][img][img] | 親 2 · 子 1 · 兄弟 0 · Story: yk-line
-                | Tags / 親 / 子 / 兄弟 / Prompt / ...
+                | Finalize all arms / Tags / 親 / 子 / 兄弟 / Prompt / ...
 ```
 
 Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
@@ -248,6 +248,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 Batch Detail の Parameters）のみ既定で畳みます。
 
 ``` text
+Finalize
 Summary
 Semantic
 Map
@@ -256,7 +257,6 @@ Map
 兄弟
 Story
 Workflow
-Finalize
 ComfyUI Job
 Git
 Note
@@ -337,33 +337,36 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-Workflowの直後のFinalize / Repairセクションは、段階2の唯一の生成要求手段です（不変条件:
+右ペイン最上部のFinalize / Repairセクションは、段階2の唯一の生成要求手段です（不変条件:
 GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / repairだけ。ComfyUIへは
 到達しない。[worker-protocol.md](worker-protocol.md)参照）。フォームは3つの
-`fieldset`（`Finish` / `Delivery look` / `Repair`）にグループ化され、各コントロールの
-すぐ横には`finalize-hint`のdimな一行説明が付きます。
+`fieldset`（`仕上げ` / `納品の見た目` / `部分描き直し`）にグループ化されます。各
+コントロール名自体は`comfy-recipes` CLIのフラグ名（worker-protocol.md参照）に
+揃えて英語のままとし、ラベル直後に`?`の`finalize-help`マーカーを添えます。マーカーは
+ホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけのCSS実装（JS不使用）で、
+`repair hands` / `repair feet`は1つのマーカーを共有します。
 
-Finishグループは`repin` / `recolor` / `keep legwear`のチェックボックスと、空欄が
+仕上げグループは`repin` / `recolor` / `keep legwear`のチェックボックスと、空欄が
 recipe既定を意味する`denoise`の数値入力を持ちます。`recolor`はBatchのrecipeが
 `yukari`のときだけ表示します（`yukari-sketch`のfinalizeはrecolorを受け付けず、
 workerが`failed`にします）。
 
-Delivery lookグループは`backdrop`のselect（`stripes`既定 / `transparent` /
+納品の見た目グループは`backdrop`のselect（`stripes`既定 / `transparent` /
 `color`）を持ち、`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
 現れます（空か形式違いなら送信せずalertします）。続けて`stroke light`の
 select（`none`既定と8方位）を持ち、各方位の選択肢は「n (↑ from top)」のように
 光源の位置を明示した表記です（矢印は光源側を指す向きのままで、読み違えない
 ようテキストだけ拡張しています）。
 
-Repairグループは`repair hands` / `repair feet`のチェックボックス（既定どちらも
+部分描き直しグループは`repair hands` / `repair feet`のチェックボックス（既定どちらも
 off。1つ以上チェックすると`repair`配列を積みます）と、`repair pad`の数値入力
 （空欄が省略=worker既定を意味する）を持ちます。`repair pad`はrepair hands /
 repair feetのどちらもチェックされていない間`disabled`で、どちらかをチェックすると
 有効になります。
 
 送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
-積まれるoptionsのkeyだけを`will queue: repin, backdrop=stripes`のように表示します
-（backdropが不正な値のときは`will queue: —`）。`backdrop`は常に送るキーなので
+積まれるoptionsのkeyだけを`送信内容: repin, backdrop=stripes`のように表示します
+（backdropが不正な値のときは`送信内容: —`）。`backdrop`は常に送るキーなので
 必ず出し、`transparent`を選んで`null`を送る場合も`backdrop=transparent`と表示します。この表示はsubmit時と同じ
 serializer（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all
 armsも同じ項目・同じ条件です。

@@ -272,6 +272,32 @@ export function BatchDetailPage({
           <datalist id="tag-suggestions"></datalist>
 
           <details class="section" open>
+            <summary>Finalize all arms</summary>
+            <div class="section-body">
+              <form
+                class="finalize-all-form"
+                data-generation-short-ids={batch.generations.map((g) => g.short_id).join(',')}
+                autocomplete="off"
+              >
+                <FinalizeFields recipe={batch.recipe} submitLabel="Finalize all arms" />
+              </form>
+              <p class="finalize-summary">
+                finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}
+                {finalizeSummary.failed} failed
+              </p>
+              {finalizeRequests.length > 0 ? (
+                <ul class="request-status-list">
+                  {finalizeRequests.map((r) => (
+                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
+                      {r.status} <span class="request-progress"></span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </details>
+
+          <details class="section" open>
             <summary>Tags</summary>
             <div class="section-body">
               <div class="tag-chips">
@@ -365,32 +391,6 @@ export function BatchDetailPage({
                   </tr>
                 ))}
               </table>
-            </div>
-          </details>
-
-          <details class="section" open>
-            <summary>Finalize all arms</summary>
-            <div class="section-body">
-              <form
-                class="finalize-all-form"
-                data-generation-short-ids={batch.generations.map((g) => g.short_id).join(',')}
-                autocomplete="off"
-              >
-                <FinalizeFields recipe={batch.recipe} submitLabel="Finalize all arms" />
-              </form>
-              <p class="finalize-summary">
-                finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}
-                {finalizeSummary.failed} failed
-              </p>
-              {finalizeRequests.length > 0 ? (
-                <ul class="request-status-list">
-                  {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
-                      {r.status} <span class="request-progress"></span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
             </div>
           </details>
 
