@@ -652,22 +652,25 @@ worker は source Generation を変更せず、新しい refinement Batch、sour
 
 ## Preset
 
-recipe の pose / costume / expression の正本です（[domain-model.md](domain-model.md#preset)）。
-catalog と違って版を持ち、履歴が残ります。`recipe_ref` では分けません。
+承認済みの Generation から作られる、名前の付いた派生の正本です
+（[domain-model.md](domain-model.md#preset)）。base となる pose の本文は comfyui-recipes
+側に残り、Preset が持つのはその pose への参照と patches の列です。版を持ち、履歴が残り、
+`recipe_ref` では分けません。
 
 ``` text
 GET  /api/v1/presets                                    名前ごとの最新版の一覧（record 本文なし）
 GET  /api/v1/presets/{recipe}/{kind}/{name}             その名前の全版（record 本文なし）
 GET  /api/v1/presets/{recipe}/{kind}/{name}/{version}   解決済みの本文。無ければ404
-POST /api/v1/presets/import                             catalog を presets へ取り込む（冪等）
+POST /api/v1/presets/import                             catalog の pose 名を参照として取り込む（冪等）
 POST /api/v1/presets/promote                            rating good の Generation から新しい版を足す
 ```
 
 `kind` は `pose` / `costume` / `expression` です。一覧は既定で `status = active` の版だけを
 返し、`?include_deprecated=1` で全部返します。
 
-解決済みの本文は `base` の連鎖を根まで辿った結果です。chimera は `record` の中身も patch の
-`op` の意味も解釈せず、畳むのは worker 側の graph compiler です。
+解決済みの本文は `base` の連鎖を根まで辿った結果です。`record` は根の pose への参照で、
+本文ではありません。参照を本文に解決して patches を畳むのは worker 側の graph compiler で、
+`parameters.costume` の上書きはそこで今まで通り効きます。
 
 ``` json
 {
@@ -679,8 +682,9 @@ POST /api/v1/presets/promote                            rating good の Generati
   "status": "active",
   "source": "promote",
   "source_generation_id": "abc123",
+  "base_fingerprint": "sha256:...",
   "note": null,
-  "record": { "name": "lounge", "prompt": "reclining on a beanbag, warm light" },
+  "record": { "recipe_pose": "lounge" },
   "patches": [{ "target": "pose", "op": "append", "reason": "...", "value": "..." }],
   "created_at": "..."
 }
@@ -698,12 +702,16 @@ Generation（段階 B より前のもの）では `base_version` が要ります
 （`no pinned preset for this generation; pass base_version`）で、chimera は base を推測しません。
 
 起点 Generation の rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
-recipe を持たない graph-mode なら 409 です。既存の版は書き換えません。`idempotency_key` の
-再送は、既に作られた版をそのまま 200 で返します。
+recipe を持たない graph-mode なら 409、Batch が patches を持たなければ 409
+（`promote requires a batch with patches`）です。patches と `base_fingerprint` は Batch 行から
+取ります。既存の版は書き換えません。`idempotency_key` の再送は、既に作られた版をそのまま
+200 で返します。
 
-`POST /api/v1/presets/import` は `recipe_catalogs` に publish 済みの catalog を
-`source = import` の version 1 として取り込みます（body は `{ "recipe_ref": "production" }`）。
-同じ `(recipe, kind, name)` が既にあれば飛ばすので、何度呼んでも同じ結果です。移行の段は
+`POST /api/v1/presets/import` は `recipe_catalogs` に publish 済みの catalog の pose 名を
+`{ "recipe_pose": "<name>" }` の参照として `source = import` の version 1 で取り込みます
+（body は `{ "recipe_ref": "production" }`）。同じ `(recipe, kind, name)` が既にあれば飛ばす
+ので、何度呼んでも同じ結果です。取り込むのは pose だけで、catalog の `costumes` /
+`expressions` は名前の配列でしか publish されておらず、参照にしても何も足しません。移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)。
 
 ## Recipe Catalog
@@ -711,8 +719,8 @@ recipe を持たない graph-mode なら 409 です。既存の版は書き換�
 comfyui-recipes 側の recipe（pose / costume / expression の一覧、patches の語彙、
 git 情報）を worker が起動のたびに公開するスナップショットです。recipe_ref
 単位で最新の1件だけを持ち（履歴は持ちません）、chimera は語彙を検証も解釈もせず
-そのまま保存・返却します。preset の正本が chimera へ移った後（移行の段階 C）に
-廃止します。
+そのまま保存・返却します。pose 名に加えて recipe ごとの `parameters` の可否、`patches` の
+語彙、model、canvas を運ぶ capability document でもあるため、Preset の導入後も残ります。
 
 ``` text
 PUT  /api/v1/catalogs/{recipe_ref}   カタログ全体を丸ごと差し替える。200 (要約を返す)

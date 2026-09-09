@@ -24,7 +24,7 @@ worker（Windows GPU 機、LAN）
   主体      持つもの                                                                     持たないもの
   --------- ---------------------------------------------------------------------------- ---------------------------------------------
   brain     生成意図の解釈、request.json、rating / semantic の読み書き                   ComfyUI への経路
-  chimera   requests 行と preset の正本、claim / heartbeat / 状態遷移、GUI、MCP          生成の判断、graph の解釈、prompt 本文の解釈
+  chimera   requests 行と派生 preset の正本、claim / 状態遷移、GUI、MCP                  生成の判断、graph の解釈、prompt 本文の解釈
   worker    recipe の checkout、preset の解決と lint、graph 構築、ComfyUI 実行、ingest   Experiment の意味論、evaluation
 
 Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁止」は構造で担保されます。
@@ -268,6 +268,16 @@ pin は request 作成時に一度だけ行います。heartbeat 途絶で queue
 worker は pin された版を `GET /api/v1/presets/{recipe}/{kind}/{name}/{version}` で引きます。
 版は不変なので、一度引いた本文はローカルに永続 cache して構いません。
 
+#### patches の順序
+
+preset が patches を持つので、patch の入口は preset・`generation.patches`・
+`experiment.overrides.patches` の3つになります。適用順は preset が常に先で、その後に
+`generation.patches` / `experiment.overrides.patches` です。この順は派生の意味そのもの
+（派生 = 派生元 + α）なので、preset と `generation.patches` の併用は禁止しません。
+
+`generation.prompt` / `negative_prompt` による全文上書きと preset の併用は、今まで通り
+禁止です。全文上書きは patch の積み上げと順序が定義できません。
+
 #### 受領時 lint
 
 worker は claim した request の preset を解決した直後に lint をかけます。落ちたら ComfyUI へは
@@ -281,8 +291,9 @@ fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / grap
 届かない「chimera から来た preset」に対して、実際に走る prompt を走る直前に見ます。
 
 意図的に矛盾する prompt ペアを組む必要は実在するので、逃げ道を payload 側に持ちます。
-`generation.lint` に `"skip"` を渡すと worker は lint を飛ばし、`result` にその旨を残します。
-既定は省略（= lint する）です。
+`generation.lint_waiver` に理由の文字列を渡すと worker は lint を飛ばし、`result` に理由を
+残します。非空文字列であること自体が waiver で、真偽値ではなく理由を要求するのは、patch が
+全件 `reason` を要求しているのと同じ理由です。粒度は request 全体で、既定は省略（= lint する）。
 
 ### finalize
 
@@ -622,16 +633,19 @@ masked redraw の `pad` / `feather` alias は canonical key に正規化され�
 から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
 
 `promote_to_pose` は `rating = good` の Generation を新しい Preset の版にします。起点
-Generation の Batch から `recipe` と pin されていた preset の版を、Generation から
-`semantic.attributes.patches` を取り、`{ base, patches }` の body を組み立てて
-`(recipe, kind, name)` の次の版として INSERT します。`name` を既存の名前にすれば
+Generation の Batch から `recipe`・pin されていた preset の版・patches・pose レコードの
+fingerprint を取り、`{ base, patches }` の body を組み立てて `(recipe, kind, name)` の
+次の版として INSERT します。patches を Batch から取るのは、`semantic.attributes.patches` が
+後から書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。Batch が
+patches を持たなければ 409（`promote requires a batch with patches`）で、全文上書きと
+finalize / repair / masked_redraw の出力はこれで弾かれます。`name` を既存の名前にすれば
 その名前の新版、新しい名前にすればその名前の version 1 です。`kind` の既定は `pose`。
 rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
 graph-mode で recipe を持たなければ 409 です。既存の版は書き換えません。
 
 指定した Generation が finalize / repair / masked_redraw 済みなら、`derive_request` と同じ規則で
 元になった raw の Generation まで遡ってから起点にします。rating を見るのは指定された
-Generation で、`recipe` と base と patches は遡った先から取ります。
+Generation で、`recipe`・base・patches・fingerprint は遡った先の Batch から取ります。
 
 base になる版は、その Batch を作った generate request が pin していた版です。段階 B より
 前に作られた Generation には pin が無いので、その場合は `base_version` で明示します。
@@ -731,29 +745,31 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
 
 ## preset の移行
 
-catalog の publish（recipes → chimera）を止め、preset の正本を chimera に置くまでの段です。
-段は独立して merge でき、A と B の間はどちらの経路でも動きます。上の「段階 2 / 3 / 4」
+昇格（承認済み Generation → 名前と版の付いた patches）を comfyui-recipes の PR 無しで
+回せるようにするまでの段です。段は独立して merge でき、上の「段階 2 / 3 / 4」
 （poll / WorkerHub / ref ごとの worktree）とは別軸なので、字で呼び分けます。
 
--   段階 A、catalog の取り込み。publish 済みの catalog を presets へ入れます。
-    `POST /api/v1/presets/import` が `recipe_catalogs` の recipes[].poses / costumes /
-    expressions を `source = import` の version 1 として INSERT します。同じ
-    `(recipe, kind, name)` が既にあれば飛ばすので、何度呼んでも同じ結果です。
-    comfyui-recipes 側は変えません。この時点で catalog と presets の両方から同じ
-    preset が見えます。
--   段階 B、正本の切り替え。chimera が request に版を pin し、worker が `poses.py` では
-    なく presets を読みます。受領時 lint をここで入れ、`promote_to_pose` を MCP に足します。
--   段階 C、旧経路の撤去。`poses.py` と catalog publish を落とします。
-    `PUT /api/v1/catalogs/{recipe_ref}` と MCP `list_catalog` / `get_catalog_pose` を廃止し、
-    `recipe_catalogs` テーブルを deprecate します。experiments JSONL の書き先も chimera の
-    Experiment / Run に寄せます。この時点で comfyui-recipes に残るのは compiler、imaging、
-    loop、lint だけです。
+-   段階 A、pose の登録。publish 済み catalog の pose 名を `{ recipe_pose }` の参照として
+    presets へ入れます（`POST /api/v1/presets/import`）。同じ `(recipe, kind, name)` が
+    既にあれば飛ばすので、何度呼んでも同じ結果です。本文は持たないので、この時点で
+    comfyui-recipes 側の動作は何も変わりません。
+-   段階 B、pin と昇格。chimera が request に版を pin し、worker が pin された preset を
+    解決して patches を `generation.patches` の前に畳みます。受領時 lint と
+    `promote_to_pose` をここで入れ、worker は Batch 作成時に patches と pose レコードの
+    fingerprint を送るようになります。
+-   段階 C、記録の集約。experiments JSONL の書き先を chimera の Experiment / Run に
+    寄せます。
 -   段階 D、worker の畳み込み。loop を ComfyUI の custom node pack の thread にします。
     GPU 機の常駐が ComfyUI 一つになり、deploy は custom_nodes の git pull と restart だけに
     なります。chimera 側の契約はここでは変わりません。
 
-段階 B で失うのは「prompt がコードと同じ commit に乗る」ことだけです。preset が版を持ち、
-request が版を pin し、`payload_hash` に版が入るので、再現性は今と同じです。
+`poses.py` と catalog publish はどの段でも残ります。pose 本文の組み立ては costume に依存
+する条件分岐を持っていて、catalog が publish できるのはそれを実行した後の prompt ペア
+だけです。それを chimera に保存すると `parameters.costume` の上書きが成立しなくなり、
+分岐そのものをデータにすると chimera が prompt の語彙を解釈することになります
+（[domain-model.md](domain-model.md#preset)）。catalog は pose 名に加えて recipe ごとの
+`parameters` の可否、`patches` の語彙、model、canvas を運ぶ capability document でもあり、
+chimera が patch を検証するのにこれが要ります。
 
 リスクと対応:
 
@@ -761,8 +777,9 @@ request が版を pin し、`payload_hash` に版が入るので、再現性は�
     Rating は人間しか書けません。PR review より審査は厳しくなります。
 -   agent が preset を壊す。promote は非破壊で新しい版を足すだけです。既存の版は残り、
     request 側が版を指名します。
--   lint が CI から消えて気付きにくい。受領時 lint の失敗は request を `failed` にするので、
-    CI より遅く気付くことはありません。
+-   base が動いて patches が当たらなくなる。text op は needle 不在で落ちますが、worker の
+    claim 直後の probe が Batch を作る前に落とし、request が `failed` になります。
+    `base_fingerprint` の突き合わせで、使う前に気付けるようにします。
 -   chimera が落ちると preset を引けない。claim 自体 chimera を要するので、cache が効く窓は
     「claim 済みで preset 未解決の request」だけです。版が不変なので cache は素直に効きます。
 

@@ -225,10 +225,20 @@ rejected
 
 ## Preset
 
-recipe の pose / costume / expression の本文です。もとは comfyui-recipes の
-`poses.py` にあり、catalog として chimera へ publish されていました。正本を chimera
-側に移し、承認済みの Generation から昇格させられるようにしたものが Preset です
-（移行の段は [worker-protocol.md](worker-protocol.md#preset-の移行)）。
+承認済みの Generation から作られる、名前の付いた派生の正本です。base となる pose の
+本文は comfyui-recipes の `poses.py` に残り、Preset が持つのはその pose への参照と、
+そこへ積んだ patches の列です（移行の段は
+[worker-protocol.md](worker-protocol.md#preset-の移行)）。
+
+pose の本文を chimera が持たないのは、組み立てが costume に依存する条件分岐
+（gate 付きの splice、legwear の ban、shod 判定）を含むためです。catalog が publish
+できるのはその分岐を実行した後の prompt ペアだけで、それを保存しても
+`parameters.costume` の上書きが成立しません。分岐そのものをデータとして chimera に
+持たせると、chimera が prompt の語彙を解釈することになり、下の不変条件と衝突します。
+
+Preset が解いているのは別の問題です。良かった生成の patches を名前と版の付いた
+再利用可能な単位にすること — 以前はそれに comfyui-recipes の PR と deploy が
+必要でした。
 
 主な属性:
 
@@ -238,7 +248,8 @@ recipe                yukari
 kind                  pose | costume | expression
 name                  lounge
 version               1 以上。(recipe, kind, name) の中で単調増加
-body_json             { record } または { base, patches }
+body_json             { recipe_pose } または { base, patches }
+base_fingerprint      昇格時点の pose レコードの digest（import 由来は null）
 status                active | deprecated
 source                import | promote
 source_generation_id  promote の起点 Generation（import は null）
@@ -253,11 +264,17 @@ preset 空間を分けるのではなく、試したいものを新しい版と�
 
 ### body の形
 
-`source = import` の行は catalog にあったレコードをそのまま持ちます。
+`source = import` の行は comfyui-recipes 側の pose への参照だけを持ちます。本文は
+持ちません。
 
 ``` json
-{ "record": { "name": "lounge", "prompt": "reclining on a beanbag, warm light" } }
+{ "recipe_pose": "lounge" }
 ```
+
+import するのは pose だけです。catalog の `costumes` / `expressions` は名前の配列でしか
+publish されておらず、参照にしても行が増えるだけで何も足しません。`kind` に
+`costume` / `expression` が残っているのは、将来 comfyui-recipes 側がそれらの base を
+名前で公開したときに同じ形で載せられるようにするためです。
 
 `source = promote` の行は prompt 本文ではなく「どの版に何を足したか」を持ちます。
 
@@ -268,9 +285,10 @@ preset 空間を分けるのではなく、試したいものを新しい版と�
 }
 ```
 
-読み出しは解決済みの形で返します。`base` の連鎖を根まで辿り、`record` 1件と、根から
-指定版までの patches を順に並べた配列にします。文字列へ畳むのは node pack の graph
-compiler です。
+読み出しは解決済みの形で返します。`base` の連鎖を根まで辿り、根の `recipe_pose` 1件と、
+根から指定版までの patches を順に並べた配列にします。参照を本文に解決して patches を
+畳むのは worker 側の graph compiler で、`parameters.costume` の上書きは今まで通り
+そこで効きます。
 
 不変条件:
 
@@ -279,9 +297,30 @@ compiler です。
 -   promote は既存の版を書き換えません。必ず新しい版を足します。
 -   promote の起点 Generation は `rating = good` でなければなりません。Rating を書ける
     のは人間だけなので（[Rating](#rating)）、preset の審査は人間に残ります。
--   chimera は preset の器の形だけを知り、`record` の中身と patch の `op` の意味は
+-   chimera は preset の器の形だけを知り、patch の `op` の意味も pose の本文も
     解釈しません。器の形を知るのは、起点 Generation の Batch `parameters` と
     `semantic.attributes.patches` から promote 後の body を組み立てるためです。
+-   base の再現性は preset の版ではなく `git_commit` が担います。`recipe_pose` が指す
+    本文は comfyui-recipes の checkout の中にあり、版が固定するのは patches の層だけです。
+    版が不変でも、指す先の pose は commit で動きます。
+-   昇格できるのは、Batch が patches を持つ generate 由来の Generation だけです。
+    `generation.prompt` で全文上書きしたものと、finalize / repair / masked_redraw の
+    出力は patches という概念を持たないので昇格できません。
+-   昇格の入力になる patches は Batch 行から取ります。`semantic.attributes.patches` は
+    使いません。semantic の PUT は失敗しても生成が進み、MCP クライアントから後で
+    書き換えられる場所でもあるので、正本になりません。
+
+### base が動くことへの備え
+
+patches の text op（replace / remove）は本文の needle に依存し、needle が消えると worker
+側で落ちます。base が参照である以上この結合は避けられないので、昇格した版にはその時点の
+pose レコードの digest を `base_fingerprint` として一緒に記録します。worker が Batch を作る
+ときに送ってくる同じ digest と突き合わせれば、その preset を使う前に「record X に対して
+昇格されたが worker は今 Y を持っている」と言えます。
+
+落ち方自体は静かではありません。worker は claim 直後の probe で patch の適用を試し、
+落ちれば Batch を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
+より前に気付くための層です。
 -   Batch は自分が実際に解決した preset の版を記録します。`recipe_ref` はコードの
     ブランチしか指さないので、何が描かれたかを特定するのは
     `(git_commit, 解決済みの preset の版)` の組です。
