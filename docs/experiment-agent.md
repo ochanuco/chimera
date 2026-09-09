@@ -128,10 +128,14 @@ Batch」(`via: "relation"`、`purpose_or_kind` は BatchRelation の type、
 requests 行を積みます。`from_generation_id` が finalize / repair / masked_redraw 済みの
 Generation なら、その元になった raw の Generation まで遡ってから起点にします
 （finalize / repair / masked_redraw の Batch は `parameters` が仕上げ payload で generate
-parameters ではないため）。起点 Batch の `recipe` / `parameters` /
-（起点 Generation の `semantic.attributes.patches` にある）`patches` を
-引き継ぎ、`parameters` は上書きマージ、`patches` は既定で追記、
-`replace_patches: true` なら丸ごと置き換えます。起点 Batch が recipe を
+parameters ではないため）。起点 Batch の `recipe` / `parameters` / `patches_json` の `patches` と、
+`preset_versions_json` の preset の pin を引き継ぎ、`parameters` は上書きマージ、
+`patches` は既定で追記、`replace_patches: true` なら丸ごと置き換えます。
+引き継いだ pin は新しい payload の `generation.presets` に載り、`parameters` の
+該当 kind は Batch に記録された `recipe_pose` ではなく pin の `name` に戻します
+（Batch の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると
+pin が外れます）。patches を Batch から取るのは `semantic.attributes.patches` が後から
+書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。起点 Batch が recipe を
 持たない graph-mode の Batch なら 409 です。`reference` は起点 Generation への
 purpose `"derive"` の Reference として payload に載り、遡った場合は指定した
 Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
@@ -165,7 +169,8 @@ payload に載せます（[worker-protocol.md](worker-protocol.md)「finalize」
 
 `promote_to_pose` は「良かった生成をそのまま preset にする」ための tool です。起点
 Generation の Batch から `recipe` と pin されていた preset の版を、Generation から
-`semantic.attributes.patches` を取り、`{ base, patches }` を次の版として足します。
+`patches_json` の patches と `pose_fingerprint` を取り、`{ base, patches }` を次の版として
+足します。Batch が patches を持たなければ 409 です。
 `name` が既存なら新しい版、新しい名前ならその名前の version 1 です。起点 Generation の
 rating が good でなければ 409 で、Rating を書けるのは人間だけなので、Agent が単独で
 preset を本番へ入れることはできません。既存の版は書き換わらないため、昇格が過去の

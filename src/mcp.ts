@@ -83,6 +83,17 @@ function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
 
+/** Parses a stored JSON array column (`patches_json` / `preset_versions_json`); NULL や非配列は `[]`。 */
+function parseJsonArray(raw: string | null): unknown[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Uint8Array -> base64。`btoa(String.fromCharCode(...bytes))` は引数展開が
  * 呼び出しスタック上限に当たるため、chunk に分けて畳み込む。
@@ -711,16 +722,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const requestedGeneration = await resolveGenerationOr404(db, from_generation_id);
       const { generation: sourceGeneration, batch: sourceBatch } = await resolveDerivationSource(db, requestedGeneration);
 
-      let parentPatches: unknown[] = [];
-      if (sourceGeneration.semantic_json) {
-        try {
-          const parsed = JSON.parse(sourceGeneration.semantic_json) as { attributes?: { patches?: unknown } };
-          const candidate = parsed.attributes?.patches;
-          if (Array.isArray(candidate)) parentPatches = candidate;
-        } catch {
-          parentPatches = [];
-        }
-      }
+      const parentPatches = parseJsonArray(sourceBatch.patches_json);
+      const parentPresets = parseJsonArray(sourceBatch.preset_versions_json) as { kind: string; name: string; version: number }[];
 
       const payload = buildDerivedRequestPayload({
         parentGenerationId: sourceGeneration.id,
@@ -728,6 +731,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         parentRecipe: sourceBatch?.recipe ?? null,
         parentParameters: parseJsonObjectOrNull(sourceBatch?.parameters_json ?? null) ?? {},
         parentPatches,
+        parentPresets,
         instruction,
         count,
         seeds,

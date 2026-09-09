@@ -53,7 +53,7 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   if (!generation) throw notFound('generation');
   if (generation.rating !== 'good') throw conflict('promote requires rating good');
 
-  const { generation: sourceGeneration, batch: sourceBatch } = await resolveDerivationSource(db, generation);
+  const { batch: sourceBatch } = await resolveDerivationSource(db, generation);
   const recipe = sourceBatch.recipe;
   if (!recipe) throw conflict('promote requires a recipe-mode batch');
 
@@ -85,14 +85,20 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
     throw conflict(`preset base missing: ${recipe}/${input.kind}/${baseName}@${baseVersion}`);
   }
 
+  // patches は Batch 行から取る。semantic.attributes.patches は生成後に書き換わりうる
+  // 場所で正本になれない (docs/domain-model.md「Preset」不変条件)。全文上書きと
+  // finalize / repair / masked_redraw の出力は patches を持たないのでここで弾かれる。
   let patches: unknown[] = [];
-  if (sourceGeneration.semantic_json) {
+  if (sourceBatch.patches_json) {
     try {
-      const parsed = JSON.parse(sourceGeneration.semantic_json) as { attributes?: { patches?: unknown } };
-      if (Array.isArray(parsed.attributes?.patches)) patches = parsed.attributes.patches as unknown[];
+      const parsed = JSON.parse(sourceBatch.patches_json) as unknown;
+      if (Array.isArray(parsed)) patches = parsed;
     } catch {
       patches = [];
     }
+  }
+  if (patches.length === 0) {
+    throw conflict('promote requires a batch with patches');
   }
 
   const bodyJson = JSON.stringify({
@@ -109,11 +115,26 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
     // (lib/experiments.ts の run_index 採番と同じ手)。
     await db
       .prepare(
-        `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, idempotency_key)
-         SELECT ?, ?, ?, ?, COALESCE(MAX(version), 0) + 1, ?, 'active', 'promote', ?, ?, ?, ?, ?
+        `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, idempotency_key, base_fingerprint)
+         SELECT ?, ?, ?, ?, COALESCE(MAX(version), 0) + 1, ?, 'active', 'promote', ?, ?, ?, ?, ?, ?
          FROM presets WHERE recipe = ? AND kind = ? AND name = ?`,
       )
-      .bind(id, recipe, input.kind, input.name, bodyJson, generation.id, input.note ?? null, input.created_by, now, input.idempotency_key, recipe, input.kind, input.name)
+      .bind(
+        id,
+        recipe,
+        input.kind,
+        input.name,
+        bodyJson,
+        generation.id,
+        input.note ?? null,
+        input.created_by,
+        now,
+        input.idempotency_key,
+        sourceBatch.pose_fingerprint,
+        recipe,
+        input.kind,
+        input.name,
+      )
       .run();
   } catch (err) {
     // 同じ idempotency_key での同時 promote が UNIQUE (idempotency_key) に落ちるレース。

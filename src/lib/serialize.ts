@@ -44,6 +44,9 @@ export function serializeBatch(row: BatchRow) {
     status: row.status,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    patches: row.patches_json ? JSON.parse(row.patches_json) : null,
+    pose_fingerprint: row.pose_fingerprint,
+    preset_versions: row.preset_versions_json ? JSON.parse(row.preset_versions_json) : null,
   };
 }
 

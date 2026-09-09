@@ -254,7 +254,10 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
 （[domain-model.md](domain-model.md#preset)）。
 
 -   版を明示されなければ、その名前の最新の `active` 版を pin します。
--   `presets` を明示して渡された場合はそれを尊重し、`parameters` からの解決はしません。
+-   `presets` を明示して渡された場合、その pin は版ごと尊重し、pin されていない kind だけを
+    `parameters` から解決します。`derive_request` が「一部の kind だけ pin を引き継ぎ、残りは
+    呼び出し側の指名」という payload を組むので、明示があったら丸ごと手を引くと残りが pin
+    されないまま通ります。
 -   名前が presets に無ければ 400（`preset not found: {recipe}/{kind}/{name}`）です。
 -   ただしその `recipe` の preset が presets に1件も無ければ、何も pin せずに通します。
     段階 A の import をまだ流していない recipe で generate が止まらないようにするためで、

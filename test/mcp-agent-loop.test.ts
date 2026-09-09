@@ -140,11 +140,14 @@ describe('MCP get_generation_lineage', () => {
 });
 
 describe('MCP derive_request', () => {
-  async function createParent(overrides: { recipe?: string | null; parameters?: Record<string, unknown> } = {}) {
+  async function createParent(
+    overrides: { recipe?: string | null; parameters?: Record<string, unknown>; patches?: unknown[] } = {},
+  ) {
     const batchOverrides: Record<string, unknown> = { parameters: overrides.parameters ?? { pose: 'lounge' } };
     // `recipe` is an optional string field (not nullable) — omit the key entirely to get a
     // graph-mode batch (recipe stays NULL) instead of sending an explicit null.
     if (overrides.recipe !== null) batchOverrides.recipe = overrides.recipe ?? 'yukari';
+    if (overrides.patches) batchOverrides.patches = overrides.patches;
     return createGeneration({ batchOverrides });
   }
 
@@ -178,11 +181,14 @@ describe('MCP derive_request', () => {
     return { batch: refinementBatch.body, generation: ingest.body };
   }
 
-  it('merges the parent batch recipe/parameters and carries parent patches forward', async () => {
-    const { generation } = await createParent();
+  it('merges the parent batch recipe/parameters and carries parent patches (from Batch patches_json, not semantic) forward', async () => {
+    const patches = [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }];
+    const { generation } = await createParent({ patches });
+    // semantic.attributes.patches is a different value — proves derive_request reads the Batch,
+    // not this (docs/domain-model.md#preset の不変条件: semantic は正本ではない).
     await postJson(
       `/api/v1/generations/${generation.id}/semantic`,
-      { schema_version: 1, attributes: { patches: [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }] } },
+      { schema_version: 1, attributes: { patches: [{ target: 'pose', op: 'set', value: 'from semantic (ignored)', reason: 'x' }] } },
       'PUT',
     );
 
@@ -314,12 +320,10 @@ describe('MCP derive_request', () => {
   });
 
   it('resolves a finalized parent back to the raw generation it was made from', async () => {
-    const raw = await createParent({ parameters: { pose: 'date' } });
-    await postJson(
-      `/api/v1/generations/${raw.generation.id}/semantic`,
-      { schema_version: 1, attributes: { patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }] } },
-      'PUT',
-    );
+    const raw = await createParent({
+      parameters: { pose: 'date' },
+      patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }],
+    });
     const finalized = await createRefinementBatch(raw);
 
     const call = await mcpToolCall<{

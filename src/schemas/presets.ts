@@ -17,12 +17,12 @@ export const presetPromoteRequestSchema = z.object({
 });
 
 /**
- * chimera は preset の器の形だけを知り、record の中身と patch の意味 (op の語彙) は
- * comfyui-recipes 側のものとして解釈しない (docs/domain-model.md「Preset」不変条件、
- * src/schemas/catalogs.ts と同じ方針)。.strict() は import 由来/promote 由来を
- * 取り違えず区別するためだけのもので、record/patches の中身までは検証しない。
+ * import 由来の行は pose の本文を持たず、comfyui-recipes 側の poses.py への名前参照
+ * だけを持つ (docs/domain-model.md「Preset」body の形)。本文の組み立て (costume 依存の
+ * 分岐) を chimera 側で行わないための境界で、解決するのは worker の graph compiler。
+ * .strict() は import 由来/promote 由来を取り違えず区別するためだけのもの。
  */
-const presetBodyImportSchema = z.object({ record: z.unknown() }).strict();
+const presetBodyImportSchema = z.object({ recipe_pose: z.string().min(1) }).strict();
 
 const presetBodyPromoteSchema = z
   .object({
