@@ -787,8 +787,11 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
     解決して patches を `generation.patches` の前に畳みます。受領時 lint と
     `promote_to_pose` をここで入れ、worker は Batch 作成時に patches と pose レコードの
     fingerprint を送るようになります。
--   段階 C、記録の集約。experiments JSONL の書き先を chimera の Experiment / Run に
-    寄せます。
+-   段階 C、記録の集約。experiments JSONL を chimera に寄せます。ただし粒度が揃って
+    いません。JSONL は「1 観測 1 レコード、append-only、反証されたら古いレコードを
+    書き換えず新しいレコードを足す」という規約で、1 行は Run より細かく seed 単位の
+    観測が混ざります。どちらを正本にするか（Run に畳むのか、Run の下に観測の層を
+    足すのか）を決めてから着手します。
 -   段階 D、worker の畳み込み。loop を ComfyUI の custom node pack の thread にします。
     GPU 機の常駐が ComfyUI 一つになり、deploy は custom_nodes の git pull と restart だけに
     なります。chimera 側の契約はここでは変わりません。
