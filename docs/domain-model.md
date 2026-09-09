@@ -282,6 +282,9 @@ compiler です。
 -   chimera は preset の器の形だけを知り、`record` の中身と patch の `op` の意味は
     解釈しません。器の形を知るのは、起点 Generation の Batch `parameters` と
     `semantic.attributes.patches` から promote 後の body を組み立てるためです。
+-   Batch は自分が実際に解決した preset の版を記録します。`recipe_ref` はコードの
+    ブランチしか指さないので、何が描かれたかを特定するのは
+    `(git_commit, 解決済みの preset の版)` の組です。
 
 ## Request
 

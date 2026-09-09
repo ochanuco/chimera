@@ -270,12 +270,19 @@ worker は pin された版を `GET /api/v1/presets/{recipe}/{kind}/{name}/{vers
 
 #### 受領時 lint
 
-worker は claim した request の preset を解決した直後に lint をかけます。今まで
-comfyui-recipes の CI が prompt に対してかけていた検証（costume hash、語彙の存在確認）が
-ここへ移ります。落ちたら ComfyUI へは行かず、request を `failed`
-（error: `preset lint failed: {理由}`）にします。
+worker は claim した request の preset を解決した直後に lint をかけます。落ちたら ComfyUI へは
+行かず、request を `failed`（error: `preset lint failed: {理由}`）にします。
 
-CI と違って、実際に走る prompt に対して、走る直前に効きます。
+これは検査の移設ではなく新設です。comfyui-recipes の CI が守っているのは costume block の
+fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / graph の sha256 snapshot
+（`tests/test_yukari_contract.py`）で、どちらも checkout の中身に対する検査です。prompt の
+矛盾検査（`conflicts()`）が実行時に走るのは `generation.prompt` と `negative_prompt` が両方
+明示されたときだけで、`--force` で外せます。受領時 lint は、その checkout 由来の検査が
+届かない「chimera から来た preset」に対して、実際に走る prompt を走る直前に見ます。
+
+意図的に矛盾する prompt ペアを組む必要は実在するので、逃げ道を payload 側に持ちます。
+`generation.lint` に `"skip"` を渡すと worker は lint を飛ばし、`result` にその旨を残します。
+既定は省略（= lint する）です。
 
 ### finalize
 
@@ -764,6 +771,9 @@ request が版を pin し、`payload_hash` に版が入るので、再現性は�
 - worker は `generation.graph` を受け取った場合そのまま ComfyUI へ流します。request の
   書き手を自分のエージェント以外に広げる場合は、graph モードを worker 側で許可制にし、
   chimera 側でも `created_by` ごとに `generation.graph` の受理可否を設ける。
+- `recipe_ref` は preset が chimera に移った後は「何が描かれたか」を特定しません。特定するのは
+  `(git_commit, 解決済みの preset の版)` の組で、worker は Batch を作るときに解決した版を
+  記録します。`recipe_ref` が指すのはコードのブランチだけになります。
 - `recipe_ref` は origin のブランチ名に限ります。段階 2 の worker は自分の checkout
   のブランチと一致する `recipe_ref` だけを受け、違えば `failed`
   （error: `recipe_ref not served: {ref}`）にします。watch プロセス自身がその checkout
