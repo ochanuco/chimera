@@ -345,6 +345,90 @@ chimera はこの文字列を不透明に保存し、突き合わせにしか使
 落ちれば Batch を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
 より前に気付くための層です。
 
+## Observation
+
+「あるパラメータについて何を試して何が起きたか」の記録です。comfyui-recipes の
+`experiments/<character>/<pose>.jsonl` を写した索引で、正本ではありません。
+
+正本を動かさないのは、preset のときと壊れ方の種類が違うためです。preset は worker が
+graph を組むのに要る load-bearing なデータで、正本が二箇所にあると本番が壊れます。
+experiments の記録は誰も実行せず、人と agent が判断のために読むだけです。しかも
+comfyui-recipes の `AGENTS.md` は「pose や tag を変える前に experiments/ を grep しろ」と
+定めていて、これは編集中にオフラインで即座に効きます。数百行の grep はゼロ秒で、MCP の
+往復はそうではありません。索引を得るために grep を失うのは損です。
+
+append-only を強制しているのが git である点も動かせません。JSONL は書き換えれば diff に
+出ますが、chimera を正本にすると、その強制がテーブルの運用規約に置き換わって弱くなります。
+
+主な属性:
+
+``` text
+id                出所（path と行番号）と元レコードの正規化 JSON の SHA-256
+character         yukari
+pose              観測した pose。module 全体の観測なら null
+component         costumes / prompt_style / recipe 等。pose 単位なら null
+parameter         振った対象（タグ、重み、設定）
+value             試した値
+outcome           accepted | rejected | inconclusive
+reason            観測されたこと
+seed              その観測を取った seed。無ければ null
+render_id         worker 側の id。chimera は不透明に持つ
+generation_ids    観測の材料になった Generation（解決できたものだけ）
+recipe            古い recipe に帰属する記録だけ入る
+observed_at       元の記録の日付。無ければ null
+supersedes_id     この記録が撤回する Observation
+source            import | mcp | gui
+created_at
+```
+
+不変条件:
+
+-   append-only です。Observation は編集も削除もしません。後の実験が前の結論を覆したと
+    きは、古い行を書き換えず `supersedes_id` を持つ新しい行を足します。JSONL 側の
+    append-only policy をそのまま持ち込んでいます。
+-   `id` は `{ path, line, record }` の正規化 JSON の SHA-256 です。同じ行は何度流しても
+    同じ Observation になるので、JSONL 全体を丸ごと再送できます。索引が正本より古いのは、
+    正本が古いより厄介です。「chimera に無い = まだ試していない」と読んだ人が、既に落ちた
+    道をもう一度歩くためで、`rejected` を引けるようにするのが目的である以上そこが腐ると
+    目的が消えます。同期は追加だけで、payload に無い行を消しません（append-only と同じ理由）。
+-   id に出所を混ぜるのは、内容だけにすると byte 一致する再測定が黙って消えるためです。
+    同じ pose の同じ parameter を同じ value で測り直して同じ結果が出たら、それは再現の
+    記録であって独立した観測です。append-only policy はそれを新しいレコードとして足すよう
+    求めています。`(path, line)` は append-only である限り安定した識別子で、既存行の位置は
+    動きません。ファイルを並べ替えたり行を書き換えれば重複行ができますが、それは policy が
+    禁じている操作で git の diff に出ます。静かに消えるより、うるさく重複する方が台帳の
+    壊れ方として正しいはずです。ファイル名を変えると同じ理由でその1ファイル分が重複するので、
+    `inserted` が 0 でない同期は中身を見ます。
+-   MCP / GUI から直接書かれた Observation の `id` は `idempotency_key` から作ります。
+    内容から作ると、import 側と同じ理由で再測定が黙って消えます。同じ観測を測り直して
+    同じ結果が出たら独立した行になるべきで、区別するのは呼び出し側が渡す key です。
+    再送は同じ key なら同じ行を返します。
+-   import 由来の行は `supersedes_id` を持ちません。JSONL は撤回を散文で表現していて
+    （「先の accepted を測り直したら再現しなかった」）、構造化された参照が無いためです。
+    `supersedes_id` が入るのは MCP / GUI から書かれた Observation だけです。
+-   `pose` と `component` の少なくとも一方が必要です。どちらも持たない記録は
+    Observation ではありません。レコード自身がどちらも持たないときは、送り手が
+    `component` を添えます。chimera はファイル名から推測しません。ファイル名は中身を
+    代表しないことがあり、推測すると誤ったラベルが付きます。
+-   Observation は履歴であって現在の規則ではありません。現在の規則は pose recipe の
+    コメント側にあります。
+-   どの `reason` も、その pose / seed / tag ブロック / canvas の下での観測であって、
+    タグ一般についての主張ではありません。「`boss` のブロックの下で `smug` を 1.4 に
+    すると得意げに読めた」は、このプロジェクトの他のどこかでの `smug` 1.4 について
+    何も言っていません。引くときは過去の一データ点として扱います。
+
+### 実験のアームは Observation ではない
+
+`experiments/` の記録には、パラメータの観測ではなく実験のアームそのもの（Batch を
+指名し、seed の組を持ち、verdict と observation を持つ）が混ざっています。これは
+Experiment / ExperimentRun にそのまま入るので、Observation にはしません。
+
+アームが Generation を指名していて Batch を指名していない記録は、Run に組み直せません。
+1アームの Generation が複数の Batch にまたがっている（当時 count=1 で1枚ずつ回していた）
+ためで、Run にすると存在しない実行単位を捏造することになります。この形は Observation
+として写し、axis を `parameter`、採用された Generation を `generation_ids` に入れます。
+アーム分けは chimera に対応する行が無いので持ち込みません。JSONL 側に残ります。
+
 ## Request
 
 chimera を control plane、GPU 機を worker とする配置（[worker-protocol.md](worker-protocol.md)）の
