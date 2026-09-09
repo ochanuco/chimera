@@ -429,11 +429,19 @@ describe('Web GUI pages', () => {
     const { generation, batch } = await createGeneration();
     for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
       const html = await (await req(path)).text();
-      expect(html).toContain('<legend>Finish</legend>');
-      expect(html).toContain('<legend>Delivery look</legend>');
-      expect(html).toContain('<legend>Repair</legend>');
+      expect(html).toContain('<legend>仕上げ</legend>');
+      expect(html).toContain('<legend>納品の見た目</legend>');
+      expect(html).toContain('<legend>部分描き直し</legend>');
       expect((html.match(/class="finalize-group"/g) ?? []).length).toBe(3);
     }
+  });
+
+  it('the Finalize forms show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
+    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
+    const genHtml = await (await req(`/g/${generation.short_id}`)).text();
+    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(8);
+    const batchHtml = await (await req(`/b/${batch.id}`)).text();
+    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(8);
   });
 
   it('the Finalize forms disable repair_pad until a repair region is checked', async () => {
