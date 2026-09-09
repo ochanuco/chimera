@@ -53,6 +53,8 @@ import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
 import { getPresetRow, listPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
 import { promoteGenerationToPreset } from './lib/promote';
+import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
+import { createObservation, getObservation, listObservations } from './lib/observations';
 import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
@@ -217,6 +219,26 @@ const promoteToPoseInputSchema = z.object({
   note: z.string().optional(),
   idempotency_key: z.string().min(1),
 });
+
+const listObservationsInputSchema = z.object({
+  character: z.string().min(1).optional(),
+  pose: z.string().min(1).optional(),
+  component: z.string().min(1).optional(),
+  parameter: z.string().min(1).optional(),
+  outcome: observationOutcomeSchema.optional(),
+  q: z.string().min(1).optional(),
+  limit: z.number().int().min(1).optional(),
+});
+
+const getObservationInputSchema = z.object({ id: z.string().min(1) });
+
+/**
+ * record_observation は observed_at を持たない — それは import 由来 (JSONL の記録日) 専用の
+ * 欄で、MCP から今書く Observation には意味がない。base の ZodObject を
+ * createObservationObjectSchema (schemas/observations.ts) から借り、同じ pose/component
+ * 必須 refine をかけ直す。
+ */
+const recordObservationInputSchema = createObservationObjectSchema.omit({ observed_at: true }).superRefine(requirePoseOrComponent);
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
@@ -863,6 +885,64 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         created_by: 'mcp',
       });
       return jsonResult(result);
+    },
+  );
+
+  server.registerTool(
+    'list_observations',
+    {
+      description:
+        "List Observations, chimera's index of comfyui-recipes' experiments/ records (docs/domain-model.md#observation). " +
+        'The index is not the source of truth — it can lag the JSONL files. Observation is history, not the current rule; ' +
+        "the current rule lives in the pose recipe's own comments. Every reason is scoped to the pose/seed/tag block/canvas " +
+        "it was observed under, not a general claim about the tag — treat a hit as one past data point, not a rule. " +
+        'q matches parameter/value/reason by substring.',
+      inputSchema: listObservationsInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ character, pose, component, parameter, outcome, q, limit }) => {
+      const items = await listObservations(
+        db,
+        { character, pose, component, parameter, outcome, q },
+        { limit: limit ?? 50, offset: 0 },
+      );
+      return jsonResult({ items });
+    },
+  );
+
+  server.registerTool(
+    'get_observation',
+    {
+      description: 'Get one Observation by id (docs/domain-model.md#observation). 404s (as a tool error) when not found.',
+      inputSchema: getObservationInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ id }) => {
+      const row = await getObservation(db, id);
+      if (!row) throw notFound('observation');
+      return jsonResult(row);
+    },
+  );
+
+  server.registerTool(
+    'record_observation',
+    {
+      description:
+        'Non-destructive: only appends one new Observation. Never deletes, overwrites, publishes or sends anything. ' +
+        'Records what was tried for one parameter and what happened (docs/domain-model.md#observation). Requires pose and/or ' +
+        "component (at least one). This is history, not the current rule — it does not change the pose recipe. The reason " +
+        "you give is scoped to this pose/seed/tag block/canvas, not a general claim about the tag: don't write it as if it " +
+        'settles the tag everywhere else in the project. Pass a fresh idempotency_key per observation you intend to record; ' +
+        'resending the same key returns the row it already made. Measuring the same thing again and getting the same result ' +
+        'is a separate observation, so give it its own key rather than reusing the first one. supersedes_id records that ' +
+        'this Observation overturns an earlier one — the earlier row ' +
+        'is never edited or deleted, since Observation is append-only.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: recordObservationInputSchema,
+    },
+    async (input) => {
+      const row = await createObservation(db, input, 'mcp');
+      return jsonResult(row);
     },
   );
 

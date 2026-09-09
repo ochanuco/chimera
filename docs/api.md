@@ -714,6 +714,67 @@ recipe を持たない graph-mode なら 409、Batch が patches を持たなけ
 `expressions` は名前の配列でしか publish されておらず、参照にしても何も足しません。移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)。
 
+## Observation
+
+comfyui-recipes の `experiments/` を写した索引です（[domain-model.md](domain-model.md#observation)）。
+正本は JSONL 側で、chimera は引くための索引に徹します。
+
+``` text
+GET  /api/v1/observations          ?character= &pose= &component= &parameter= &outcome= &q=
+GET  /api/v1/observations/{id}     1件。無ければ404
+POST /api/v1/observations/sync     レコードの配列を冪等に upsert する
+POST /api/v1/observations          MCP / GUI から1件書く（idempotency_key 必須）
+```
+
+`q` は `parameter` / `value` / `reason` の部分一致です。`AGENTS.md` が JSONL に対して
+求めている grep の代わりになる粒度にします。
+
+`POST /api/v1/observations/sync` の body はファイル単位です。行番号を送り手に明示させる
+のは、空行や並び順で番号がずれないようにするためです。
+
+``` json
+{
+  "files": [
+    {
+      "path": "experiments/yukari/stand.jsonl",
+      "records": [{ "line": 1, "record": { "character": "yukari", "pose": "stand", "...": "..." } }]
+    }
+  ]
+}
+```
+
+`line` はファイル先頭を 1 とする物理行番号で、空行も数えます。送り手が明示する以上、
+数え方が揃っていないと同じファイルから別の `id` が出て全行が重複します。
+
+`record` が `pose` も `component` も持たない場合だけ、送り手が同じ要素に `component` を
+添えられます。chimera はファイル名から推測しません。`delivery_style.jsonl` が
+`delivery_style` / `delivery` / `recolor` / `refinement_graph` の4種類の観測を持つように、
+ファイル名は中身を代表しません。
+
+``` json
+{ "line": 48, "component": "prompt_style", "record": { "axis": "...", "arms": { "...": [] } } }
+```
+
+chimera が `{ path, line, record }` を正規化して SHA-256 を取り、それを `id` にして upsert
+します。`component` は `id` に入りません。同じ行に後から正しい `component` を付け直しても、
+新しい行にはなりません。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
+構いません。payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }`
+で、`skipped` には受理しなかったレコードとその理由が入ります。
+
+受理しないのは次の2つです。`pose` と `component` のどちらも無いレコード（Observation の
+語彙に乗らない実装メモが混ざるため）と、`outcome` が語彙外のものです。ただし
+`"not adopted"` は `rejected` に正規化します（README の `rejected` の定義が
+"lost a sweep" を含み、該当レコードの `reason` もすべて「同じ seed で別のアームが
+選ばれた」であるため）。
+
+実験のアーム（Batch と seed の組を持つ形）は Observation ではなく Experiment /
+ExperimentRun に入ります。`sync` はそれらを `skipped` として返します。
+
+`POST /api/v1/observations` は `idempotency_key` を必須にします。`id` はそこから作り、
+内容からは作りません。内容から作ると、同期側と同じ理由で再測定が黙って消えます。同じ
+観測を測り直して同じ結果が出たら独立した行になるべきで、再送と区別できるのは呼び出し側の
+key だけです。同じ key の再送は既にある行をそのまま 200 で返します。
+
 ## Recipe Catalog
 
 comfyui-recipes 側の recipe（pose / costume / expression の一覧、patches の語彙、
