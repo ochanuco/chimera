@@ -329,6 +329,8 @@ export interface RequestListFilters {
   status?: RequestStatus;
   kind?: RequestKind;
   run_id?: string;
+  /** claim した worker。自分が握ったまま落ちた行を起動時に拾うために使う。 */
+  worker_id?: string;
   /** UUID / short_id どちらでも受ける。該当する Generation が無ければ空リストを返す。 */
   generation_id?: string;
   /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair / masked_redraw request を集約する。 */
@@ -355,6 +357,10 @@ export async function listRequests(
   if (filters.run_id) {
     conditions.push('run_id = ?');
     binds.push(filters.run_id);
+  }
+  if (filters.worker_id) {
+    conditions.push('worker_id = ?');
+    binds.push(filters.worker_id);
   }
   if (filters.generation_id) {
     const generation = await getGenerationByIdOrShortId(db, filters.generation_id);

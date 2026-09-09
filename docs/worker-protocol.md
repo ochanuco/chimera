@@ -142,11 +142,17 @@ form しか持たないことで保っており、API が `created_by`
 ### List Requests
 
 ``` text
-GET /api/v1/requests?status=queued|running|done|failed|cancelled&kind=&run_id=&limit=&offset=
+GET /api/v1/requests?status=queued|running|done|failed|cancelled&kind=&run_id=&worker_id=&limit=&offset=
 ```
 
 読み取り専用。GUI と brain の状況確認用で、claim は伴いません。`?pending=true` は
 `status=queued` の別名です。
+
+`worker_id` は worker が起動時に自分の取りこぼしを拾うためのものです。
+`?status=running&worker_id=<self>` が、自分が claim したまま落ちた行を返します。それぞれに
+release を投げれば、途絶の 5 分を待たずに queued へ戻せます。bulk の口は持ちません。
+落ちた worker が抱えている行は多くて数件で、まとめる利得より、1 行ずつ 409 で弾かれる
+ことの分かりやすさの方が勝ります。
 
 ### Claim
 

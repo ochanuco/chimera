@@ -355,6 +355,21 @@ describe('POST /api/v1/requests/claim', () => {
     expect(again.body!.attempt).toBe(2);
   });
 
+  it('lists only the rows a given worker holds, so a restarted worker can find its own', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+    const r1 = await createFinalizeRequest(g1.id);
+    const r2 = await createFinalizeRequest(g2.id);
+
+    await claim('worker-owner');
+    await claim('worker-other');
+
+    const mine = await getJson<{ items: RequestBody[] }>('/api/v1/requests?status=running&worker_id=worker-owner');
+    expect(mine.status).toBe(200);
+    expect(mine.body.items.map((r) => r.id)).toEqual([r1.body.id]);
+    expect(mine.body.items.map((r) => r.id)).not.toContain(r2.body.id);
+  });
+
   it('release from a worker that does not hold the claim is a conflict', async () => {
     const { generation } = await createGeneration();
     const created = await createFinalizeRequest(generation.id);
