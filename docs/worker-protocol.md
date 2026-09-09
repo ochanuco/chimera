@@ -262,6 +262,17 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
 -   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
     pin の対象外です。
 
+`parameters.pose` は pin 後も残ります。省きません。preset の名前と、その下にある recipe の
+pose 名は別の事実だからです。`lounge@1` は `recipe_pose` も `lounge` ですが、そこから
+`lounge-relaxed` という名前で昇格した版の `recipe_pose` は `lounge` のままです。
+`parameters.pose` が持つのは前者（呼び出し側が指名した preset の名前）で、worker は preset を
+解決したあとこれを `recipe_pose` で置き換えてから graph を組みます。
+
+呼び出し側が `generation.presets` を明示した場合だけ、両者が食い違いえます。その場合は
+`parameters` の同じ kind の値と pin の `name` が一致することを chimera が検証し、違えば 400
+（`parameters.{kind} does not match the pinned preset`）です。どちらが勝つかを worker に
+決めさせません。
+
 pin は request 作成時に一度だけ行います。heartbeat 途絶で queued へ戻って再実行されても
 版は動きません。版は `payload_hash` に入るので、版が違えば別の request です。
 
@@ -274,6 +285,10 @@ preset が patches を持つので、patch の入口は preset・`generation.pat
 `experiment.overrides.patches` の3つになります。適用順は preset が常に先で、その後に
 `generation.patches` / `experiment.overrides.patches` です。この順は派生の意味そのもの
 （派生 = 派生元 + α）なので、preset と `generation.patches` の併用は禁止しません。
+
+worker が Batch に記録する `patches` は request 自身の分（α）だけで、preset 側の分は
+含みません。preset の分は `preset_versions_json` の版を解決すれば出るので、両方書くと
+昇格と派生がそれを二重に取り込みます。
 
 `generation.prompt` / `negative_prompt` による全文上書きと preset の併用は、今まで通り
 禁止です。全文上書きは patch の積み上げと順序が定義できません。
@@ -624,6 +639,13 @@ promote_to_pose(generation_id, name, kind?, note?, idempotency_key)
 masked redraw の `pad` / `feather` alias は canonical key に正規化されます。手で payload の封筒を組み立てる `create_request` に対して、
 この3つは finalize / repair / masked redraw に特化した窓口です。masked redraw は options
 （regions / prompt_patch / denoise / mask_padding / mask_feather）が必須です。
+
+`derive_request` が preset の pin を引き継ぐ元は Batch の `preset_versions_json` です。
+Batch の `parameters` は worker が preset を解決した後の値なので、`parameters.pose` には
+preset の名前ではなく `recipe_pose` が入っています。ここをコピーすると pin が外れ、
+`lounge-relaxed@3` からの派生が素の `lounge` になります。`preset_versions_json` には名前と
+版の両方が残るので、派生は pin ごと引き継げます。patches の引き継ぎ元も Batch の
+`patches_json`（α の分だけ）で、preset の分は pin が運びます。
 
 `derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
 別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から

@@ -309,6 +309,11 @@ publish されておらず、参照にしても行が増えるだけで何も足
 -   昇格の入力になる patches は Batch 行から取ります。`semantic.attributes.patches` は
     使いません。semantic の PUT は失敗しても生成が進み、MCP クライアントから後で
     書き換えられる場所でもあるので、正本になりません。
+-   Batch が記録する patches は request 自身の分だけで、pin された preset が持っていた
+    patches は含みません。実際に適用された全体は「pin された版を解決した patches +
+    Batch の patches」で、この形なら昇格が preset 自身の patches を二重に取り込みません。
+    Batch は `preset_versions_json` と `patches_json` の2つで、何が適用されたかを
+    重複なく記録します。
 
 ### base が動くことへの備え
 
