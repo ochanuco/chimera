@@ -363,7 +363,7 @@ append-only を強制しているのが git である点も動かせません。
 主な属性:
 
 ``` text
-id                元レコードの正規化 JSON の SHA-256
+id                出所（path と行番号）と元レコードの正規化 JSON の SHA-256
 character         yukari
 pose              観測した pose。module 全体の観測なら null
 component         costumes / prompt_style / recipe 等。pose 単位なら null
@@ -386,11 +386,19 @@ created_at
 -   append-only です。Observation は編集も削除もしません。後の実験が前の結論を覆したと
     きは、古い行を書き換えず `supersedes_id` を持つ新しい行を足します。JSONL 側の
     append-only policy をそのまま持ち込んでいます。
--   `id` は元レコードの正規化 JSON の SHA-256 です。同じレコードは何度流しても同じ行に
-    なるので、JSONL 全体を丸ごと再送できます。索引が正本より古いのは、正本が古いより
-    厄介です。「chimera に無い = まだ試していない」と読んだ人が、既に落ちた道をもう一度
-    歩くためで、`rejected` を引けるようにするのが目的である以上そこが腐ると目的が消えます。
-    同期は追加だけで、payload に無い行を消しません（append-only と同じ理由）。
+-   `id` は `{ path, line, record }` の正規化 JSON の SHA-256 です。同じ行は何度流しても
+    同じ Observation になるので、JSONL 全体を丸ごと再送できます。索引が正本より古いのは、
+    正本が古いより厄介です。「chimera に無い = まだ試していない」と読んだ人が、既に落ちた
+    道をもう一度歩くためで、`rejected` を引けるようにするのが目的である以上そこが腐ると
+    目的が消えます。同期は追加だけで、payload に無い行を消しません（append-only と同じ理由）。
+-   id に出所を混ぜるのは、内容だけにすると byte 一致する再測定が黙って消えるためです。
+    同じ pose の同じ parameter を同じ value で測り直して同じ結果が出たら、それは再現の
+    記録であって独立した観測です。append-only policy はそれを新しいレコードとして足すよう
+    求めています。`(path, line)` は append-only である限り安定した識別子で、既存行の位置は
+    動きません。ファイルを並べ替えたり行を書き換えれば重複行ができますが、それは policy が
+    禁じている操作で git の diff に出ます。静かに消えるより、うるさく重複する方が台帳の
+    壊れ方として正しいはずです。ファイル名を変えると同じ理由でその1ファイル分が重複するので、
+    `inserted` が 0 でない同期は中身を見ます。
 -   import 由来の行は `supersedes_id` を持ちません。JSONL は撤回を散文で表現していて
     （「先の accepted を測り直したら再現しなかった」）、構造化された参照が無いためです。
     `supersedes_id` が入るのは MCP / GUI から書かれた Observation だけです。

@@ -729,11 +729,24 @@ POST /api/v1/observations          MCP / GUI から1件書く
 `q` は `parameter` / `value` / `reason` の部分一致です。`AGENTS.md` が JSONL に対して
 求めている grep の代わりになる粒度にします。
 
-`POST /api/v1/observations/sync` の body は `{ "records": [...] }` で、各要素は JSONL の
-1行そのものです。chimera が正規化して SHA-256 を取り、それを `id` にして upsert します。
-同じレコードは何度送っても同じ行になるので、JSONL 全体を毎回丸ごと送って構いません。
-payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }` で、
-`skipped` には受理しなかったレコードとその理由が入ります。
+`POST /api/v1/observations/sync` の body はファイル単位です。行番号を送り手に明示させる
+のは、空行や並び順で番号がずれないようにするためです。
+
+``` json
+{
+  "files": [
+    {
+      "path": "experiments/yukari/stand.jsonl",
+      "records": [{ "line": 1, "record": { "character": "yukari", "pose": "stand", "...": "..." } }]
+    }
+  ]
+}
+```
+
+chimera が `{ path, line, record }` を正規化して SHA-256 を取り、それを `id` にして upsert
+します。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
+構いません。payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }`
+で、`skipped` には受理しなかったレコードとその理由が入ります。
 
 受理しないのは次の2つです。`pose` と `component` のどちらも無いレコード（Observation の
 語彙に乗らない実装メモが混ざるため）と、`outcome` が語彙外のものです。ただし
