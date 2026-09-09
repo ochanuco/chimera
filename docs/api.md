@@ -723,7 +723,7 @@ comfyui-recipes の `experiments/` を写した索引です（[domain-model.md](
 GET  /api/v1/observations          ?character= &pose= &component= &parameter= &outcome= &q=
 GET  /api/v1/observations/{id}     1件。無ければ404
 POST /api/v1/observations/sync     レコードの配列を冪等に upsert する
-POST /api/v1/observations          MCP / GUI から1件書く
+POST /api/v1/observations          MCP / GUI から1件書く（idempotency_key 必須）
 ```
 
 `q` は `parameter` / `value` / `reason` の部分一致です。`AGENTS.md` が JSONL に対して
@@ -769,6 +769,11 @@ chimera が `{ path, line, record }` を正規化して SHA-256 を取り、そ�
 
 実験のアーム（Batch と seed の組を持つ形）は Observation ではなく Experiment /
 ExperimentRun に入ります。`sync` はそれらを `skipped` として返します。
+
+`POST /api/v1/observations` は `idempotency_key` を必須にします。`id` はそこから作り、
+内容からは作りません。内容から作ると、同期側と同じ理由で再測定が黙って消えます。同じ
+観測を測り直して同じ結果が出たら独立した行になるべきで、再送と区別できるのは呼び出し側の
+key だけです。同じ key の再送は既にある行をそのまま 200 で返します。
 
 ## Recipe Catalog
 
