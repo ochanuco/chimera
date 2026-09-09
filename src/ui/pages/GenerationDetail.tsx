@@ -1,8 +1,8 @@
-import { finalizeTakesRecolor } from '../finalize-options';
 import { Layout } from '../layout';
 import { formatBytes, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
+import { FinalizeFields } from '../components/FinalizeFields';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 import { PromptChips } from '../components/PromptChips';
 import type { RenderFacts, RenderLatentSource, RenderSampler } from '../../lib/render-facts';
@@ -564,57 +564,7 @@ export function GenerationDetailPage({
             <summary>Finalize</summary>
             <div class="section-body">
               <form class="finalize-form" data-generation-short-id={data.short_id} autocomplete="off">
-                <label>
-                  <input type="checkbox" name="repin" /> repin
-                </label>
-                {finalizeTakesRecolor(data.batch?.recipe ?? null) ? (
-                  <label>
-                    <input type="checkbox" name="recolor" /> recolor
-                  </label>
-                ) : null}
-                <label>
-                  <input type="checkbox" name="keep_legwear" /> keep legwear
-                </label>
-                <label>
-                  denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
-                </label>
-                <label>
-                  backdrop{' '}
-                  <select name="backdrop">
-                    <option value="stripes" selected>
-                      stripes
-                    </option>
-                    <option value="transparent">transparent</option>
-                    <option value="color">color</option>
-                  </select>
-                </label>
-                <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
-                <label>
-                  stroke light{' '}
-                  <select name="stroke_light">
-                    <option value="none" selected>
-                      none
-                    </option>
-                    <option value="n">n (↑)</option>
-                    <option value="ne">ne (↗)</option>
-                    <option value="e">e (→)</option>
-                    <option value="se">se (↘)</option>
-                    <option value="s">s (↓)</option>
-                    <option value="sw">sw (↙)</option>
-                    <option value="w">w (←)</option>
-                    <option value="nw">nw (↖)</option>
-                  </select>
-                </label>
-                <label>
-                  <input type="checkbox" name="repair_hands" /> repair hands
-                </label>
-                <label>
-                  <input type="checkbox" name="repair_feet" /> repair feet
-                </label>
-                <label>
-                  repair pad <input type="number" name="repair_pad" step="0.1" min="0.5" max="3" placeholder="1.0" />
-                </label>
-                <button type="submit">Finalize</button>
+                <FinalizeFields recipe={data.batch?.recipe ?? null} submitLabel="Finalize" />
               </form>
               {finalizeRequests.length > 0 ? (
                 <ul class="request-status-list">

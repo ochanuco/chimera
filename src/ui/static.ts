@@ -433,9 +433,10 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
-.finalize-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
-.finalize-form input[type="number"] { width: 5rem; }
+.finalize-form, .finalize-all-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.finalize-form input[type="number"], .finalize-all-form input[type="number"] { width: 5rem; }
 .finalize-form button, .finalize-all-form button {
+  align-self: flex-start;
   background: var(--accent);
   color: #10131c;
   border: none;
@@ -443,8 +444,6 @@ details.section .section-body { margin-top: 0.6rem; }
   padding: 0.35rem 0.9rem;
   cursor: pointer;
 }
-.finalize-all-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
-.finalize-all-form input[type="number"] { width: 5rem; }
 .finalize-form select, .finalize-all-form select,
 .finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] {
   background: var(--bg);
@@ -455,6 +454,20 @@ details.section .section-body { margin-top: 0.6rem; }
   font-size: 0.85rem;
 }
 .finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] { width: 6.5rem; }
+.finalize-form input:disabled, .finalize-all-form input:disabled { opacity: 0.5; cursor: not-allowed; }
+.finalize-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem 0.8rem;
+  margin: 0;
+}
+.finalize-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
+.finalize-hint { font-size: 0.8rem; color: var(--text-dim); }
+.finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
 .request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
@@ -1219,8 +1232,9 @@ export const appJs = `
   }
 
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
-  // Returns null (after alerting) when the form cannot be turned into options.
-  function finalizeOptionsFrom(form) {
+  // Returns null when the form cannot be turned into options. In quiet mode (used by the
+  // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
+  function finalizeOptionsFrom(form, quiet) {
     var denoiseRaw = qs('input[name="denoise"]', form).value;
     var recolor = qs('input[name="recolor"]', form);
     var backdropMode = qs('select[name="backdrop"]', form).value;
@@ -1228,7 +1242,7 @@ export const appJs = `
     if (backdropMode === 'color') {
       backdrop = qs('input[name="backdrop_color"]', form).value.trim();
       if (!/^#[0-9a-fA-F]{6}$/.test(backdrop)) {
-        alert('backdrop color must be #RRGGBB');
+        if (!quiet) alert('backdrop color must be #RRGGBB');
         return null;
       }
     }
@@ -1248,7 +1262,7 @@ export const appJs = `
     if (repair.length > 0) options.repair = repair;
 
     var repairPadRaw = qs('input[name="repair_pad"]', form).value;
-    if (repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
+    if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
 
     return options;
   }
@@ -1266,6 +1280,55 @@ export const appJs = `
       color.hidden = !on;
       color.disabled = !on;
       if (on) color.focus();
+    });
+  }
+
+  // repair_pad only means anything alongside a repair region, so the worker never sees it stray in.
+  function initFinalizeRepairPad() {
+    document.addEventListener('change', function (ev) {
+      var box = ev.target;
+      if (!(box instanceof HTMLInputElement) || (box.name !== 'repair_hands' && box.name !== 'repair_feet')) return;
+      var form = box.closest('.finalize-form, .finalize-all-form');
+      if (!form) return;
+      var hands = qs('input[name="repair_hands"]', form);
+      var feet = qs('input[name="repair_feet"]', form);
+      qs('input[name="repair_pad"]', form).disabled = !(hands.checked || feet.checked);
+    });
+  }
+
+  // Mirrors finalizeOptionsFrom's payload so the preview can never drift from what gets sent.
+  function renderFinalizePreview(form) {
+    var preview = qs('.finalize-preview', form);
+    if (!preview) return;
+    var options = finalizeOptionsFrom(form, true);
+    if (!options) {
+      preview.textContent = 'will queue: —';
+      return;
+    }
+    // backdrop is always sent and always meaningful, null included: null is the transparent choice.
+    var parts = ['backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop)];
+    Object.keys(options).forEach(function (key) {
+      var value = options[key];
+      if (key === 'backdrop' || value === false || value === null || value === undefined) return;
+      if (value === true) {
+        parts.push(key);
+      } else if (Array.isArray(value)) {
+        parts.push(key + '=' + value.join('+'));
+      } else {
+        parts.push(key + '=' + value);
+      }
+    });
+    preview.textContent = 'will queue: ' + parts.join(', ');
+  }
+
+  function initFinalizePreview() {
+    qsa('.finalize-form, .finalize-all-form').forEach(renderFinalizePreview);
+    ['change', 'input'].forEach(function (type) {
+      document.addEventListener(type, function (ev) {
+        var form = ev.target.closest('.finalize-form, .finalize-all-form');
+        if (!form) return;
+        renderFinalizePreview(form);
+      });
     });
   }
 
@@ -2067,6 +2130,8 @@ export const appJs = `
     initFinalize();
     initFinalizeAll();
     initFinalizeBackdropColor();
+    initFinalizeRepairPad();
+    initFinalizePreview();
     initGalleryFilter();
     initRequestLive();
     initCompareBar();
