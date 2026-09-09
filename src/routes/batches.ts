@@ -138,14 +138,20 @@ batches.post('/', async (c) => {
     idempotency_key: body.idempotency_key,
     created_at: now,
     updated_at: now,
+    patches_json: body.patches ? JSON.stringify(body.patches) : null,
+    pose_fingerprint: body.pose_fingerprint ?? null,
+    // request が done になった時点で lib/requests.ts が書く (preset の pin から)。
+    // Batch 作成時にはまだ確定していない。
+    preset_versions_json: null,
   };
 
   const statements = [
     db
       .prepare(
         `INSERT INTO batches (id, short_id, experiment_id, raw_instruction, recipe, prompt, negative_prompt,
-          parameters_json, git_commit, git_dirty, note, bookmark, status, idempotency_key, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          parameters_json, git_commit, git_dirty, note, bookmark, status, idempotency_key, created_at, updated_at,
+          patches_json, pose_fingerprint, preset_versions_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         row.id,
@@ -164,6 +170,9 @@ batches.post('/', async (c) => {
         row.idempotency_key,
         row.created_at,
         row.updated_at,
+        row.patches_json,
+        row.pose_fingerprint,
+        row.preset_versions_json,
       ),
   ];
 

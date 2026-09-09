@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import { presetImportRequestSchema, presetKindSchema } from '../schemas/presets';
+import { presetImportRequestSchema, presetKindSchema, presetPromoteRequestSchema } from '../schemas/presets';
 import { badRequest, notFound } from '../lib/errors';
 import { getPresetRow, importFromCatalog, listPresets, listPresetVersions, resolvePreset, serializeResolvedPreset } from '../lib/presets';
+import { promoteGenerationToPreset } from '../lib/promote';
 import type { AppEnv, PresetKind } from '../types';
 
 export const presets = new Hono<AppEnv>();
@@ -22,10 +23,16 @@ function isIncludeDeprecated(raw: string | undefined): boolean {
   return raw === '1' || raw === 'true';
 }
 
-// Hono マッチ順: /import は :recipe/:kind/:name より先に登録する。
+// Hono マッチ順: /import, /promote は :recipe/:kind/:name より先に登録する。
 presets.post('/import', async (c) => {
   const { recipe_ref } = presetImportRequestSchema.parse(await c.req.json());
   const result = await importFromCatalog(c.env.DB, recipe_ref);
+  return c.json(result);
+});
+
+presets.post('/promote', async (c) => {
+  const body = presetPromoteRequestSchema.parse(await c.req.json());
+  const result = await promoteGenerationToPreset(c.env.DB, { ...body, created_by: 'gui' });
   return c.json(result);
 });
 

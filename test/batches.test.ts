@@ -96,6 +96,28 @@ describe('Batch create + idempotency', () => {
     expect(res.body.git_dirty).toBe(true);
     expect(res.body.git_commit).toBe('abc1234');
   });
+
+  it('round-trips worker-reported patches and pose_fingerprint on create and on GET', async () => {
+    const patches = [{ target: 'pose', op: 'append', reason: 'holding a drink', value: 'holding a drink' }];
+    const res = await postJson<{ id: string; patches: unknown[]; pose_fingerprint: string | null; preset_versions: unknown }>(
+      '/api/v1/batches',
+      {
+        idempotency_key: crypto.randomUUID(),
+        recipe: 'yukari',
+        patches,
+        pose_fingerprint: 'sha256:deadbeef',
+      },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.patches).toEqual(patches);
+    expect(res.body.pose_fingerprint).toBe('sha256:deadbeef');
+    expect(res.body.preset_versions).toBeNull();
+
+    const detail = await getJson<{ patches: unknown[]; pose_fingerprint: string | null }>(`/api/v1/batches/${res.body.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.patches).toEqual(patches);
+    expect(detail.body.pose_fingerprint).toBe('sha256:deadbeef');
+  });
 });
 
 describe('Batch update / list / detail', () => {

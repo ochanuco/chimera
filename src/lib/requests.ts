@@ -11,6 +11,7 @@ import { parseJsonObject, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
 import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
+import { extractPins, pinPresets } from './presets';
 import type {
   BatchRow,
   ExperimentRow,
@@ -136,8 +137,10 @@ export interface BuildDerivedRequestPayloadInput {
   /** null/empty means the parent Batch is graph-mode (no single recipe) and cannot be derived. */
   parentRecipe: string | null;
   parentParameters: JsonObject;
-  /** Parent's `semantic_json.attributes.patches`, or `[]` if absent. */
+  /** Parent Batch's `patches_json` (the request's own patch layer; the pinned preset's patches are not included), or `[]` if absent. */
   parentPatches: unknown[];
+  /** Parent Batch's `preset_versions_json` pins, or `[]` if absent (docs/worker-protocol.md「preset の pin」). */
+  parentPresets: { kind: string; name: string; version: number }[];
   instruction: string;
   count: number;
   seeds?: number[];
@@ -163,8 +166,18 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
     ? (input.patches ?? [])
     : [...input.parentPatches, ...(input.patches ?? [])];
 
+  // A pin only carries forward for a kind the caller didn't explicitly override — otherwise the
+  // caller named a different pose/costume/expression and the old pin no longer applies. Batch's
+  // `parameters_json` holds the worker-resolved `recipe_pose`, not the preset name, so a carried
+  // pin overwrites `mergedParameters[kind]` with the pin's `name` to keep the two in sync
+  // (docs/worker-protocol.md「preset の pin」).
+  const overriddenKinds = new Set(Object.keys(input.parameters ?? {}));
+  const carriedPresets = input.parentPresets.filter((pin) => !overriddenKinds.has(pin.kind));
+  for (const pin of carriedPresets) mergedParameters[pin.kind] = pin.name;
+
   const generation: JsonObject = { recipe: input.parentRecipe, parameters: mergedParameters };
   if (mergedPatches.length > 0) generation.patches = mergedPatches;
+  if (carriedPresets.length > 0) generation.presets = carriedPresets;
 
   const request: JsonObject = { instruction: input.instruction, count: input.count };
   if (input.seeds) request.seeds = input.seeds;
@@ -252,9 +265,16 @@ export async function createRequest(
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
   // Keep the persisted/hashed worker contract stable when callers use the short
-  // masked-redraw aliases. REST and MCP validate the envelope before reaching here;
-  // this shared normalization also covers internal callers and idempotency replays.
-  const payload = input.kind === 'masked_redraw' ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject) : input.payload;
+  // masked-redraw aliases, and pin preset versions before generate payloads are hashed
+  // (docs/worker-protocol.md「preset の pin」). REST and MCP validate the envelope before
+  // reaching here; this shared normalization also covers internal callers and idempotency
+  // replays.
+  const payload =
+    input.kind === 'masked_redraw'
+      ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject)
+      : input.kind === 'generate'
+        ? await pinPresets(db, input.payload)
+        : input.payload;
   const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
   const existing = await db
@@ -492,6 +512,12 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   if (!result) throw badRequest('result is required when status is done');
   const resultJson = JSON.stringify(result);
 
+  // pin が無ければ preset_versions_json は書かない — payload.generation.presets は
+  // request 作成時に pinPresets が置いたものだけを持つ（graph-mode や preset 未導入の
+  // recipe では presets キー自体が無い）。
+  const pins = extractPins(JSON.parse(row.payload_json));
+  const presetVersionsJson = pins && pins.length > 0 ? JSON.stringify(pins) : null;
+
   if (row.run_id) {
     const run = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(row.run_id).first<ExperimentRunRow>();
     if (!run) throw notFound('experiment run');
@@ -507,20 +533,39 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
 
     // request の done と experiment_runs.batch_id の attach を単一トランザクションにする。
     // request だけが done になって Run に batch が付かない状態は作らない。
-    await db.batch([
+    const statements = [
       db
         .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
         .bind('done', resultJson, now, now, row.id),
       db
         .prepare('UPDATE experiment_runs SET batch_id = ?, updated_at = ? WHERE id = ? AND (batch_id IS NULL OR batch_id = ?)')
         .bind(batch.id, now, run.id, batch.id),
-    ]);
+    ];
+    if (presetVersionsJson) {
+      statements.push(
+        db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
+      );
+    }
+    await db.batch(statements);
     await touchExperiment(db, run.experiment_id, now);
   } else {
-    await db
-      .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-      .bind('done', resultJson, now, now, row.id)
-      .run();
+    // pin の記録は付随的なもの。result.batch_id が解決できないときは request の完了を
+    // 妨げず、preset_versions_json の書き込みだけを飛ばす（run_id 経路はもともと
+    // batch 未解決を 409/404 で拒む契約なので、そちらの挙動は変えない）。
+    const batch = presetVersionsJson ? await getBatchByIdOrShortId(db, result.batch_id) : null;
+    if (presetVersionsJson && batch) {
+      await db.batch([
+        db
+          .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
+          .bind('done', resultJson, now, now, row.id),
+        db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
+      ]);
+    } else {
+      await db
+        .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
+        .bind('done', resultJson, now, now, row.id)
+        .run();
+    }
   }
 
   return getRequestOr404(db, row.id);
