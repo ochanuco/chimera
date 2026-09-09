@@ -262,6 +262,8 @@ describe('MCP server at /mcp', () => {
         'derive_request',
         'list_catalog',
         'get_catalog_pose',
+        'list_presets',
+        'get_preset',
       ].sort(),
     );
   });

@@ -241,6 +241,26 @@ export interface RecipeCatalogRow {
   updated_at: string;
 }
 
+export type PresetKind = 'pose' | 'costume' | 'expression';
+export type PresetStatus = 'active' | 'deprecated';
+export type PresetSource = 'import' | 'promote';
+export type PresetCreatedBy = 'system' | 'mcp' | 'gui';
+
+export interface PresetRow {
+  id: string;
+  recipe: string;
+  kind: PresetKind;
+  name: string;
+  version: number;
+  body_json: string;
+  status: PresetStatus;
+  source: PresetSource;
+  source_generation_id: string | null;
+  note: string | null;
+  created_by: PresetCreatedBy;
+  created_at: string;
+}
+
 export interface StoryRelationRow {
   id: string;
   story_id: string;
