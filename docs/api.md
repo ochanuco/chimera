@@ -714,6 +714,36 @@ recipe を持たない graph-mode なら 409、Batch が patches を持たなけ
 `expressions` は名前の配列でしか publish されておらず、参照にしても何も足しません。移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)。
 
+## Observation
+
+comfyui-recipes の `experiments/` を写した索引です（[domain-model.md](domain-model.md#observation)）。
+正本は JSONL 側で、chimera は引くための索引に徹します。
+
+``` text
+GET  /api/v1/observations          ?character= &pose= &component= &parameter= &outcome= &q=
+GET  /api/v1/observations/{id}     1件。無ければ404
+POST /api/v1/observations/sync     レコードの配列を冪等に upsert する
+POST /api/v1/observations          MCP / GUI から1件書く
+```
+
+`q` は `parameter` / `value` / `reason` の部分一致です。`AGENTS.md` が JSONL に対して
+求めている grep の代わりになる粒度にします。
+
+`POST /api/v1/observations/sync` の body は `{ "records": [...] }` で、各要素は JSONL の
+1行そのものです。chimera が正規化して SHA-256 を取り、それを `id` にして upsert します。
+同じレコードは何度送っても同じ行になるので、JSONL 全体を毎回丸ごと送って構いません。
+payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }` で、
+`skipped` には受理しなかったレコードとその理由が入ります。
+
+受理しないのは次の2つです。`pose` と `component` のどちらも無いレコード（Observation の
+語彙に乗らない実装メモが混ざるため）と、`outcome` が語彙外のものです。ただし
+`"not adopted"` は `rejected` に正規化します（README の `rejected` の定義が
+"lost a sweep" を含み、該当レコードの `reason` もすべて「同じ seed で別のアームが
+選ばれた」であるため）。
+
+実験のアーム（Batch と seed の組を持つ形）は Observation ではなく Experiment /
+ExperimentRun に入ります。`sync` はそれらを `skipped` として返します。
+
 ## Recipe Catalog
 
 comfyui-recipes 側の recipe（pose / costume / expression の一覧、patches の語彙、
