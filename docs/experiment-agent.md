@@ -105,6 +105,9 @@ get_generation_lineage(generation_id, depth?)   Batch 単位の祖先・子孫 (
 derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
 list_catalog(recipe_ref?)                公開済み recipe catalog の要約 (既定 "production")
 get_catalog_pose(recipe, pose, recipe_ref?)   単一 pose のフルレコード
+list_presets(recipe?, kind?, include_deprecated?)   preset の名前と版の一覧 (record 本文なし)
+get_preset(recipe, kind, name, version?)            解決済みの本文、既定は最新の active 版
+promote_to_pose(generation_id, name, kind?, note?, idempotency_key)   rating good を新しい版へ昇格
 ```
 
 Run の代表 Generation を選ぶだけでなく、その Generation を見て次の一手を決める段になったら `get_generation` / `list_batch` / `get_generation_lineage` を使います。Experiment を経由しない単発の派生 (「この Generation のポーズを少し変えて3枚」) には `derive_request` を使い、`create_run` は Experiment のサイクルに乗せる場合に使い分けます。
@@ -153,6 +156,20 @@ payload に載せます（[worker-protocol.md](worker-protocol.md)「finalize」
 `parameters`、`patches` の語彙、git 情報だけを返し（prompt 本文は含まない）、
 特定の pose の中身が要るときだけ `get_catalog_pose` でフルレコードを引きます。
 どちらも recipe_ref を省略すると `"production"` を見ます。
+
+`list_presets` / `get_preset` / `promote_to_pose` は Preset
+（[domain-model.md](domain-model.md#preset)）の窓口です。`list_catalog` /
+`get_catalog_pose` が comfyui-recipes の publish したスナップショットを読むだけなのに
+対して、Preset は chimera 側の正本で版を持ちます。移行の段階 C で catalog 系の2つを
+置き換えます。
+
+`promote_to_pose` は「良かった生成をそのまま preset にする」ための tool です。起点
+Generation の Batch から `recipe` と pin されていた preset の版を、Generation から
+`semantic.attributes.patches` を取り、`{ base, patches }` を次の版として足します。
+`name` が既存なら新しい版、新しい名前ならその名前の version 1 です。起点 Generation の
+rating が good でなければ 409 で、Rating を書けるのは人間だけなので、Agent が単独で
+preset を本番へ入れることはできません。既存の版は書き換わらないため、昇格が過去の
+request の再現性を壊すこともありません。
 
 Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから

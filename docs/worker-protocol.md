@@ -21,11 +21,11 @@ worker（Windows GPU 機、LAN）
   └── ComfyUI localhost                    worker からしか到達できない
 ```
 
-  主体      持つもの                                                     持たないもの
-  --------- ------------------------------------------------------------ ---------------------------------
-  brain     生成意図の解釈、request.json、rating / semantic の読み書き   ComfyUI への経路
-  chimera   requests 行の正本、claim / heartbeat / 状態遷移、GUI、MCP    生成の判断、graph の解釈
-  worker    recipe の checkout、graph 構築、ComfyUI 実行、ingest         Experiment の意味論、evaluation
+  主体      持つもの                                                                     持たないもの
+  --------- ---------------------------------------------------------------------------- ---------------------------------------------
+  brain     生成意図の解釈、request.json、rating / semantic の読み書き                   ComfyUI への経路
+  chimera   requests 行と preset の正本、claim / heartbeat / 状態遷移、GUI、MCP          生成の判断、graph の解釈、prompt 本文の解釈
+  worker    recipe の checkout、preset の解決と lint、graph 構築、ComfyUI 実行、ingest   Experiment の意味論、evaluation
 
 Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁止」は構造で担保されます。
 
@@ -231,7 +231,13 @@ Generation への `rebuild` Reference と source Batch への Refinement を持�
   "payload": {
     "schema_version": 1,
     "request": { "instruction": "...", "count": 3, "seeds": null },
-    "generation": { "recipe": "yukari", "parameters": { "pose": "lounge" }, "patches": null, "graph": null },
+    "generation": {
+      "recipe": "yukari",
+      "parameters": { "pose": "lounge" },
+      "presets": [{ "kind": "pose", "name": "lounge", "version": 7 }],
+      "patches": null,
+      "graph": null
+    },
     "semantic": { "summary": "..." },
     "experiment": { "experiment_id": "...", "run_id": "...", "overrides": { "patches": [] } }
   }
@@ -240,6 +246,31 @@ Generation への `rebuild` Reference と source Batch への Refinement を持�
 
 worker は payload を `request.json` として書き出し `comfy-recipes generate --request`
 に渡します。翻訳層はありません。
+
+#### preset の pin
+
+chimera は requests 行を作るときに `generation.parameters` の pose / costume /
+expression を Preset の版へ解決し、`generation.presets` に焼き込みます
+（[domain-model.md](domain-model.md#preset)）。
+
+-   版を明示されなければ、その名前の最新の `active` 版を pin します。
+-   `presets` を明示して渡された場合はそれを尊重し、`parameters` からの解決はしません。
+-   名前が presets に無ければ 400（`preset not found: {recipe}/{kind}/{name}`）です。
+
+pin は request 作成時に一度だけ行います。heartbeat 途絶で queued へ戻って再実行されても
+版は動きません。版は `payload_hash` に入るので、版が違えば別の request です。
+
+worker は pin された版を `GET /api/v1/presets/{recipe}/{kind}/{name}/{version}` で引きます。
+版は不変なので、一度引いた本文はローカルに永続 cache して構いません。
+
+#### 受領時 lint
+
+worker は claim した request の preset を解決した直後に lint をかけます。今まで
+comfyui-recipes の CI が prompt に対してかけていた検証（costume hash、語彙の存在確認）が
+ここへ移ります。落ちたら ComfyUI へは行かず、request を `failed`
+（error: `preset lint failed: {理由}`）にします。
+
+CI と違って、実際に走る prompt に対して、走る直前に効きます。
 
 ### finalize
 
@@ -556,6 +587,9 @@ masked_redraw_generation(generation_id, options, idempotency_key)
 get_request(id)
 list_requests(status?, kind?, run_id?)
 derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
+list_presets(recipe?, kind?, include_deprecated?)
+get_preset(recipe, kind, name, version?)
+promote_to_pose(generation_id, name, kind?, note?, idempotency_key)
 ```
 
 `create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
@@ -574,6 +608,19 @@ masked redraw の `pad` / `feather` alias は canonical key に正規化され�
 指定した Generation が finalize / repair / masked_redraw 済みなら、その元になった raw の Generation
 まで遡ってから引き継ぎます（[experiment-agent.md](experiment-agent.md#tool)）。worker
 から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
+
+`promote_to_pose` は `rating = good` の Generation を新しい Preset の版にします。起点
+Generation の Batch から `recipe` と pin されていた preset の版を、Generation から
+`semantic.attributes.patches` を取り、`{ base, patches }` の body を組み立てて
+`(recipe, kind, name)` の次の版として INSERT します。`name` を既存の名前にすれば
+その名前の新版、新しい名前にすればその名前の version 1 です。`kind` の既定は `pose`。
+rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
+graph-mode で recipe を持たなければ 409 です。既存の版は書き換えません。
+
+`list_presets` / `get_preset` は preset の読み取り側です。`list_presets` は名前と版の
+一覧（`record` の本文は含まない）、`get_preset` は解決済みの本文（`record` 1件と平坦化
+した patches）を返します。版を省略すると最新の `active` 版を見ます。段階 C で
+`list_catalog` / `get_catalog_pose` を置き換えます。
 
 ## 段階 3: WorkerHub
 
@@ -660,6 +707,43 @@ worker / GUI とも close イベントで 1秒 → 2秒 → 4秒 …と倍々に
 
 アップグレード時の 403 は Service Token の期限切れです。worker は既存の claim /
 heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側は何もしません。
+
+## preset の移行
+
+catalog の publish（recipes → chimera）を止め、preset の正本を chimera に置くまでの段です。
+段は独立して merge でき、A と B の間はどちらの経路でも動きます。上の「段階 2 / 3 / 4」
+（poll / WorkerHub / ref ごとの worktree）とは別軸なので、字で呼び分けます。
+
+-   段階 A、catalog の取り込み。publish 済みの catalog を presets へ入れます。
+    `POST /api/v1/presets/import` が `recipe_catalogs` の recipes[].poses / costumes /
+    expressions を `source = import` の version 1 として INSERT します。同じ
+    `(recipe, kind, name)` が既にあれば飛ばすので、何度呼んでも同じ結果です。
+    comfyui-recipes 側は変えません。この時点で catalog と presets の両方から同じ
+    preset が見えます。
+-   段階 B、正本の切り替え。chimera が request に版を pin し、worker が `poses.py` では
+    なく presets を読みます。受領時 lint をここで入れ、`promote_to_pose` を MCP に足します。
+-   段階 C、旧経路の撤去。`poses.py` と catalog publish を落とします。
+    `PUT /api/v1/catalogs/{recipe_ref}` と MCP `list_catalog` / `get_catalog_pose` を廃止し、
+    `recipe_catalogs` テーブルを deprecate します。experiments JSONL の書き先も chimera の
+    Experiment / Run に寄せます。この時点で comfyui-recipes に残るのは compiler、imaging、
+    loop、lint だけです。
+-   段階 D、worker の畳み込み。loop を ComfyUI の custom node pack の thread にします。
+    GPU 機の常駐が ComfyUI 一つになり、deploy は custom_nodes の git pull と restart だけに
+    なります。chimera 側の契約はここでは変わりません。
+
+段階 B で失うのは「prompt がコードと同じ commit に乗る」ことだけです。preset が版を持ち、
+request が版を pin し、`payload_hash` に版が入るので、再現性は今と同じです。
+
+リスクと対応:
+
+-   preset が無審査で本番に入る。promote は `rating = good` の Generation からしか作れず、
+    Rating は人間しか書けません。PR review より審査は厳しくなります。
+-   agent が preset を壊す。promote は非破壊で新しい版を足すだけです。既存の版は残り、
+    request 側が版を指名します。
+-   lint が CI から消えて気付きにくい。受領時 lint の失敗は request を `failed` にするので、
+    CI より遅く気付くことはありません。
+-   chimera が落ちると preset を引けない。claim 自体 chimera を要するので、cache が効く窓は
+    「claim 済みで preset 未解決の request」だけです。版が不変なので cache は素直に効きます。
 
 ## 注意
 
