@@ -71,27 +71,27 @@ export function FinalizeFields({ recipe, submitLabel }: { recipe: string | null;
           ?
         </span>
         <label>
-          stroke light{' '}
+          stroke light（影の向き）{' '}
           <select name="stroke_light">
             <option value="none" selected>
               none
             </option>
-            <option value="n">n (↑ from top)</option>
-            <option value="ne">ne (↗ from top-right)</option>
-            <option value="e">e (→ from right)</option>
-            <option value="se">se (↘ from bottom-right)</option>
-            <option value="s">s (↓ from bottom)</option>
-            <option value="sw">sw (↙ from bottom-left)</option>
-            <option value="w">w (← from left)</option>
-            <option value="nw">nw (↖ from top-left)</option>
+            <option value="n">↓</option>
+            <option value="ne">↙</option>
+            <option value="e">←</option>
+            <option value="se">↖</option>
+            <option value="s">↑</option>
+            <option value="sw">↗</option>
+            <option value="w">→</option>
+            <option value="nw">↘</option>
           </select>
         </label>
         <span
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="光源の位置。紫縁がその側で細く、反対側で太くなる。none なら一定の太さ"
-          data-help="光源の位置。紫縁がその側で細く、反対側で太くなる。none なら一定の太さ"
+          aria-label="矢印は影が伸びる向き。紫縁はその側が太く、反対の光源側が細くなる。none なら一定の太さ"
+          data-help="矢印は影が伸びる向き。紫縁はその側が太く、反対の光源側が細くなる。none なら一定の太さ"
         >
           ?
         </span>
