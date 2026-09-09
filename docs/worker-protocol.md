@@ -256,6 +256,11 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
 -   版を明示されなければ、その名前の最新の `active` 版を pin します。
 -   `presets` を明示して渡された場合はそれを尊重し、`parameters` からの解決はしません。
 -   名前が presets に無ければ 400（`preset not found: {recipe}/{kind}/{name}`）です。
+-   ただしその `recipe` の preset が presets に1件も無ければ、何も pin せずに通します。
+    段階 A の import をまだ流していない recipe で generate が止まらないようにするためで、
+    1件でも入っていれば上の 400 が効きます。
+-   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
+    pin の対象外です。
 
 pin は request 作成時に一度だけ行います。heartbeat 途絶で queued へ戻って再実行されても
 版は動きません。版は `payload_hash` に入るので、版が違えば別の request です。
@@ -616,6 +621,15 @@ Generation の Batch から `recipe` と pin されていた preset の版を、
 その名前の新版、新しい名前にすればその名前の version 1 です。`kind` の既定は `pose`。
 rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
 graph-mode で recipe を持たなければ 409 です。既存の版は書き換えません。
+
+指定した Generation が finalize / repair / masked_redraw 済みなら、`derive_request` と同じ規則で
+元になった raw の Generation まで遡ってから起点にします。rating を見るのは指定された
+Generation で、`recipe` と base と patches は遡った先から取ります。
+
+base になる版は、その Batch を作った generate request が pin していた版です。段階 B より
+前に作られた Generation には pin が無いので、その場合は `base_version` で明示します。
+どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です。
+chimera は base を推測しません。`idempotency_key` の再送は、既に作られた版をそのまま返します。
 
 `list_presets` / `get_preset` は preset の読み取り側です。`list_presets` は名前と版の
 一覧（`record` の本文は含まない）、`get_preset` は解決済みの本文（`record` 1件と平坦化

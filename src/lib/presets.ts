@@ -1,13 +1,15 @@
 // Preset のクエリ。REST (src/routes/presets.ts) と MCP tools `list_presets` /
-// `get_preset` (src/mcp.ts) の両方がここを呼ぶ。段階 A の範囲は読み取りと catalog
-// からの取り込みだけ — 版の pin、受領時 lint、promote は段階 B (docs/worker-protocol.md
-// 「preset の移行」)。
+// `get_preset` (src/mcp.ts) の両方がここを呼ぶ。読み取りと catalog からの取り込み
+// (段階 A) に加え、版の pin (段階 B, docs/worker-protocol.md「preset の pin」) もここに
+// 置く。promote は resolveDerivationSource (lib/requests.ts) を要るため、この
+// ファイルから requests.ts への依存を作らないよう lib/promote.ts に分けている。
 
 import { nowIso } from './db';
 import { getCatalog } from './catalogs';
-import { conflict, notFound } from './errors';
+import { badRequest, conflict, notFound } from './errors';
 import { presetBodySchema, type PresetBody } from '../schemas/presets';
 import { uuidv7 } from './uuidv7';
+import type { JsonObject } from './overrides';
 import type { PresetKind, PresetRow, PresetSource, PresetStatus } from '../types';
 
 const CATALOG_KIND_MAP: Record<string, PresetKind> = {
@@ -118,6 +120,7 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
           note: null,
           created_by: 'system',
           created_at: now,
+          idempotency_key: null,
         };
         inserts.push(
           insertStatement.bind(
@@ -143,6 +146,43 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
   if (inserts.length > 0) await db.batch(inserts);
 
   return { imported, skipped };
+}
+
+const PIN_KINDS: PresetKind[] = ['pose', 'costume', 'expression'];
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Pure transform: resolves `generation.parameters.{pose,costume,expression}` to pinned
+ * `{kind, name, version}` entries under `generation.presets` (docs/worker-protocol.md
+ * 「preset の pin」). Never mutates `payload` — returns it unchanged (by reference) when
+ * there is nothing to pin, so callers hashing the result don't see spurious differences.
+ */
+export async function pinPresets(db: D1Database, payload: JsonObject): Promise<JsonObject> {
+  const generation = payload.generation;
+  if (!isJsonObject(generation)) return payload;
+  if (generation.graph || typeof generation.recipe !== 'string') return payload;
+  if (generation.presets !== undefined) return payload;
+
+  const recipe = generation.recipe;
+  const hasAnyPreset = await db.prepare('SELECT 1 FROM presets WHERE recipe = ? LIMIT 1').bind(recipe).first();
+  if (!hasAnyPreset) return payload;
+
+  const parameters = isJsonObject(generation.parameters) ? generation.parameters : {};
+  const pins: { kind: PresetKind; name: string; version: number }[] = [];
+  for (const kind of PIN_KINDS) {
+    const name = parameters[kind];
+    if (typeof name !== 'string' || name === '') continue;
+    const row = await getPresetRow(db, recipe, kind, name);
+    if (!row) throw badRequest(`preset not found: ${recipe}/${kind}/${name}`);
+    pins.push({ kind, name, version: row.version });
+  }
+
+  if (pins.length === 0) return payload;
+
+  return { ...payload, generation: { ...generation, presets: pins } };
 }
 
 export interface ListPresetsFilters {

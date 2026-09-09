@@ -52,6 +52,7 @@ import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
 import { getPresetRow, listPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
+import { promoteGenerationToPreset } from './lib/promote';
 import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
@@ -195,6 +196,15 @@ const getPresetInputSchema = z.object({
   kind: presetKindSchema,
   name: z.string().min(1),
   version: z.number().int().positive().optional(),
+});
+
+const promoteToPoseInputSchema = z.object({
+  generation_id: z.string().min(1),
+  name: z.string().min(1),
+  kind: presetKindSchema.default('pose'),
+  base_version: z.number().int().positive().optional(),
+  note: z.string().optional(),
+  idempotency_key: z.string().min(1),
 });
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
@@ -817,6 +827,37 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (!row) throw notFound(`preset '${recipe}/${kind}/${name}'`);
       const resolved = await resolvePreset(db, row);
       return jsonResult(serializeResolvedPreset(row, resolved));
+    },
+  );
+
+  server.registerTool(
+    'promote_to_pose',
+    {
+      description:
+        'Turn a rating=good Generation into a new Preset version (docs/worker-protocol.md「preset の移行」段階 B). ' +
+        'Never rewrites an existing version — always appends the next version of (recipe, kind, name); pass an ' +
+        'existing name for a new version of it, or a new name to start it at version 1. base is the preset version ' +
+        'the originating generate request pinned (generation.presets); if that request predates pinning and carries ' +
+        'no pin, pass base_version explicitly — chimera never guesses a base. kind defaults to "pose". If ' +
+        'generation_id is a finalized/repaired Generation, it is resolved back to the raw Generation the same way ' +
+        'derive_request does, and recipe/base/patches are taken from there — but rating is read from generation_id ' +
+        'itself. 409s when rating is not good, when the resolved source Batch has no recipe (graph-mode), or when ' +
+        'neither a pin nor base_version is available. idempotency_key replay returns the already-created version ' +
+        'unchanged.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: promoteToPoseInputSchema,
+    },
+    async ({ generation_id, name, kind, base_version, note, idempotency_key }) => {
+      const result = await promoteGenerationToPreset(db, {
+        generation_id,
+        name,
+        kind,
+        base_version,
+        note,
+        idempotency_key,
+        created_by: 'mcp',
+      });
+      return jsonResult(result);
     },
   );
 

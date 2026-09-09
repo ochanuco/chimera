@@ -259,6 +259,7 @@ export interface PresetRow {
   note: string | null;
   created_by: PresetCreatedBy;
   created_at: string;
+  idempotency_key: string | null;
 }
 
 export interface StoryRelationRow {

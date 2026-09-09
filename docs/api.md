@@ -690,11 +690,16 @@ POST /api/v1/presets/promote                            rating good の Generati
 既存なら次の版、新しい名前ならその名前の version 1 になります。
 
 ``` json
-{ "generation_id": "abc123", "name": "lounge", "kind": "pose", "note": "...", "idempotency_key": "..." }
+{ "generation_id": "abc123", "name": "lounge", "kind": "pose", "base_version": 7, "note": "...", "idempotency_key": "..." }
 ```
 
+base になる版は、その Batch を作った generate request が pin していた版です。pin が無い
+Generation（段階 B より前のもの）では `base_version` が要ります。どちらも無ければ 409
+（`no pinned preset for this generation; pass base_version`）で、chimera は base を推測しません。
+
 起点 Generation の rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
-recipe を持たない graph-mode なら 409 です。既存の版は書き換えません。
+recipe を持たない graph-mode なら 409 です。既存の版は書き換えません。`idempotency_key` の
+再送は、既に作られた版をそのまま 200 で返します。
 
 `POST /api/v1/presets/import` は `recipe_catalogs` に publish 済みの catalog を
 `source = import` の version 1 として取り込みます（body は `{ "recipe_ref": "production" }`）。

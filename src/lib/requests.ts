@@ -11,6 +11,7 @@ import { parseJsonObject, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
 import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
+import { pinPresets } from './presets';
 import type {
   BatchRow,
   ExperimentRow,
@@ -252,9 +253,16 @@ export async function createRequest(
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
   // Keep the persisted/hashed worker contract stable when callers use the short
-  // masked-redraw aliases. REST and MCP validate the envelope before reaching here;
-  // this shared normalization also covers internal callers and idempotency replays.
-  const payload = input.kind === 'masked_redraw' ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject) : input.payload;
+  // masked-redraw aliases, and pin preset versions before generate payloads are hashed
+  // (docs/worker-protocol.md「preset の pin」). REST and MCP validate the envelope before
+  // reaching here; this shared normalization also covers internal callers and idempotency
+  // replays.
+  const payload =
+    input.kind === 'masked_redraw'
+      ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject)
+      : input.kind === 'generate'
+        ? await pinPresets(db, input.payload)
+        : input.payload;
   const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
   const existing = await db

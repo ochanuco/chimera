@@ -7,6 +7,15 @@ export const presetImportRequestSchema = z.object({
   recipe_ref: z.string().regex(RECIPE_REF_RE),
 });
 
+export const presetPromoteRequestSchema = z.object({
+  generation_id: z.string().min(1),
+  name: z.string().min(1),
+  kind: presetKindSchema.default('pose'),
+  base_version: z.number().int().positive().optional(),
+  note: z.string().optional(),
+  idempotency_key: z.string().min(1),
+});
+
 /**
  * chimera は preset の器の形だけを知り、record の中身と patch の意味 (op の語彙) は
  * comfyui-recipes 側のものとして解釈しない (docs/domain-model.md「Preset」不変条件、

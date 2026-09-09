@@ -264,6 +264,7 @@ describe('MCP server at /mcp', () => {
         'get_catalog_pose',
         'list_presets',
         'get_preset',
+        'promote_to_pose',
       ].sort(),
     );
   });
