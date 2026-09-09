@@ -223,6 +223,66 @@ rejected
 -   ExperimentPromotion は原則物理削除しません。
 -   確定済み Promotion の `promoted_overrides` は変更できません（409）。
 
+## Preset
+
+recipe の pose / costume / expression の本文です。もとは comfyui-recipes の
+`poses.py` にあり、catalog として chimera へ publish されていました。正本を chimera
+側に移し、承認済みの Generation から昇格させられるようにしたものが Preset です
+（移行の段は [worker-protocol.md](worker-protocol.md#preset-の移行)）。
+
+主な属性:
+
+``` text
+id
+recipe                yukari
+kind                  pose | costume | expression
+name                  lounge
+version               1 以上。(recipe, kind, name) の中で単調増加
+body_json             { record } または { base, patches }
+status                active | deprecated
+source                import | promote
+source_generation_id  promote の起点 Generation（import は null）
+note
+created_by            system | mcp | gui
+created_at
+```
+
+`(recipe, kind, name, version)` が一意です。`recipe_ref` は持ちません。ブランチで
+preset 空間を分けるのではなく、試したいものを新しい版として足し、request 側が版を
+指名します。`recipe_ref` は node pack のコードのブランチ名だけを意味するようになります。
+
+### body の形
+
+`source = import` の行は catalog にあったレコードをそのまま持ちます。
+
+``` json
+{ "record": { "name": "lounge", "prompt": "reclining on a beanbag, warm light" } }
+```
+
+`source = promote` の行は prompt 本文ではなく「どの版に何を足したか」を持ちます。
+
+``` json
+{
+  "base": { "recipe": "yukari", "kind": "pose", "name": "lounge", "version": 7 },
+  "patches": [{ "target": "pose", "op": "append", "reason": "...", "value": "..." }]
+}
+```
+
+読み出しは解決済みの形で返します。`base` の連鎖を根まで辿り、`record` 1件と、根から
+指定版までの patches を順に並べた配列にします。文字列へ畳むのは node pack の graph
+compiler です。
+
+不変条件:
+
+-   preset 行は物理削除しません。`deprecated` はラベルで、過去の request が指名した
+    版は永久に引けます。
+-   promote は既存の版を書き換えません。必ず新しい版を足します。
+-   promote の起点 Generation は `rating = good` でなければなりません。Rating を書ける
+    のは人間だけなので（[Rating](#rating)）、preset の審査は人間に残ります。
+-   chimera は preset の器の形だけを知り、`record` の中身と patch の `op` の意味は
+    解釈しません。器の形を知るのは、起点 Generation の Batch `parameters` と
+    `semantic.attributes.patches` から promote 後の body を組み立てるためです。
+
 ## Request
 
 chimera を control plane、GPU 機を worker とする配置（[worker-protocol.md](worker-protocol.md)）の
