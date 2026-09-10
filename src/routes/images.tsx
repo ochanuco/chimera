@@ -13,6 +13,7 @@ import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
+import { queryGenerations } from '../lib/generations';
 import {
   GenerationDetailPage,
   type GenerationDetailData,
@@ -20,6 +21,7 @@ import {
   type ExperimentRunFamily,
 } from '../ui/pages/GenerationDetail';
 import { LightboxPanel } from '../ui/components/Lightbox';
+import { GenerationCard } from '../ui/components/GenerationCard';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { getImageMeta, formatImageMetaText, type ImageMeta } from '../lib/image-meta';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
@@ -86,6 +88,16 @@ images.get('/:shortId', async (c) => {
   if (!generation) {
     if (wantsJson(c)) throw notFound('generation');
     return c.html(<NotFoundPage what="Generation" />, 404);
+  }
+
+  // Gallery live insertion fragment (docs/ui.md「Gallery」): the exact card the Gallery /
+  // Bookmarks list itself would render, reusing queryGenerations so the two never drift.
+  if (c.req.query('partial') === 'card') {
+    const origin = new URL(c.req.url).origin;
+    const cardData = await queryGenerations(db, { ids: generation.short_id }, origin);
+    const item = cardData.items[0];
+    if (!item) throw notFound('generation');
+    return c.html(<GenerationCard g={item} />);
   }
 
   if (wantsJson(c)) {

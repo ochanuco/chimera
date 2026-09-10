@@ -106,26 +106,74 @@ Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込�
 リンクが画面に入ると次ページを自動でフェッチしてグリッドへ追記します（JS無効環境では
 リンクとして機能します）。
 
+### Gallery live insertion
+
+`/gallery`をリロードしなくても新しいGenerationがグリッドへ流れ込みます。対象は`ids`・
+Tag・Rating・Bookmarked only・公開済みのみのいずれも指定していない既定表示だけで
+（`view`・`bad`は絞り込みに数えません）、その条件下でだけクライアントはviewer WebSocket
+（`/api/v1/requests/ws`、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）を開き
+（[Generation Detail](#generation-detail)のFinalizeで説明したrequest live接続を共有します）、
+`generation`メッセージを受けます。
+
+現在の`view`で受理できるものだけを扱います — `raw`は`refines_generation_short_id`が
+nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です。既にグリッドに表示済みの
+short_idは無視します。
+
+受理したら`GET /g/{short_id}?partial=card`（Gallery一覧と同じ`GenerationCard`フラグメント）
+を取得し、
+
+-   ページがsticky toolbarの直下＝グリッド先頭が見えている位置までスクロールされていれば、
+    そのままグリッド先頭へ挿入します。
+-   そうでなければキューに積み、sticky toolbarの直下中央に浮かぶ新着バナー（`--accent`地・
+    `#10131c`文字・角丸999px・`0.4rem 1rem`パディング・0.85rem/600・影付き、上矢印アイコン +
+    `新着 N 件`。幅600px以下では2.75rem以上の高さ）を出します。バナーを押すと最上部へ
+    スクロールしつつキューを新しい順に（＝先頭挿入を古いものから繰り返す）全部挿入します。
+    手動で最上部までスクロールしても同じくキューを流し切りバナーを消します。
+
+ソケットが切れたときの再接続は同じ接続を使う[Generation Detail](#generation-detail)の
+request live更新と同じ指数バックオフ（1s→2s→…上限30s）です。
+
 カードはサムネイル1枚と、その下のrating（bad/neutral/good）・bookmarkだけの1行です。
 short_idリンク・コピーボタン・画像メタ（解像度/ファイルサイズ）・タグ・比較チェックボックスは
-カードから外し、サムネイルクリックで開く[Lightbox](#lightbox)に移しました。サムネイル左上には、
-このGenerationの所属Batchがfinalize/repair/masked_redrawで書き換えた元のraw Generationがある
-とき`from <short_id>`バッジ（`#402e21`地に橙文字、short_idは等幅）を、左下には
-[Publication](domain-model.md#publication)が1件以上あるとき送信アイコン付きの`公開済み`ピルを
-重ねます。幅600px以下ではbookmarkをサムネイル右上の2.75rem角のタップ領域へ移し、ratingの
-3ボタンは行いっぱいに広がります（各2.75rem以上）。
+カードから外し、サムネイルクリックで開く[Lightbox](#lightbox)に移しました。サムネイル左上には
+（上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
+masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
+橙文字、short_idは等幅）、このGenerationを対象にした最新のfinalize/repair/masked_redraw
+requestがあるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
+1件以上あるとき送信アイコン付きの`公開済み`ピルを重ねます。幅600px以下ではbookmarkをサムネイル
+右上の2.75rem角のタップ領域へ移し、ratingの3ボタンは行いっぱいに広がります（各2.75rem以上）。
+
+進捗ピル（`rgba(18,18,20,0.86)`地・`--border`の1px枠・角丸999px、テキストはstatusごとに
+色分け）はkind（`finalize`/`repair`/`masked redraw`）とstatusから組み立てます。
+
+``` text
+finalize · queued                      ← --accent
+repair · running 3/10                  ← --neutral（step/totalはprogressメッセージが届いてから）
+masked redraw · done → xyz789          ← --good、xyz789は等幅
+finalize · failed                      ← --bad
+```
+
+`[data-request-id]`要素なので、[Generation Detail](#generation-detail)のrequest live更新が
+受ける同じ`progress`/`status`メッセージでその場更新されます（runningの`progress`は
+`step`/`total`が分かっている間だけ`kind · running step/total`に、doneになった時点で結果の
+short_idを取得して`kind · done → <short_id>`に差し替えます）。Lightboxからfinalizeを
+送信したときも、その場でこのピルをqueued状態で足す/差し替えます（他のカードは触りません）。
 
 カード表示例:
 
 ``` text
 [ IMAGE ]
  from abc123          ← rawを書き換えた出力のときだけ
+ finalize · queued    ← finalize/repair/masked_redraw requestがあるときだけ
  公開済み             ← Publicationが1件以上あるときだけ
 
 bad  neutral  good        🔖
 ```
 
-Batch Detail / Bookmarksも同じカードコンポーネントを使い、同じバッジを表示します。
+Batch Detail / Bookmarksも同じカードコンポーネントを使い、from-badge / 公開済みピルは
+表示します。進捗ピルは`GET /api/v1/generations`（Gallery / Bookmarksが使う一覧）と
+Gallery live insertionのカードフラグメントだけが持つデータなので、Batch Detailのカードには
+出ません。
 
 表示しないもの（サムネイルクリックで[Lightbox](#lightbox)を開けば見られます）:
 
@@ -777,4 +825,5 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
 | `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
+| `gallery.new_arrivals` | `count`, `mode`（`auto` / `banner`） | [Gallery live insertion](#gallery-live-insertion)のカード挿入（`handleGenerationMessage` / `flushGalleryLiveQueue`） |
 | `ui.error` | `action`, `message`, `status`, 該当操作のprops | 上記操作の失敗時 |

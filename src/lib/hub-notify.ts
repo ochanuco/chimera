@@ -43,6 +43,29 @@ export async function notifyHub(env: Bindings, type: HubNotifyType, request: Hub
   }
 }
 
+export interface HubNotifyGeneration {
+  generation_id: string;
+  short_id: string;
+  batch_id: string;
+  /** short_id of the raw Generation this Generation's Batch refines, or null for a raw Generation. */
+  refines_generation_short_id: string | null;
+  created_at: string;
+}
+
+/** Notifies viewers of a freshly-ingested Generation (Gallery live insertion, docs/ui.md「Gallery」). */
+export async function notifyHubGeneration(env: Bindings, generation: HubNotifyGeneration): Promise<void> {
+  try {
+    const stub = getWorkerHubStub(env);
+    await stub.fetch('https://hub/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'generation', generation }),
+    });
+  } catch (err) {
+    console.error('notifyHub failed', err);
+  }
+}
+
 /**
  * `c.executionCtx` はテストハーネス (`app.request(url, init, env)`) では未設定で、
  * アクセスすると例外を投げる (src/app.ts の `/mcp` ハンドラと同じガード)。本番では

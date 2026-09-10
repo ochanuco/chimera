@@ -1,5 +1,25 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, postJson, req } from './helpers';
+
+async function createFinalizeLikeRequest(
+  generationId: string,
+  kind: 'finalize' | 'repair' | 'masked_redraw' = 'finalize',
+): Promise<string> {
+  const payload =
+    kind === 'masked_redraw'
+      ? { generation_id: generationId, options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'x', denoise: 0.5 } }
+      : kind === 'repair'
+        ? { generation_id: generationId, options: { parts: ['hands'] } }
+        : { generation_id: generationId, options: { repin: true } };
+  const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
+    kind,
+    payload,
+    idempotency_key: crypto.randomUUID(),
+    created_by: 'gui',
+  });
+  return created.body.id;
+}
 
 /**
  * Slices out one card's markup (`<div class="card">...</div></div>`) so assertions don't leak
@@ -101,5 +121,80 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
     expect(card).toContain('公開済み');
     expect(card).not.toContain('tag-add-form');
     expect(card).not.toContain('compare-check');
+  });
+});
+
+describe('GET /g/:short_id?partial=card (docs/ui.md「Gallery」live insertion)', () => {
+  it('returns the same card fragment the Gallery list renders', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/g/${generation.short_id}?partial=card`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    const card = cardHtml(html, generation.short_id);
+    expect(card).toContain(`data-generation-id="${generation.id}"`);
+    expect(card).toContain('rating-group');
+    expect(card).toContain('bookmark-btn');
+  });
+
+  it('accepts a UUID as well as a short_id', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/g/${generation.id}?partial=card`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(`data-short-id="${generation.short_id}"`);
+  });
+
+  it('404s for an unknown short_id', async () => {
+    const res = await req('/g/zzzzzz?partial=card');
+    expect(res.status).toBe(404);
+  });
+
+  it('includes the finalize badge when a request targets the generation', async () => {
+    const { generation } = await createGeneration();
+    const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
+    const res = await req(`/g/${generation.short_id}?partial=card`);
+    const card = cardHtml(await res.text(), generation.short_id);
+    expect(card).toContain('card-finalize-badge');
+    expect(card).toContain(`data-request-id="${requestId}"`);
+    expect(card).toContain('finalize · queued');
+  });
+});
+
+describe('GenerationCard finalize badge (docs/ui.md「Gallery」進捗ピル)', () => {
+  it('renders queued / running / done (→ result short_id) / failed as the request transitions', async () => {
+    const { generation } = await createGeneration();
+    const { batch: resultBatch, generation: resultGen } = await createGeneration();
+    const requestId = await createFinalizeLikeRequest(generation.id, 'repair');
+
+    let card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
+    expect(card).toContain('repair · queued');
+
+    await env.DB.prepare('UPDATE requests SET status = ? WHERE id = ?').bind('running', requestId).run();
+    card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
+    expect(card).toContain('repair · running');
+
+    await env.DB.prepare('UPDATE requests SET status = ?, result_json = ? WHERE id = ?')
+      .bind('done', JSON.stringify({ batch_id: resultBatch.id, generation_ids: [resultGen.id] }), requestId)
+      .run();
+    card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
+    expect(card).toContain('repair · done → ');
+    expect(card).toContain(resultGen.short_id);
+
+    await env.DB.prepare('UPDATE requests SET status = ? WHERE id = ?').bind('failed', requestId).run();
+    card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
+    expect(card).toContain('repair · failed');
+  });
+
+  it('labels a masked_redraw request "masked redraw"', async () => {
+    const { generation } = await createGeneration();
+    await createFinalizeLikeRequest(generation.id, 'masked_redraw');
+    const card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
+    expect(card).toContain('masked redraw · queued');
+  });
+
+  it('omits the badge entirely when no finalize/repair/masked_redraw request targets the generation', async () => {
+    const { generation } = await createGeneration();
+    const card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
+    expect(card).not.toContain('card-finalize-badge');
   });
 });

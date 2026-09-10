@@ -29,6 +29,11 @@ function activeParams(filters: GalleryFilters): URLSearchParams {
   return params;
 }
 
+/** Gallery live insertion (docs/ui.md「Gallery」) is active only when no ids / panel filter narrows the grid — `view`/`bad` don't disqualify it. */
+function galleryLiveEligible(filters: GalleryFilters): boolean {
+  return !filters.ids && !filters.tag && !filters.rating && !filters.bookmark && !filters.published;
+}
+
 function badToggleHref(filters: GalleryFilters): string {
   const params = activeParams(filters);
   if (filters.bad) params.delete('bad');
@@ -151,7 +156,13 @@ export function GalleryPage({
       {items.length === 0 ? (
         <p class="empty-state">No generations match this filter.</p>
       ) : (
-        <div class="grid" data-gallery-grid data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}>
+        <div
+          class="grid"
+          data-gallery-grid
+          data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}
+          data-gallery-view={filters.view}
+          data-gallery-live={galleryLiveEligible(filters) ? 'true' : undefined}
+        >
           <GalleryCards items={items} nextCursor={nextCursor} filters={filters} />
         </div>
       )}

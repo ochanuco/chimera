@@ -1165,7 +1165,21 @@ to=2026-08-26
 検索結果には short ID、canonical URL、thumbnail/image
 URL、summary、`refines_generation_short_id`（この Generation の Batch が finalize/repair/
 masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）、`published`
-（[Publication](#publication)を1件以上持つか）等の軽量情報を返します。
+（[Publication](#publication)を1件以上持つか）、`finalize_request`
+等の軽量情報を返します。
+
+`finalize_request` は、この Generation を対象にした最新の finalize / repair /
+masked_redraw [Request](#request)（`payload.generation_id` がこの Generation の UUID /
+short_id のどちらかと一致する行のうち、最新の1件）です。無ければ `null`。
+
+``` json
+{ "id": "...", "kind": "finalize", "status": "running", "result_short_id": null }
+```
+
+`result_short_id` は `status = done` のときだけ `result.generation_ids[0]` を short_id に
+解決した値で、それ以外は `null` です（GUIの進捗ピル、[ui.md](ui.md#gallery)）。ページ内の
+全件を1クエリで解決するため、`GET /g/{short_id}?partial=card`（[ui.md](ui.md#gallery)の
+Gallery live insertion カードフラグメント）も同じフィールドを同じ形で返します。
 
 `published=true|false` は Publication の有無で絞り込みます。`tag=publish` は
 [Publication「tag 互換」](#tag-互換)により `published=true` の別名として扱います。
