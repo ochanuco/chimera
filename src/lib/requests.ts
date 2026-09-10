@@ -126,6 +126,8 @@ export interface BuildDerivedRequestPayloadInput {
   parentPatches: unknown[];
   /** Parent Batch's `preset_versions_json` pins, or `[]` if absent (docs/worker-protocol.md「preset の pin」). */
   parentPresets: { kind: string; name: string; version: number }[];
+  /** Whether the parent recipe has any Preset row at all (`recipeHasPresets` in ./presets) — a recipe with none has no preset body that can drift, so replaying its patches without a pin stays safe. */
+  parentRecipeHasPresets: boolean;
   instruction: string;
   count: number;
   seeds?: number[];
@@ -144,6 +146,15 @@ export interface BuildDerivedRequestPayloadInput {
 export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInput): JsonObject {
   if (!input.parentRecipe) {
     throw conflict('parent batch has no recipe; a graph-mode batch cannot be derived');
+  }
+  // patches は書かれた当時の preset 本文に対する差分で、その本文を特定するのが pin。
+  // pin が無ければ worker は現行の版を解決するので、そのまま引き継ぐと差分の宛先がずれ、
+  // text op が needle 不在で落ちる (docs/worker-protocol.md「preset の pin」)。
+  if (!input.replacePatches && input.parentPatches.length > 0 && input.parentPresets.length === 0 && input.parentRecipeHasPresets) {
+    throw conflict(
+      'parent batch carries patches but no pinned preset version, so the preset body those patches target may have moved since; ' +
+        'pass replace_patches: true with patches restated against the current preset, or derive from a batch that has pins',
+    );
   }
 
   const mergedParameters: JsonObject = { ...input.parentParameters, ...(input.parameters ?? {}) };
