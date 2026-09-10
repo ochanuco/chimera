@@ -216,7 +216,39 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-from-badge-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .card-from-badge-link { text-decoration: none; }
 .card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
-.card .thumb-link .card-from-badge { position: absolute; top: 0.4rem; left: 0.4rem; z-index: 1; }
+
+/* from-badge と finalizeピルを縦に積むコンテナ (docs/ui.md「Gallery」)。from-badge が無ければ
+   finalizeピルだけがこの位置に来る。 */
+.card .thumb-link .thumb-badges-top {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  max-width: calc(100% - 0.8rem);
+}
+
+/* finalize/repair/masked_redraw の進捗ピル (docs/ui.md「Gallery」)。request-status-* は
+   .request-status-list と共通の色クラス (このファイル下方)。 */
+.card-finalize-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(18, 18, 20, 0.86);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-finalize-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .card-published-pill {
   position: absolute;
@@ -536,6 +568,32 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   resize: vertical;
   min-height: 2rem;
+}
+
+/* Gallery live insertion の新着バナー (docs/ui.md「Gallery」)。sticky ツールバーの直下に
+   中央寄せで浮かぶ。 */
+.gallery-new-arrivals {
+  position: fixed;
+  top: calc(var(--nav-h) + 0.6rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.gallery-new-arrivals.hidden { display: none; }
+@media (max-width: 600px) {
+  .gallery-new-arrivals { min-height: 2.75rem; }
 }
 
 .load-more {
@@ -1883,6 +1941,7 @@ export const appJs = `
           list.insertBefore(row, list.firstChild);
           registerRequestElement(row);
         }
+        upsertCardFinalizeBadge(shortId, request);
       } catch (e) {
         trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
         alert('finalize failed: ' + e.message);
@@ -1934,15 +1993,106 @@ export const appJs = `
     });
   }
 
-  // --- Request live status (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws
-  // から progress / status を受けて [data-request-id] 要素の表示を更新する。ページ読み込み後に
-  // 追加された行 (finalize submit / Lightbox 再オープン) も registerRequestElement が
-  // 都度登録し、まだ繋がっていなければソケットを開く。
-  var requestLive = { byId: {}, ws: null, connecting: false, backoff: 1000 };
+  // --- Viewer WebSocket (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws への
+  // 接続を1本だけ共有する。requestLive (status/progress) と gallery live insertion
+  // (generation) はどちらもこの上に message type ごとのハンドラを登録するだけで、ソケットの
+  // 開閉・再接続 (1s→2s→4s…上限30s) は一箇所にまとめる。最初にどちらかが繋ぎに来た時点で開く。
+  var viewerSocket = { ws: null, connecting: false, backoff: 1000, handlers: {} };
+
+  function viewerSocketOn(type, handler) {
+    if (!viewerSocket.handlers[type]) viewerSocket.handlers[type] = [];
+    viewerSocket.handlers[type].push(handler);
+  }
+
+  function viewerSocketConnect() {
+    if (viewerSocket.ws || viewerSocket.connecting) return;
+    viewerSocket.connecting = true;
+    var ws;
+    try {
+      var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
+    } catch (e) {
+      viewerSocket.connecting = false;
+      return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
+    }
+    viewerSocket.ws = ws;
+    ws.addEventListener('open', function () {
+      viewerSocket.connecting = false;
+      viewerSocket.backoff = 1000;
+    });
+    ws.addEventListener('message', function (ev) {
+      var data;
+      try {
+        data = JSON.parse(ev.data);
+      } catch (e) {
+        return;
+      }
+      if (!data || !data.type) return;
+      var handlers = viewerSocket.handlers[data.type];
+      if (handlers) handlers.forEach(function (h) { h(data); });
+    });
+    ws.addEventListener('close', function () {
+      viewerSocket.ws = null;
+      viewerSocket.connecting = false;
+      setTimeout(viewerSocketConnect, viewerSocket.backoff);
+      viewerSocket.backoff = Math.min(viewerSocket.backoff * 2, 30000);
+    });
+    ws.addEventListener('error', function () {
+      try {
+        ws.close();
+      } catch (e) {}
+    });
+  }
+
+  // --- Request live status: progress / status を受けて [data-request-id] 要素の表示を更新する
+  // ([data-request-id]は .request-status-list の <li> と GenerationCard の finalize 進捗ピルの
+  // 2種類。後者は setFinalizeBadgeText で組み立てを分ける)。ページ読み込み後に追加された要素
+  // (finalize submit / Lightbox 再オープン / gallery live insertion で挿入したカード) も
+  // registerRequestElement が都度登録し、まだ繋がっていなければソケットを開く。
+  var requestLive = { byId: {} };
+
+  function isFinalizeBadge(el) {
+    return el.classList.contains('card-finalize-badge');
+  }
+
+  // kind 表示ラベル。src/ui/components/GenerationCard.tsx の finalizeKindLabel と同じ規則。
+  function finalizeKindLabel(kind) {
+    return kind === 'repair' ? 'repair' : kind === 'masked_redraw' ? 'masked redraw' : 'finalize';
+  }
+
+  // GenerationCard.tsx の FinalizeBadge が組む構造と同じテキストを再現する。extra.step/total は
+  // running中のprogressメッセージから、extra.resultShortId はdone確定後のresult取得から渡す。
+  function setFinalizeBadgeText(el, extra) {
+    var kind = el.getAttribute('data-request-kind');
+    var status = el.getAttribute('data-request-status');
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.appendChild(document.createTextNode(finalizeKindLabel(kind) + ' · '));
+    if (status === 'running') {
+      var text = 'running';
+      if (extra && typeof extra.step === 'number' && typeof extra.total === 'number') {
+        text += ' ' + extra.step + '/' + extra.total;
+      }
+      el.appendChild(document.createTextNode(text));
+    } else if (status === 'done') {
+      el.appendChild(document.createTextNode('done → '));
+      var code = document.createElement('span');
+      code.className = 'card-finalize-result';
+      code.textContent = (extra && extra.resultShortId) || '';
+      el.appendChild(code);
+    } else {
+      el.appendChild(document.createTextNode(status || ''));
+    }
+  }
 
   function requestLiveApplyProgress(p) {
     var el = requestLive.byId[p.request_id];
     if (!el) return;
+    if (isFinalizeBadge(el)) {
+      if (el.getAttribute('data-request-status') === 'running') {
+        setFinalizeBadgeText(el, { step: p.step, total: p.total });
+      }
+      return;
+    }
     var span = qs('.request-progress', el);
     if (!span) return;
     var text = p.phase || '';
@@ -1956,6 +2106,22 @@ export const appJs = `
     el.className = el.className.replace(/request-status-\S+/, '').trim();
     el.classList.add('request-status-' + s.status);
     el.setAttribute('data-request-status', s.status);
+
+    if (isFinalizeBadge(el)) {
+      setFinalizeBadgeText(el);
+      if (s.status !== 'done') return;
+      try {
+        var badgeDetail = await api('/api/v1/requests/' + s.request_id, 'GET');
+        if (badgeDetail.result && badgeDetail.result.generation_ids && badgeDetail.result.generation_ids[0]) {
+          var badgeGen = await api('/api/v1/generations/' + badgeDetail.result.generation_ids[0], 'GET');
+          setFinalizeBadgeText(el, { resultShortId: badgeGen.short_id });
+        }
+      } catch (e) {
+        // 詳細取得に失敗してもstatusクラス自体は反映済みなので諦める
+      }
+      return;
+    }
+
     if (s.status !== 'done' && s.status !== 'failed') return;
     var existingResult = qs('.request-result', el);
     if (existingResult) existingResult.remove();
@@ -1980,59 +2146,166 @@ export const appJs = `
     }
   }
 
-  function requestLiveConnect() {
-    if (requestLive.ws || requestLive.connecting) return;
-    requestLive.connecting = true;
-    var ws;
-    try {
-      var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-      ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
-    } catch (e) {
-      requestLive.connecting = false;
-      return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
-    }
-    requestLive.ws = ws;
-    ws.addEventListener('open', function () {
-      requestLive.connecting = false;
-      requestLive.backoff = 1000;
-    });
-    ws.addEventListener('message', function (ev) {
-      var data;
-      try {
-        data = JSON.parse(ev.data);
-      } catch (e) {
-        return;
-      }
-      if (data.type === 'snapshot') {
-        (data.progress || []).forEach(requestLiveApplyProgress);
-      } else if (data.type === 'progress') {
-        requestLiveApplyProgress(data);
-      } else if (data.type === 'status') {
-        requestLiveApplyStatus(data);
-      }
-    });
-    ws.addEventListener('close', function () {
-      requestLive.ws = null;
-      requestLive.connecting = false;
-      setTimeout(requestLiveConnect, requestLive.backoff);
-      requestLive.backoff = Math.min(requestLive.backoff * 2, 30000);
-    });
-    ws.addEventListener('error', function () {
-      try {
-        ws.close();
-      } catch (e) {}
-    });
-  }
+  viewerSocketOn('snapshot', function (data) {
+    (data.progress || []).forEach(requestLiveApplyProgress);
+  });
+  viewerSocketOn('progress', requestLiveApplyProgress);
+  viewerSocketOn('status', requestLiveApplyStatus);
 
   function registerRequestElement(el) {
     var id = el.getAttribute('data-request-id');
     if (!id) return;
     requestLive.byId[id] = el;
-    requestLiveConnect();
+    viewerSocketConnect();
   }
 
   function initRequestLive() {
     qsa('[data-request-id]').forEach(registerRequestElement);
+  }
+
+  // Finalize submitted from the Lightbox (docs/ui.md「Lightbox」): the underlying grid card
+  // (Gallery / Bookmarks / Batch Detail, found by its .thumb-link[data-short-id]) gets the same
+  // finalize badge the card fragment would render, in the queued state, live-updated from here on.
+  function upsertCardFinalizeBadge(shortId, request) {
+    var link = document.querySelector('.thumb-link[data-short-id="' + shortId + '"]');
+    if (!link) return;
+    var wrap = qs('.thumb-badges-top', link);
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'thumb-badges-top';
+      link.appendChild(wrap);
+    }
+    var badge = qs('.card-finalize-badge', wrap);
+    if (!badge) {
+      badge = document.createElement('span');
+      wrap.appendChild(badge);
+    }
+    badge.className = 'card-finalize-badge request-status-' + request.status;
+    badge.setAttribute('data-request-id', request.id);
+    badge.setAttribute('data-request-status', request.status);
+    badge.setAttribute('data-request-kind', request.kind);
+    setFinalizeBadgeText(badge);
+    registerRequestElement(badge);
+  }
+
+  // --- Gallery live insertion (docs/ui.md「Gallery」): 'generation' メッセージを受けて、
+  // 現在のview/フィルタに合致し未表示のGenerationをカードとしてグリッドへ差し込む。
+  // 上端にいなければキューに積み、新着バナーで知らせる。
+  var galleryLive = { queue: [] };
+
+  function galleryLiveGrid() {
+    var grid = document.querySelector('[data-gallery-grid]');
+    return grid && grid.getAttribute('data-gallery-live') === 'true' ? grid : null;
+  }
+
+  function galleryLiveAcceptsView(view, refinesShortId) {
+    if (view === 'raw') return !refinesShortId;
+    if (view === 'refined') return Boolean(refinesShortId);
+    return true; // 'all'
+  }
+
+  // グリッド先頭がsticky toolbarの直下に見えている(=ユーザーが最上部にいる)か。
+  function galleryAtTop() {
+    var grid = galleryLiveGrid();
+    if (!grid) return false;
+    var toolbar = qs('.gallery-toolbar');
+    var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+    var gridTop = grid.getBoundingClientRect().top;
+    return gridTop >= toolbarBottom - 1 && gridTop <= window.innerHeight;
+  }
+
+  function galleryInsertCardHtml(html, grid) {
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    var card = wrapper.querySelector('.card');
+    if (!card) return;
+    grid.insertBefore(card, grid.firstChild);
+    qsa('[data-request-id]', card).forEach(registerRequestElement);
+  }
+
+  function galleryNewArrivalsBanner() {
+    var el = document.getElementById('gallery-new-arrivals');
+    if (el) return el;
+    el = document.createElement('button');
+    el.type = 'button';
+    el.id = 'gallery-new-arrivals';
+    el.className = 'gallery-new-arrivals hidden';
+    el.innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+      '<path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
+      '<span class="gallery-new-arrivals-count"></span>';
+    document.body.appendChild(el);
+    el.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      flushGalleryLiveQueue();
+    });
+    return el;
+  }
+
+  function updateGalleryNewArrivalsBanner() {
+    var el = galleryNewArrivalsBanner();
+    var count = galleryLive.queue.length;
+    if (count === 0) {
+      el.classList.add('hidden');
+      return;
+    }
+    qs('.gallery-new-arrivals-count', el).textContent = '新着 ' + count + ' 件';
+    el.classList.remove('hidden');
+  }
+
+  // banner クリック、または手動での最上部への復帰の両方から呼ぶ (docs/ui.md「Gallery」)。
+  function flushGalleryLiveQueue() {
+    var grid = galleryLiveGrid();
+    var count = galleryLive.queue.length;
+    if (!grid || count === 0) return;
+    // queue は到着順 (古い→新しい)。先頭挿入を古い方から繰り返すと最終的に新しい方が
+    // 一番上に来る (newest first)。
+    galleryLive.queue.forEach(function (html) { galleryInsertCardHtml(html, grid); });
+    galleryLive.queue = [];
+    updateGalleryNewArrivalsBanner();
+    track('gallery.new_arrivals', { count: count, mode: 'banner' });
+  }
+
+  function handleGenerationMessage(msg) {
+    var grid = galleryLiveGrid();
+    if (!grid) return;
+    var view = grid.getAttribute('data-gallery-view') || 'raw';
+    if (!galleryLiveAcceptsView(view, msg.refines_generation_short_id)) return;
+    if (grid.querySelector('.thumb-link[data-short-id="' + msg.short_id + '"]')) return; // already on the grid
+
+    fetch('/g/' + encodeURIComponent(msg.short_id) + '?partial=card')
+      .then(function (res) {
+        if (!res.ok) throw new Error('card fetch failed: ' + res.status);
+        return res.text();
+      })
+      .then(function (html) {
+        var currentGrid = galleryLiveGrid();
+        if (!currentGrid) return;
+        if (galleryAtTop()) {
+          galleryInsertCardHtml(html, currentGrid);
+          track('gallery.new_arrivals', { count: 1, mode: 'auto' });
+        } else {
+          galleryLive.queue.push(html);
+          updateGalleryNewArrivalsBanner();
+        }
+      })
+      .catch(function (e) {
+        trackError('gallery.new_arrivals', e, { short_id: msg.short_id });
+      });
+  }
+
+  viewerSocketOn('generation', handleGenerationMessage);
+
+  function initGalleryLive() {
+    if (!galleryLiveGrid()) return;
+    viewerSocketConnect();
+    window.addEventListener(
+      'scroll',
+      function () {
+        if (galleryLive.queue.length > 0 && galleryAtTop()) flushGalleryLiveQueue();
+      },
+      { passive: true },
+    );
   }
 
   // --- Compare selection bar ---
@@ -2609,6 +2882,7 @@ export const appJs = `
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
+    initGalleryLive();
     initLightbox();
     initRequestLive();
     initCompareBar();

@@ -2,14 +2,14 @@
 // MCP tool `get_generation` / `list_generations` (src/mcp.ts) の両方がここを呼ぶ —
 // どちらも GET /api/v1/generations{,/id} と同じ形を返す。
 
-import { normalizeDateRange, parsePagination, toBool } from './db';
+import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
-import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow } from '../types';
+import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
   if (!row.semantic_json) return null;
@@ -124,6 +124,98 @@ export interface GenerationListItem {
   refines_generation_short_id: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published: boolean;
+  /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (GenerationCardの進捗ピル)。無ければnull。 */
+  finalize_request: GenerationFinalizeRequestBadge | null;
+}
+
+export interface GenerationFinalizeRequestBadge {
+  id: string;
+  kind: 'finalize' | 'repair' | 'masked_redraw';
+  status: RequestStatus;
+  /** result_json.generation_ids[0] を解決したshort_id。done以外、または未解決ならnull。 */
+  result_short_id: string | null;
+}
+
+/**
+ * このページに載る各Generationを対象にした最新のfinalize/repair/masked_redraw requestを1クエリで集める
+ * (`GET /api/v1/generations`のfinalize_request、docs/ui.md「Gallery」カードの進捗ピル)。
+ * request.payload.generation_id はUUIDでもshort_idでもよい (worker-protocol.md「payload」) ので、
+ * 両方をIN句に渡し、行側でどちらのGenerationを指しているか引き直す。created_at DESCで取り、
+ * 各Generationについて最初に見つかった行(=最新)だけを採用する。
+ */
+export async function getLatestFinalizeRequestsForGenerations(
+  db: D1Database,
+  generations: { id: string; short_id: string }[],
+): Promise<Map<string, GenerationFinalizeRequestBadge>> {
+  const result = new Map<string, GenerationFinalizeRequestBadge>();
+  if (generations.length === 0) return result;
+
+  const targetByPayloadId = new Map<string, string>();
+  const payloadIds: string[] = [];
+  for (const g of generations) {
+    targetByPayloadId.set(g.id, g.id);
+    targetByPayloadId.set(g.short_id, g.id);
+    payloadIds.push(g.id, g.short_id);
+  }
+
+  // D1 の1クエリ bind 数上限 (queryGenerations の ids フィルタと同じ理由、上のコメント参照) を
+  // ページサイズ x2 で越えうるので、placeholders ではなく json_each の1 bind にまとめる。
+  const { results } = await db
+    .prepare(
+      `SELECT id, kind, status, payload_json, result_json FROM requests
+       WHERE kind IN ('finalize', 'repair', 'masked_redraw')
+         AND json_extract(payload_json, '$.generation_id') IN (SELECT value FROM json_each(?))
+       ORDER BY created_at DESC`,
+    )
+    .bind(JSON.stringify(payloadIds))
+    .all<{
+      id: string;
+      kind: GenerationFinalizeRequestBadge['kind'];
+      status: RequestStatus;
+      payload_json: string;
+      result_json: string | null;
+    }>();
+
+  const rows = results ?? [];
+
+  // done行のresult.generation_ids[0]をまとめて解決する (行ごとに叩かない)。
+  const firstResultGenerationIds: string[] = [];
+  for (const r of rows) {
+    if (r.status !== 'done' || !r.result_json) continue;
+    try {
+      const parsed = JSON.parse(r.result_json) as { generation_ids?: string[] };
+      if (parsed.generation_ids?.[0]) firstResultGenerationIds.push(parsed.generation_ids[0]);
+    } catch {
+      // 壊れたresult_jsonは無視 (result_short_id は null のまま)
+    }
+  }
+  const resultShortIds = await resolveGenerationShortIds(db, firstResultGenerationIds);
+
+  for (const r of rows) {
+    let payload: { generation_id?: unknown };
+    try {
+      payload = JSON.parse(r.payload_json) as { generation_id?: unknown };
+    } catch {
+      continue;
+    }
+    const payloadGenerationId = typeof payload.generation_id === 'string' ? payload.generation_id : null;
+    const targetGenerationId = payloadGenerationId ? targetByPayloadId.get(payloadGenerationId) : undefined;
+    if (!targetGenerationId || result.has(targetGenerationId)) continue; // rows は created_at DESC なので既にあれば最新
+
+    let resultShortId: string | null = null;
+    if (r.status === 'done' && r.result_json) {
+      try {
+        const parsed = JSON.parse(r.result_json) as { generation_ids?: string[] };
+        const firstId = parsed.generation_ids?.[0];
+        resultShortId = firstId ? (resultShortIds.get(firstId) ?? null) : null;
+      } catch {
+        resultShortId = null;
+      }
+    }
+    result.set(targetGenerationId, { id: r.id, kind: r.kind, status: r.status, result_short_id: resultShortId });
+  }
+
+  return result;
 }
 
 /** `ids=` の入力上限 (src/routes/pages.tsx の Gallery ids フィルタも同じ上限で使う)。 */
@@ -307,6 +399,11 @@ export async function queryGenerations(
   const lastRow = pageRows[pageRows.length - 1];
   const nextCursor = hasMore && lastRow ? encodeCursor({ createdAt: lastRow.created_at, id: lastRow.id }) : null;
 
+  const finalizeRequests = await getLatestFinalizeRequestsForGenerations(
+    db,
+    pageRows.map((r) => ({ id: r.id, short_id: r.short_id })),
+  );
+
   const items = pageRows.map((r) => {
     const tagArray = r.tag_names_json ? JSON.parse(r.tag_names_json) : [];
     const tags = Array.isArray(tagArray) ? tagArray.filter((t) => t !== null) : [];
@@ -328,6 +425,7 @@ export async function queryGenerations(
       image_size: r.image_size,
       refines_generation_short_id: r.refines_generation_short_id,
       published: toBool(r.is_published),
+      finalize_request: finalizeRequests.get(r.id) ?? null,
     };
   });
 

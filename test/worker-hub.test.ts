@@ -8,7 +8,7 @@
 import { env, runDurableObjectAlarm } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
-import { createGeneration, getJson, postJson, req } from './helpers';
+import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req } from './helpers';
 
 const BASE = 'https://chimera.test';
 
@@ -340,5 +340,68 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     expect(queuedMsg.kind).toBe('finalize');
 
     worker.close();
+  });
+});
+
+describe('WorkerHub generation broadcast (docs/worker-protocol.md「hub → viewer」generation)', () => {
+  it('ingest of a new generation notifies connected viewers with a generation message', async () => {
+    const viewer = await connectWs('/api/v1/requests/ws');
+    const viewerT = trackMessages(viewer);
+    await viewerT.waitFor((m) => m.type === 'snapshot');
+
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const ingest = await ingestGeneration(job.body.id, { seed: 1, original_filename: 'out_00001_.png', comfy_output_index: 0 });
+    expect(ingest.status).toBe(201);
+
+    const msg = await viewerT.waitFor((m) => m.type === 'generation' && m.short_id === ingest.body.short_id);
+    expect(msg.generation_id).toBe(ingest.body.id);
+    expect(msg.batch_id).toBe(batch.body.id);
+    expect(msg.refines_generation_short_id).toBeNull();
+    expect(typeof msg.created_at).toBe('string');
+
+    viewer.close();
+  });
+
+  it('a refined output carries its raw Generation short_id as refines_generation_short_id', async () => {
+    const viewer = await connectWs('/api/v1/requests/ws');
+    const viewerT = trackMessages(viewer);
+    await viewerT.waitFor((m) => m.type === 'snapshot');
+
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refinedBatch = await createBatch({
+      refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+      references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+    });
+    const job = await createJob(refinedBatch.body.id);
+    const ingest = await ingestGeneration(job.body.id, { seed: 1, original_filename: 'out_00001_.png', comfy_output_index: 0 });
+    expect(ingest.status).toBe(201);
+
+    const msg = await viewerT.waitFor((m) => m.type === 'generation' && m.short_id === ingest.body.short_id);
+    expect(msg.refines_generation_short_id).toBe(sourceGen.short_id);
+
+    viewer.close();
+  });
+
+  it('an idempotent resend of the same ingest does not notify again', async () => {
+    const viewer = await connectWs('/api/v1/requests/ws');
+    const viewerT = trackMessages(viewer);
+    await viewerT.waitFor((m) => m.type === 'snapshot');
+
+    const batch = await createBatch();
+    const job = await createJob(batch.body.id);
+    const metadata = { seed: 1, original_filename: 'out_00001_.png', comfy_output_index: 0 };
+    const first = await ingestGeneration(job.body.id, metadata);
+    expect(first.status).toBe(201);
+    await viewerT.waitFor((m) => m.type === 'generation' && m.short_id === first.body.short_id);
+
+    const resend = await ingestGeneration(job.body.id, metadata);
+    expect(resend.status).toBe(200);
+
+    // 届かないことの確認: このファイルの他テストと同じく、待ちきる方を積極的に待たない。
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(viewerT.messages.filter((m) => m.type === 'generation').length).toBe(1);
+
+    viewer.close();
   });
 });

@@ -401,6 +401,27 @@ describe('Web GUI pages', () => {
     expect(html).toContain(badGen.short_id);
   });
 
+  it('GET /gallery grid carries data-gallery-live/data-gallery-view, disabled by a panel filter (docs/ui.md「Gallery」live insertion)', async () => {
+    const { generation } = await createGeneration();
+
+    const plain = await req('/gallery?limit=200');
+    const plainHtml = await plain.text();
+    expect(plainHtml).toContain('data-gallery-view="raw"');
+    expect(plainHtml).toContain('data-gallery-live="true"');
+
+    const refinedView = await req('/gallery?view=refined&limit=200');
+    expect(await refinedView.text()).toContain('data-gallery-view="refined"');
+
+    // A panel filter (tag/rating/bookmark/published) narrows the grid, so live insertion turns
+    // off even though this same generation still matches and the grid still renders.
+    const tagName = `live-filter-${crypto.randomUUID().slice(0, 8)}`;
+    await postJson(`/api/v1/generations/${generation.id}/tags`, { name: tagName });
+    const tagFiltered = await req(`/gallery?tag=${tagName}&limit=200`);
+    const tagHtml = await tagFiltered.text();
+    expect(tagHtml).toContain(generation.short_id);
+    expect(tagHtml).not.toContain('data-gallery-live="true"');
+  });
+
   it('GET /gallery?partial=1 returns a cards fragment without a document wrapper', async () => {
     await createGeneration();
     const res = await req('/gallery?partial=1&limit=200');
