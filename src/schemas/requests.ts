@@ -62,6 +62,7 @@ export const finalizeOptionsSchema = z
     repair_denoise: z.number().gt(0).lte(1).nullable().optional(),
     repair_pad: z.number().min(0.5).max(3).nullable().optional(),
     repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
+    repair_lora: z.union([z.literal(true), z.number()]).nullable().optional(),
   })
   .strict();
 
@@ -84,6 +85,7 @@ export const repairOptionsSchema = z
     seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
     size: z.number().int().min(256).multipleOf(8).nullable().optional(),
     pad: z.number().min(0.5).max(3).nullable().optional(),
+    lora: z.union([z.literal(true), z.number()]).nullable().optional(),
   })
   .strict();
 

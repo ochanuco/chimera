@@ -568,7 +568,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "repair (array of \"hands\"/\"feet\" to also mask-redraw in this same request), " +
         'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
-        'repair_size (repair redraw longest side). Follow status with get_request.',
+        'repair_size (repair redraw longest side), ' +
+        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number). ' +
+        'Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: finalizeGenerationInputSchema,
     },
@@ -599,7 +601,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'default when omitted: parts (array of "hands"/"feet" to redraw, worker default both), ' +
         'regions (explicit [x0,y0,x1,y1] fraction rectangles, worker auto-detects when omitted), ' +
         'denoise (redraw strength, recipe default), seeds (up to 16 seeds to try, worker default), ' +
-        'size (redraw longest side, recipe default), pad (detected-region padding factor, worker default). ' +
+        'size (redraw longest side, recipe default), pad (detected-region padding factor, worker default), ' +
+        'lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number). ' +
         'Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: repairGenerationInputSchema,

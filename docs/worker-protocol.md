@@ -370,7 +370,8 @@ fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / grap
       "repair_regions": null,
       "repair_denoise": null,
       "repair_pad": null,
-      "repair_size": null
+      "repair_size": null,
+      "repair_lora": null
     }
   }
 }
@@ -404,6 +405,7 @@ fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / grap
   repair_denoise      null | number (0, 1]      `--repair-denoise 0.6`
   repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
+  repair_lora         null | true | number      `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
@@ -411,12 +413,12 @@ fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / grap
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
 `backdrop` / `stroke_light` に加えて、repair のチェックボックスを使った場合は
-`repair` / `repair_pad` を持ち、他は省略します。`backdrop` は select の
+`repair` / `repair_pad` / `repair_lora` を持ち、他は省略します。`backdrop` は select の
 `stripes`（既定）→ `"stripes"`、`transparent` → `null`、`color` → 入力した
 `#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は recipe `yukari` の Batch でだけ選べ、
 `yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定）です。「repair hands」「repair feet」はどちらも既定オフで、
-チェックした分だけ `repair` に積みます。`repair pad` の入力欄は空が既定で、
+チェックした分だけ `repair` に積みます。`repair pad` / `repair lora` の入力欄は空が既定で、
 空のまま積めば省略（worker 既定）です。
 
 ### repair
@@ -436,7 +438,8 @@ worker 実行です。finalize と同じく semantic 判断を伴わない再実
       "denoise": 0.6,
       "seeds": [1, 2, 3, 4],
       "size": 1024,
-      "pad": 1.0
+      "pad": 1.0,
+      "lora": null
     }
   }
 }
@@ -454,6 +457,7 @@ worker 実行です。finalize と同じく semantic 判断を伴わない再実
   seeds      array\<integer\>（最大16件）    試す seed の列（省略時 worker 既定）
   size       integer（256 以上、8 の倍数）   redraw 解像度の長辺（省略時 recipe 既定）
   pad        number (0.5-3)                  検出領域の外側マージン係数（省略時 worker 既定）
+  lora       null \| true \| number          描き直した部位の part LoRA weight（true は既定 0.8、number はその値、省略/null は off）
 
 省略したキーは worker 既定です。chimera が検証するのは型だけで、組み合わせの
 妥当性は worker が判定して `failed` にします。
