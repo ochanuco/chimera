@@ -98,31 +98,6 @@ describe('Web GUI pages', () => {
     expect(body).toContain(generation.short_id);
   });
 
-  it('GET /gallery?original_filename= finds a generation by exact original filename', async () => {
-    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00001_.png' } });
-    const res = await req('/gallery?original_filename=yk-lineT3_00001_.png');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(generation.short_id);
-  });
-
-  it('GET /gallery?original_filename= excludes generations with a non-matching filename', async () => {
-    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00002_.png' } });
-    const res = await req('/gallery?original_filename=does-not-exist.png');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).not.toContain(generation.short_id);
-  });
-
-  it('GET /gallery?comfy_prompt_id= finds a generation by exact ComfyUI job id', async () => {
-    const { job, generation } = await createGeneration();
-    await postJson(`/api/v1/jobs/${job.id}`, { comfy_prompt_id: 'a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df' }, 'PATCH');
-    const res = await req('/gallery?comfy_prompt_id=a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(generation.short_id);
-  });
-
   it('GET /g/{short_id} returns 200 HTML including the image URL', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}`);
@@ -339,6 +314,106 @@ describe('Web GUI pages', () => {
     expect(html).toContain(`${png.byteLength} B`);
   });
 
+  it('GET /gallery default view hides bad-rated and finalize-output generations', async () => {
+    const { generation: rawGen } = await createGeneration();
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.short_id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const res = await req('/gallery?limit=200');
+    const html = await res.text();
+    expect(html).toContain(rawGen.short_id);
+    expect(html).not.toContain(badGen.short_id);
+    expect(html).not.toContain(refined.generation.short_id);
+  });
+
+  it('GET /gallery?bad=1 shows bad-rated generations', async () => {
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.short_id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+
+    const res = await req('/gallery?bad=1&limit=200');
+    const html = await res.text();
+    expect(html).toContain(badGen.short_id);
+  });
+
+  it('GET /gallery?view=refined shows only finalize-output generations, and view=all shows both', async () => {
+    const { generation: rawGen } = await createGeneration();
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const refinedOnly = await req('/gallery?view=refined&limit=200');
+    const refinedHtml = await refinedOnly.text();
+    expect(refinedHtml).not.toContain(rawGen.short_id);
+    expect(refinedHtml).toContain(refined.generation.short_id);
+
+    const all = await req('/gallery?view=all&limit=200');
+    const allHtml = await all.text();
+    expect(allHtml).toContain(rawGen.short_id);
+    expect(allHtml).toContain(refined.generation.short_id);
+  });
+
+  it('GET /gallery?ids= redirects to /g/{short_id} when it resolves to exactly one generation', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/gallery?ids=${generation.short_id}`, { redirect: 'manual' });
+    expect([301, 302, 307, 308]).toContain(res.status);
+    expect(res.headers.get('location')).toContain(`/g/${generation.short_id}`);
+  });
+
+  it('GET /gallery?ids= with multiple ids shows a list (no redirect) and ignores view/bad-hiding', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.short_id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+
+    const res = await req(`/gallery?ids=${g1.short_id},${badGen.short_id}`, { redirect: 'manual' });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(g1.short_id);
+    expect(html).toContain(badGen.short_id);
+  });
+
+  it('GET /gallery?partial=1 returns a cards fragment without a document wrapper', async () => {
+    await createGeneration();
+    const res = await req('/gallery?partial=1&limit=200');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).not.toContain('<html');
+  });
+
+  it('GET /gallery shows a load-more link only when there are more results than the page size', async () => {
+    for (let i = 0; i < 3; i++) await createGeneration();
+
+    const small = await req('/gallery?limit=1');
+    const smallHtml = await small.text();
+    expect(smallHtml).toContain('class="load-more"');
+
+    const big = await req('/gallery?limit=200');
+    const bigHtml = await big.text();
+    expect(bigHtml).not.toContain('class="load-more"');
+  });
+
   it('GET /g/xxxxxx 404s for an unknown short_id', async () => {
     const res = await req('/g/xxxxxx');
     expect(res.status).toBe(404);
@@ -489,6 +564,28 @@ describe('Web GUI pages', () => {
     const html = await res.text();
     expect(html).not.toContain('>Stories<');
     expect(html).not.toContain('href="/stories');
+  });
+
+  it('GET /bookmarks defaults the Generations section to view=refined, and view=all shows raw bookmarks too', async () => {
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    await req(`/api/v1/generations/${sourceGen.short_id}/bookmark`, { method: 'PUT' });
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+    await req(`/api/v1/generations/${refined.generation.short_id}/bookmark`, { method: 'PUT' });
+
+    const res = await req('/bookmarks');
+    const html = await res.text();
+    expect(html).not.toContain(sourceGen.short_id);
+    expect(html).toContain(refined.generation.short_id);
+
+    const all = await req('/bookmarks?view=all');
+    const allHtml = await all.text();
+    expect(allHtml).toContain(sourceGen.short_id);
+    expect(allHtml).toContain(refined.generation.short_id);
   });
 
   it('GET /batches returns 200 HTML', async () => {

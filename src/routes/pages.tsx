@@ -14,7 +14,8 @@ import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { generationImageUrl } from '../lib/serialize';
 import { listBookmarkedExperiments } from '../lib/ui-queries';
-import { GalleryPage, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
+import { GalleryPage, GalleryCards, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
+import type { GalleryView } from '../ui/components/ViewSwitch';
 import { BatchesPage } from '../ui/pages/Batches';
 import { BatchDetailPage, type BatchDetailData, type FinalizeSummary, type FinalizeRequestStatus } from '../ui/pages/BatchDetail';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
@@ -34,52 +35,55 @@ export const pages = new Hono<AppEnv>();
 
 pages.get('/', (c) => c.redirect('/gallery'));
 
+function parseGalleryView(raw: string | undefined, defaultView: GalleryView): GalleryView {
+  return raw === 'raw' || raw === 'refined' || raw === 'all' ? raw : defaultView;
+}
+
 pages.get('/gallery', async (c) => {
   const q = c.req.query();
-  const limit = q.limit ? Math.min(Math.max(Number(q.limit) || 24, 1), 200) : 24;
-  const offset = q.offset ? Math.max(Number(q.offset) || 0, 0) : 0;
+
+  const view = parseGalleryView(q.view, 'raw');
+  const bad = q.bad === '1';
+  const ids = q.ids?.trim() || undefined;
 
   const filters: GalleryFilters = {
-    character: q.character || undefined,
+    view,
+    bad,
+    ids,
     tag: q.tag || undefined,
-    from: q.from || undefined,
-    to: q.to || undefined,
     rating: q.rating || undefined,
     bookmark: q.bookmark === 'true' ? 'true' : undefined,
-    comfy_prompt_id: q.comfy_prompt_id || undefined,
-    original_filename: q.original_filename || undefined,
-    limit,
-    offset,
   };
 
   const apiParams = new URLSearchParams();
-  if (filters.character) apiParams.set('character', filters.character);
+  if (ids) {
+    // ids が指定されたときは view / bad 非表示を無視し、指定した Generation だけを返す
+    // (docs/ui.md「Gallery」)。
+    apiParams.set('ids', ids);
+  } else {
+    if (view !== 'all') apiParams.set('origin', view);
+    if (!bad) apiParams.set('exclude_rating', 'bad');
+  }
   if (filters.tag) apiParams.set('tag', filters.tag);
-  if (filters.from) apiParams.set('from', filters.from);
-  if (filters.to) apiParams.set('to', filters.to);
   if (filters.rating) apiParams.set('rating', filters.rating);
   if (filters.bookmark) apiParams.set('bookmark', filters.bookmark);
-  if (filters.comfy_prompt_id) apiParams.set('comfy_prompt_id', filters.comfy_prompt_id);
-  if (filters.original_filename) apiParams.set('original_filename', filters.original_filename);
+  const limit = q.limit ? Math.min(Math.max(Number(q.limit) || 24, 1), 200) : 24;
   apiParams.set('limit', String(limit));
-  apiParams.set('offset', String(offset));
+  if (q.cursor) apiParams.set('cursor', q.cursor);
 
-  const [genRes, charRes] = await Promise.all([
-    internalApiRequest(c, `/api/v1/generations?${apiParams.toString()}`),
-    internalApiRequest(c, '/api/v1/characters'),
-  ]);
-  const genData = (await genRes.json()) as { items: GalleryItem[]; total: number };
-  const charData = (await charRes.json()) as { items: { id: string; name: string }[] };
+  const genRes = await internalApiRequest(c, `/api/v1/generations?${apiParams.toString()}`);
+  const genData = (await genRes.json()) as { items: GalleryItem[]; total: number; next_cursor: string | null };
 
-  return c.html(
-    <GalleryPage
-      path={c.req.path}
-      characters={charData.items}
-      items={genData.items}
-      total={genData.total}
-      filters={filters}
-    />,
-  );
+  // ids が厳密に1件の既存 Generation に解決したときは detail へ直行する。
+  if (ids && genData.total === 1 && genData.items[0]) {
+    return c.redirect(`/g/${genData.items[0].short_id}`);
+  }
+
+  if (q.partial === '1') {
+    return c.html(<GalleryCards items={genData.items} nextCursor={genData.next_cursor} filters={filters} />);
+  }
+
+  return c.html(<GalleryPage path={c.req.path} items={genData.items} nextCursor={genData.next_cursor} filters={filters} />);
 });
 
 pages.get('/batches', async (c) => {
@@ -364,8 +368,12 @@ pages.get('/experiments/:id/ab', async (c) => {
 });
 
 pages.get('/bookmarks', async (c) => {
+  const view = parseGalleryView(c.req.query('view'), 'refined');
+  const genParams = new URLSearchParams({ bookmark: 'true', limit: '100' });
+  if (view !== 'all') genParams.set('origin', view);
+
   const [genRes, batchRes, bookmarkedExperiments] = await Promise.all([
-    internalApiRequest(c, '/api/v1/generations?bookmark=true&limit=100'),
+    internalApiRequest(c, `/api/v1/generations?${genParams.toString()}`),
     internalApiRequest(c, '/api/v1/batches?bookmark=true&limit=100'),
     listBookmarkedExperiments(c.env.DB),
   ]);
@@ -378,6 +386,7 @@ pages.get('/bookmarks', async (c) => {
       generations={genData.items}
       batches={batchData.items}
       experiments={bookmarkedExperiments}
+      view={view}
     />,
   );
 });

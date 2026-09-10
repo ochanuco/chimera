@@ -364,8 +364,113 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-weight: 600;
 }
 
-.pagination { display: flex; gap: 1rem; align-items: center; margin: 1.5rem 0; }
-.pagination .disabled { color: var(--text-dim); pointer-events: none; }
+/* Gallery ツールバー (view switch / bad toggle / 絞り込みパネル)。nav の下に sticky で張り付く。 */
+.gallery-toolbar {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 9;
+  background: var(--bg);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+  margin-bottom: 1rem;
+}
+
+.view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+.view-switch-item {
+  padding: 0.35rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.view-switch-item:hover { text-decoration: none; }
+.view-switch-item[aria-current="true"] { background: var(--bg); color: var(--text); }
+
+.bad-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+}
+.bad-toggle:hover { text-decoration: none; color: var(--text); }
+.bad-toggle-box {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  display: inline-block;
+}
+.bad-toggle[aria-pressed="true"] .bad-toggle-box { background: var(--accent); border-color: var(--accent); }
+
+.filter-panel { position: relative; }
+.filter-panel summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.filter-panel summary::-webkit-details-marker { display: none; }
+.filter-panel[open] summary { border-color: var(--accent); color: var(--accent); }
+.filter-panel .filter-form {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 20;
+  min-width: 260px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.filter-form textarea[name="ids"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+  min-height: 2rem;
+}
+
+.load-more {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.load-more:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+@media (max-width: 600px) {
+  .gallery-toolbar .view-switch { flex: 1 1 100%; }
+  .view-switch-item { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+  .bad-toggle, .filter-panel summary { min-height: 2.75rem; }
+}
 
 details.section {
   background: var(--bg-elevated);
@@ -1572,6 +1677,76 @@ export const appJs = `
     });
   }
 
+  // --- Gallery / Bookmarks view switch + bad toggle (src/ui/components/ViewSwitch.tsx,
+  // src/ui/pages/Gallery.tsx .bad-toggle) --- Fires on click, before the normal GET
+  // navigation happens -- preventDefault is intentionally not called.
+  function initGalleryView() {
+    document.addEventListener('click', function (ev) {
+      const viewLink = ev.target.closest ? ev.target.closest('.view-switch a') : null;
+      const badLink = ev.target.closest ? ev.target.closest('.bad-toggle') : null;
+      if (viewLink) {
+        const badToggle = qs('.bad-toggle');
+        const bad = badToggle ? badToggle.getAttribute('aria-pressed') === 'true' : false;
+        track('gallery.view', { view: viewLink.getAttribute('data-view'), bad: bad });
+      } else if (badLink) {
+        const currentView = qs('.view-switch a[aria-current="true"]');
+        const view = currentView ? currentView.getAttribute('data-view') : null;
+        const bad = badLink.getAttribute('aria-pressed') !== 'true';
+        track('gallery.view', { view: view, bad: bad });
+      }
+    });
+  }
+
+  // --- Gallery infinite scroll (src/ui/pages/Gallery.tsx .load-more) ---
+  // Fetches the .load-more link's href with partial=1, appended as an HTML fragment
+  // (cards + the next .load-more link, or nothing), and re-observes the new link.
+  function initGalleryInfiniteScroll() {
+    const grid = document.querySelector('[data-gallery-grid]');
+    if (!grid || !window.IntersectionObserver) return;
+
+    let loading = false;
+    const observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) loadMore(entry.target);
+      });
+    });
+
+    function partialUrl(href) {
+      const url = new URL(href, location.href);
+      url.searchParams.set('partial', '1');
+      return url.toString();
+    }
+
+    async function loadMore(link) {
+      if (loading) return;
+      loading = true;
+      observer.unobserve(link);
+      try {
+        const res = await fetch(partialUrl(link.getAttribute('href')));
+        if (!res.ok) return;
+        const html = await res.text();
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        const nextLoadMore = wrapper.querySelector('.load-more');
+        qsa('.card, .load-more', wrapper).forEach(function (node) {
+          if (node !== nextLoadMore) grid.insertBefore(node, link);
+        });
+        link.remove();
+        if (nextLoadMore) {
+          grid.appendChild(nextLoadMore);
+          observer.observe(nextLoadMore);
+        }
+      } catch (e) {
+        trackError('gallery.load_more', e, {});
+      } finally {
+        loading = false;
+      }
+    }
+
+    const initial = qs('.load-more', grid);
+    if (initial) observer.observe(initial);
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -1586,6 +1761,8 @@ export const appJs = `
     initFinalizeRepairPad();
     initFinalizePreview();
     initGalleryFilter();
+    initGalleryView();
+    initGalleryInfiniteScroll();
     initRequestLive();
     initCompareBar();
     initCopyIdButtons();

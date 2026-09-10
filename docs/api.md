@@ -1144,6 +1144,10 @@ rating
 bookmark
 comfy_prompt_id
 original_filename
+origin
+exclude_rating
+ids
+cursor
 ```
 
 主な用途:
@@ -1157,7 +1161,23 @@ to=2026-08-26
 ```
 
 検索結果には short ID、canonical URL、thumbnail/image
-URL、summary等の軽量情報を返します。
+URL、summary、`refines_generation_short_id`（この Generation の Batch が finalize/repair/
+masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）等の軽量情報を返します。
+
+`origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ finalize
+済みの出力のどちらかに絞ります。省略時は両方を返します。
+
+`exclude_rating=bad|neutral|good` はその rating を除外します（未評価の行は残ります）。
+
+`ids=` は Generation の short_id / UUID をカンマまたは空白区切りで並べたもので、指定すると
+それらのみを返します（最大100件、超過は400）。`ids` は `character` などの他フィルタと
+組み合わせられます。
+
+`cursor=` は newest-first のkeysetページングを進めるための不透明な文字列です。指定すると
+`offset` は無視されます。並び順はいずれの場合も `created_at DESC, id DESC`
+（タイブレークまで固定）です。レスポンスには次ページがあるときだけ非nullになる
+`next_cursor` を追加で含みます（`total` は引き続き cursor と無関係にフィルタ全体の件数）。
+不正な `cursor` は400です。
 
 ## Semantic Update
 
