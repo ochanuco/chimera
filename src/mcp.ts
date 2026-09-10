@@ -62,6 +62,7 @@ import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
+import { foldBatchDigestPrompts, foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
 import type { Bindings } from './types';
 
 /**
@@ -685,13 +686,18 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'get_request',
     {
       outputSchema: mcpOutputSchemas.get_request,
-      description: 'Get a requests row by id, including its payload and (once done/failed) result/error.',
-      inputSchema: z.object({ id: z.string().min(1) }),
+      description:
+        'Get a requests row by id, including its payload and (once done/failed) result/error. ' +
+        'Prompt bodies (prompt overrides, prompt patches) in the payload are folded to a length marker by default; ' +
+        'pass include_prompts: true only when you actually need the text.',
+      inputSchema: z.object({ id: z.string().min(1), include_prompts: z.boolean().default(false) }),
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => {
+    async ({ id, include_prompts }) => {
       const row = await getRequestOr404(db, id);
-      return jsonResult(mcpOutputSchemas.get_request, serializeRequest(row));
+      const serialized = serializeRequest(row);
+      const payload = include_prompts ? serialized.payload : foldRequestPayloadPrompts(serialized.payload);
+      return jsonResult(mcpOutputSchemas.get_request, { ...serialized, payload });
     },
   );
 
@@ -699,17 +705,26 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'list_requests',
     {
       outputSchema: mcpOutputSchemas.list_requests,
-      description: 'List requests rows, optionally filtered by status, kind, or run_id. Read-only; does not claim.',
+      description:
+        'List requests rows, optionally filtered by status, kind, or run_id. Read-only; does not claim. ' +
+        'Prompt bodies (prompt overrides, prompt patches) in each payload are folded to a length marker by default; ' +
+        'pass include_prompts: true only when you actually need the text.',
       inputSchema: z.object({
         status: requestStatusSchema.optional(),
         kind: requestKindSchema.optional(),
         run_id: z.string().min(1).optional(),
+        include_prompts: z.boolean().default(false),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ status, kind, run_id }) => {
+    async ({ status, kind, run_id, include_prompts }) => {
       const rows = await listRequests(db, { status, kind, run_id }, 200, 0);
-      return jsonResult(mcpOutputSchemas.list_requests, { items: rows.map(serializeRequest) });
+      const items = rows.map((row) => {
+        const serialized = serializeRequest(row);
+        const payload = include_prompts ? serialized.payload : foldRequestPayloadPrompts(serialized.payload);
+        return { ...serialized, payload };
+      });
+      return jsonResult(mcpOutputSchemas.list_requests, { items });
     },
   );
 
@@ -769,13 +784,17 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}. ' +
         'comfy_job.prompt_not_reusable is non-null for repair, masked_redraw and repair-carrying finalize outputs: their ' +
         'render_facts prompts were cut for a masked region (face, hair and hood tags dropped), so never pass them as a ' +
-        'generate prompt — use derive_request from the Generation instead.',
-      inputSchema: z.object({ generation_id: z.string().min(1) }),
+        'generate prompt — use derive_request from the Generation instead. ' +
+        'Prompt bodies (batch prompt/negative_prompt, render_facts sampler prompts, the ComfyUI graph) are folded to a ' +
+        'length marker by default (the graph becomes null with comfy_job.graph_omitted: true); pass include_prompts: true ' +
+        'only when you actually need the text.',
+      inputSchema: z.object({ generation_id: z.string().min(1), include_prompts: z.boolean().default(false) }),
       annotations: { readOnlyHint: true },
     },
-    async ({ generation_id }) => {
+    async ({ generation_id, include_prompts }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
-      return jsonResult(mcpOutputSchemas.get_generation, await getGenerationDetail(db, origin, generation));
+      const detail = await getGenerationDetail(db, origin, generation);
+      return jsonResult(mcpOutputSchemas.get_generation, include_prompts ? detail : foldGenerationDetailPrompts(detail));
     },
   );
 
@@ -785,14 +804,17 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.list_batch,
       description:
         'Get a Batch (by id or short_id) with its jobs, generations (rating/bookmark/tags/semantic_summary/semantic_attributes/seed), ' +
-        'references, relations (outgoing/incoming) and its ExperimentRun family, if any.',
-      inputSchema: z.object({ batch_id: z.string().min(1) }),
+        'references, relations (outgoing/incoming) and its ExperimentRun family, if any. ' +
+        'Prompt bodies (batch prompt/negative_prompt, batch.parameters.prompt_patch, render_facts sampler prompts) are ' +
+        'folded to a length marker by default; pass include_prompts: true only when you actually need the text.',
+      inputSchema: z.object({ batch_id: z.string().min(1), include_prompts: z.boolean().default(false) }),
       annotations: { readOnlyHint: true },
     },
-    async ({ batch_id }) => {
+    async ({ batch_id, include_prompts }) => {
       const batch = await getBatchByIdOrShortId(db, batch_id);
       if (!batch) throw notFound('batch');
-      return jsonResult(mcpOutputSchemas.list_batch, await getBatchDigest(db, origin, batch));
+      const digest = await getBatchDigest(db, origin, batch);
+      return jsonResult(mcpOutputSchemas.list_batch, include_prompts ? digest : foldBatchDigestPrompts(digest));
     },
   );
 

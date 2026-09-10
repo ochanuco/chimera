@@ -52,7 +52,12 @@ describe('MCP get_generation', () => {
     const rest = await getJson<GenerationDetail>(`/api/v1/generations/${generation.id}`);
     expect(rest.status).toBe(200);
 
-    const tool = await mcpToolCall<GenerationDetail>('get_generation', { generation_id: generation.short_id });
+    // include_prompts: true opts out of the default prompt folding (src/lib/prompt-fold.ts) so this
+    // still matches REST byte-for-byte.
+    const tool = await mcpToolCall<GenerationDetail>('get_generation', {
+      generation_id: generation.short_id,
+      include_prompts: true,
+    });
     expect(tool.isError).toBe(false);
     expect(tool.data).toEqual(rest.body);
   });
