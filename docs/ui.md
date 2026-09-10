@@ -106,29 +106,43 @@ Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込�
 リンクが画面に入ると次ページを自動でフェッチしてグリッドへ追記します（JS無効環境では
 リンクとして機能します）。
 
-### Gallery live insertion
+### Gallery pending changes
 
-`/gallery`をリロードしなくても新しいGenerationがグリッドへ流れ込みます。対象は`ids`・
-Tag・Rating・Bookmarked only・公開済みのみのいずれも指定していない既定表示だけで
+`/gallery`では、新着のGenerationとbadにしたカードの非表示を、グリッドへ即座には反映しません。
+操作中のカードが手元で動かないよう件数だけを知らせ、利用者がボタンを押したとき（またはページを
+再読み込みしたとき）にまとめて反映します。
+
+#### 新着
+
+対象は`ids`・Tag・Rating・Bookmarked only・公開済みのみのいずれも指定していない既定表示だけで
 （`view`・`bad`は絞り込みに数えません）、その条件下でだけクライアントはviewer WebSocket
 （`/api/v1/requests/ws`、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）を開き
 （[Generation Detail](#generation-detail)のFinalizeで説明したrequest live接続を共有します）、
 `generation`メッセージを受けます。
 
 現在の`view`で受理できるものだけを扱います — `raw`は`refines_generation_short_id`が
-nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です。既にグリッドに表示済みの
-short_idは無視します。
+nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です。既にグリッドに表示済みか
+反映待ちに積んだshort_idは無視します。受理したら`GET /g/{short_id}?partial=card`（Gallery一覧と
+同じ`GenerationCard`フラグメント）を取得し、反映待ちに積みます。
 
-受理したら`GET /g/{short_id}?partial=card`（Gallery一覧と同じ`GenerationCard`フラグメント）
-を取得し、
+#### bad
 
--   ページがsticky toolbarの直下＝グリッド先頭が見えている位置までスクロールされていれば、
-    そのままグリッド先頭へ挿入します。
--   そうでなければキューに積み、sticky toolbarの直下中央に浮かぶ新着バナー（`--accent`地・
-    `#10131c`文字・角丸999px・`0.4rem 1rem`パディング・0.85rem/600・影付き、上矢印アイコン +
-    `新着 N 件`。幅600px以下では2.75rem以上の高さ）を出します。バナーを押すと最上部へ
-    スクロールしつつキューを新しい順に（＝先頭挿入を古いものから繰り返す）全部挿入します。
-    手動で最上部までスクロールしても同じくキューを流し切りバナーを消します。
+badを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上またはLightbox内でratingを
+badにすると、カードはその位置のまま不透明度0.4（hover時0.75）になり、反映待ちに数えます。
+反映前にbad以外へ付け直すと元の表示に戻り、反映待ちからも外れます。Lightboxはbadにしても
+次の画像へは進みません。BookmarksとBatch Detailでは何も隠しません。
+
+#### 反映
+
+反映待ちが1件以上あると、グリッドの直前に全幅の帯（枠線・角丸10px・`--accent`文字・0.85rem/600・
+高さ2.75rem以上）を出し、`新着 N 件 · bad M 件を隠す`（0件の側は省きます）と表示します。帯が
+sticky toolbarの下へスクロールアウトしている間は、同じ文言のピル（`--accent`地・`#10131c`文字・
+角丸999px・`0.4rem 1rem`パディング・影付き、新着があるときは上矢印アイコン付き。幅600px以下では
+2.75rem以上の高さ）をtoolbarの直下中央に浮かべます。
+
+帯かピルを押すと、新着を到着の古い順にグリッド先頭へ挿入し（＝新しいものが一番上に来ます）、
+薄くしたbadのカードを取り除きます。新着を挿入したときは最上部へスクロールします
+（telemetry `gallery.pending_apply`）。
 
 ソケットが切れたときの再接続は同じ接続を使う[Generation Detail](#generation-detail)の
 request live更新と同じ指数バックオフ（1s→2s→…上限30s）です。
@@ -213,11 +227,14 @@ Note（折りたたみ）
 既に原寸相当のURLを持っているため、fragment自体は画像タグを含みません）。
 
 幅1100px以上では`rgba(8,8,10,0.78)`のscrim付き固定overlayで、`minmax(0,1fr) 420px`の2カラム
-（左: 画像フル表示、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。画像エリア
-左右端の中央に丸いprev/nextボタン（2.75rem）を重ねます。
+（左: 画像、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。行の高さは
+`minmax(0,1fr)`でoverlayの高さに固定し、画像は縦横とも画像エリアに収まるよう縮小します
+（見切れもスクロールもしません）。画像エリア左右端の中央に丸いprev/nextボタン（2.75rem）を
+重ねます。
 
 幅1100px未満では不透明（`--bg`）の全画面・縦スクロールです。上から3.25remのトップバー
-（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい）→ パネル（rating各ボタン・
+（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい、ただし高さは
+トップバーを除いた画面の高さまで）→ パネル（rating各ボタン・
 ボタン・入力を2.75rem以上のタップ領域にしたもの）の順に並びます。画像上の左右スワイプで
 prev/next、パネルのスクロール位置が最上部（`scrollTop === 0`）にあるときの下スワイプで
 閉じます。
@@ -227,9 +244,11 @@ Prev/Nextはページのグリッド内カードの現在のDOM順を辿りま�
 続けます。
 
 開いている状態はURLの`#g=<short_id>`に反映します（最初に開くときはpushState、Lightbox内の
-prev/next・bad非表示による自動遷移時の移動はreplaceState）。そのため、ブラウザのBackボタンで
+prev/nextでの移動はreplaceState）。そのため、ブラウザのBackボタンで
 一度に閉じ、`#g=`付きURLを直接開く・再読み込みすると同じGenerationのLightboxが開き直します。
-`Esc`でも閉じます。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
+`Esc`と、画像・パネル・prev/next・トップバー以外の場所（scrimや画像の余白）のクリックでも
+閉じます。背景クリックは押下も背景で始まったときだけ数えるので、パネル内でテキストを選択して
+背景で離しても閉じません。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
 動かしません（開いている間は`body`のスクロールをロックします）。
 
 Lightbox内でratingを変えると、背後のカードのrating-groupにも同じ値を反映します（逆方向 —
@@ -238,23 +257,23 @@ Lightbox内でratingを変えると、背後のカードのrating-groupにも同
 rating / bookmark / タグ追加・削除 / note保存 / 公開の追加・URL入力・削除 / finalizeの各ハンドラは
 すべて`document`へのイベント委譲なので、差し込まれたfragment内でも再初期化なしにそのまま動きます。
 
-### bad hides with undo
-
-`/gallery`でbadを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上またはLightbox内で
-ratingをbadにすると、そのカードを即座にグリッドから消し、画面下中央にUndoトースト
-（`--bg-elevated`・枠線・角丸8px・影付き、`bad にしました` + アクセント色の`取り消す`ボタン。
-compareバー表示中はその上に出し、幅600px以下では左右1rem残して全幅・ボタンは2.75rem）を
-出します。5秒以内に`取り消す`を押すとAPI経由で元のratingへ戻し、カードを元の位置へ戻します
-（telemetry `rating.undo`）。Lightbox内でbadにした場合は次の画像へ自動で進みます（それでも
-トーストは出ます）。BookmarksとBatch Detailでは何も隠しません。
-
 ### Compare entry
 
-カードのチェックボックスは廃止しました。Lightboxの`比較に追加`ボタンがsessionStorageの
-compare set（タブ内限定）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
-telemetry `compare.add`）。`#compare-bar`はGallery / Bookmarks / Batch Detailのどのページでも
-このsetから`Compare (N)`を描画し、`/compare?ids=...`（先頭9件、従来通り）へリンクします
-（telemetry `compare.open`）。
+カードのチェックボックスは廃止しました。Lightboxと[Generation Detail](#generation-detail)の
+`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は`{ id, short_id }`）を
+トグルします（ボタンのラベルは`比較から外す`に切り替わります、telemetry `compare.add`）。
+
+`#compare-bar`はLayoutが全ページの下端に固定配置し、setが空でない間だけ表示します。表示中は
+`main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detail / Batch
+Detailの2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
+
+-   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
+    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/image`で、
+    10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
+-   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
+-   `Compare (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
+
+別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーを描き直します。
 
 ## Batch Detail
 
@@ -412,7 +431,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 情報を縦に並べます。それ未満の幅では画像を最上部に大きく表示する縦一列です。
 
 ``` text
-[ IMAGE ] | abc123
+[ IMAGE ] | abc123  比較に追加
 [ IMAGE ] | 結月ゆかり
 [ IMAGE ] | good  🔖
 [ IMAGE ] | #pose-good #outfit-good
@@ -728,9 +747,7 @@ GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外
 トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
 
 Generationsセクションのカードと[Lightbox](#lightbox)はGalleryと共通です（bad非表示との
-組み合わせは無いため、[bad hides with undo](#bad-hides-with-undo)は起きません）。ページ下部の
-`#compare-bar`もGalleryと同じくLightboxの[Compare entry](#compare-entry)から生まれるsessionStorage
-のsetを表示します。
+組み合わせは無いため、[Gallery pending changes](#gallery-pending-changes)のbadの扱いはありません）。
 
 ## Search
 
@@ -820,10 +837,11 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
-| `rating.undo` | `generation_id`, `restored` | [bad hides with undo](#bad-hides-with-undo)のUndo |
-| `compare.add` | `generation_id`, `count` | Lightboxの[Compare entry](#compare-entry)（`比較に追加`/`比較から外す`） |
+| `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
+| `compare.remove` | `generation_id`, `count` | compareバーのチップで外す（`initCompareBar`） |
+| `compare.clear` | `count` | compareバーの`すべて解除`（`initCompareBar`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
 | `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
-| `gallery.new_arrivals` | `count`, `mode`（`auto` / `banner`） | [Gallery live insertion](#gallery-live-insertion)のカード挿入（`handleGenerationMessage` / `flushGalleryLiveQueue`） |
+| `gallery.pending_apply` | `new_count`, `hidden_count`, `source`（`strip` / `pill`） | [Gallery pending changes](#gallery-pending-changes)の反映（`applyGalleryPending`） |
 | `ui.error` | `action`, `message`, `status`, 該当操作のprops | 上記操作の失敗時 |

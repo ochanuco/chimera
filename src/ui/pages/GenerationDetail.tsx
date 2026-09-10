@@ -321,7 +321,10 @@ export function GenerationDetailPage({
         </div>
         <div class="detail-right">
           <h1>
-            {data.short_id} <CopyIdButton value={data.short_id} />
+            {data.short_id} <CopyIdButton value={data.short_id} />{' '}
+            <button type="button" class="compare-add-btn" data-generation-id={data.id} data-short-id={data.short_id}>
+              比較に追加
+            </button>
           </h1>
           {data.character ? <p>{data.character.name}</p> : null}
           <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
