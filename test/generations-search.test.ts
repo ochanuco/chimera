@@ -1,5 +1,13 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, getJson, postJson, req } from './helpers';
+
+interface FinalizeRequestBadge {
+  id: string;
+  kind: 'finalize' | 'repair' | 'masked_redraw';
+  status: string;
+  result_short_id: string | null;
+}
 
 interface SearchItem {
   id: string;
@@ -9,11 +17,26 @@ interface SearchItem {
   character: { id: string; name: string } | null;
   tags: string[];
   created_at: string;
+  refines_generation_short_id: string | null;
+  finalize_request: FinalizeRequestBadge | null;
 }
 
 interface SearchResult {
   items: SearchItem[];
   total: number;
+  next_cursor: string | null;
+}
+
+/** Builds a "refined" Generation: a Batch whose refines_generation_id resolves to a raw Generation's source. */
+async function createRefinedGeneration() {
+  const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+  const refined = await createGeneration({
+    batchOverrides: {
+      refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+      references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+    },
+  });
+  return { sourceGen, refined };
 }
 
 describe('Generation search', () => {
@@ -75,6 +98,118 @@ describe('Generation search', () => {
     expect(outOfRange.body.items.map((g) => g.id)).not.toContain(generation.id);
   });
 
+  it('filters by exact original_filename', async () => {
+    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00001_.png' } });
+
+    const found = await getJson<SearchResult>('/api/v1/generations?original_filename=yk-lineT3_00001_.png');
+    expect(found.body.items.map((g) => g.id)).toContain(generation.id);
+
+    const notFound = await getJson<SearchResult>('/api/v1/generations?original_filename=does-not-exist.png');
+    expect(notFound.body.items.map((g) => g.id)).not.toContain(generation.id);
+  });
+
+  it('filters by exact comfy_prompt_id', async () => {
+    const { job, generation } = await createGeneration();
+    await postJson(`/api/v1/jobs/${job.id}`, { comfy_prompt_id: 'a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df' }, 'PATCH');
+
+    const res = await getJson<SearchResult>('/api/v1/generations?comfy_prompt_id=a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df');
+    expect(res.body.items.map((g) => g.id)).toEqual([generation.id]);
+  });
+
+  it('filters by origin', async () => {
+    const { generation: rawGen } = await createGeneration();
+    const { sourceGen, refined } = await createRefinedGeneration();
+
+    const rawRes = await getJson<SearchResult>('/api/v1/generations?origin=raw&limit=200');
+    expect(rawRes.body.items.map((g) => g.id)).toContain(rawGen.id);
+    expect(rawRes.body.items.map((g) => g.id)).not.toContain(refined.generation.id);
+
+    const refinedRes = await getJson<SearchResult>('/api/v1/generations?origin=refined&limit=200');
+    expect(refinedRes.body.items.map((g) => g.id)).toContain(refined.generation.id);
+    expect(refinedRes.body.items.map((g) => g.id)).not.toContain(rawGen.id);
+    expect(refinedRes.body.items.find((g) => g.id === refined.generation.id)?.refines_generation_short_id).toBe(
+      sourceGen.short_id,
+    );
+  });
+
+  it('400s on an invalid origin value', async () => {
+    const res = await getJson('/api/v1/generations?origin=bogus');
+    expect(res.status).toBe(400);
+  });
+
+  it('includes refines_generation_short_id (null for a raw Generation)', async () => {
+    const { generation: rawGen } = await createGeneration();
+
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${rawGen.short_id}`);
+    expect(res.body.items[0]?.refines_generation_short_id).toBeNull();
+  });
+
+  it('excludes a rating via exclude_rating while keeping unrated rows', async () => {
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+    const { generation: unratedGen } = await createGeneration();
+
+    const res = await getJson<SearchResult>(
+      `/api/v1/generations?ids=${badGen.short_id},${unratedGen.short_id}&exclude_rating=bad`,
+    );
+    expect(res.body.items.map((g) => g.id)).not.toContain(badGen.id);
+    expect(res.body.items.map((g) => g.id)).toContain(unratedGen.id);
+  });
+
+  it('400s on an invalid exclude_rating value', async () => {
+    const res = await getJson('/api/v1/generations?exclude_rating=bogus');
+    expect(res.status).toBe(400);
+  });
+
+  it('filters by ids, accepting a mix of short_id and UUID', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+    const { generation: g3 } = await createGeneration();
+
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${g1.short_id},${g2.id}`);
+    expect(res.body.total).toBe(2);
+    expect(res.body.items.map((g) => g.id).sort()).toEqual([g1.id, g2.id].sort());
+    expect(res.body.items.map((g) => g.id)).not.toContain(g3.id);
+  });
+
+  it('400s when ids has more than 100 values', async () => {
+    const ids = Array.from({ length: 101 }, () => crypto.randomUUID()).join(',');
+    const res = await getJson(`/api/v1/generations?ids=${ids}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('paginates by cursor across generations sharing the same created_at without duplicates or skips', async () => {
+    const sameCreatedAt = '2026-01-01T00:00:00.000Z';
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const { generation } = await createGeneration();
+      await env.DB.prepare('UPDATE generations SET created_at = ? WHERE id = ?').bind(sameCreatedAt, generation.id).run();
+      ids.push(generation.id);
+    }
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      const url = `/api/v1/generations?ids=${ids.join(',')}&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const res = await getJson<SearchResult>(url);
+      seen.push(...res.body.items.map((g) => g.id));
+      if (!res.body.next_cursor) break;
+      cursor = res.body.next_cursor;
+    }
+
+    expect(seen.sort()).toEqual([...ids].sort());
+    expect(new Set(seen).size).toBe(ids.length);
+  });
+
+  it('400s on a malformed cursor', async () => {
+    const res = await getJson('/api/v1/generations?cursor=not-valid-base64%21%21%21');
+    expect(res.status).toBe(400);
+  });
+
   it('serves the stored image bytes', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}/image`);
@@ -87,5 +222,103 @@ describe('Generation search', () => {
   it('404s the image route for an unknown short_id', async () => {
     const res = await req('/g/zzzzzz/image');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進捗ピル)', () => {
+  async function createFinalizeLikeRequest(
+    generationIdOrShortId: string,
+    kind: 'finalize' | 'repair' | 'masked_redraw',
+    createdAt?: string,
+  ): Promise<string> {
+    const payload =
+      kind === 'masked_redraw'
+        ? { generation_id: generationIdOrShortId, options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'x', denoise: 0.5 } }
+        : kind === 'repair'
+          ? { generation_id: generationIdOrShortId, options: { parts: ['hands'] } }
+          : { generation_id: generationIdOrShortId, options: { repin: true } };
+    const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
+      kind,
+      payload,
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(created.status).toBe(201);
+    if (createdAt) {
+      await env.DB.prepare('UPDATE requests SET created_at = ? WHERE id = ?').bind(createdAt, created.body.id).run();
+    }
+    return created.body.id;
+  }
+
+  it('resolves a finalize request addressed by the Generation UUID', async () => {
+    const { generation } = await createGeneration();
+    const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
+
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(res.body.items[0]?.finalize_request).toEqual({ id: requestId, kind: 'finalize', status: 'queued', result_short_id: null });
+  });
+
+  it('resolves a repair request addressed by the Generation short_id', async () => {
+    const { generation } = await createGeneration();
+    const requestId = await createFinalizeLikeRequest(generation.short_id, 'repair');
+
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(res.body.items[0]?.finalize_request).toEqual({ id: requestId, kind: 'repair', status: 'queued', result_short_id: null });
+  });
+
+  it('recognizes masked_redraw and ignores an unrelated generate request', async () => {
+    const { generation } = await createGeneration();
+    await postJson('/api/v1/requests', {
+      kind: 'generate',
+      payload: { schema_version: 1, request: { instruction: 'x', count: 1 }, generation: { recipe: 'yukari', parameters: {} } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'brain',
+    });
+    const requestId = await createFinalizeLikeRequest(generation.id, 'masked_redraw');
+
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(res.body.items[0]?.finalize_request?.id).toBe(requestId);
+    expect(res.body.items[0]?.finalize_request?.kind).toBe('masked_redraw');
+  });
+
+  it('the most recently created request wins when several target the same generation', async () => {
+    const { generation } = await createGeneration();
+    await createFinalizeLikeRequest(generation.id, 'finalize', '2026-01-01T00:00:00.000Z');
+    const newer = await createFinalizeLikeRequest(generation.id, 'repair', '2026-01-02T00:00:00.000Z');
+
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(res.body.items[0]?.finalize_request?.id).toBe(newer);
+    expect(res.body.items[0]?.finalize_request?.kind).toBe('repair');
+  });
+
+  it('result_short_id resolves once the request is done, and stays null for every other status', async () => {
+    const { generation } = await createGeneration();
+    const { batch: resultBatch, generation: resultGen } = await createGeneration();
+    const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
+
+    const queuedRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(queuedRes.body.items[0]?.finalize_request?.status).toBe('queued');
+    expect(queuedRes.body.items[0]?.finalize_request?.result_short_id).toBeNull();
+
+    await env.DB.prepare('UPDATE requests SET status = ? WHERE id = ?').bind('running', requestId).run();
+    const runningRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(runningRes.body.items[0]?.finalize_request?.result_short_id).toBeNull();
+
+    await env.DB.prepare('UPDATE requests SET status = ?, result_json = ? WHERE id = ?')
+      .bind('done', JSON.stringify({ batch_id: resultBatch.id, generation_ids: [resultGen.id] }), requestId)
+      .run();
+    const doneRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(doneRes.body.items[0]?.finalize_request).toEqual({
+      id: requestId,
+      kind: 'finalize',
+      status: 'done',
+      result_short_id: resultGen.short_id,
+    });
+  });
+
+  it('is null when no finalize/repair/masked_redraw request targets the generation', async () => {
+    const { generation } = await createGeneration();
+    const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
+    expect(res.body.items[0]?.finalize_request).toBeNull();
   });
 });

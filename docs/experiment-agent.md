@@ -99,7 +99,9 @@ repair_generation(generation_id, options?, idempotency_key)     create_request �
 masked_redraw_generation(generation_id, options, idempotency_key)  任意矩形の garment / local inpaint。source は不変
 get_request(id)
 list_requests(status?, kind?, run_id?)
-get_generation(generation_id)            GET /api/v1/generations/{id} と同じ形
+list_generations(character?, tag?, published?, rating?, bookmark?, from?, to?, limit?, offset?)   GET /api/v1/generations と同じフィルタ。published=true が納品済みの索引
+get_generation(generation_id)            GET /api/v1/generations/{id} と同じ形 (publications 込み)
+record_publication(generation_id, url?, published_at?, idempotency_key?)   Generation の納品を1件記録
 list_batch(batch_id)                     jobs / generations (rating・tags・semantic・seed 込み) / references / relations / experiment_run
 get_generation_lineage(generation_id, depth?)   Batch 単位の祖先・子孫 (reference / relation 両方)、depth 既定 5・上限 10
 derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
@@ -178,6 +180,12 @@ Generation の Batch から `recipe` と pin されていた preset の版を、
 rating が good でなければ 409 で、Rating を書けるのは人間だけなので、Agent が単独で
 preset を本番へ入れることはできません。既存の版は書き換わらないため、昇格が過去の
 request の再現性を壊すこともありません。
+
+`list_generations` の `published=true` は納品済み Generation の索引です。かつての
+`tag="publish"` に代わるもので、返る各 Generation は引き続き `look:<pose>` タグを
+持ちます（[domain-model.md](domain-model.md#publication)）。`record_publication`
+は Publication を1件追記するだけの非破壊 tool で、`url` は省略でき、後から
+`PATCH /api/v1/publications/{id}` や Generation Detail 画面で埋められます。
 
 Agent は `create_run` を呼ぶたびに意図した Run 1件につき1つの `idempotency_key`
 を生成して渡すべきです。Run は削除できないため、レスポンスを失ってから

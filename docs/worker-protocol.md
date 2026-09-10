@@ -769,7 +769,17 @@ hub → viewer:
 {"type":"snapshot","progress":[...],"workers":[{"worker_id":...,"kinds":...,"connected_at":...}]}   接続直後
 {"type":"progress","request_id":"...","worker_id":"...","phase":"...","step":...,"total":...,"message":...,"at":"<ISO>"}
 {"type":"status","request_id":"...","status":"queued|running|done|failed|cancelled","kind":"..."}
+{"type":"generation","generation_id":"...","short_id":"...","batch_id":"...","refines_generation_short_id":"..."|null,"created_at":"<ISO>"}
 ```
+
+`generation` は Generation ingest (`POST /api/v1/jobs/{job_id}/generations`, worker-protocol.md
+の外、[api.md](api.md#generation-ingest)) が新しい行を作ったときだけ送ります。同じ
+`(comfy_job_id, comfy_output_index)` の再送（200、既存行を返すだけ）では送りません。
+`refines_generation_short_id` はそのGenerationの所属Batchが`refines_generation_id`を持つときだけ
+non-nullです（[domain-model.md](domain-model.md#batch)）。Gallery のカードを差し込むための
+通知で、`snapshot`と違いDO storageにキャッシュを持たず、接続中のviewerへその場でbroadcast
+するだけです（接続前に届いたものは取りこぼします — Gallery は元々ページ読み込み時点の
+一覧を持っているので、取りこぼしても再読み込みで揃います）。
 
 未知の `type` は無視します。パースできないフレームも無視します。viewer から来たメッセージは
 （`type` を問わず）常に無視します — viewer は読み取り専用です。
@@ -779,6 +789,8 @@ hub → viewer:
 - `queued` は接続中の worker のうち、`kinds` にその `kind` を含むものだけに送ります。
   `hello` をまだ送っていない worker（`kinds` 未設定）は全 kind を受け取ります。
 - `status` は接続中の viewer 全員に送ります（`kinds` によるフィルタはありません）。
+- `generation` も接続中の viewer 全員に送ります。view（raw/refined/all）による絞り込みは
+  viewer 側（GUI）の仕事で、hub は素通しします。
 - DO storage には `progress:<request_id>` に最新の progress を1件だけ持ちます。viewer が
   後から繋いだときの `snapshot` はここから組み立てます。`status` が done / failed /
   cancelled を運ぶと、そのエントリを削除します（完了した request の進捗をいつまでも

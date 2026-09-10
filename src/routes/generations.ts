@@ -1,10 +1,17 @@
 import { Hono } from 'hono';
 import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
+import { createPublicationSchema } from '../schemas/publications';
 import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
 import { nowIso, getGenerationByIdOrShortId } from '../lib/db';
 import { uuidv7 } from '../lib/uuidv7';
 import { assignTag, removeTag } from '../lib/tags';
+import {
+  createPublication,
+  createPublicationForTagCompat,
+  listPublicationsForGeneration,
+  serializePublication,
+} from '../lib/publications';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeGenerationAsset } from '../lib/serialize';
@@ -124,6 +131,16 @@ generations.post('/:id/tags', async (c) => {
   const body = assignTagSchema.parse(await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
+
+  // 互換: comfyui-recipes の `comfy-recipes metadata tag <id> publish`（と同じハンドラを叩く
+  // GUI の tag-add box）は引き続きこのエンドポイントに `name: "publish"` を送ってくる。タグは
+  // 作らず Publication を作る（docs/api.md#publication「tag 互換」、AGENTS.md 側の切り替えまでの
+  // 暫定措置）。レスポンス形は CLI が読まないので tag 応答と同じ {id, name} に揃えるだけでよい。
+  if (body.name === 'publish') {
+    const { row, created } = await createPublicationForTagCompat(db, generation.id);
+    return c.json({ id: row.id, name: 'publish' }, created ? 201 : 200);
+  }
+
   const { tag, created } = await assignTag(db, 'generation_tags', generation.id, body.name, body.created_by);
   return c.json({ id: tag.id, name: tag.name }, created ? 201 : 200);
 });
@@ -133,6 +150,29 @@ generations.delete('/:id/tags/:tagId', async (c) => {
   const generation = await getGenerationOr404(db, c.req.param('id'));
   await removeTag(db, 'generation_tags', generation.id, c.req.param('tagId'));
   return c.body(null, 204);
+});
+
+// GET /api/v1/generations/{id}/publications — Publication 一覧 (docs/domain-model.md#publication)。
+generations.get('/:id/publications', async (c) => {
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const rows = await listPublicationsForGeneration(db, generation.id);
+  return c.json({ items: rows.map(serializePublication) });
+});
+
+// POST /api/v1/generations/{id}/publications — GUI の「公開を記録」が呼ぶ窓口。created_by は
+// 'gui' 固定 (MCP は record_publication 経由で別途 'mcp' を渡す。src/mcp.ts 参照)。
+generations.post('/:id/publications', async (c) => {
+  const body = createPublicationSchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const { row, created } = await createPublication(db, generation.id, {
+    url: body.url,
+    publishedAt: body.published_at,
+    createdBy: 'gui',
+    idempotencyKey: body.idempotency_key,
+  });
+  return c.json(serializePublication(row), created ? 201 : 200);
 });
 
 async function getGenerationAsset(

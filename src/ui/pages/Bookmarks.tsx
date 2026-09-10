@@ -1,12 +1,7 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { BatchRow, type BatchRowData } from '../components/BatchRow';
-
-export interface BookmarkedStory {
-  id: string;
-  name: string;
-  batch_count: number;
-}
+import { ViewSwitch, type GalleryView } from '../components/ViewSwitch';
 
 export interface BookmarkedExperiment {
   id: string;
@@ -15,29 +10,32 @@ export interface BookmarkedExperiment {
 }
 
 export function BookmarksPage({
+  path,
   generations,
   batches,
-  stories,
   experiments,
+  view,
 }: {
+  path: string;
   generations: GenerationCardData[];
   batches: BatchRowData[];
-  stories: BookmarkedStory[];
   experiments: BookmarkedExperiment[];
+  view: GalleryView;
 }) {
   return (
-    <Layout title="Bookmarks">
+    <Layout title="Bookmarks" path={path}>
       <h1>Bookmarks</h1>
       <datalist id="tag-suggestions"></datalist>
 
       <section class="bookmark-section">
         <h2>Generations</h2>
+        <ViewSwitch basePath="/bookmarks" current={view} params={new URLSearchParams()} />
         {generations.length === 0 ? (
           <p class="empty-state">No bookmarked generations.</p>
         ) : (
           <div class="grid">
             {generations.map((g) => (
-              <GenerationCard g={{ ...g, tags: [] }} showCompare={false} />
+              <GenerationCard g={g} />
             ))}
           </div>
         )}
@@ -49,21 +47,6 @@ export function BookmarksPage({
           <p class="empty-state">No bookmarked batches.</p>
         ) : (
           batches.map((b) => <BatchRow b={b} />)
-        )}
-      </section>
-
-      <section class="bookmark-section">
-        <h2>Stories</h2>
-        {stories.length === 0 ? (
-          <p class="empty-state">No bookmarked stories.</p>
-        ) : (
-          <ul>
-            {stories.map((s) => (
-              <li>
-                <a href={`/stories/${s.id}`}>{s.name}</a> ({s.batch_count} batches)
-              </li>
-            ))}
-          </ul>
         )}
       </section>
 
@@ -81,6 +64,13 @@ export function BookmarksPage({
           </ul>
         )}
       </section>
+
+      <div id="compare-bar" class="compare-bar hidden">
+        <span id="compare-count">Compare (0)</span>
+        <a id="compare-link" class="compare-go" href="#">
+          Compare
+        </a>
+      </div>
     </Layout>
   );
 }

@@ -2,7 +2,6 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { app } from '../src/app';
 import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph } from './helpers';
-import { representativeGeneration, type GraphNodeData } from '../src/ui/pages/Graph';
 
 const BASE = 'https://chimera.test';
 
@@ -95,31 +94,6 @@ describe('Web GUI pages', () => {
     const res = await req('/gallery?limit=200');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
-    const body = await res.text();
-    expect(body).toContain(generation.short_id);
-  });
-
-  it('GET /gallery?original_filename= finds a generation by exact original filename', async () => {
-    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00001_.png' } });
-    const res = await req('/gallery?original_filename=yk-lineT3_00001_.png');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(generation.short_id);
-  });
-
-  it('GET /gallery?original_filename= excludes generations with a non-matching filename', async () => {
-    const { generation } = await createGeneration({ metadata: { original_filename: 'yk-lineT3_00002_.png' } });
-    const res = await req('/gallery?original_filename=does-not-exist.png');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).not.toContain(generation.short_id);
-  });
-
-  it('GET /gallery?comfy_prompt_id= finds a generation by exact ComfyUI job id', async () => {
-    const { job, generation } = await createGeneration();
-    await postJson(`/api/v1/jobs/${job.id}`, { comfy_prompt_id: 'a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df' }, 'PATCH');
-    const res = await req('/gallery?comfy_prompt_id=a0b2e9d3-d14d-41a8-b3a4-f5f57a8fa8df');
-    expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain(generation.short_id);
   });
@@ -314,7 +288,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain(`${png.byteLength} B`);
   });
 
-  it('GET /gallery shows the resolution and formatted file size in the card', async () => {
+  it('GET /gallery card omits resolution/file size; the lightbox fragment shows them', async () => {
     const png = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
       0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
@@ -336,8 +310,136 @@ describe('Web GUI pages', () => {
     const res = await req('/gallery?limit=200');
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('768×768');
-    expect(html).toContain(`${png.byteLength} B`);
+    expect(html).not.toContain('768×768');
+    expect(html).not.toContain(`${png.byteLength} B`);
+
+    const lightbox = await req(`/g/${ingest.body.short_id}?partial=lightbox`);
+    expect(lightbox.status).toBe(200);
+    const lightboxHtml = await lightbox.text();
+    expect(lightboxHtml).not.toContain('<html');
+    expect(lightboxHtml).toContain('768×768');
+    expect(lightboxHtml).toContain(`${png.byteLength} B`);
+  });
+
+  it('GET /gallery default view hides bad-rated and finalize-output generations', async () => {
+    const { generation: rawGen } = await createGeneration();
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.short_id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const res = await req('/gallery?limit=200');
+    const html = await res.text();
+    expect(html).toContain(rawGen.short_id);
+    expect(html).not.toContain(badGen.short_id);
+    expect(html).not.toContain(refined.generation.short_id);
+  });
+
+  it('GET /gallery?bad=1 shows bad-rated generations', async () => {
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.short_id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+
+    const res = await req('/gallery?bad=1&limit=200');
+    const html = await res.text();
+    expect(html).toContain(badGen.short_id);
+  });
+
+  it('GET /gallery?view=refined shows only finalize-output generations, and view=all shows both', async () => {
+    const { generation: rawGen } = await createGeneration();
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const refinedOnly = await req('/gallery?view=refined&limit=200');
+    const refinedHtml = await refinedOnly.text();
+    expect(refinedHtml).not.toContain(rawGen.short_id);
+    expect(refinedHtml).toContain(refined.generation.short_id);
+
+    const all = await req('/gallery?view=all&limit=200');
+    const allHtml = await all.text();
+    expect(allHtml).toContain(rawGen.short_id);
+    expect(allHtml).toContain(refined.generation.short_id);
+  });
+
+  it('GET /gallery?ids= redirects to /g/{short_id} when it resolves to exactly one generation', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/gallery?ids=${generation.short_id}`, { redirect: 'manual' });
+    expect([301, 302, 307, 308]).toContain(res.status);
+    expect(res.headers.get('location')).toContain(`/g/${generation.short_id}`);
+  });
+
+  it('GET /gallery?ids= with multiple ids shows a list (no redirect) and ignores view/bad-hiding', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: badGen } = await createGeneration();
+    await req(`/api/v1/generations/${badGen.short_id}/rating`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: 'bad' }),
+    });
+
+    const res = await req(`/gallery?ids=${g1.short_id},${badGen.short_id}`, { redirect: 'manual' });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(g1.short_id);
+    expect(html).toContain(badGen.short_id);
+  });
+
+  it('GET /gallery grid carries data-gallery-live/data-gallery-view, disabled by a panel filter (docs/ui.md「Gallery」live insertion)', async () => {
+    const { generation } = await createGeneration();
+
+    const plain = await req('/gallery?limit=200');
+    const plainHtml = await plain.text();
+    expect(plainHtml).toContain('data-gallery-view="raw"');
+    expect(plainHtml).toContain('data-gallery-live="true"');
+
+    const refinedView = await req('/gallery?view=refined&limit=200');
+    expect(await refinedView.text()).toContain('data-gallery-view="refined"');
+
+    // A panel filter (tag/rating/bookmark/published) narrows the grid, so live insertion turns
+    // off even though this same generation still matches and the grid still renders.
+    const tagName = `live-filter-${crypto.randomUUID().slice(0, 8)}`;
+    await postJson(`/api/v1/generations/${generation.id}/tags`, { name: tagName });
+    const tagFiltered = await req(`/gallery?tag=${tagName}&limit=200`);
+    const tagHtml = await tagFiltered.text();
+    expect(tagHtml).toContain(generation.short_id);
+    expect(tagHtml).not.toContain('data-gallery-live="true"');
+  });
+
+  it('GET /gallery?partial=1 returns a cards fragment without a document wrapper', async () => {
+    await createGeneration();
+    const res = await req('/gallery?partial=1&limit=200');
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).not.toContain('<html');
+  });
+
+  it('GET /gallery shows a load-more link only when there are more results than the page size', async () => {
+    for (let i = 0; i < 3; i++) await createGeneration();
+
+    const small = await req('/gallery?limit=1');
+    const smallHtml = await small.text();
+    expect(smallHtml).toContain('class="load-more"');
+
+    const big = await req('/gallery?limit=200');
+    const bigHtml = await big.text();
+    expect(bigHtml).not.toContain('class="load-more"');
   });
 
   it('GET /g/xxxxxx 404s for an unknown short_id', async () => {
@@ -463,30 +565,58 @@ describe('Web GUI pages', () => {
     }
   });
 
-  it('GET /stories/{id} includes the relation label', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'move to the beach',
-    });
-
-    const res = await req(`/stories/${story.body.id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('move to the beach');
+  it('GET /stories 404s', async () => {
+    const res = await req('/stories');
+    expect(res.status).toBe(404);
   });
 
-  it('GET /stories/{id} 404s for an unknown story', async () => {
-    const res = await req('/stories/00000000-0000-0000-0000-000000000000');
+  it('GET /stories/{id} 404s even for an existing story', async () => {
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
+    const res = await req(`/stories/${story.body.id}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /graph 404s', async () => {
+    await createBatch();
+    const res = await req('/graph');
     expect(res.status).toBe(404);
   });
 
   it('GET /bookmarks returns 200', async () => {
     const res = await req('/bookmarks');
     expect(res.status).toBe(200);
+  });
+
+  it('GET /bookmarks has no Stories section', async () => {
+    const res = await req('/bookmarks');
+    const html = await res.text();
+    expect(html).not.toContain('>Stories<');
+    expect(html).not.toContain('href="/stories');
+  });
+
+  it('GET /bookmarks defaults the Generations section to view=refined, and view=all shows raw bookmarks too', async () => {
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    await req(`/api/v1/generations/${sourceGen.short_id}/bookmark`, { method: 'PUT' });
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+    await req(`/api/v1/generations/${refined.generation.short_id}/bookmark`, { method: 'PUT' });
+
+    const res = await req('/bookmarks');
+    const html = await res.text();
+    // sourceGen's own card is absent (view=refined hides raw generations); its short_id can still
+    // appear inside the refined card's "from <short_id>" badge (GenerationCard), so assert on the
+    // card link specifically rather than the bare short_id string.
+    expect(html).not.toContain(`href="/g/${sourceGen.short_id}"`);
+    expect(html).toContain(refined.generation.short_id);
+
+    const all = await req('/bookmarks?view=all');
+    const allHtml = await all.text();
+    expect(allHtml).toContain(`href="/g/${sourceGen.short_id}"`);
+    expect(allHtml).toContain(refined.generation.short_id);
   });
 
   it('GET /batches returns 200 HTML', async () => {
@@ -806,307 +936,6 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     expect(body).toContain('render.positive');
   });
-
-  it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {
-    const { generation, batch: sourceBatch } = await createGeneration();
-    const targetBatch = await createBatch({
-      references: [{ source_generation_id: generation.id, purpose: 'composition', aspect: 'pose' }],
-      refinement: { source_batch_id: sourceBatch.id, actor: 'human', reason: 'retry' },
-    });
-
-    const story = await postJson<{ id: string }>('/api/v1/stories', {
-      name: `graph-ui-story-${crypto.randomUUID().slice(0, 8)}`,
-    });
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: sourceBatch.id,
-      target_batch_id: targetBatch.body.id,
-      label: 'continues the scene',
-    });
-
-    // sourceBatch/targetBatch form a size-2 retry chain (the refinement relation edge), which
-    // collapses by default -- expand it so both Batches and the relation edge itself render.
-    const res = await req(`/graph?expand=${targetBatch.body.short_id}`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    const body = await res.text();
-
-    expect(body).toContain(sourceBatch.short_id);
-    expect(body).toContain(targetBatch.body.short_id);
-    expect(body).toContain('graph-legend');
-    expect(body).toContain('legend-reference');
-    expect(body).toContain('legend-relation');
-    expect(body).toContain('legend-story');
-    expect(body).toContain('edge-reference');
-    expect(body).toContain('edge-relation');
-    expect(body).toContain('edge-story');
-    expect(body).toContain(`data-gen-short-id="${generation.short_id}"`);
-    expect(body).toContain(`data-batch-short-id="${sourceBatch.short_id}"`);
-    expect(body).toContain(`data-batch-short-id="${targetBatch.body.short_id}"`);
-    expect(body).toContain('id="graph-context-menu"');
-  });
-
-  it('GET /graph with no query params still renders the pan/zoom SVG container', async () => {
-    await createBatch();
-    const res = await req('/graph');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('id="graph-svg"');
-    expect(body).toContain('graph-viewport');
-  });
-
-  it('GET /graph?story= shows only the Batches connected to that Story', async () => {
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-    const other = await createBatch();
-    const story = await postJson<{ id: string }>('/api/v1/stories', {
-      name: `graph-scope-story-${crypto.randomUUID().slice(0, 8)}`,
-    });
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'continues',
-    });
-
-    const res = await req(`/graph?story=${story.body.id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-    expect(body).not.toContain(other.body.short_id);
-  });
-
-  it('GET /graph?root= shows only the ancestor/descendant subgraph of that Batch', async () => {
-    const a = await createBatch();
-    const b = await createBatch({ refinement: { source_batch_id: a.body.id, actor: 'human', reason: 'retry' } });
-    const c = await createBatch({ refinement: { source_batch_id: b.body.id, actor: 'human', reason: 'retry' } });
-    const unrelated = await createBatch();
-
-    const res = await req(`/graph?root=${b.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(a.body.short_id);
-    expect(body).toContain(b.body.short_id);
-    expect(body).toContain(c.body.short_id);
-    expect(body).not.toContain(unrelated.body.short_id);
-  });
-
-  it('GET /graph?root= with an unknown Batch shows a "Batch not found" message', async () => {
-    await createBatch();
-    const res = await req('/graph?root=doesnotexist');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('Batch not found: doesnotexist');
-  });
-
-  it('GET /graph?all=1 shows every Batch regardless of connectivity', async () => {
-    const isolatedOld = await createBatch();
-    const isolatedNew = await createBatch();
-
-    const res = await req('/graph?all=1');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(isolatedOld.body.short_id);
-    expect(body).toContain(isolatedNew.body.short_id);
-  });
-
-  it('GET /graph with no query params defaults to Recent (distance-limited from the newest Batch)', async () => {
-    const isolatedOld = await createBatch();
-    const isolatedNew = await createBatch();
-
-    const res = await req('/graph');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(isolatedNew.body.short_id);
-    expect(body).not.toContain(isolatedOld.body.short_id);
-  });
-
-  it('GET /graph?active=1 shows the whole connected component regardless of distance', async () => {
-    const isolated = await createBatch();
-    const b0 = await createBatch();
-    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-    const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
-    const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
-
-    // b0..b4 form one size-5 retry chain; expand it so this test still exercises
-    // per-Batch reachability rather than the (separately tested) chain collapse.
-    const res = await req(`/graph?active=1&expand=${b4.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(b0.body.short_id);
-    expect(body).toContain(b4.body.short_id);
-    expect(body).not.toContain(isolated.body.short_id);
-  });
-
-  it('GET /graph with no query params limits to distance 3 and stubs the boundary Batch', async () => {
-    const b0 = await createBatch();
-    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-    const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
-    const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
-
-    // b0..b4 form one size-5 retry chain; expand it so depth-limiting is exercised
-    // per-Batch rather than collapsing the whole chain to a single node.
-    const res = await req(`/graph?expand=${b4.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    // b0 is 4 hops from the newest Batch (b4) -- outside the default depth-3 window.
-    expect(body).not.toContain(b0.body.short_id);
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-    expect(body).toContain(b3.body.short_id);
-    expect(body).toContain(b4.body.short_id);
-    // b1 sits at the boundary and has one hidden neighbor (b0) -> drill-down stub.
-    expect(body).toContain('graph-node-stub');
-    expect(body).toContain('⋯ +1');
-  });
-
-  it('GET /graph?root=X&depth=1 limits to immediate neighbors of X only', async () => {
-    const a = await createBatch();
-    const b = await createBatch({ refinement: { source_batch_id: a.body.id, actor: 'human', reason: 'retry' } });
-    const c = await createBatch({ refinement: { source_batch_id: b.body.id, actor: 'human', reason: 'retry' } });
-    const d = await createBatch({ refinement: { source_batch_id: c.body.id, actor: 'human', reason: 'retry' } });
-
-    const res = await req(`/graph?root=${c.body.short_id}&depth=1`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).not.toContain(a.body.short_id);
-    expect(body).toContain(b.body.short_id);
-    expect(body).toContain(c.body.short_id);
-    expect(body).toContain(d.body.short_id);
-  });
-
-  it('GET /graph renders at most one <image> per Batch card even with many Generations', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
-    await ingestGeneration(job.body.id, { seed: 1, original_filename: 'multi-a.png', comfy_output_index: 0 });
-    await ingestGeneration(job.body.id, { seed: 2, original_filename: 'multi-b.png', comfy_output_index: 1 });
-    await ingestGeneration(job.body.id, { seed: 3, original_filename: 'multi-c.png', comfy_output_index: 2 });
-
-    const res = await req(`/graph?root=${batch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    const imageCount = (body.match(/<image /g) ?? []).length;
-    expect(imageCount).toBe(1);
-  });
-});
-
-describe('Graph View retry-chain collapse', () => {
-  /** Builds a size-3 relation chain b0 -> b1 -> b2 (each a refinement retry of the previous). */
-  async function createChain() {
-    const b0 = await createBatch();
-    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-    return { b0, b1, b2 };
-  }
-
-  it('collapses a 3-Batch relation chain into its representative, with a ⟳3 badge', async () => {
-    const { b0, b1, b2 } = await createChain();
-
-    // active=1 isolates this test's own connected component (rooted at the newest Batch,
-    // b2) from unrelated Batches left behind by other tests sharing the same D1 instance.
-    const res = await req('/graph?active=1');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    // b2 is the most recently created member, so it is the chain's representative.
-    expect(body).toContain(b2.body.short_id);
-    expect(body).not.toContain(b0.body.short_id);
-    expect(body).not.toContain(b1.body.short_id);
-    expect(body).toContain('graph-node-chain');
-    expect(body).toContain('⟳3');
-  });
-
-  it('?expand=<representative short_id> shows all 3 chain members', async () => {
-    const { b0, b1, b2 } = await createChain();
-
-    const res = await req(`/graph?active=1&expand=${b2.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    expect(body).toContain(b0.body.short_id);
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-    expect(body).not.toContain('⟳3');
-    expect(body).toContain('graph-node-recollapse');
-  });
-
-  it('?root=<middle chain member> auto-expands the chain so the root stays visible', async () => {
-    const { b0, b1, b2 } = await createChain();
-
-    const res = await req(`/graph?root=${b1.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    expect(body).toContain(b0.body.short_id);
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-  });
-
-  it('redirects a reference edge from outside the chain, into a middle member, onto the representative', async () => {
-    const { generation: extGeneration } = await createGeneration();
-    const b0 = await createBatch();
-    const b1 = await createBatch({
-      refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' },
-      references: [{ source_generation_id: extGeneration.id, purpose: 'composition', aspect: 'pose' }],
-    });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-
-    // active=1 isolates this test's own connected component from unrelated Batches left
-    // behind by other tests sharing the same D1 instance.
-    const res = await req('/graph?active=1');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    // b1 (the reference edge's original target) is collapsed away -- if the edge still pointed
-    // at it, the SSR layout would drop the edge entirely rather than render it dangling.
-    expect(body).not.toContain(b1.body.short_id);
-    const referenceEdgeCount = (body.match(/class="graph-edge edge-reference"/g) ?? []).length;
-    expect(referenceEdgeCount).toBe(1);
-  });
-});
-
-describe('representativeGeneration (Graph View thumbnail selection)', () => {
-  function makeNode(overrides: Partial<GraphNodeData> = {}): GraphNodeData {
-    return {
-      id: 'batch-1',
-      short_id: 'b1',
-      raw_instruction: null,
-      status: 'completed',
-      created_at: '2024-01-01T00:00:00Z',
-      generation_count: 0,
-      generations: [],
-      thumbnail_generation_short_id: null,
-      hidden_neighbor_count: 0,
-      ...overrides,
-    };
-  }
-
-  it('returns null when the Batch has no Generations', () => {
-    expect(representativeGeneration(makeNode())).toBeNull();
-  });
-
-  it('① picks the Generation matching thumbnail_generation_short_id first', () => {
-    const g1 = { short_id: 'g1', rating: null, bookmark: false } as const;
-    const g2 = { short_id: 'g2', rating: 'good', bookmark: false } as const;
-    const node = makeNode({ generations: [g1, g2], thumbnail_generation_short_id: 'g1' });
-    expect(representativeGeneration(node)?.short_id).toBe('g1');
-  });
-
-  it('② falls back to the first "good"-rated Generation when there is no thumbnail match', () => {
-    const g1 = { short_id: 'g1', rating: null, bookmark: false } as const;
-    const g2 = { short_id: 'g2', rating: 'good', bookmark: false } as const;
-    const g3 = { short_id: 'g3', rating: 'good', bookmark: false } as const;
-    const node = makeNode({ generations: [g1, g2, g3], thumbnail_generation_short_id: 'does-not-exist' });
-    expect(representativeGeneration(node)?.short_id).toBe('g2');
-  });
-
-  it('③ falls back to the first Generation when neither a thumbnail match nor a "good" rating exists', () => {
-    const g1 = { short_id: 'g1', rating: 'bad', bookmark: false } as const;
-    const g2 = { short_id: 'g2', rating: 'neutral', bookmark: false } as const;
-    const node = makeNode({ generations: [g1, g2], thumbnail_generation_short_id: null });
-    expect(representativeGeneration(node)?.short_id).toBe('g1');
-  });
 });
 
 describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
@@ -1178,15 +1007,47 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(html).toContain('rel-badge rel-refinement');
   });
 
-  it('GET /gallery nav does not include a Graph link (route stays reachable directly)', async () => {
+  it('GET /gallery nav has Gallery, Bookmarks, and a More menu with Batches/Experiments but no Stories/Graph links', async () => {
     const res = await req('/gallery');
     expect(res.status).toBe(200);
     const html = await res.text();
+    expect(html).toContain('href="/gallery"');
+    expect(html).toContain('>Gallery<');
+    expect(html).toContain('href="/bookmarks"');
+    expect(html).toContain('>Bookmarks<');
+    expect(html).toContain('class="nav-more"');
+    expect(html).toContain('<summary');
+    expect(html).toContain('>More<');
+    expect(html).toContain('href="/batches"');
+    expect(html).toContain('>Batches<');
+    expect(html).toContain('href="/experiments"');
+    expect(html).toContain('>Experiments<');
+    expect(html).not.toContain('href="/stories"');
+    expect(html).not.toContain('>Stories<');
     expect(html).not.toContain('href="/graph"');
     expect(html).not.toContain('>Graph<');
+  });
 
-    const graphRes = await req('/graph');
-    expect(graphRes.status).toBe(200);
+  it('GET /gallery marks the Gallery nav link aria-current="page"', async () => {
+    const res = await req('/gallery');
+    const html = await res.text();
+    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
+  });
+
+  it('GET /batches marks the More summary aria-current="page" (Batches lives inside it)', async () => {
+    const res = await req('/batches');
+    const html = await res.text();
+    expect(html).toMatch(/<summary aria-current="page">\s*More/);
+  });
+
+  it('GET /b/{short_id} and GET /g/{short_id} no longer link to /graph', async () => {
+    const { generation, batch } = await createGeneration();
+
+    const batchHtml = await (await req(`/b/${batch.short_id}`)).text();
+    expect(batchHtml).not.toContain('/graph?');
+
+    const genHtml = await (await req(`/g/${generation.short_id}`)).text();
+    expect(genHtml).not.toContain('/graph?');
   });
 });
 

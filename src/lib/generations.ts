@@ -2,12 +2,14 @@
 // MCP tool `get_generation` / `list_generations` (src/mcp.ts) の両方がここを呼ぶ —
 // どちらも GET /api/v1/generations{,/id} と同じ形を返す。
 
-import { normalizeDateRange, parsePagination, toBool } from './db';
+import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
+import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
 import { isUuid } from './uuidv7';
-import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow } from '../types';
+import { badRequest } from './errors';
+import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
   if (!row.semantic_json) return null;
@@ -65,16 +67,17 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const context = await buildContext(db, org, generation);
-
-  const [batch, job] = await Promise.all([
+  const [context, batch, job, publications] = await Promise.all([
+    buildContext(db, org, generation),
     db.prepare('SELECT * FROM batches WHERE id = ?').bind(generation.batch_id).first<BatchRow>(),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
+    listPublicationsForGeneration(db, generation.id),
   ]);
   const renderFacts = job ? await renderFactsForJob(db, job) : null;
 
   return {
     ...context,
+    publications: publications.map(serializePublication),
     batch: batch
       ? {
           id: batch.id,
@@ -117,6 +120,147 @@ export interface GenerationListItem {
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
+  /** short_id of the raw Generation this item's Batch refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
+  refines_generation_short_id: string | null;
+  /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
+  published: boolean;
+  /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (GenerationCardの進捗ピル)。無ければnull。 */
+  finalize_request: GenerationFinalizeRequestBadge | null;
+}
+
+export interface GenerationFinalizeRequestBadge {
+  id: string;
+  kind: 'finalize' | 'repair' | 'masked_redraw';
+  status: RequestStatus;
+  /** result_json.generation_ids[0] を解決したshort_id。done以外、または未解決ならnull。 */
+  result_short_id: string | null;
+}
+
+/**
+ * このページに載る各Generationを対象にした最新のfinalize/repair/masked_redraw requestを1クエリで集める
+ * (`GET /api/v1/generations`のfinalize_request、docs/ui.md「Gallery」カードの進捗ピル)。
+ * request.payload.generation_id はUUIDでもshort_idでもよい (worker-protocol.md「payload」) ので、
+ * 両方をIN句に渡し、行側でどちらのGenerationを指しているか引き直す。created_at DESCで取り、
+ * 各Generationについて最初に見つかった行(=最新)だけを採用する。
+ */
+export async function getLatestFinalizeRequestsForGenerations(
+  db: D1Database,
+  generations: { id: string; short_id: string }[],
+): Promise<Map<string, GenerationFinalizeRequestBadge>> {
+  const result = new Map<string, GenerationFinalizeRequestBadge>();
+  if (generations.length === 0) return result;
+
+  const targetByPayloadId = new Map<string, string>();
+  const payloadIds: string[] = [];
+  for (const g of generations) {
+    targetByPayloadId.set(g.id, g.id);
+    targetByPayloadId.set(g.short_id, g.id);
+    payloadIds.push(g.id, g.short_id);
+  }
+
+  // D1 の1クエリ bind 数上限 (queryGenerations の ids フィルタと同じ理由、上のコメント参照) を
+  // ページサイズ x2 で越えうるので、placeholders ではなく json_each の1 bind にまとめる。
+  const { results } = await db
+    .prepare(
+      `SELECT id, kind, status, payload_json, result_json FROM requests
+       WHERE kind IN ('finalize', 'repair', 'masked_redraw')
+         AND json_extract(payload_json, '$.generation_id') IN (SELECT value FROM json_each(?))
+       ORDER BY created_at DESC`,
+    )
+    .bind(JSON.stringify(payloadIds))
+    .all<{
+      id: string;
+      kind: GenerationFinalizeRequestBadge['kind'];
+      status: RequestStatus;
+      payload_json: string;
+      result_json: string | null;
+    }>();
+
+  const rows = results ?? [];
+
+  // done行のresult.generation_ids[0]をまとめて解決する (行ごとに叩かない)。
+  const firstResultGenerationIds: string[] = [];
+  for (const r of rows) {
+    if (r.status !== 'done' || !r.result_json) continue;
+    try {
+      const parsed = JSON.parse(r.result_json) as { generation_ids?: string[] };
+      if (parsed.generation_ids?.[0]) firstResultGenerationIds.push(parsed.generation_ids[0]);
+    } catch {
+      // 壊れたresult_jsonは無視 (result_short_id は null のまま)
+    }
+  }
+  const resultShortIds = await resolveGenerationShortIds(db, firstResultGenerationIds);
+
+  for (const r of rows) {
+    let payload: { generation_id?: unknown };
+    try {
+      payload = JSON.parse(r.payload_json) as { generation_id?: unknown };
+    } catch {
+      continue;
+    }
+    const payloadGenerationId = typeof payload.generation_id === 'string' ? payload.generation_id : null;
+    const targetGenerationId = payloadGenerationId ? targetByPayloadId.get(payloadGenerationId) : undefined;
+    if (!targetGenerationId || result.has(targetGenerationId)) continue; // rows は created_at DESC なので既にあれば最新
+
+    let resultShortId: string | null = null;
+    if (r.status === 'done' && r.result_json) {
+      try {
+        const parsed = JSON.parse(r.result_json) as { generation_ids?: string[] };
+        const firstId = parsed.generation_ids?.[0];
+        resultShortId = firstId ? (resultShortIds.get(firstId) ?? null) : null;
+      } catch {
+        resultShortId = null;
+      }
+    }
+    result.set(targetGenerationId, { id: r.id, kind: r.kind, status: r.status, result_short_id: resultShortId });
+  }
+
+  return result;
+}
+
+/** `ids=` の入力上限 (src/routes/pages.tsx の Gallery ids フィルタも同じ上限で使う)。 */
+export const MAX_GENERATION_IDS = 100;
+
+function parseIdsParam(raw: string): string[] {
+  const tokens = raw
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tokens.length > MAX_GENERATION_IDS) {
+    throw badRequest(`ids accepts at most ${MAX_GENERATION_IDS} values`);
+  }
+  return tokens;
+}
+
+interface GenerationCursor {
+  createdAt: string;
+  id: string;
+}
+
+function encodeCursor(cursor: GenerationCursor): string {
+  const bytes = new TextEncoder().encode(`${cursor.createdAt}|${cursor.id}`);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeCursor(raw: string): GenerationCursor {
+  try {
+    const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+    const binary = atob(padded + pad);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const decoded = new TextDecoder().decode(bytes);
+    const sep = decoded.lastIndexOf('|');
+    if (sep === -1) throw new Error('missing separator');
+    const createdAt = decoded.slice(0, sep);
+    const id = decoded.slice(sep + 1);
+    if (!createdAt || !id) throw new Error('empty part');
+    return { createdAt, id };
+  } catch {
+    throw badRequest('malformed cursor');
+  }
 }
 
 /** GET /api/v1/generations の一覧 + フィルタ。MCP tool `list_generations` もここを呼ぶ。 */
@@ -124,7 +268,7 @@ export async function queryGenerations(
   db: D1Database,
   query: Record<string, string | undefined>,
   org: string,
-): Promise<{ items: GenerationListItem[]; total: number }> {
+): Promise<{ items: GenerationListItem[]; total: number; next_cursor: string | null }> {
   const { limit, offset } = parsePagination(query);
 
   const conditions: string[] = [];
@@ -139,15 +283,30 @@ export async function queryGenerations(
       binds.push(query.character);
     }
   }
-  if (query.tag) {
+  // tag=publish は互換のため published=true の別名として扱う (docs/api.md#publication「tag 互換」) —
+  // タグはもう作られないため、他の tag と同じ EXISTS には乗せない。
+  if (query.tag && query.tag !== 'publish') {
     conditions.push(
       'EXISTS (SELECT 1 FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id AND t.name = ?)',
     );
     binds.push(query.tag);
   }
+  const publishedFilter = query.tag === 'publish' ? 'true' : query.published;
+  if (publishedFilter === 'true') {
+    conditions.push('EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
+  } else if (publishedFilter === 'false') {
+    conditions.push('NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
+  }
   if (query.rating) {
     conditions.push('g.rating = ?');
     binds.push(query.rating);
+  }
+  if (query.exclude_rating) {
+    if (!['bad', 'neutral', 'good'].includes(query.exclude_rating)) {
+      throw badRequest('exclude_rating must be one of bad, neutral, good');
+    }
+    conditions.push('(g.rating IS NULL OR g.rating != ?)');
+    binds.push(query.exclude_rating);
   }
   if (query.bookmark !== undefined) {
     conditions.push('g.bookmark = ?');
@@ -170,30 +329,82 @@ export async function queryGenerations(
     conditions.push('g.created_at <= ?');
     binds.push(to);
   }
+  if (query.origin) {
+    if (query.origin === 'raw') {
+      conditions.push('b.refines_generation_id IS NULL');
+    } else if (query.origin === 'refined') {
+      conditions.push('b.refines_generation_id IS NOT NULL');
+    } else {
+      throw badRequest('origin must be "raw" or "refined"');
+    }
+  }
+  if (query.ids) {
+    const idTokens = parseIdsParam(query.ids);
+    if (idTokens.length === 0) {
+      // 全トークンが空白のみ: 「該当なし」を明示的に表す条件にする。
+      conditions.push('1 = 0');
+    } else {
+      // D1 は1クエリの bind 数が100までなので、ids は JSON 配列1個として渡す。
+      conditions.push('(g.id IN (SELECT value FROM json_each(?)) OR g.short_id IN (SELECT value FROM json_each(?)))');
+      const idsJson = JSON.stringify(idTokens);
+      binds.push(idsJson, idsJson);
+    }
+  }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
+  const countWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const countRow = await db
-    .prepare(`SELECT COUNT(*) AS total FROM generations g ${where}`)
+    .prepare(`SELECT COUNT(*) AS total FROM generations g LEFT JOIN batches b ON b.id = g.batch_id ${countWhere}`)
     .bind(...binds)
     .first<{ total: number }>();
 
+  if (query.cursor) {
+    const cursor = decodeCursor(query.cursor);
+    conditions.push('(g.created_at < ? OR (g.created_at = ? AND g.id < ?))');
+    binds.push(cursor.createdAt, cursor.createdAt, cursor.id);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // 次ページの有無を判定するため limit+1 件取得する。cursor 指定時は offset を無視する
+  // (offset ベースのページングと keyset ページングを混在させない)。
   const { results } = await db
     .prepare(
-      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json
+      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json,
+         rg.short_id AS refines_generation_short_id,
+         EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published
        FROM generations g
        LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
        LEFT JOIN tags t ON t.id = gt.tag_id
+       LEFT JOIN batches b ON b.id = g.batch_id
+       LEFT JOIN generations rg ON rg.id = b.refines_generation_id
        ${where}
        GROUP BY g.id
-       ORDER BY g.created_at DESC
+       ORDER BY g.created_at DESC, g.id DESC
        LIMIT ? OFFSET ?`,
     )
-    .bind(...binds, limit, offset)
-    .all<GenerationRow & { character_name: string | null; tag_names_json: string }>();
+    .bind(...binds, limit + 1, query.cursor ? 0 : offset)
+    .all<
+      GenerationRow & {
+        character_name: string | null;
+        tag_names_json: string;
+        refines_generation_short_id: string | null;
+        is_published: number;
+      }
+    >();
 
-  const items = (results ?? []).map((r) => {
+  const rows = results ?? [];
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor = hasMore && lastRow ? encodeCursor({ createdAt: lastRow.created_at, id: lastRow.id }) : null;
+
+  const finalizeRequests = await getLatestFinalizeRequestsForGenerations(
+    db,
+    pageRows.map((r) => ({ id: r.id, short_id: r.short_id })),
+  );
+
+  const items = pageRows.map((r) => {
     const tagArray = r.tag_names_json ? JSON.parse(r.tag_names_json) : [];
     const tags = Array.isArray(tagArray) ? tagArray.filter((t) => t !== null) : [];
     return {
@@ -212,8 +423,11 @@ export async function queryGenerations(
       image_width: r.image_width,
       image_height: r.image_height,
       image_size: r.image_size,
+      refines_generation_short_id: r.refines_generation_short_id,
+      published: toBool(r.is_published),
+      finalize_request: finalizeRequests.get(r.id) ?? null,
     };
   });
 
-  return { items, total: countRow?.total ?? 0 };
+  return { items, total: countRow?.total ?? 0, next_cursor: nextCursor };
 }

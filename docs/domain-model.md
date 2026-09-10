@@ -539,7 +539,19 @@ note
 bookmark
 status
 created_at
+refines_generation_id
 ```
+
+`refines_generation_id` は、この Batch が finalize/repair/masked_redraw で仕上げた元の raw
+Generation です。この Batch を target とする BatchRelation（`type = 'refinement'`,
+source を S とする）と、この Batch を target とする BatchReference（`purpose = 'rebuild'`,
+source_generation を G とする）が対になり、かつ `G.batch_id = S` であるときに
+`refines_generation_id = G` とします（複数一致するときは最も早く作成された rebuild
+Reference を採用し、作成時刻が同じなら id の小さい方を採用）。raw の生成 Batch（そのような対が無い Batch）では NULL です。Batch
+作成時（POST /api/v1/batches）と、references / relations の追加時（POST
+/api/v1/batches/{id}/references, POST /api/v1/batches/{target_batch_id}/relations）に
+自動で再計算します（`src/lib/batch-refinement.ts`）。Gallery の既定フィルタ（`finalize
+以外`）はこの列で raw / finalize 済みの出力を分けます（[ui.md](ui.md#gallery)）。
 
 status の候補:
 
@@ -633,6 +645,39 @@ created_at
 
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
 status 等で扱います。
+
+## Publication
+
+Generation 1件の**1回分の納品**（X への投稿）を表す行です。
+
+```text
+Generation 1:N Publication
+```
+
+主な属性:
+
+```text
+id
+generation_id
+url
+published_at
+created_by
+created_at
+updated_at
+```
+
+1 Generation は複数の Publication を持てます（同じ画像を複数回・複数アカウントに
+投稿した場合など）。`url` は任意で、投稿直後は分からないため空のまま記録してよく、
+後から埋められます（`PATCH /api/v1/publications/{id}`）。「公開済み」とは、その
+Generation が少なくとも1件の Publication を持つことです。
+
+かつては `publish` タグ（`look:<pose>` と組で付与）がこの役割を兼ねていましたが、
+1タグ1回きりの二値では複数回の納品や投稿URLを表現できないため、この専用エンティティに
+分離しました。comfyui-recipes 側がまだ `publish` タグを書く間の互換は
+[api.md](api.md#publication)「tag 互換」に閉じています。
+
+Generation 本体と同じく Publication も物理削除は妥当な操作です（誤登録の取り消し）。
+Generation 自体を物理削除しない不変条件とは別物です。
 
 ## GenerationAsset
 

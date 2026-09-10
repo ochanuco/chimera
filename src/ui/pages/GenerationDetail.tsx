@@ -1,11 +1,17 @@
 import { Layout } from '../layout';
-import { formatBytes, type ImageMeta } from '../../lib/image-meta';
+import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
-import { FinalizeFields } from '../components/FinalizeFields';
+import { FinalizeSection } from '../components/FinalizeSection';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
+import { NoteSection } from '../components/NoteSection';
 import { PromptChips } from '../components/PromptChips';
+import { PublicationSection, type PublicationData } from '../components/PublicationSection';
+import { RatingBookmark } from '../components/RatingBookmark';
+import { TagsEditor } from '../components/TagsEditor';
 import type { RenderFacts, RenderLatentSource, RenderSampler } from '../../lib/render-facts';
+
+export type { PublicationData };
 
 export interface GenerationDetailData {
   id: string;
@@ -37,6 +43,7 @@ export interface GenerationDetailData {
   } | null;
   references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
+  publications: PublicationData[];
   comfy_job: {
     id: string;
     seed: number | null;
@@ -56,8 +63,6 @@ export interface ExperimentRunFamily {
   children: { run_id: string; run_index: number; batch_id: string }[];
   siblings: { run_id: string; run_index: number; batch_id: string }[];
 }
-
-const RATINGS = ['bad', 'neutral', 'good'] as const;
 
 /** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
 export interface FinalizeRequestSummary {
@@ -146,6 +151,7 @@ function renderPassPromptField(
 }
 
 export function GenerationDetailPage({
+  path,
   data,
   tags,
   storyLinks,
@@ -160,6 +166,7 @@ export function GenerationDetailPage({
   imageMeta,
   finalizeRequests,
 }: {
+  path: string;
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
   /** Story neighbors of the owning Batch (both directions; filtered by data.batch.id below). */
@@ -304,98 +311,27 @@ export function GenerationDetailPage({
   });
 
   return (
-    <Layout title={`Generation ${data.short_id}`} fullBleed>
+    <Layout title={`Generation ${data.short_id}`} fullBleed path={path}>
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
             <img src={data.image.url} alt={data.short_id} />
           </div>
-          {imageMeta ? (
-            <p class="image-meta">
-              {imageMeta.width !== null && imageMeta.height !== null
-                ? `${imageMeta.width}×${imageMeta.height} · ${formatBytes(imageMeta.size)}`
-                : formatBytes(imageMeta.size)}
-            </p>
-          ) : null}
+          {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
         </div>
         <div class="detail-right">
           <h1>
             {data.short_id} <CopyIdButton value={data.short_id} />
-            {data.batch ? (
-              <>
-                {' '}
-                <a class="graph-jump" href={`/graph?root=${data.batch.short_id}&depth=3`}>
-                  Graph
-                </a>
-              </>
-            ) : null}
           </h1>
           {data.character ? <p>{data.character.name}</p> : null}
-          <div class="card-top-row">
-            <div class="rating-group" data-generation-id={data.id} data-current={data.rating ?? ''}>
-              {RATINGS.map((r) => (
-                <button type="button" class={`rate-btn${data.rating === r ? ' active' : ''}`} data-rating={r}>
-                  {r}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              class="bookmark-btn"
-              data-kind="generations"
-              data-id={data.id}
-              data-bookmarked={data.bookmark ? 'true' : 'false'}
-            >
-              🔖
-            </button>
-          </div>
+          <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
+
+          <PublicationSection generationId={data.id} publications={data.publications} />
 
           <datalist id="tag-suggestions"></datalist>
-          <div class="tag-chips">
-            {tags.map((t) => (
-              <span class="tag-chip">
-                #{t.name}
-                <button
-                  type="button"
-                  class="tag-remove-btn"
-                  data-kind="generations"
-                  data-id={data.id}
-                  data-tag-id={t.id}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-          <form class="tag-add-form" data-kind="generations" data-id={data.id} data-removable="true">
-            <input type="text" name="name" list="tag-suggestions" placeholder="add tag" />
-            <button type="submit">+</button>
-          </form>
+          <TagsEditor kind="generations" id={data.id} tags={tags} />
 
-          <details class="section" open>
-            <summary>Finalize</summary>
-            <div class="section-body">
-              <form class="finalize-form" data-generation-short-id={data.short_id} autocomplete="off">
-                <FinalizeFields recipe={data.batch?.recipe ?? null} submitLabel="Finalize" />
-              </form>
-              {finalizeRequests.length > 0 ? (
-                <ul class="request-status-list">
-                  {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
-                      {r.status} <span class="request-progress"></span> · {r.created_at}
-                      {r.status === 'done' && r.resultShortId ? (
-                        <>
-                          {' '}
-                          — <a href={`/g/${r.resultShortId}`}>{r.resultShortId}</a>
-                        </>
-                      ) : null}
-                      {r.status === 'failed' && r.error ? <> — {r.error}</> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </details>
+          <FinalizeSection shortId={data.short_id} recipe={data.batch?.recipe ?? null} requests={finalizeRequests} />
 
           <details class="section" open>
             <summary>Summary</summary>
@@ -467,7 +403,7 @@ export function GenerationDetailPage({
                 <ul>
                   {storyLinks.map((s) => (
                     <li>
-                      <a href={`/stories/${s.story_id}`}>{s.story_name}</a>
+                      {s.story_name}
                       {s.label ? ` — ${s.label}` : ''}
                     </li>
                   ))}
@@ -621,17 +557,7 @@ export function GenerationDetailPage({
             </div>
           </details>
 
-          <details class="section" open>
-            <summary>Note</summary>
-            <div class="section-body">
-              <form class="note-form" data-kind="generations" data-id={data.id}>
-                <textarea name="note">{data.note ?? ''}</textarea>
-                <br />
-                <button type="submit">Save</button>
-                <span class="save-status"></span>
-              </form>
-            </div>
-          </details>
+          <NoteSection kind="generations" id={data.id} note={data.note} />
         </div>
       </div>
     </Layout>

@@ -20,31 +20,41 @@ comfyui-recipes（worker）が担います。
 
 ## Navigation
 
-MVPのトップレベル導線:
+トップレベル導線は、ブランド `Chimera`（`/gallery` へのリンク）に続けて次の項目です。
 
 ``` text
+Chimera
 Gallery
-Batches
-Stories
-Experiments
 Bookmarks
+More（Batches / Experiments）
 ```
+
+`More` は `<details><summary>`によるJSなしのドロップダウンです。開くと `Batches`
+`Experiments` の2リンクを持つパネルが summary の直下に現れます。
+
+現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
+var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
+`/b/{short_id}` `/experiments` 配下（`/experiments/{short_id}` `/experiments/{short_id}/ab`
+含む）では`More`のsummaryがアクティブになります。`/g/{short_id}` `/compare`はどの項目もアクティブに
+なりません。
+
+幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
+summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
 
 パスと内容の対応:
 
 | パス | 内容 |
 |---|---|
-| `/gallery` | 画像グリッド。Character / Tag / Date / Rating / Bookmark で検索、カード上で rating・bookmark 変更 |
+| `/gallery` | 画像グリッド。`finalize以外` / `finalize` / `すべて` の3-way切り替え、bad表示トグル、ID / Tag / Rating / Bookmarkの絞り込み、カード上で rating・bookmark 変更、無限スクロール |
 | `/batches`, `/b/{short_id}` | 生成リクエスト単位の一覧・詳細 |
 | `/g/{short_id}` | Generation 詳細（canonical URL）。Summary / Semantic / References / Story / Prompt / Seed / Git などは折りたたみ表示 |
-| `/stories`, `/stories/{id}` | Story の一覧・DAG 表示。relation の label はインライン編集可 |
-| `/bookmarks` | Bookmark した Generation / Batch / Story / Experiment |
+| `/bookmarks` | Bookmark した Generation / Batch / Experiment |
 | `/compare?ids=a,b` | 2〜9枚比較。aspect を選んで Claude へ渡す指示テキストを生成・コピー |
-| `/graph` | 生成履歴全体の Graph 表示。Reference / Refinement / Story の3種のエッジを視覚的に区別、パン/ズーム可能 |
 | `/experiments`, `/experiments/{short_id}` | Experiment の一覧・詳細。Run ごとの override 差分・評価・Promotion を表示 |
 
-Graph View（`/graph`）はグローバルナビに含めません。Batch Detail / Generation
-Detailの見出し横にある「Graph」リンク（`/graph?root=<short_id>&depth=3`、そのBatch起点のスコープ付き）または直接URLからのみ到達します。
+Story一覧・DAG表示（`/stories`）と生成履歴全体のGraph表示（`/graph`）のSSR画面は持ちません。Batch
+Detail / Generation Detailは所属Storyの名前をリンクなしのテキストで表示します。`/api/v1/stories`
+`/api/v1/graph`のJSON APIとStory関連のMCPツールは引き続き提供します（[api.md](api.md)参照）。
 
 ## Gallery
 
@@ -54,34 +64,197 @@ Detailの見出し横にある「Graph」リンク（`/graph?root=<short_id>&dep
 -   過去Generationを再利用する
 -   Bookmark / Rating / Tagを確認する
 
-主要フィルタ:
+nav直下にsticky なツールバーを持ちます。
 
 ``` text
-Character
-Tags
-Date range
-Rating
-Bookmark
+[ finalize以外 | finalize | すべて ]   bad も表示 ☐   [ 絞り込み ▾ ]
 ```
+
+`view` は3値の切り替えです。既定は `view=raw`（finalize/repair/masked_redraw
+の出力ではない raw Generation のみ）で、`view=refined`（finalize
+済みの出力のみ）、`view=all`（両方）へ切り替えられます。raw / finalize済みの判定は Batch の
+`refines_generation_id`（[domain-model.md](domain-model.md#batch)）です。
+
+「bad も表示」は既定で隠している bad rating の Generation を表示に加えるトグルです
+（`bad=1`）。未評価・good・neutralの Generation は常に表示します。
+
+`絞り込み`パネル（`<details>`。いずれかの項目に値が入っているときは開いた状態で描画）は
+次を持ちます。
+
+``` text
+ID（複数可、改行またはカンマ区切り、short_id と UUID の混在可）
+Tag
+Rating
+Bookmarked only
+公開済みのみ
+```
+
+「公開済みのみ」は`published=true`（[api.md](api.md#generation-search)）で、少なくとも1件
+[Publication](domain-model.md#publication)を持つGenerationだけに絞ります。他のフィルタと
+同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの判定にも数えます。
+
+Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはGUIから外しました
+（`GET /api/v1/generations`はこれらのqueryを引き続き受け付けます。agentがMCP/APIから直接
+叩く用途、[api.md](api.md#generation-search)参照）。
+
+`ID`の指定を解決した結果がGeneration 1件だけになったとき（他の指定と組み合わせた結果も
+含む）は一覧を描画せず`/g/{short_id}`へ直接遷移します。0件・2件以上のときは通常どおり
+一覧を表示します。`ID`を指定した検索は`view`とbad非表示を無視し、指定したGenerationだけを
+返します。
+
+一覧はPrev/Nextページングの代わりに無限スクロールです。グリッド末尾の「もっと見る」
+リンクが画面に入ると次ページを自動でフェッチしてグリッドへ追記します（JS無効環境では
+リンクとして機能します）。
+
+### Gallery live insertion
+
+`/gallery`をリロードしなくても新しいGenerationがグリッドへ流れ込みます。対象は`ids`・
+Tag・Rating・Bookmarked only・公開済みのみのいずれも指定していない既定表示だけで
+（`view`・`bad`は絞り込みに数えません）、その条件下でだけクライアントはviewer WebSocket
+（`/api/v1/requests/ws`、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）を開き
+（[Generation Detail](#generation-detail)のFinalizeで説明したrequest live接続を共有します）、
+`generation`メッセージを受けます。
+
+現在の`view`で受理できるものだけを扱います — `raw`は`refines_generation_short_id`が
+nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です。既にグリッドに表示済みの
+short_idは無視します。
+
+受理したら`GET /g/{short_id}?partial=card`（Gallery一覧と同じ`GenerationCard`フラグメント）
+を取得し、
+
+-   ページがsticky toolbarの直下＝グリッド先頭が見えている位置までスクロールされていれば、
+    そのままグリッド先頭へ挿入します。
+-   そうでなければキューに積み、sticky toolbarの直下中央に浮かぶ新着バナー（`--accent`地・
+    `#10131c`文字・角丸999px・`0.4rem 1rem`パディング・0.85rem/600・影付き、上矢印アイコン +
+    `新着 N 件`。幅600px以下では2.75rem以上の高さ）を出します。バナーを押すと最上部へ
+    スクロールしつつキューを新しい順に（＝先頭挿入を古いものから繰り返す）全部挿入します。
+    手動で最上部までスクロールしても同じくキューを流し切りバナーを消します。
+
+ソケットが切れたときの再接続は同じ接続を使う[Generation Detail](#generation-detail)の
+request live更新と同じ指数バックオフ（1s→2s→…上限30s）です。
+
+カードはサムネイル1枚と、その下のrating（bad/neutral/good）・bookmarkだけの1行です。
+short_idリンク・コピーボタン・画像メタ（解像度/ファイルサイズ）・タグ・比較チェックボックスは
+カードから外し、サムネイルクリックで開く[Lightbox](#lightbox)に移しました。サムネイル左上には
+（上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
+masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
+橙文字、short_idは等幅）、このGenerationを対象にした最新のfinalize/repair/masked_redraw
+requestがあるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
+1件以上あるとき送信アイコン付きの`公開済み`ピルを重ねます。幅600px以下ではbookmarkをサムネイル
+右上の2.75rem角のタップ領域へ移し、ratingの3ボタンは行いっぱいに広がります（各2.75rem以上）。
+
+進捗ピル（`rgba(18,18,20,0.86)`地・`--border`の1px枠・角丸999px、テキストはstatusごとに
+色分け）はkind（`finalize`/`repair`/`masked redraw`）とstatusから組み立てます。
+
+``` text
+finalize · queued                      ← --accent
+repair · running 3/10                  ← --neutral（step/totalはprogressメッセージが届いてから）
+masked redraw · done → xyz789          ← --good、xyz789は等幅
+finalize · failed                      ← --bad
+```
+
+`[data-request-id]`要素なので、[Generation Detail](#generation-detail)のrequest live更新が
+受ける同じ`progress`/`status`メッセージでその場更新されます（runningの`progress`は
+`step`/`total`が分かっている間だけ`kind · running step/total`に、doneになった時点で結果の
+short_idを取得して`kind · done → <short_id>`に差し替えます）。Lightboxからfinalizeを
+送信したときも、その場でこのピルをqueued状態で足す/差し替えます（他のカードは触りません）。
 
 カード表示例:
 
 ``` text
 [ IMAGE ]
+ from abc123          ← rawを書き換えた出力のときだけ
+ finalize · queued    ← finalize/repair/masked_redraw requestがあるときだけ
+ 公開済み             ← Publicationが1件以上あるときだけ
 
-abc123
-good  🔖
-#pose-good #outfit-good
+bad  neutral  good        🔖
 ```
 
-表示しないもの:
+Batch Detail / Bookmarksも同じカードコンポーネントを使い、from-badge / 公開済みピルは
+表示します。進捗ピルは`GET /api/v1/generations`（Gallery / Bookmarksが使う一覧）と
+Gallery live insertionのカードフラグメントだけが持つデータなので、Batch Detailのカードには
+出ません。
 
+表示しないもの（サムネイルクリックで[Lightbox](#lightbox)を開けば見られます）:
+
+-   short_idリンク・コピーボタン
+-   画像メタ（解像度/ファイルサイズ）
+-   タグ
 -   commit hash
 -   prompt全文
 -   git diff
 -   semantic全文
 -   Story graph
 -   ComfyUI workflow
+
+## Lightbox
+
+Gallery / Bookmarks / Batch Detailのカードサムネイルを、修飾キーなしの左クリックで開きます。
+中クリック・Cmd/Ctrl/Shift/Altを押しながらのクリック・JS無効環境では従来通りカードの
+`<a href="/g/{short_id}">`として`/g/{short_id}`（Generation Detail）へ遷移します。
+
+パネルのHTMLは`GET /g/{short_id}?partial=lightbox`が返すフラグメント（`<html>`を含まない）で、
+Generation Detailと同じコンポーネント（RatingBookmark / PublicationSection / TagsEditor /
+FinalizeSection / NoteSection）から組み立てるため、挙動を二重管理しません。パネルの内容は
+上から次の順です。
+
+``` text
+short_id + コピーボタン ・ 比較に追加 ・ 閉じる
+画像メタ（解像度/ファイルサイズ） + 詳細ページ ↗
+from <short_id>（refineしている場合のみ、カードと同じ見た目のリンク行）
+rating（大きいボタン） + bookmark
+公開
+Tag
+Finalize（展開）
+Note（折りたたみ）
+```
+
+画像本体とoverlayのUIはクリック側のJSが組み立てます（クリックしたカードの`<img class="thumb-fg">`が
+既に原寸相当のURLを持っているため、fragment自体は画像タグを含みません）。
+
+幅1100px以上では`rgba(8,8,10,0.78)`のscrim付き固定overlayで、`minmax(0,1fr) 420px`の2カラム
+（左: 画像フル表示、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。画像エリア
+左右端の中央に丸いprev/nextボタン（2.75rem）を重ねます。
+
+幅1100px未満では不透明（`--bg`）の全画面・縦スクロールです。上から3.25remのトップバー
+（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい）→ パネル（rating各ボタン・
+ボタン・入力を2.75rem以上のタップ領域にしたもの）の順に並びます。画像上の左右スワイプで
+prev/next、パネルのスクロール位置が最上部（`scrollTop === 0`）にあるときの下スワイプで
+閉じます。
+
+Prev/Nextはページのグリッド内カードの現在のDOM順を辿ります。Galleryで最後に読み込んだカードを
+過ぎたときは、「もっと見る」リンクがあれば無限スクロールと同じfetchで次ページを読み込んでから
+続けます。
+
+開いている状態はURLの`#g=<short_id>`に反映します（最初に開くときはpushState、Lightbox内の
+prev/next・bad非表示による自動遷移時の移動はreplaceState）。そのため、ブラウザのBackボタンで
+一度に閉じ、`#g=`付きURLを直接開く・再読み込みすると同じGenerationのLightboxが開き直します。
+`Esc`でも閉じます。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
+動かしません（開いている間は`body`のスクロールをロックします）。
+
+Lightbox内でratingを変えると、背後のカードのrating-groupにも同じ値を反映します（逆方向 —
+カード側での変更をLightboxへ反映 — はLightboxが開くたびに再フェッチするので不要です）。
+
+rating / bookmark / タグ追加・削除 / note保存 / 公開の追加・URL入力・削除 / finalizeの各ハンドラは
+すべて`document`へのイベント委譲なので、差し込まれたfragment内でも再初期化なしにそのまま動きます。
+
+### bad hides with undo
+
+`/gallery`でbadを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上またはLightbox内で
+ratingをbadにすると、そのカードを即座にグリッドから消し、画面下中央にUndoトースト
+（`--bg-elevated`・枠線・角丸8px・影付き、`bad にしました` + アクセント色の`取り消す`ボタン。
+compareバー表示中はその上に出し、幅600px以下では左右1rem残して全幅・ボタンは2.75rem）を
+出します。5秒以内に`取り消す`を押すとAPI経由で元のratingへ戻し、カードを元の位置へ戻します
+（telemetry `rating.undo`）。Lightbox内でbadにした場合は次の画像へ自動で進みます（それでも
+トーストは出ます）。BookmarksとBatch Detailでは何も隠しません。
+
+### Compare entry
+
+カードのチェックボックスは廃止しました。Lightboxの`比較に追加`ボタンがsessionStorageの
+compare set（タブ内限定）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
+telemetry `compare.add`）。`#compare-bar`はGallery / Bookmarks / Batch Detailのどのページでも
+このsetから`Compare (N)`を描画し、`/compare?ids=...`（先頭9件、従来通り）へリンクします
+（telemetry `compare.open`）。
 
 ## Batch Detail
 
@@ -90,6 +263,9 @@ good  🔖
 幅1100px以上（MBP 16インチのフルスクリーン運用を想定）では、左（Generation
 サムネイルグリッド）: 右（情報）= 2:1 の2ペインをビューポート1画面に収め、
 各ペインが独立してスクロールします。それ未満の幅では従来どおり縦一列です。
+
+左のサムネイルグリッドはGalleryと同じ[GenerationCard](#gallery)（from-badge / 公開済みピル
+込み）で、サムネイルクリックで同じ[Lightbox](#lightbox)を開きます。
 
 例（2ペイン時）:
 
@@ -103,8 +279,8 @@ good  🔖
 Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
 （CLAUDE.md の不変条件）ですが、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめ、各関係を
 FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、`family-strip`）で表示します。
-サムネイルは相手Batchの代表Generation（Graph Viewの`representativeGeneration()`と同じ選定順）、または相手
-GenerationそのものをFamilyCardリンク先にします。
+サムネイルは相手Batchの代表Generation（指定サムネイル → 先頭の`rating === 'good'`のGeneration →
+先頭のGeneration、の優先順で選ぶ）、または相手GenerationそのものをFamilyCardリンク先にします。
 
 -   親: このBatchの材料になったGeneration（バッジ `Reference`、purpose/aspect
     を表示）、このBatchをrefinementした元Batch（バッジ `Refinement`、reason
@@ -126,8 +302,8 @@ GenerationそのものをFamilyCardリンク先にします。
 ExperimentRun（`parent_run_id` / `run_index`）から読み取り時に導出するだけの表示専用の4本目の軸です
 （CLAUDE.mdの3種統合禁止の対象外で、行を作りません）。カードの補足テキストにはExperiment名を表示します。
 
-各カードのリンク先・short_idはshort_id優先（Reference/Refinement/StoryはGraph凡例と同じ配色:
-青・橙・緑。ExperimentはGraphに現れない4本目の軸なので専用の紫）。
+各カードのリンク先・short_idはshort_id優先（Reference/Refinement/Storyはそれぞれ固定配色:
+青・橙・緑。Experimentは他3種のいずれでもない4本目の軸なので専用の紫）。
 
 親セクションの直前には系譜ミニマップ（Mapセクション）を表示します。画像なし・short_idのみで、このBatch
 自身のBatchReference系譜（行ラベル `References`。材料として遡れる祖先と、このBatchのGenerationを材料に
@@ -159,8 +335,7 @@ Finalizeセクションと同じ仕組み、後述）。
 -   Generation rating
 -   Bookmark
 -   Tag
--   複数Generation選択
--   Compare
+-   Lightboxから比較に追加（[Compare entry](#compare-entry)）
 -   Finalize all arms
 -   provenance確認
 
@@ -248,6 +423,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 Batch Detail の Parameters）のみ既定で畳みます。
 
 ``` text
+公開
 Finalize
 Summary
 Semantic
@@ -261,6 +437,15 @@ ComfyUI Job
 Git
 Note
 ```
+
+`公開`セクションはrating/bookmark行の直後にあります。[Publication](domain-model.md#publication)
+が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
+`--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・
+URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入力欄）・`×`削除ボタンの行として
+新しい順に並べ、末尾に`投稿 URL（空でも記録できる）`のテキスト入力と`公開を記録`ボタン
+（枠線・文字とも`#4fd8a4`、角丸6px）の追加フォームを置きます。追加・URL入力・削除の
+いずれも`/api/v1/generations/{id}/publications`・`/api/v1/publications/{id}`をfetchし、
+リロードなしでセクションを書き換えます。
 
 親・子・兄弟はBatch Detailと同じFamilyCard表示です。Batch
 Detailと異なり、このGenerationが属するBatch自体のRefinement/Story関係も合わせて表示するため、
@@ -372,18 +557,23 @@ repair feetのどちらもチェックされていない間`disabled`で、ど�
 serializer（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all
 armsも同じ項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
-"gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
-した最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
+"gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
+`request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。Generation Detailと
+[Lightbox](#lightbox)のFinalizeフォームはどちらもこの仕組みです。この一覧には、このGenerationを
+対象とした最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
 
 各行は`data-request-id` / `data-request-status`を持ち、`/api/v1/requests/ws`
 （段階3 WorkerHub、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)参照）に
-繋いだ`initRequestLive()`が接続直後の`snapshot`と以後の`progress` / `status`を
-受けて、行内の`.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、
-`status`変化時は行のクラスと表示statusを書き換えます。Batch Detailの
-Finalize all armsセクションでも、集計行の下に同じ`request-status-list`を出し、
-同じ仕組みで各行が更新されます。WebSocketが張れない環境でも静的な表示のまま
-壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
+繋いだライブ接続が接続直後の`snapshot`と以後の`progress` / `status`を受けて、行内の
+`.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、`status`変化時は
+行のクラスと表示statusを書き換えます。`done` / `failed`への遷移時は該当requestと
+（`done`なら）納品Generationを取得し直し、ページ読み込み時と同じ結果リンク / errorをその場に
+追加します。ページ読み込み後に新しく現れた行（finalize送信直後の挿入、Lightboxの再オープン）も
+現れた時点でこの接続に登録され、まだ張っていなければソケットを開きます。Batch Detailの
+Finalize all armsセクションでも、finalize送信のたびに集計行（`N queued`）と
+`request-status-list`をその場で更新し、同じ仕組みで各行が進捗します。WebSocketが張れない
+環境でも静的な表示のまま壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
 
 手足の局所redraw（[worker-protocol.md](worker-protocol.md#repair)の`repair`）は
 GUIでは独立したセクションを持たず、Finalizeフォームの`repair hands` / `repair feet`
@@ -410,23 +600,6 @@ Show descendants
 ```
 
 で展開します。
-
-## Story View
-
-Storyは生成provenanceとは別表示にします。
-
-各Batchは代表画像を1枚程度表示します。
-
-``` text
-B010
-├─ "海へ行く" → B020
-└─ "帰宅する" → B021
-```
-
-StoryRelationのlabel /
-descriptionはClaude生成ですが、人間が編集できます。
-
-Graph全体を常時表示せず、Storyを閲覧するときのみ使用します。
 
 ## Experiment View
 
@@ -538,98 +711,6 @@ Nextを押すと完了メッセージとExperiment詳細への戻りリンクの
 `baseline` / `arm` が未指定・不正・別Experiment・batch未attachのRunを指すときは、
 ペア画面の代わりに警告文を表示します。
 
-## Graph View
-
-`/graph` は生成履歴全体を1画面で見るための、`Provenance View`
-とは別の高度な表示です。Provenance View が選択
-Generation/Batch周辺の1 hopに留めるのに対し、Graph
-Viewは全Batchを一度にレイアウトします。
-
-グローバルナビには含まれません（[Navigation](#navigation)参照）。Batch Detailのコンテキストメニュー
-「Show subgraph from here」、または直接URL（`/graph`、`/graph?root=<short_id>`等）から到達します。
-
-サーバーサイドでレイヤード DAG レイアウトを計算し、SVG として SSR
-します。
-
-家系図のように上が親（祖先）、下が子（子孫）となる縦型レイアウトです。
-
-``` text
-layer(Batch) = 入次数ゼロのルートからの最長パス長
-y = layer（上から下へ）
-x = 同一layer内でのcreated_at順
-```
-
-BatchReference / BatchRelation / StoryRelationは統合せず、視覚的に区別します（Relation
-Separation、`docs/domain-model.md` 参照）。
-
-``` text
-Reference   実線・青系   生成材料として何を使ったか
-Refinement  破線・橙系   前Batchを受けてどう再試行したか
-Story       実線・緑系   作品上の続き
-```
-
-左上に凡例（3種の線種と意味）を固定表示します。
-
-ノードはBatchの「グループ枠」（角丸の矩形）です。中には代表Generation1枚のサムネイルのみを表示します（選定順:
-`thumbnail_generation_short_id`が指すGeneration →
-最初の`rating === 'good'`のGeneration → 先頭のGeneration。Generationが1件も無ければ空枠）。件数はサムネイルでは示さず、上部のヘッダー行にBatchのshort_id（monospace）と`status
-· count`で表示します。ノードの高さは常に1行分の固定値です。
-
-Reference（青）エッジは、参照元Generationが表示中の代表サムネイルと一致する場合はそのサムネイル下端から、一致しない場合（参照元が代表サムネイルとして選ばれていない、またはそのBatch自体が非表示スコープの場合）はBatch枠の下端にフォールバックして描画します。Relation（橙・破線）とStory（緑）のエッジは従来どおりBatch枠の下端→Batch枠の上端です。
-
-ナビゲーションはコンテキストメニュー経由のみです。Batchヘッダーの左クリックは何も起きません（ページ遷移なし）。Generationサムネイルの左クリックはCompare選択のトグルです（こちらもページ遷移なし）。1件以上選択すると画面下部にCompareバーが現れ、`/compare?ids=...`
-へリンクします（Galleryのcompareバーと同じ仕組み）。Generationサムネイル、またはBatchヘッダー/枠を右クリックするとコンテキストメニューが開き、「Copy
-ID」「Copy URL」「Open detail」（`/g/{short_id}`または`/b/{short_id}`を新規タブで開く）、「Show
-subgraph from here」（対象Batchを起点にrootスコープへ遷移）、Generationの場合はさらに「Add/Remove
-from compare」のトグルを提供します。
-
-パン/ズームはvanilla JSでSVGのviewBoxを操作します。JS
-無効時はコンテナのスクロールにフォールバックし、SVG自体は常に表示されます。
-
-サイクル（Story等が過去Batchに戻るケース）を検出した場合、そのエッジは描画は維持しつつlayer計算からのみ除外します。
-
-### 表示スコープ
-
-Batch数が増えるとレイアウト計算・レンダリングが重くなるため、表示範囲を絞るスコープを持ちます。白紙スタートは作らず、無指定でも必ず何かを表示します。
-
-スコープはURLクエリパラメータのみが状態を持ちます（localStorage等での永続化はしません）。
-
-``` text
-（無指定）                 Recent: created_atが最新のBatchを起点に、エッジを無向として辿った距離3以内のBatch
-?depth=N                  （root省略時）Recentの距離をNへ上書き
-?active=1                 Active tree: created_atが最新のBatchを含む連結成分（エッジを無向として辿る）
-?story=<story_id>         そのStoryのStoryRelationに現れるBatchのみ
-?root=<short_id>          指定Batchの祖先+子孫（3種エッジすべてを辿り、有向に到達可能な集合）+自身
-?root=<short_id>&depth=N  rootを起点に、エッジを無向として辿った距離N以内のBatch
-?all=1                    全Batch（従来表示）
-```
-
-`depth`は1〜10の整数にclampし、パース不能な値は3として扱います。
-
-凡例の近くにセレクタ（`Recent` / `Active tree` / `All` / Story一覧 /
-root絞り込み中のみ動的に現れる`Subgraph: <short_id>`）と、現在のスコープ名と表示件数（例:
-`Recent · 12 batches`）を表示します。
-
-`root`で指定したBatchが存在しない場合はempty-stateに「Batch not found:
-<値>」を表示します。Batchが1件も無い場合も同様にempty-stateを表示します。
-
-### リトライ鎖の集約（chain collapse）
-
-Refinement（BatchRelation、`relation`エッジ）で繋がったBatch群はほぼ再試行の鎖であり、そのままではノード数が増えて見通しを悪くします。そこでスコープ計算の前段で、`relation`エッジだけを無向に見た連結成分（サイズ2以上）を「鎖」とみなし、既定で1ノードへ畳みます。参照/Story等の他エッジ種別はこの連結成分の判定には使いません。
-
-各鎖の代表ノードは、鎖内でcreated_atが最も新しいBatch（同値ならid順で後のもの）です。畳んだ鎖は代表ノード1個に置き換わり、サムネイルグリッドの2列目に「⟳N」バッジ（Nは鎖に含まれるBatch総数）を表示します。クリックすると、現在のURLクエリを維持したまま`?expand=<代表のshort_id>`を追加して遷移し、その鎖だけを個別Batchへ展開します。展開中の鎖の代表ノードには、ヘッダー右上に小さな「⟲」バッジが現れ、クリックすると`expand`から該当short_idを取り除いて再び畳みます。
-
-`?expand=`には代表Batchのshort_idをカンマ区切りで並べます。また`?root=<short_id>`で指定したBatchがいずれかの鎖のメンバーである場合、そのBatchが畳まれて見えなくなることを避けるため、該当の鎖は指定がなくても自動的に展開されます。このroot起因の自動展開には「⟲」バッジを表示しません（rootが残る限り再読み込みで展開し直されるため）。
-
-集約は`?all=1`を含むすべてのスコープに適用されます（`all=1`は「全Batchを対象にする」であって「集約しない」ではありません）。以降の距離計算・連結成分計算・Storyフィルタ・隣接除外カウントは、すべて集約後のグラフを入力とします。鎖の内部エッジ（畳んだ鎖同士を結ぶ`relation`エッジ、および鎖の内部だけを結ぶ参照/Storyエッジ）は破棄し、鎖の外から鎖のメンバーへ向かうエッジは代表ノード宛てに付け替えます。付け替えた結果、種別・両端・Story IDが一致するエッジが複数生じた場合は1本にまとめます。
-
-スコープセレクタでの遷移（`Recent` / `Active tree` / `All` / Story切り替え）はクエリを作り直すため、`expand`は引き継がれません。
-
-### ドリルダウン（隠れた隣接Batch）
-
-スコープによって除外されたBatchがある場合、表示中のBatchのうち除外されたBatchへ直接（無向で）隣接しているものは、サムネイルグリッドの3列目に「⋯
-+N」スタブを表示します（Nはそのカードから見た、非表示になっている直接隣接Batchの数）。スタブをクリックすると、そのBatchを起点に`?root=<short_id>&depth=3`へ遷移し、隠れていた周辺を表示します。集約された鎖の代表ノードは、鎖の外にある隣接Batchが非表示スコープにある場合、集約バッジ（⟳N）と並んでこのスタブも表示することがあります。
-
 ## Bookmarks
 
 Bookmarkした対象を素早く呼び出します。
@@ -637,11 +718,19 @@ Bookmarkした対象を素早く呼び出します。
 ``` text
 Generations
 Batches
-Stories
 Experiments
 ```
 
 BookmarkはFavoriteではなく再利用・再訪のための導線です。
+
+GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外` / `finalize` /
+`すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
+トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
+
+Generationsセクションのカードと[Lightbox](#lightbox)はGalleryと共通です（bad非表示との
+組み合わせは無いため、[bad hides with undo](#bad-hides-with-undo)は起きません）。ページ下部の
+`#compare-bar`もGalleryと同じくLightboxの[Compare entry](#compare-entry)から生まれるsessionStorage
+のsetを表示します。
 
 ## Search
 
@@ -690,7 +779,7 @@ good
 
 ## Bookmark
 
-Generation / Batch / Story /
+Generation / Batch /
 Experimentの各画面で1操作で切り替えられるようにします。
 
 ## Responsive / Density
@@ -726,10 +815,15 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `tag.add` | `kind`, `id`, `tag` | tag追加（`initTagAdd`） |
 | `tag.remove` | `kind`, `id`, `tag_id` | tag削除（`initTagRemove`） |
 | `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
+| `publication.add` | `generation_id`, `has_url` | Publicationの追加（`initPublicationAdd`） |
+| `publication.url` | `generation_id`, `has_url` | PublicationのURL入力（`initPublicationUrlSave`） |
+| `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
-| `graph.scope` | `scope` | Graphのscope切り替え（`initGraphScope`） |
+| `rating.undo` | `generation_id`, `restored` | [bad hides with undo](#bad-hides-with-undo)のUndo |
+| `compare.add` | `generation_id`, `count` | Lightboxの[Compare entry](#compare-entry)（`比較に追加`/`比較から外す`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
-| `story_relation.save` | `story_id`, `relation_id` | StoryRelationのラベル編集（`initStoryRelationEdit`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
+| `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
+| `gallery.new_arrivals` | `count`, `mode`（`auto` / `banner`） | [Gallery live insertion](#gallery-live-insertion)のカード挿入（`handleGenerationMessage` / `flushGalleryLiveQueue`） |
 | `ui.error` | `action`, `message`, `status`, 該当操作のprops | 上記操作の失敗時 |

@@ -104,8 +104,7 @@ export async function resolveGenerationShortIds(db: D1Database, ids: string[]): 
 
 /**
  * Resolves each Batch's representative Generation (for a family-card thumbnail), keyed by
- * Batch id -> that Generation's short_id. Same selection rule as Graph View's
- * `representativeGeneration()` (src/ui/pages/Graph.tsx): designated thumbnail, else first
+ * Batch id -> that Generation's short_id. Selection rule: designated thumbnail, else first
  * 'good' rating, else creation order. There is no per-Batch "designated thumbnail" column in
  * the schema -- `thumbnail_generation_short_id` (graph.ts) is always the first-created
  * Generation, so tier 1 always matches when a Batch has any Generations and tiers 2/3 never

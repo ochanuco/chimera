@@ -39,8 +39,15 @@ interface ProgressEntry {
 }
 
 interface NotifyBody {
-  type: 'queued' | 'status';
-  request: { id: string; kind: RequestKind; recipe_ref: string; status: string };
+  type: 'queued' | 'status' | 'generation';
+  request?: { id: string; kind: RequestKind; recipe_ref: string; status: string };
+  generation?: {
+    generation_id: string;
+    short_id: string;
+    batch_id: string;
+    refines_generation_short_id: string | null;
+    created_at: string;
+  };
 }
 
 const ALARM_INTERVAL_MS = 60_000;
@@ -234,9 +241,27 @@ export class WorkerHub extends DurableObject<Bindings> {
 
   private async handleNotify(request: Request): Promise<Response> {
     const body = (await request.json()) as NotifyBody;
-    const req = body.request;
     let workersSent = 0;
     let viewersSent = 0;
+
+    if (body.type === 'generation') {
+      const g = body.generation;
+      if (g) {
+        viewersSent = this.broadcast(this.ctx.getWebSockets('viewer'), {
+          type: 'generation',
+          generation_id: g.generation_id,
+          short_id: g.short_id,
+          batch_id: g.batch_id,
+          refines_generation_short_id: g.refines_generation_short_id,
+          created_at: g.created_at,
+        });
+      }
+      await this.ensureAlarmScheduled();
+      return Response.json({ workers: workersSent, viewers: viewersSent });
+    }
+
+    const req = body.request;
+    if (!req) return Response.json({ workers: workersSent, viewers: viewersSent });
 
     if (body.type === 'queued') {
       const workers = this.ctx.getWebSockets('worker').filter((ws) => acceptsKind(readAttachment(ws) as WorkerAttachment | null, req.kind));
