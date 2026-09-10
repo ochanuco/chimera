@@ -1814,6 +1814,9 @@ export const appJs = `
     var repairPadRaw = qs('input[name="repair_pad"]', form).value;
     if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
 
+    var repairLoraRaw = qs('input[name="repair_lora"]', form).value;
+    if (repair.length > 0 && repairLoraRaw !== '') options.repair_lora = Number(repairLoraRaw);
+
     return options;
   }
 
@@ -1833,7 +1836,7 @@ export const appJs = `
     });
   }
 
-  // repair_pad only means anything alongside a repair region, so the worker never sees it stray in.
+  // repair_pad/repair_lora only mean anything alongside a repair region, so the worker never sees them stray in.
   function initFinalizeRepairPad() {
     document.addEventListener('change', function (ev) {
       var box = ev.target;
@@ -1842,7 +1845,9 @@ export const appJs = `
       if (!form) return;
       var hands = qs('input[name="repair_hands"]', form);
       var feet = qs('input[name="repair_feet"]', form);
-      qs('input[name="repair_pad"]', form).disabled = !(hands.checked || feet.checked);
+      var disabled = !(hands.checked || feet.checked);
+      qs('input[name="repair_pad"]', form).disabled = disabled;
+      qs('input[name="repair_lora"]', form).disabled = disabled;
     });
   }
 
