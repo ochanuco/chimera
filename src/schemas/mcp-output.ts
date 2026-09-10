@@ -205,7 +205,7 @@ export const mcpOutputSchemas = {
         bookmark: z.boolean(),
         tags: z.array(z.string()),
         summary: z.string().nullable(),
-        character: z.string().nullable(),
+        character: z.looseObject({ id: z.string(), name: z.string().nullable() }).nullable(),
         created_at: z.string(),
         batch_id: z.string().nullable(),
         canonical_url: z.string(),
