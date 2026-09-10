@@ -787,3 +787,95 @@ describe('GET /api/v1/requests', () => {
     expect(byBatch.body.items.map((r) => r.id)).toEqual([masked.body.id]);
   });
 });
+
+interface RequestSummaryBody {
+  counts: { queued: number; running: number; failed_24h: number };
+  workers: unknown[];
+  groups: {
+    key: string;
+    batch: { id: string; short_id: string; thumbnail_generation_short_id: string | null } | null;
+    experiment: { id: string; short_id: string } | null;
+    href: string | null;
+    kinds: Record<string, number>;
+    counts: { queued: number; running: number; failed: number };
+    latest_at: string;
+  }[];
+}
+
+describe('GET /api/v1/requests/summary', () => {
+  it('is not captured by GET /:id (route registration order)', async () => {
+    const res = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(res.status).toBe(200);
+  });
+
+  it('returns zeros and empty groups on an empty table', async () => {
+    const res = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(res.body.counts).toEqual({ queued: 0, running: 0, failed_24h: 0 });
+    expect(res.body.groups).toEqual([]);
+    expect(Array.isArray(res.body.workers)).toBe(true);
+  });
+
+  it('tracks a finalize request through queued -> running -> failed, grouped by its source batch', async () => {
+    const { batch, generation } = await createGeneration();
+    const created = await createFinalizeRequest(generation.id);
+    expect(created.status).toBe(201);
+
+    const afterCreate = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(afterCreate.body.counts.queued).toBe(1);
+    expect(afterCreate.body.groups).toHaveLength(1);
+    const group = afterCreate.body.groups[0]!;
+    expect(group.batch?.short_id).toBe(batch.short_id);
+    expect(group.href).toBe(`/b/${batch.short_id}`);
+    expect(group.kinds.finalize).toBe(1);
+    expect(group.counts).toEqual({ queued: 1, running: 0, failed: 0 });
+
+    const claimed = await claim('w-summary', ['finalize']);
+    expect(claimed.status).toBe(200);
+    expect(claimed.body?.id).toBe(created.body.id);
+
+    const afterClaim = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(afterClaim.body.counts).toEqual({ queued: 0, running: 1, failed_24h: 0 });
+    expect(afterClaim.body.groups[0]!.counts).toEqual({ queued: 0, running: 1, failed: 0 });
+
+    const failed = await postJson(
+      `/api/v1/requests/${created.body.id}`,
+      { status: 'failed', worker_id: 'w-summary', error: 'boom' },
+      'PATCH',
+    );
+    expect(failed.status).toBe(200);
+
+    const afterFail = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(afterFail.body.counts).toEqual({ queued: 0, running: 0, failed_24h: 1 });
+    expect(afterFail.body.groups).toHaveLength(1);
+    expect(afterFail.body.groups[0]!.counts).toEqual({ queued: 0, running: 0, failed: 1 });
+  });
+
+  it('groups generate requests with a run_id by their experiment', async () => {
+    const exp = await createExperiment();
+    const runA = await createRun(exp.body.id);
+    const runB = await createRun(exp.body.id);
+    for (const run of [runA, runB]) {
+      const res = await postJson(
+        '/api/v1/requests',
+        generateRequestBody({
+          payload: {
+            schema_version: 1,
+            request: { instruction: 'x', count: 1 },
+            generation: { recipe: 'yukari', parameters: {} },
+            experiment: { experiment_id: exp.body.id, run_id: run.body.id },
+          },
+        }),
+      );
+      expect(res.status).toBe(201);
+    }
+
+    const res = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(res.body.counts.queued).toBe(2);
+    expect(res.body.groups).toHaveLength(1);
+    const group = res.body.groups[0]!;
+    expect(group.key).toBe(`experiment:${exp.body.id}`);
+    expect(group.experiment).toEqual({ id: exp.body.id, short_id: exp.body.short_id });
+    expect(group.href).toBe(`/experiments/${exp.body.short_id}`);
+    expect(group.kinds.generate).toBe(2);
+  });
+});

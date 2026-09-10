@@ -1,10 +1,20 @@
 import { Hono } from 'hono';
 import { createRequestSchema, claimRequestSchema, updateRequestSchema, requestKindSchema, requestStatusSchema } from '../schemas/requests';
-import { createRequest, listRequests, claimRequest, updateRequest, getRequestOr404, defaultRecipeRef } from '../lib/requests';
+import {
+  createRequest,
+  listRequests,
+  claimRequest,
+  updateRequest,
+  getRequestOr404,
+  defaultRecipeRef,
+  summarizeRequests,
+  type RequestSummaryWorker,
+} from '../lib/requests';
 import { notifyHub, runInBackground } from '../lib/hub-notify';
 import { viewerWs } from './worker-hub';
+import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
-import { parsePagination } from '../lib/db';
+import { nowIso, parsePagination } from '../lib/db';
 import { badRequest } from '../lib/errors';
 import type { AppEnv, RequestKind, RequestStatus } from '../types';
 
@@ -63,6 +73,25 @@ requests.post('/claim', async (c) => {
   if (row) runInBackground(c, notifyHub(c.env, 'status', row));
   if (!row) return c.body(null, 204);
   return c.json(serializeRequest(row), 200);
+});
+
+// GET /api/v1/requests/summary も同じ理由で GET /:id より前に登録する。
+requests.get('/summary', async (c) => {
+  const db = c.env.DB;
+  const { counts, groups } = await summarizeRequests(db, nowIso());
+
+  let workers: RequestSummaryWorker[] = [];
+  try {
+    const res = await getWorkerHubStub(c.env).fetch('https://hub/state');
+    if (res.ok) {
+      const state = (await res.json()) as { workers: RequestSummaryWorker[] };
+      workers = state.workers ?? [];
+    }
+  } catch {
+    workers = [];
+  }
+
+  return c.json({ counts, workers, groups });
 });
 
 requests.get('/:id', async (c) => {

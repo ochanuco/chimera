@@ -43,6 +43,13 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
               <a href="/experiments">Experiments</a>
             </div>
           </details>
+          <details class="nav-queue" id="nav-queue">
+            <summary class="nav-queue-pill nav-queue-empty" aria-label="キュー状態">
+              <span class="nav-queue-dot"></span>
+              <span class="nav-queue-text"></span>
+            </summary>
+            <div class="nav-queue-panel"></div>
+          </details>
         </nav>
         <main class={fullBleed ? 'container container-full' : 'container'}>{children}</main>
         <div id="compare-bar" class="compare-bar hidden">
