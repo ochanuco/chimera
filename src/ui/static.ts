@@ -1314,6 +1314,9 @@ export const appJs = `
   }
 
   // --- Copy-id buttons (short_id / prompt_id displays across the app) ---
+  // 連続でコピーしたときに前回のタイマーが ✓ を早く消さないよう、ボタンごとに保持する
+  var copyIdTextTimers = new WeakMap();
+
   function initCopyIdButtons() {
     document.addEventListener('click', function (ev) {
       const btn = ev.target.closest('.copy-id-btn');
@@ -1328,8 +1331,9 @@ export const appJs = `
       }
       try {
         navigator.clipboard.writeText(value).then(function () {
+          clearTimeout(copyIdTextTimers.get(btn));
           btn.classList.add('copied');
-          setTimeout(function () { btn.classList.remove('copied'); }, 900);
+          copyIdTextTimers.set(btn, setTimeout(function () { btn.classList.remove('copied'); }, 900));
         }).catch(function () {});
       } catch (e) {}
     });
