@@ -300,5 +300,12 @@ describe('MCP tool prompt folding', () => {
     expect(listFolded.isError).toBeFalsy();
     const listedItem = listFolded.data?.items.find((item) => item.id === id);
     expect(listedItem?.payload.generation.patches[0]?.value).toBe(foldPromptText('new prompt with a forbidden-tag'));
+
+    const listFull = await mcpToolCall<{
+      items: { id: string; payload: { generation: { patches: { value: string; old: string }[] } } }[];
+    }>('list_requests', { include_prompts: true });
+    const fullListedItem = listFull.data?.items.find((item) => item.id === id);
+    expect(fullListedItem?.payload.generation.patches[0]?.value).toBe('new prompt with a forbidden-tag');
+    expect(fullListedItem?.payload.generation.patches[0]?.old).toBe('old sampler prompt');
   });
 });
