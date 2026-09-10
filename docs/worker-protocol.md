@@ -341,6 +341,33 @@ fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / grap
 残します。非空文字列であること自体が waiver で、真偽値ではなく理由を要求するのは、patch が
 全件 `reason` を要求しているのと同じ理由です。粒度は request 全体で、既定は省略（= lint する）。
 
+#### prompt のパーツ単位 patch
+
+recipe が prompt をパーツに分けている場合、catalog の pose は `parts`
+（`[{"name": "<part>", "text": "<segment>"}]`、text を順に連結すると pose の positive と
+byte 一致）を持ち、recipe は `parts`（パーツ名の並び）と `identity_tags`（髪色・目の色・
+サイドロック・髪飾り・カーディガンやフードなどの bare タグ）を持ちます。パーツを持たない
+recipe（`yukari`）もあります。catalog の `patches` の語彙には `text.part_target` と
+`overrides.identity_override` が載ります。
+
+patch の target `prompt.positive.<part>` はそのパーツの text だけを編集します。op は
+`append` / `prepend` / `replace` / `remove` で、他の target と同じです。`prompt.positive`
+全体を replace すると identity_tags まで巻き込んで消しやすいので、表情・背景・ポーズだけを
+変えるときはパーツ target を使います。repair / masked_redraw の Generation の render_facts に
+残る prompt は、マスク領域用に顔・髪・フードのタグを落としたものなので、generate の prompt
+として流用しません。`GET /api/v1/generations/{id}` はその Generation に
+`comfy_job.prompt_not_reusable` を付けます（[api.md](api.md#generation-context)）。
+
+#### identity の上書き
+
+patch や `generation.prompt` の上書きの結果 identity_tags が prompt から消える request を、
+worker は `failed` にします。`generation.identity_override` に理由の文字列を渡したときだけ
+描画し、Generation の `semantic.attributes` に `identity_override`（理由）と
+`identity_removed`（消えたタグ）を記録します。`lint_waiver` と同じく真偽値ではなく理由を
+要求し、粒度は request 全体です。chimera は `generation` の中身を検証しないので、どちらの
+キーも封筒を素通しします。MCP `derive_request` は `identity_override` 引数をこのキーに
+写し、派生元の値は引き継ぎません。
+
 ### finalize
 
 ``` json

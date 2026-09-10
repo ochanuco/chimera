@@ -95,6 +95,27 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
         ) : null}
       </a>
       <div class="card-row">
+        <div class="card-id-row">
+          <button
+            type="button"
+            class="copy-id-btn copy-id-text card-id"
+            data-copy-id={g.short_id}
+            title={`Copy ${g.short_id}`}
+            aria-label={`Copy ${g.short_id}`}
+          >
+            {g.short_id}
+          </button>
+          <button
+            type="button"
+            class="bookmark-btn card-bookmark-btn"
+            data-kind="generations"
+            data-id={g.id}
+            data-bookmarked={g.bookmark ? 'true' : 'false'}
+            title="bookmark"
+          >
+            🔖
+          </button>
+        </div>
         <div class="rating-group" data-generation-id={g.id} data-current={g.rating ?? ''}>
           {RATINGS.map((r) => (
             <button type="button" class={`rate-btn${g.rating === r ? ' active' : ''}`} data-rating={r}>
@@ -102,16 +123,6 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          class="bookmark-btn card-bookmark-btn"
-          data-kind="generations"
-          data-id={g.id}
-          data-bookmarked={g.bookmark ? 'true' : 'false'}
-          title="bookmark"
-        >
-          🔖
-        </button>
       </div>
     </div>
   );

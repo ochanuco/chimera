@@ -811,8 +811,10 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 
 `recipes[].poses` 以外のキー（`costumes` / `expressions` / `parameters` など）は
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
-MCP `list_catalog` は pose / costume / expression の名前と `parameters`、
-`patches` の語彙、git 情報だけを返し、prompt 本文は含めません。特定の pose の
+MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
+`parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、git
+情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
+[worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
 MCP `get_catalog_pose` で1件だけ引きます。
 
@@ -1127,6 +1129,20 @@ ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 新しい順）を加えたフルの detail です。ロジックは
 `src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
 `get_generation` もここを呼ぶ同じ形を返します。
+
+`comfy_job.prompt_not_reusable` は、render_facts の prompt を generate に流用してはいけない
+Generation で `{ "reason": ..., "message": ... }` になり、それ以外は `null` です。所属 Batch の
+`parameters.kind` から決めます。
+
+  reason            Batch の parameters
+  ----------------- ---------------------------------------------
+  repair            `kind: "repair"`
+  masked_redraw     `kind: "masked_redraw"`
+  finalize_repair   `kind: "hires-chain"` かつ `repair` を持つ
+
+どれもマスク領域用に顔・髪・フードのタグを落とした prompt で描いているので、全身の generate
+に流すとキャラクターの目や髪の指定が消えます。この Generation から作り直すときは
+MCP `derive_request` を使います（raw の起点まで遡って recipe を引き継ぎます）。
 
 ## Generation Search
 

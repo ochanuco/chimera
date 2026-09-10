@@ -33,7 +33,7 @@ export function BookmarksPage({
         {generations.length === 0 ? (
           <p class="empty-state">No bookmarked generations.</p>
         ) : (
-          <div class="grid">
+          <div class="grid grid-gallery">
             {generations.map((g) => (
               <GenerationCard g={g} />
             ))}

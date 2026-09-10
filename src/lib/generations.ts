@@ -16,6 +16,43 @@ function parseSemantic(row: GenerationRow) {
   return JSON.parse(row.semantic_json) as unknown;
 }
 
+export interface PromptNotReusable {
+  reason: 'repair' | 'masked_redraw' | 'finalize_repair';
+  message: string;
+}
+
+const PROMPT_NOT_REUSABLE_MESSAGES: Record<PromptNotReusable['reason'], string> = {
+  repair:
+    "render_facts prompts here were built for a masked hands/feet repair: face, hair and hood tags were dropped and part tags appended. Do not reuse them as a generate prompt (e.g. a prompt.positive replace) — the character's eyes and hair would be lost. To generate from this image, call derive_request with this Generation; it resolves back to the raw source and carries its recipe forward.",
+  masked_redraw:
+    "render_facts prompts here were built for a masked region redraw: face, hair and hood tags were dropped and the region's prompt_patch appended. Do not reuse them as a generate prompt (e.g. a prompt.positive replace) — the character's eyes and hair would be lost. To generate from this image, call derive_request with this Generation; it resolves back to the raw source and carries its recipe forward.",
+  finalize_repair:
+    "this finalize also ran a masked hands/feet repair pass, whose render_facts prompt had face, hair and hood tags dropped. Do not reuse render_facts prompts as a generate prompt (e.g. a prompt.positive replace) — the character's eyes and hair would be lost. To generate from this image, call derive_request with this Generation; it resolves back to the raw source and carries its recipe forward.",
+};
+
+/** repair/masked_redraw/hires-chain+repair の Batch は render_facts prompt から face/hair/hood タグを落としている — そのまま generate に転用すると identity を失う。 */
+export function promptNotReusable(parametersJson: string | null): PromptNotReusable | null {
+  if (!parametersJson) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(parametersJson);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const kind = (parsed as Record<string, unknown>).kind;
+  if (kind === 'repair' || kind === 'masked_redraw') {
+    return { reason: kind, message: PROMPT_NOT_REUSABLE_MESSAGES[kind] };
+  }
+  if (kind === 'hires-chain') {
+    const repair = (parsed as Record<string, unknown>).repair;
+    if (repair && typeof repair === 'object') {
+      return { reason: 'finalize_repair', message: PROMPT_NOT_REUSABLE_MESSAGES.finalize_repair };
+    }
+  }
+  return null;
+}
+
 export async function buildContext(db: D1Database, org: string, generation: GenerationRow) {
   const [character, tags, references] = await Promise.all([
     generation.character_id
@@ -98,6 +135,7 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
           status: job.status,
           graph: job.graph ? JSON.parse(job.graph) : null,
           render_facts: renderFacts,
+          prompt_not_reusable: promptNotReusable(batch?.parameters_json ?? null),
         }
       : null,
     original_filename: generation.original_filename,
