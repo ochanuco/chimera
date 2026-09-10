@@ -283,18 +283,15 @@ export async function queryGenerations(
       binds.push(query.character);
     }
   }
-  // tag=publish は互換のため published=true の別名として扱う (docs/api.md#publication「tag 互換」) —
-  // タグはもう作られないため、他の tag と同じ EXISTS には乗せない。
-  if (query.tag && query.tag !== 'publish') {
+  if (query.tag) {
     conditions.push(
       'EXISTS (SELECT 1 FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id AND t.name = ?)',
     );
     binds.push(query.tag);
   }
-  const publishedFilter = query.tag === 'publish' ? 'true' : query.published;
-  if (publishedFilter === 'true') {
+  if (query.published === 'true') {
     conditions.push('EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
-  } else if (publishedFilter === 'false') {
+  } else if (query.published === 'false') {
     conditions.push('NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
   }
   if (query.rating) {

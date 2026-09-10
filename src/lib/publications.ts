@@ -95,23 +95,6 @@ export async function createPublication(
   return { row, created: true };
 }
 
-/**
- * comfyui-recipes の `comfy-recipes metadata tag <id> publish`（と同じハンドラを叩く GUI の
- * tag-add box）互換専用。generation_tags へは書かず、既に Publication があればそれを、
- * 無ければ url なしの Publication を1件作って返す (docs/api.md#publication「tag 互換」)。
- */
-export async function createPublicationForTagCompat(
-  db: D1Database,
-  generationId: string,
-): Promise<{ row: GenerationPublicationRow; created: boolean }> {
-  const existing = await db
-    .prepare('SELECT * FROM generation_publications WHERE generation_id = ? ORDER BY published_at DESC, id DESC LIMIT 1')
-    .bind(generationId)
-    .first<GenerationPublicationRow>();
-  if (existing) return { row: existing, created: false };
-  return createPublication(db, generationId, { createdBy: 'api' });
-}
-
 export async function getPublicationOr404(db: D1Database, id: string): Promise<GenerationPublicationRow> {
   const row = await db.prepare('SELECT * FROM generation_publications WHERE id = ?').bind(id).first<GenerationPublicationRow>();
   if (!row) throw notFound('publication');

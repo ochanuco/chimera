@@ -1181,8 +1181,7 @@ short_id のどちらかと一致する行のうち、最新の1件）です。�
 全件を1クエリで解決するため、`GET /g/{short_id}?partial=card`（[ui.md](ui.md#gallery)の
 Gallery live insertion カードフラグメント）も同じフィールドを同じ形で返します。
 
-`published=true|false` は Publication の有無で絞り込みます。`tag=publish` は
-[Publication「tag 互換」](#tag-互換)により `published=true` の別名として扱います。
+`published=true|false` は Publication の有無で絞り込みます。
 
 `origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ finalize
 済みの出力のどちらかに絞ります。省略時は両方を返します。
@@ -1354,25 +1353,6 @@ DELETE /api/v1/publications/{id}                      204
 `published`（少なくとも1件 Publication を持つか）が付きます。`GET
 /api/v1/generations/{id}` は `publications` 配列（`GET
 .../publications` と同じ形）を持ちます。
-
-### tag 互換
-
-comfyui-recipes は移行までの間、納品したことを引き続き `comfy-recipes metadata
-tag <generation_id> publish` （`POST /api/v1/generations/{id}/tags`、`{"name":
-"publish", "created_by": "claude"}`）で書きます。GUI の tag 追加ボックスも同じ
-エンドポイントを叩くため、`name: "publish"` はどちらの入力元でも同じ扱いです。
-
-このエンドポイントは `name` が `"publish"` のとき、Tag を作らず Publication を
-1件作ります（`url: null`, `created_by: "api"`）。既にその Generation に
-Publication があれば新規作成せずそのまま返します（tag 追加の「既存タグを返す」
-冪等性と同じ形）。レスポンスは既存の tag 追加と同じ `{id, name}` 形（CLI は
-このレスポンスの中身を読まず、200/201 が返ることしか見ないため、フィールドの
-実体が変わっても影響しません）。`GET /api/v1/generations?tag=publish` は
-`published=true` の別名として扱います（同じ理由で、comfyui-recipes の
-`list_generations tag=publish` がそのまま動きます）。
-
-comfyui-recipes 側が `record_publication` / `published=true` に切り替え次第、
-この節ごと削除します。
 
 ## Tags
 
