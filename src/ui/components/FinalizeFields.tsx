@@ -126,6 +126,18 @@ export function FinalizeFields({ recipe, submitLabel }: { recipe: string | null;
         >
           ?
         </span>
+        <label>
+          repair lora <input type="number" name="repair_lora" step="0.05" placeholder="off" disabled />
+        </label>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要"
+          data-help="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要"
+        >
+          ?
+        </span>
       </fieldset>
 
       <p class="finalize-preview"></p>

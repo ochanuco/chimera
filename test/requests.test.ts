@@ -165,6 +165,32 @@ describe('POST /api/v1/requests', () => {
     expect(badRegion.status).toBe(400);
   });
 
+  it('finalize: repair_lora accepts true, a number, and null; rejects a string', async () => {
+    const { generation } = await createGeneration();
+
+    const workerDefault = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: true } },
+    });
+    expect(workerDefault.status).toBe(201);
+    expect(workerDefault.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['hands'], repair_lora: true } });
+
+    const explicitWeight = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 0.6 } },
+    });
+    expect(explicitWeight.status).toBe(201);
+    expect(explicitWeight.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['hands'], repair_lora: 0.6 } });
+
+    const off = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: null } },
+    });
+    expect(off.status).toBe(201);
+
+    const badType = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'strong' } },
+    });
+    expect(badType.status).toBe(400);
+  });
+
   it('repair: 201 create with parts/regions/denoise/seeds/pad, unknown option key is 400, bad region (x0 > x1) is 400', async () => {
     const { generation } = await createGeneration();
 
@@ -191,6 +217,32 @@ describe('POST /api/v1/requests', () => {
       payload: { generation_id: generation.id, options: { regions: [[0.5, 0.7, 0.1, 0.95]] } },
     });
     expect(badRegion.status).toBe(400);
+  });
+
+  it('repair: lora accepts true, a number, and null; rejects a string', async () => {
+    const { generation } = await createGeneration();
+
+    const workerDefault = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { lora: true } },
+    });
+    expect(workerDefault.status).toBe(201);
+    expect(workerDefault.body.payload).toEqual({ generation_id: generation.id, options: { lora: true } });
+
+    const explicitWeight = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { lora: 0.6 } },
+    });
+    expect(explicitWeight.status).toBe(201);
+    expect(explicitWeight.body.payload).toEqual({ generation_id: generation.id, options: { lora: 0.6 } });
+
+    const off = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { lora: null } },
+    });
+    expect(off.status).toBe(201);
+
+    const badType = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { lora: 'strong' } },
+    });
+    expect(badType.status).toBe(400);
   });
 
   it('masked_redraw: accepts arbitrary non-overlapping regions and rejects empty/overlapping regions', async () => {
