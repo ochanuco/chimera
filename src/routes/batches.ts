@@ -16,7 +16,7 @@ import { badRequest, notFound } from '../lib/errors';
 import { serializeBatch, serializeGenerationLight } from '../lib/serialize';
 import { renderFactsForJob } from '../lib/render-facts';
 import { getExperimentRunFamily } from '../lib/experiments';
-import { recomputeRefinesGeneration, refinesGenerationUpdateStatement } from '../lib/batch-refinement';
+import { refinesGenerationUpdateStatement } from '../lib/batch-refinement';
 import type {
   AppEnv,
   BatchRelationRow,
@@ -617,13 +617,14 @@ batches.post('/:id/references', async (c) => {
 
   const id = uuidv7();
   const now = nowIso();
-  await db
-    .prepare(
-      'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    )
-    .bind(id, generation.id, batch.id, body.purpose ?? null, body.aspect ?? null, body.instruction ?? null, now)
-    .run();
-  await recomputeRefinesGeneration(db, batch.id);
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(id, generation.id, batch.id, body.purpose ?? null, body.aspect ?? null, body.instruction ?? null, now),
+    refinesGenerationUpdateStatement(db, batch.id),
+  ]);
 
   return c.json(
     {
@@ -649,13 +650,14 @@ batches.post('/:targetBatchId/relations', async (c) => {
 
   const id = uuidv7();
   const now = nowIso();
-  await db
-    .prepare(
-      'INSERT INTO batch_relations (id, source_batch_id, target_batch_id, type, actor, reason, raw_instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-    .bind(id, sourceBatch.id, targetBatch.id, body.type ?? null, body.actor, body.reason ?? null, body.raw_instruction ?? null, now)
-    .run();
-  await recomputeRefinesGeneration(db, targetBatch.id);
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO batch_relations (id, source_batch_id, target_batch_id, type, actor, reason, raw_instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(id, sourceBatch.id, targetBatch.id, body.type ?? null, body.actor, body.reason ?? null, body.raw_instruction ?? null, now),
+    refinesGenerationUpdateStatement(db, targetBatch.id),
+  ]);
 
   return c.json(
     {

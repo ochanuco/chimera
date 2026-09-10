@@ -547,7 +547,7 @@ Generation です。この Batch を target とする BatchRelation（`type = 'r
 source を S とする）と、この Batch を target とする BatchReference（`purpose = 'rebuild'`,
 source_generation を G とする）が対になり、かつ `G.batch_id = S` であるときに
 `refines_generation_id = G` とします（複数一致するときは最も早く作成された rebuild
-Reference を採用）。raw の生成 Batch（そのような対が無い Batch）では NULL です。Batch
+Reference を採用し、作成時刻が同じなら id の小さい方を採用）。raw の生成 Batch（そのような対が無い Batch）では NULL です。Batch
 作成時（POST /api/v1/batches）と、references / relations の追加時（POST
 /api/v1/batches/{id}/references, POST /api/v1/batches/{target_batch_id}/relations）に
 自動で再計算します（`src/lib/batch-refinement.ts`）。Gallery の既定フィルタ（`finalize
