@@ -111,6 +111,8 @@ export interface BatchRow {
   patches_json: string | null;
   pose_fingerprint: string | null;
   preset_versions_json: string | null;
+  /** finalize/repair/masked_redraw で仕上げた元の raw Generation (migrations/0020, src/lib/batch-refinement.ts が計算)。 */
+  refines_generation_id: string | null;
 }
 
 export interface ComfyJobRow {

@@ -45,7 +45,7 @@ summaryはタップ領域確保のため`min-height: 2.75rem`のフレックス�
 
 | パス | 内容 |
 |---|---|
-| `/gallery` | 画像グリッド。Character / Tag / Date / Rating / Bookmark で検索、カード上で rating・bookmark 変更 |
+| `/gallery` | 画像グリッド。`finalize以外` / `finalize` / `すべて` の3-way切り替え、bad表示トグル、ID / Tag / Rating / Bookmarkの絞り込み、カード上で rating・bookmark 変更、無限スクロール |
 | `/batches`, `/b/{short_id}` | 生成リクエスト単位の一覧・詳細 |
 | `/g/{short_id}` | Generation 詳細（canonical URL）。Summary / Semantic / References / Story / Prompt / Seed / Git などは折りたたみ表示 |
 | `/bookmarks` | Bookmark した Generation / Batch / Experiment |
@@ -64,15 +64,42 @@ Detail / Generation Detailは所属Storyの名前をリンクなしのテキス�
 -   過去Generationを再利用する
 -   Bookmark / Rating / Tagを確認する
 
-主要フィルタ:
+nav直下にsticky なツールバーを持ちます。
 
 ``` text
-Character
-Tags
-Date range
-Rating
-Bookmark
+[ finalize以外 | finalize | すべて ]   bad も表示 ☐   [ 絞り込み ▾ ]
 ```
+
+`view` は3値の切り替えです。既定は `view=raw`（finalize/repair/masked_redraw
+の出力ではない raw Generation のみ）で、`view=refined`（finalize
+済みの出力のみ）、`view=all`（両方）へ切り替えられます。raw / finalize済みの判定は Batch の
+`refines_generation_id`（[domain-model.md](domain-model.md#batch)）です。
+
+「bad も表示」は既定で隠している bad rating の Generation を表示に加えるトグルです
+（`bad=1`）。未評価・good・neutralの Generation は常に表示します。
+
+`絞り込み`パネル（`<details>`。いずれかの項目に値が入っているときは開いた状態で描画）は
+次を持ちます。
+
+``` text
+ID（複数可、改行またはカンマ区切り、short_id と UUID の混在可）
+Tag
+Rating
+Bookmarked only
+```
+
+Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはGUIから外しました
+（`GET /api/v1/generations`はこれらのqueryを引き続き受け付けます。agentがMCP/APIから直接
+叩く用途、[api.md](api.md#generation-search)参照）。
+
+`ID`の指定を解決した結果がGeneration 1件だけになったとき（他の指定と組み合わせた結果も
+含む）は一覧を描画せず`/g/{short_id}`へ直接遷移します。0件・2件以上のときは通常どおり
+一覧を表示します。`ID`を指定した検索は`view`とbad非表示を無視し、指定したGenerationだけを
+返します。
+
+一覧はPrev/Nextページングの代わりに無限スクロールです。グリッド末尾の「もっと見る」
+リンクが画面に入ると次ページを自動でフェッチしてグリッドへ追記します（JS無効環境では
+リンクとして機能します）。
 
 カード表示例:
 
@@ -543,6 +570,10 @@ Experiments
 
 BookmarkはFavoriteではなく再利用・再訪のための導線です。
 
+GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外` / `finalize` /
+`すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
+トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
+
 ## Search
 
 MVPの検索条件:
@@ -630,4 +661,5 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
+| `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
 | `ui.error` | `action`, `message`, `status`, 該当操作のprops | 上記操作の失敗時 |

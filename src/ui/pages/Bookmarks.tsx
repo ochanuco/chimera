@@ -1,6 +1,7 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { BatchRow, type BatchRowData } from '../components/BatchRow';
+import { ViewSwitch, type GalleryView } from '../components/ViewSwitch';
 
 export interface BookmarkedExperiment {
   id: string;
@@ -13,11 +14,13 @@ export function BookmarksPage({
   generations,
   batches,
   experiments,
+  view,
 }: {
   path: string;
   generations: GenerationCardData[];
   batches: BatchRowData[];
   experiments: BookmarkedExperiment[];
+  view: GalleryView;
 }) {
   return (
     <Layout title="Bookmarks" path={path}>
@@ -26,6 +29,7 @@ export function BookmarksPage({
 
       <section class="bookmark-section">
         <h2>Generations</h2>
+        <ViewSwitch basePath="/bookmarks" current={view} params={new URLSearchParams()} />
         {generations.length === 0 ? (
           <p class="empty-state">No bookmarked generations.</p>
         ) : (

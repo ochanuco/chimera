@@ -7,6 +7,7 @@ import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { renderFactsForJob } from './render-facts';
 import { isUuid } from './uuidv7';
+import { badRequest } from './errors';
 import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow } from '../types';
 
 function parseSemantic(row: GenerationRow) {
@@ -117,6 +118,53 @@ export interface GenerationListItem {
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
+  /** short_id of the raw Generation this item's Batch refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
+  refines_generation_short_id: string | null;
+}
+
+/** `ids=` の入力上限 (src/routes/pages.tsx の Gallery ids フィルタも同じ上限で使う)。 */
+export const MAX_GENERATION_IDS = 100;
+
+function parseIdsParam(raw: string): string[] {
+  const tokens = raw
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tokens.length > MAX_GENERATION_IDS) {
+    throw badRequest(`ids accepts at most ${MAX_GENERATION_IDS} values`);
+  }
+  return tokens;
+}
+
+interface GenerationCursor {
+  createdAt: string;
+  id: string;
+}
+
+function encodeCursor(cursor: GenerationCursor): string {
+  const bytes = new TextEncoder().encode(`${cursor.createdAt}|${cursor.id}`);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeCursor(raw: string): GenerationCursor {
+  try {
+    const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+    const binary = atob(padded + pad);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const decoded = new TextDecoder().decode(bytes);
+    const sep = decoded.lastIndexOf('|');
+    if (sep === -1) throw new Error('missing separator');
+    const createdAt = decoded.slice(0, sep);
+    const id = decoded.slice(sep + 1);
+    if (!createdAt || !id) throw new Error('empty part');
+    return { createdAt, id };
+  } catch {
+    throw badRequest('malformed cursor');
+  }
 }
 
 /** GET /api/v1/generations の一覧 + フィルタ。MCP tool `list_generations` もここを呼ぶ。 */
@@ -124,7 +172,7 @@ export async function queryGenerations(
   db: D1Database,
   query: Record<string, string | undefined>,
   org: string,
-): Promise<{ items: GenerationListItem[]; total: number }> {
+): Promise<{ items: GenerationListItem[]; total: number; next_cursor: string | null }> {
   const { limit, offset } = parsePagination(query);
 
   const conditions: string[] = [];
@@ -149,6 +197,13 @@ export async function queryGenerations(
     conditions.push('g.rating = ?');
     binds.push(query.rating);
   }
+  if (query.exclude_rating) {
+    if (!['bad', 'neutral', 'good'].includes(query.exclude_rating)) {
+      throw badRequest('exclude_rating must be one of bad, neutral, good');
+    }
+    conditions.push('(g.rating IS NULL OR g.rating != ?)');
+    binds.push(query.exclude_rating);
+  }
   if (query.bookmark !== undefined) {
     conditions.push('g.bookmark = ?');
     binds.push(query.bookmark === 'true' ? 1 : 0);
@@ -170,30 +225,69 @@ export async function queryGenerations(
     conditions.push('g.created_at <= ?');
     binds.push(to);
   }
+  if (query.origin) {
+    if (query.origin === 'raw') {
+      conditions.push('b.refines_generation_id IS NULL');
+    } else if (query.origin === 'refined') {
+      conditions.push('b.refines_generation_id IS NOT NULL');
+    } else {
+      throw badRequest('origin must be "raw" or "refined"');
+    }
+  }
+  if (query.ids) {
+    const idTokens = parseIdsParam(query.ids);
+    if (idTokens.length === 0) {
+      // 全トークンが空白のみ: 「該当なし」を明示的に表す条件にする。
+      conditions.push('1 = 0');
+    } else {
+      // D1 は1クエリの bind 数が100までなので、ids は JSON 配列1個として渡す。
+      conditions.push('(g.id IN (SELECT value FROM json_each(?)) OR g.short_id IN (SELECT value FROM json_each(?)))');
+      const idsJson = JSON.stringify(idTokens);
+      binds.push(idsJson, idsJson);
+    }
+  }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
+  const countWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const countRow = await db
-    .prepare(`SELECT COUNT(*) AS total FROM generations g ${where}`)
+    .prepare(`SELECT COUNT(*) AS total FROM generations g LEFT JOIN batches b ON b.id = g.batch_id ${countWhere}`)
     .bind(...binds)
     .first<{ total: number }>();
 
+  if (query.cursor) {
+    const cursor = decodeCursor(query.cursor);
+    conditions.push('(g.created_at < ? OR (g.created_at = ? AND g.id < ?))');
+    binds.push(cursor.createdAt, cursor.createdAt, cursor.id);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // 次ページの有無を判定するため limit+1 件取得する。cursor 指定時は offset を無視する
+  // (offset ベースのページングと keyset ページングを混在させない)。
   const { results } = await db
     .prepare(
-      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json
+      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json,
+         rg.short_id AS refines_generation_short_id
        FROM generations g
        LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
        LEFT JOIN tags t ON t.id = gt.tag_id
+       LEFT JOIN batches b ON b.id = g.batch_id
+       LEFT JOIN generations rg ON rg.id = b.refines_generation_id
        ${where}
        GROUP BY g.id
-       ORDER BY g.created_at DESC
+       ORDER BY g.created_at DESC, g.id DESC
        LIMIT ? OFFSET ?`,
     )
-    .bind(...binds, limit, offset)
-    .all<GenerationRow & { character_name: string | null; tag_names_json: string }>();
+    .bind(...binds, limit + 1, query.cursor ? 0 : offset)
+    .all<GenerationRow & { character_name: string | null; tag_names_json: string; refines_generation_short_id: string | null }>();
 
-  const items = (results ?? []).map((r) => {
+  const rows = results ?? [];
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor = hasMore && lastRow ? encodeCursor({ createdAt: lastRow.created_at, id: lastRow.id }) : null;
+
+  const items = pageRows.map((r) => {
     const tagArray = r.tag_names_json ? JSON.parse(r.tag_names_json) : [];
     const tags = Array.isArray(tagArray) ? tagArray.filter((t) => t !== null) : [];
     return {
@@ -212,8 +306,9 @@ export async function queryGenerations(
       image_width: r.image_width,
       image_height: r.image_height,
       image_size: r.image_size,
+      refines_generation_short_id: r.refines_generation_short_id,
     };
   });
 
-  return { items, total: countRow?.total ?? 0 };
+  return { items, total: countRow?.total ?? 0, next_cursor: nextCursor };
 }
