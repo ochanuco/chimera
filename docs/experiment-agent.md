@@ -154,7 +154,9 @@ Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
 `parts` です。identity を意図して変えるときだけ `identity_override` に理由を渡し、
 `generation.identity_override` に載せます。`create_request` で generate の payload を手で
 組むときも同じ規則です（[worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」
-「identity の上書き」）。
+「identity の上書き」）。背景や描き足された家具を消したいときは、negative で禁止するのではなく
+`parameters: {layerdiffuse: true}` を渡します（`yukari` / `yukari-sketch` のみ。
+[worker-protocol.md](worker-protocol.md)「背景と描き足された小物の除去」）。
 
 `finalize_generation` / `repair_generation` / `masked_redraw_generation` は `create_request(kind: "finalize" | "repair" | "masked_redraw", ...)`
 と同じ requests 行を積む専用窓口で、`generation_id` を解決して
