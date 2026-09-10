@@ -146,6 +146,16 @@ function promptPartGuidance(identityOverrideField: string): string {
   );
 }
 
+// negative で furniture などを禁止しても描き足しは消えず、layerdiffuse だけが効いた (2026-09-10 の本番実験)。
+function backgroundRemovalGuidance(layerdiffuseField: string): string {
+  return (
+    `To remove the background or furniture the model adds on its own, set ${layerdiffuseField} (recipes yukari and ` +
+    'yukari-sketch; yukari-anima rejects it): the background comes out transparent and objects not touching the figure ' +
+    'disappear, while props the pose touches (a table, a cup) stay. Banning them in the negative prompt does not remove ' +
+    'them. A finalize of a layerdiffuse Generation defaults to a transparent sticker. '
+  );
+}
+
 const createRunInputSchema = createExperimentRunSchema
   .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
   .extend({ experiment_id: z.string().min(1) });
@@ -546,6 +556,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
+        backgroundRemovalGuidance(
+          'generation.parameters.layerdiffuse: true in a kind "generate" payload (to redo an existing Generation that way, ' +
+            'use derive_request with parameters: {layerdiffuse: true})',
+        ) +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -578,7 +592,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'route ("latent" or "pixel", worker default), size (redraw longest side, worker default), ' +
         'handdrawn (handdrawn-look pass), skin (skin pass), ' +
         'toe_guard (toe-repair guard — true for the worker default weight, or a number), ' +
-        'keep_scene (keep background/scene), transparent (cut alpha instead of an opaque backdrop, worker default), ' +
+        'keep_scene (keep background/scene), transparent (cut alpha instead of an opaque backdrop, worker default; ' +
+        'for a layerdiffuse Generation the default is a transparent sticker — white band and purple stroke, alpha 0 ' +
+        'outside — and only backdrop, keep_scene or transparent: false take the opaque banded route), ' +
         'backdrop (backdrop, e.g. "stripes" or a #RRGGBB color), ' +
         'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
         'lora_strength (finalize LoRA strength, 0-2), deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
@@ -816,6 +832,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
         'when it differs from the source). ' +
         promptPartGuidance('identity_override (written to generation.identity_override; not carried from the parent)') +
+        backgroundRemovalGuidance('parameters: {layerdiffuse: true}') +
         'Pass a stable idempotency_key — the same key replays the original request ' +
         '(created: false) instead of creating a duplicate.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
