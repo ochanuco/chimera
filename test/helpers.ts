@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { app } from '../src/app';
+import { mcpOutputSchemas } from '../src/schemas/mcp-output';
 
 const BASE = 'https://chimera.test';
 
@@ -74,10 +75,22 @@ export interface McpToolCallResult {
   isError?: boolean;
 }
 
-/** tools/call convenience wrapper; parses the first text content block as JSON when it looks like one. */
+/**
+ * tools/call convenience wrapper; parses the first text content block as JSON when it looks like one.
+ * structuredContent は宣言した outputSchema で検証する — 本物の MCP client も同じ検証をするので、
+ * ここで落としておかないと schema と実体のずれが client 側の validation error として初めて出る。
+ */
 export async function mcpToolCall<T = unknown>(name: string, args: unknown, id: number | string = 1) {
   const { status, body } = await mcpCall<McpToolCallResult>('tools/call', { name, arguments: args }, id);
   const result = body.result;
+  if (result && result.isError !== true && result.structuredContent !== undefined) {
+    const schema = mcpOutputSchemas[name as keyof typeof mcpOutputSchemas];
+    if (!schema) throw new Error(`no outputSchema registered for MCP tool '${name}'`);
+    const parsed = schema.safeParse(result.structuredContent);
+    if (!parsed.success) {
+      throw new Error(`MCP tool '${name}' structuredContent violates its outputSchema: ${parsed.error.message}`);
+    }
+  }
   const firstText = result?.content?.[0]?.text;
   let data: T | undefined;
   if (firstText) {

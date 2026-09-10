@@ -155,7 +155,7 @@ export const mcpOutputSchemas = {
     tags: z.array(z.string()),
     run_count: z.number(),
     runs: z.array(decoratedRunSchema),
-    promotions: z.array(z.looseObject({ id: z.string(), source_run_id: z.string(), status: z.string() })),
+    promotions: z.array(z.looseObject({ id: z.string(), source_run_id: z.string().nullable(), status: z.string() })),
   }),
 
   create_run: z.looseObject({

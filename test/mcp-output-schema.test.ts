@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGeneration, mcpCall, mcpToolCall, postJson } from './helpers';
 
-// outputSchema を宣言した tool は structuredContent がその schema を通らないと
-// SDK が tool call ごと落とす。他のテストが呼んでいない tool はここで一度呼んで、
-// schema と serializer のずれを本番ではなくここで出す。
+// structuredContent の schema 検証は helpers の mcpToolCall が行う。他のテストが
+// 呼んでいない tool はここで一度呼んで、schema と serializer のずれを本番ではなくここで出す。
 
 interface ToolsList {
   tools: { name: string; inputSchema?: unknown; outputSchema?: { type?: string } }[];

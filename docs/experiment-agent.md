@@ -215,9 +215,15 @@ repair_generation / masked_redraw_generation）は `destructiveHint: false` と
 としても返す。ChatGPT の開発者モードは outputSchema の無い tool を「出力スキーマ推奨」として
 警告し、結果を型の分からない JSON テキストとしてしか扱えない。schema の正本は各 serializer
 なので、`src/schemas/mcp-output.ts` 側は未知のキーを許す loose object にし、深い所
-（payload / graph / semantic / catalog record）は unknown のまま通す。SDK は
-structuredContent が schema を通らないと tool call ごと落とすため、ここを厳密に書くと
+（payload / graph / semantic / catalog record）は unknown のまま通す。ここを厳密に書くと
 serializer に欄が1つ増えただけで本番の呼び出しが失敗する。
+
+schema と serializer のずれは server 側では検出されず、structuredContent を検証する
+client の validation error として初めて出る。そのため二重に押さえてある。
+`jsonResult` は第1引数にその tool の outputSchema を取り、data をその schema の
+推論型でしか受け付けない（型検査でずれが出る）。テストの `mcpToolCall` は返ってきた
+structuredContent を宣言済み schema で parse する（実データでのずれが出る）。
+未知のキーを許す loose object のままなので、欄が増えるぶんには通る。
 
 `get_generation_image` の structuredContent は画像そのものではなく
 `{short_id, canonical_url, inlined, mime_type, reason}` で、画像は従来どおり content の
