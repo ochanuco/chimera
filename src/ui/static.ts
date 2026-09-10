@@ -186,6 +186,14 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 1rem;
 }
+/* Gallery / Bookmarks は 1 行 6 枚。Batch Detail は左ペインが狭いので auto-fill のまま */
+.grid.grid-gallery { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .grid.grid-gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 800px) {
+  .grid.grid-gallery { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+}
 
 .card {
   position: relative;
@@ -199,7 +207,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
-.card-row { padding: 0.5rem 0.55rem; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.card-row { padding: 0.4rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.card-id-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 
 /* GenerationCard のサムネイルオーバーレイ (docs/ui.md「Gallery」カード)。from-badge は Lightbox の
    from-row でも同じ見た目を静的な行として使う (position は .thumb-link の中でだけ絶対配置)。 */
@@ -295,6 +304,12 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   cursor: pointer;
 }
 .copy-id-btn:hover { color: var(--text); }
+/* ID の文字そのものがコピーボタン (GenerationCard)。コピーしたら文字を置き換えず色と ✓ で知らせる */
+.copy-id-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); padding: 0; cursor: copy; }
+.copy-id-text:hover { color: var(--accent); }
+.copy-id-text.copied { color: var(--good); }
+.copy-id-text.copied::after { content: ' ✓'; }
+.card-id { font-size: 0.78rem; }
 
 .rating-group { display: flex; gap: 0.25rem; }
 .rate-btn {
@@ -703,8 +718,8 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
     border-radius: 999px;
     z-index: 2;
   }
-  .card-row .rating-group { flex: 1; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+  .card-row .card-id { min-height: 2.75rem; }
 }
 
 details.section {
@@ -1307,7 +1322,16 @@ export const appJs = `
       ev.stopPropagation();
       const value = btn.getAttribute('data-copy-id');
       if (!value) return;
-      copyText(value, btn, '✓');
+      if (!btn.classList.contains('copy-id-text')) {
+        copyText(value, btn, '✓');
+        return;
+      }
+      try {
+        navigator.clipboard.writeText(value).then(function () {
+          btn.classList.add('copied');
+          setTimeout(function () { btn.classList.remove('copied'); }, 900);
+        }).catch(function () {});
+      } catch (e) {}
     });
   }
 
