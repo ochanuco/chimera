@@ -29,10 +29,52 @@ function sampleCatalog(overrides: Record<string, unknown> = {}) {
 
 interface CatalogSummary {
   recipe_ref: string;
-  recipes: { name: string; poses: string[]; costumes?: string[]; parameters?: unknown }[];
+  recipes: {
+    name: string;
+    poses: string[];
+    costumes?: string[];
+    parts?: string[];
+    identity_tags?: string[];
+    parameters?: unknown;
+  }[];
   patches: Record<string, unknown>;
   git_commit: string | null;
   git_branch: string | null;
+}
+
+function catalogWithParts() {
+  return {
+    schema_version: 1,
+    recipes: [
+      {
+        name: 'yukari',
+        poses: [
+          { name: 'lounge', prompt: 'reclining on a beanbag, warm light' },
+          {
+            name: 'seated',
+            prompt: 'masterpiece, sitting',
+            parts: [
+              { name: 'quality', text: 'masterpiece, ' },
+              { name: 'pose', text: 'sitting' },
+            ],
+          },
+        ],
+        costumes: ['default', 'roomwear'],
+        parts: ['quality', 'identity', 'costume', 'pose'],
+        identity_tags: ['light purple hair'],
+        parameters: { count: 9, width: 1024 },
+      },
+      {
+        name: 'mika',
+        poses: ['idle'],
+        parts: [],
+      },
+    ],
+    patches: { pose: { op: 'set' } },
+    git_commit: 'abc1234',
+    git_branch: 'main',
+    generated_at: '2026-09-08T00:00:00.000Z',
+  };
 }
 
 describe('Recipe Catalog REST', () => {
@@ -82,6 +124,25 @@ describe('Recipe Catalog REST', () => {
     expect(res.status).toBe(404);
   });
 
+  it('PUT summary includes parts / identity_tags when present, keeps parts: [] as-is, no prompt text leaks', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const res = await postJson<CatalogSummary>(`/api/v1/catalogs/${recipeRef}`, catalogWithParts(), 'PUT');
+    expect(res.status).toBe(200);
+    expect(res.body.recipes).toEqual([
+      {
+        name: 'yukari',
+        poses: ['lounge', 'seated'],
+        costumes: ['default', 'roomwear'],
+        parts: ['quality', 'identity', 'costume', 'pose'],
+        identity_tags: ['light purple hair'],
+        parameters: { count: 9, width: 1024 },
+      },
+      { name: 'mika', poses: ['idle'], parts: [] },
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain('masterpiece, sitting');
+    expect(JSON.stringify(res.body)).not.toContain('reclining on a beanbag');
+  });
+
   it('PUT replaces the previous document for the same recipe_ref', async () => {
     const recipeRef = uniqueRecipeRef();
     await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(), 'PUT');
@@ -105,6 +166,26 @@ describe('MCP list_catalog / get_catalog_pose', () => {
     expect(tool.data?.git_commit).toBe('abc1234');
   });
 
+  it('list_catalog summary includes parts / identity_tags when present, no prompt text leaks', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithParts(), 'PUT');
+
+    const tool = await mcpToolCall<CatalogSummary>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.recipes).toEqual([
+      {
+        name: 'yukari',
+        poses: ['lounge', 'seated'],
+        costumes: ['default', 'roomwear'],
+        parts: ['quality', 'identity', 'costume', 'pose'],
+        identity_tags: ['light purple hair'],
+        parameters: { count: 9, width: 1024 },
+      },
+      { name: 'mika', poses: ['idle'], parts: [] },
+    ]);
+    expect(JSON.stringify(tool.data)).not.toContain('masterpiece, sitting');
+  });
+
   it('list_catalog 404s as a tool error when recipe_ref has nothing published', async () => {
     const tool = await mcpToolCall('list_catalog', { recipe_ref: uniqueRecipeRef() });
     expect(tool.isError).toBe(true);
@@ -121,6 +202,21 @@ describe('MCP list_catalog / get_catalog_pose', () => {
     });
     expect(tool.isError).toBe(false);
     expect(tool.data).toEqual({ name: 'seated', prompt: 'seated, hands on knees' });
+  });
+
+  it('get_catalog_pose returns a pose\'s parts array verbatim', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithParts(), 'PUT');
+
+    const tool = await mcpToolCall<{ name: string; prompt: string; parts: { name: string; text: string }[] }>(
+      'get_catalog_pose',
+      { recipe: 'yukari', pose: 'seated', recipe_ref: recipeRef },
+    );
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.parts).toEqual([
+      { name: 'quality', text: 'masterpiece, ' },
+      { name: 'pose', text: 'sitting' },
+    ]);
   });
 
   it('get_catalog_pose 404s as a tool error for an unknown recipe', async () => {

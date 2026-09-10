@@ -243,6 +243,32 @@ describe('MCP derive_request', () => {
     });
   });
 
+  it('writes identity_override into generation.identity_override without carrying one from the parent', async () => {
+    const { generation } = await createParent();
+
+    const withOverride = await mcpToolCall<{ payload: { generation: Record<string, unknown> } }>('derive_request', {
+      from_generation_id: generation.id,
+      instruction: 'hood up',
+      count: 1,
+      patches: [{ target: 'prompt.positive.costume', op: 'append', value: ', hood up', reason: 'hood up variant' }],
+      identity_override: 'hood up hides the hair ornament on purpose',
+      semantic: { summary: 'hood up variant' },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(withOverride.isError).toBe(false);
+    expect(withOverride.data?.payload.generation.identity_override).toBe('hood up hides the hair ornament on purpose');
+
+    const without = await mcpToolCall<{ payload: { generation: Record<string, unknown> } }>('derive_request', {
+      from_generation_id: generation.id,
+      instruction: 'plain variant',
+      count: 1,
+      semantic: { summary: 'plain variant' },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(without.isError).toBe(false);
+    expect(without.data?.payload.generation).not.toHaveProperty('identity_override');
+  });
+
   it('400s when seeds length does not match count', async () => {
     const { generation } = await createParent();
     const call = await mcpToolCall('derive_request', {

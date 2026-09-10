@@ -131,6 +131,21 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// 呼び出し側が repair の crop 用 prompt で prompt.positive を丸ごと replace し、identity の
+// 指定を消した事故があった。create_request と derive_request で同じ案内を出す。
+function promptPartGuidance(identityOverrideField: string): string {
+  return (
+    'Prompt edits: to change only expression, background, pose or another single aspect, patch that part alone with ' +
+    'target "prompt.positive.<part>" (op append/prepend/replace/remove, as for any patch); part names are the pose\'s ' +
+    '`parts` from get_catalog_pose (list_catalog lists each recipe\'s parts; a recipe with no parts has no part targets). ' +
+    'Avoid replacing the whole "prompt.positive": it easily drops the recipe\'s identity_tags (hair and eye color, ' +
+    'sidelocks, hair ornament, cardigan/hood — listed by list_catalog), and the worker fails any request whose patches or ' +
+    `prompt override remove them. Only when changing identity on purpose, give the reason in ${identityOverrideField}; ` +
+    'the worker then renders it and records identity_override and identity_removed in semantic.attributes. ' +
+    'Never reuse render_facts prompts from get_generation where comfy_job.prompt_not_reusable is set. '
+  );
+}
+
 const createRunInputSchema = createExperimentRunSchema
   .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
   .extend({ experiment_id: z.string().min(1) });
@@ -182,6 +197,7 @@ const deriveRequestInputSchema = z
     replace_patches: z.boolean().default(false),
     semantic: z.object({ summary: z.string().min(1) }).passthrough(),
     reference: z.object({ aspect: z.string().optional(), instruction: z.string().optional() }).optional(),
+    identity_override: z.string().trim().min(1).optional(),
     idempotency_key: z.string().min(1),
     recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
   })
@@ -528,7 +544,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'schema_version/request/generation required), "finalize" (payload {generation_id, options?}), or "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). created_by is ' +
-        'forced to "mcp". Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
+        'forced to "mcp". ' +
+        promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
+        'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: createRequestInputSchema,
@@ -731,7 +749,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'get_generation',
     {
       outputSchema: mcpOutputSchemas.get_generation,
-      description: 'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}.',
+      description:
+        'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}. ' +
+        'comfy_job.prompt_not_reusable is non-null for repair, masked_redraw and repair-carrying finalize outputs: their ' +
+        'render_facts prompts were cut for a masked region (face, hair and hood tags dropped), so never pass them as a ' +
+        'generate prompt — use derive_request from the Generation instead.',
       inputSchema: z.object({ generation_id: z.string().min(1) }),
       annotations: { readOnlyHint: true },
     },
@@ -792,7 +814,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'replace_patches: true (with patches restated against the current preset) or derive from a pinned batch instead. ' +
         'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
-        'when it differs from the source). Pass a stable idempotency_key — the same key replays the original request ' +
+        'when it differs from the source). ' +
+        promptPartGuidance('identity_override (written to generation.identity_override; not carried from the parent)') +
+        'Pass a stable idempotency_key — the same key replays the original request ' +
         '(created: false) instead of creating a duplicate.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: deriveRequestInputSchema,
@@ -807,6 +831,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       replace_patches,
       semantic,
       reference,
+      identity_override,
       idempotency_key,
       recipe_ref,
     }) => {
@@ -833,6 +858,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         replacePatches: replace_patches,
         semantic,
         reference,
+        identityOverride: identity_override,
       });
 
       const { row, created } = await createRequest(
@@ -859,7 +885,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.list_catalog,
       description:
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
-        'pose/costume/expression NAMES, per-recipe parameters, the patches vocabulary, and git info. No prompt bodies — ' +
+        'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
+        'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
+        'has them, per-recipe parameters, the patches vocabulary, and git info. No prompt bodies — ' +
         'use get_catalog_pose for a single pose\'s full record.',
       inputSchema: listCatalogInputSchema,
       annotations: { readOnlyHint: true },
@@ -880,7 +908,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'get_catalog_pose',
     {
       outputSchema: mcpOutputSchemas.get_catalog_pose,
-      description: 'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production").',
+      description:
+        'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production"). ' +
+        'Where the recipe splits its prompt into parts, `parts` is [{name, text}] in order (the texts concatenate to the ' +
+        'positive prompt); patch one of them with target "prompt.positive.<name>" instead of replacing the whole prompt.',
       inputSchema: getCatalogPoseInputSchema,
       annotations: { readOnlyHint: true },
     },
