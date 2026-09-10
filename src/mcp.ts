@@ -51,7 +51,7 @@ import { getBatchDigest } from './lib/batches';
 import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
-import { getPresetRow, listPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
+import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
 import { promoteGenerationToPreset } from './lib/promote';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
 import { createObservation, getObservation, listObservations } from './lib/observations';
@@ -773,7 +773,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'If from_generation_id is a finalized or repaired Generation, it is resolved back to the raw Generation it was made ' +
         'from before deriving (finalize/repair payloads are not generate parameters). ' +
         '404s if from_generation_id does not resolve; 409s if the resolved source Batch has no single recipe (graph-mode) ' +
-        'or if a refinement Batch in the chain has no rebuild reference to resolve through. ' +
+        'or if a refinement Batch in the chain has no rebuild reference to resolve through; ' +
+        'or if the source Batch carries patches but no pinned preset version on a recipe that has presets — pass ' +
+        'replace_patches: true (with patches restated against the current preset) or derive from a pinned batch instead. ' +
         'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
         'when it differs from the source). Pass a stable idempotency_key — the same key replays the original request ' +
@@ -799,6 +801,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
 
       const parentPatches = parseJsonArray(sourceBatch.patches_json);
       const parentPresets = parseJsonArray(sourceBatch.preset_versions_json) as { kind: string; name: string; version: number }[];
+      const parentRecipeHasPresets = sourceBatch.recipe ? await recipeHasPresets(db, sourceBatch.recipe) : false;
 
       const payload = buildDerivedRequestPayload({
         parentGenerationId: sourceGeneration.id,
@@ -807,6 +810,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         parentParameters: parseJsonObjectOrNull(sourceBatch?.parameters_json ?? null) ?? {},
         parentPatches,
         parentPresets,
+        parentRecipeHasPresets,
         instruction,
         count,
         seeds,

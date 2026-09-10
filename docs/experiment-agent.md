@@ -136,7 +136,10 @@ parameters ではないため）。起点 Batch の `recipe` / `parameters` / `p
 （Batch の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると
 pin が外れます）。patches を Batch から取るのは `semantic.attributes.patches` が後から
 書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。起点 Batch が recipe を
-持たない graph-mode の Batch なら 409 です。`reference` は起点 Generation への
+持たない graph-mode の Batch なら 409 です。起点 Batch が patches を持ちながら preset の pin を
+持たず、その recipe に Preset がある場合も 409 です。その patches は pin が入る前の preset 本文に
+対して書かれていて、現行の版に当てると needle 不在で落ちるためで、`replace_patches: true` で
+組み直すか pin を持つ Batch を起点にします（[worker-protocol.md](worker-protocol.md)）。`reference` は起点 Generation への
 purpose `"derive"` の Reference として payload に載り、遡った場合は指定した
 Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
 併せて載ります。レスポンスの `derived_from` に、指定した Generation と
