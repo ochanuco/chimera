@@ -84,9 +84,11 @@ export async function listCatalogs(db: D1Database): Promise<CatalogListItem[]> {
 }
 
 /**
- * Recipe names, pose/costume/expression NAMES, `parameters`, the `patches` vocabulary and git
- * info — no prompt bodies. What `list_catalog` and the PUT response return; `get_catalog_pose`
- * returns the full pose record (prompt bodies included) via `findCatalogPose` instead.
+ * Recipe names, pose/costume/expression NAMES, prompt part names (`parts`), bare `identity_tags`,
+ * `parameters`, the `patches` vocabulary and git info — no prompt bodies (identity_tags are bare
+ * tags, not prompt bodies either). What `list_catalog` and the PUT response return;
+ * `get_catalog_pose` returns the full pose record (prompt bodies included) via `findCatalogPose`
+ * instead.
  */
 export function summarizeCatalog(doc: RecipeCatalogDoc) {
   const recipes = doc.recipes.map((recipe) => {
@@ -94,6 +96,8 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     const summary: Record<string, unknown> = { name: r.name, poses: extractNames(r.poses) };
     if ('costumes' in r) summary.costumes = extractNames(r.costumes);
     if ('expressions' in r) summary.expressions = extractNames(r.expressions);
+    if ('parts' in r) summary.parts = r.parts;
+    if ('identity_tags' in r) summary.identity_tags = r.identity_tags;
     if ('parameters' in r) summary.parameters = r.parameters;
     return summary;
   });

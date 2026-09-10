@@ -136,6 +136,8 @@ export interface BuildDerivedRequestPayloadInput {
   replacePatches: boolean;
   semantic: JsonObject;
   reference?: { aspect?: string; instruction?: string };
+  /** `generation.identity_override`. Not carried from the parent: the reason covers only the patches of this request. */
+  identityOverride?: string;
 }
 
 /**
@@ -174,6 +176,7 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
   const generation: JsonObject = { recipe: input.parentRecipe, parameters: mergedParameters };
   if (mergedPatches.length > 0) generation.patches = mergedPatches;
   if (carriedPresets.length > 0) generation.presets = carriedPresets;
+  if (input.identityOverride !== undefined) generation.identity_override = input.identityOverride;
 
   const request: JsonObject = { instruction: input.instruction, count: input.count };
   if (input.seeds) request.seeds = input.seeds;
