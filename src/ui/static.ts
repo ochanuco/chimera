@@ -625,9 +625,28 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   min-height: 2rem;
 }
 
-/* Gallery live insertion の新着バナー (docs/ui.md「Gallery」)。sticky ツールバーの直下に
-   中央寄せで浮かぶ。 */
-.gallery-new-arrivals {
+/* Gallery の反映待ち (docs/ui.md「Gallery pending changes」)。帯はグリッドの直前、ピルは帯が
+   スクロールアウトしている間だけ sticky ツールバーの直下中央に浮かぶ。 */
+.gallery-pending-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-bottom: 0.75rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gallery-pending-strip:hover { background: var(--bg-elevated); border-color: var(--accent); }
+.gallery-pending-strip.hidden { display: none; }
+.card.card-pending-hide { opacity: 0.4; }
+.card.card-pending-hide:hover { opacity: 0.75; }
+.gallery-pending-pill {
   position: fixed;
   top: calc(var(--nav-h) + 0.6rem);
   left: 50%;
@@ -646,9 +665,10 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
-.gallery-new-arrivals.hidden { display: none; }
+.gallery-pending-pill { white-space: nowrap; }
+.gallery-pending-pill.hidden { display: none; }
 @media (max-width: 600px) {
-  .gallery-new-arrivals { min-height: 2.75rem; }
+  .gallery-pending-pill { min-height: 2.75rem; }
 }
 
 .load-more {
@@ -685,9 +705,6 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   }
   .card-row .rating-group { flex: 1; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
-
-  .undo-toast { left: 0.5rem; right: 0.5rem; width: auto; }
-  .undo-toast-undo { min-height: 2.75rem; }
 }
 
 details.section {
@@ -1224,35 +1241,6 @@ body.lightbox-open { overflow: hidden; }
   .lightbox-panel .tag-remove-btn,
   .lightbox-panel .copy-id-btn { min-height: 0; }
 }
-
-/* bad hide + undo (Gallery のみ, docs/ui.md「Gallery」)。 */
-.undo-toast {
-  position: fixed;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  padding: 0.6rem 0.9rem;
-  font-size: 0.85rem;
-}
-/* .undo-toast is appended to <body>, not inside <main>, so it isn't a sibling of #compare-bar --
-   JS toggles this class instead of a :has(~ ...) selector. */
-.undo-toast.above-compare-bar { bottom: calc(1rem + var(--compare-bar-h)); }
-.undo-toast-undo {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-}
 `;
 
 export const appJs = `
@@ -1369,7 +1357,7 @@ export const appJs = `
         await api('/api/v1/generations/' + id + '/rating', 'PUT', { rating: next });
         applyRatingToGroups(id, next);
         track('rating.set', { generation_id: id, rating: next, previous: current || null });
-        if (next === 'bad') await handleBadHide(id, current || null, btn);
+        markGalleryPendingBad(id, next === 'bad');
       } catch (e) {
         trackError('rating.set', e, { generation_id: id });
         alert('rating update failed: ' + e.message);
@@ -1395,96 +1383,6 @@ export const appJs = `
         alert('bookmark update failed: ' + e.message);
       }
     });
-  }
-
-  // --- Bad hides with undo (Gallery only, docs/ui.md「Gallery」「Lightbox」) ---
-  // [data-gallery-grid][data-hide-bad="true"] だけが対象 (bad=1 でも ids= でもない既定表示)。
-  // Bookmarks / Batch Detail のグリッドにはこの属性が無いので何もしない。
-  var undoToastTimer = null;
-
-  function showUndoToast(generationId, previousRating, restoreDom) {
-    var existing = qs('.undo-toast');
-    if (existing) existing.remove();
-    if (undoToastTimer) clearTimeout(undoToastTimer);
-
-    var toast = document.createElement('div');
-    toast.className = 'undo-toast';
-    var msg = document.createElement('span');
-    msg.textContent = 'bad にしました';
-    var undoBtn = document.createElement('button');
-    undoBtn.type = 'button';
-    undoBtn.className = 'undo-toast-undo';
-    undoBtn.textContent = '取り消す';
-    toast.appendChild(msg);
-    toast.appendChild(undoBtn);
-    var compareBar = document.getElementById('compare-bar');
-    if (compareBar && !compareBar.classList.contains('hidden')) toast.classList.add('above-compare-bar');
-    document.body.appendChild(toast);
-
-    var done = false;
-    function finish() {
-      if (done) return;
-      done = true;
-      toast.remove();
-    }
-    undoBtn.addEventListener('click', async function () {
-      if (done) return;
-      try {
-        await api('/api/v1/generations/' + generationId + '/rating', 'PUT', { rating: previousRating });
-        applyRatingToGroups(generationId, previousRating);
-        restoreDom();
-        track('rating.undo', { generation_id: generationId, restored: previousRating });
-      } catch (e) {
-        trackError('rating.undo', e, { generation_id: generationId });
-        alert('undo failed: ' + e.message);
-      } finally {
-        finish();
-      }
-    });
-    undoToastTimer = setTimeout(finish, 5000);
-  }
-
-  // 削除前の card の次に来るカードを返す。末尾なら (.load-more があれば) 次ページを
-  // ロードしてから返す。Lightbox の「次へ進む」に使う。
-  async function cardAfter(card) {
-    var next = card.nextElementSibling;
-    if (next && next.classList && next.classList.contains('card')) return next;
-    if (next && next.classList && next.classList.contains('load-more')) {
-      var loaded = await loadMoreGalleryCards(next);
-      if (!loaded) return null;
-      var after = card.nextElementSibling;
-      return after && after.classList && after.classList.contains('card') ? after : null;
-    }
-    return null;
-  }
-
-  async function handleBadHide(id, previousRating, btn) {
-    var grid = document.querySelector('[data-gallery-grid][data-hide-bad="true"]');
-    if (!grid) return;
-    var group = grid.querySelector('.rating-group[data-generation-id="' + id + '"]');
-    var card = group ? group.closest('.card') : null;
-    if (!card) return;
-
-    var inLightbox = Boolean(lightboxOverlay && !lightboxOverlay.hidden && btn.closest('.lightbox-panel'));
-    var target = inLightbox ? await cardAfter(card) : null;
-
-    var parent = card.parentNode;
-    var nextSibling = card.nextElementSibling;
-    card.remove();
-
-    showUndoToast(id, previousRating, function () {
-      if (nextSibling && nextSibling.parentNode === parent) parent.insertBefore(card, nextSibling);
-      else parent.appendChild(card);
-    });
-
-    if (inLightbox) {
-      if (target) {
-        var link = qs('.thumb-link', target);
-        if (link) showLightbox(link.getAttribute('data-short-id'), link, 'replace');
-      } else {
-        closeLightbox();
-      }
-    }
   }
 
   // --- Experiment status transition ---
@@ -2251,30 +2149,42 @@ export const appJs = `
     registerRequestElement(badge);
   }
 
-  // --- Gallery live insertion (docs/ui.md「Gallery」): 'generation' メッセージを受けて、
-  // 現在のview/フィルタに合致し未表示のGenerationをカードとしてグリッドへ差し込む。
-  // 上端にいなければキューに積み、新着バナーで知らせる。
-  var galleryLive = { queue: [] };
+  // --- Gallery pending changes (docs/ui.md「Gallery pending changes」) ---
+  // 新着 ('generation' メッセージ) と既定表示で bad にしたカードの非表示は、グリッドへ即座には
+  // 反映しない。操作中のカードが手元で動かないよう、件数をグリッド直前の帯 (帯が見えない間は
+  // ツールバー下に浮かぶピル) に出し、押したときにまとめて反映する。
+  // queue は到着順 (古い→新しい) の { shortId, html }。
+  var galleryPending = { queue: [] };
+
+  function galleryGrid() {
+    return document.querySelector('[data-gallery-grid]');
+  }
 
   function galleryLiveGrid() {
-    var grid = document.querySelector('[data-gallery-grid]');
+    var grid = galleryGrid();
     return grid && grid.getAttribute('data-gallery-live') === 'true' ? grid : null;
+  }
+
+  // bad=1 でも ids= でもない /gallery の既定表示だけ。Bookmarks / Batch Detail には属性が無い。
+  function galleryHideBadGrid() {
+    var grid = galleryGrid();
+    return grid && grid.getAttribute('data-hide-bad') === 'true' ? grid : null;
+  }
+
+  function markGalleryPendingBad(id, isBad) {
+    var grid = galleryHideBadGrid();
+    if (!grid) return;
+    var group = grid.querySelector('.rating-group[data-generation-id="' + id + '"]');
+    var card = group ? group.closest('.card') : null;
+    if (!card) return;
+    card.classList.toggle('card-pending-hide', isBad);
+    updateGalleryPendingUi();
   }
 
   function galleryLiveAcceptsView(view, refinesShortId) {
     if (view === 'raw') return !refinesShortId;
     if (view === 'refined') return Boolean(refinesShortId);
     return true; // 'all'
-  }
-
-  // グリッド先頭がsticky toolbarの直下に見えている(=ユーザーが最上部にいる)か。
-  function galleryAtTop() {
-    var grid = galleryLiveGrid();
-    if (!grid) return false;
-    var toolbar = qs('.gallery-toolbar');
-    var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
-    var gridTop = grid.getBoundingClientRect().top;
-    return gridTop >= toolbarBottom - 1 && gridTop <= window.innerHeight;
   }
 
   function galleryInsertCardHtml(html, grid) {
@@ -2286,47 +2196,95 @@ export const appJs = `
     qsa('[data-request-id]', card).forEach(registerRequestElement);
   }
 
-  function galleryNewArrivalsBanner() {
-    var el = document.getElementById('gallery-new-arrivals');
-    if (el) return el;
-    el = document.createElement('button');
-    el.type = 'button';
-    el.id = 'gallery-new-arrivals';
-    el.className = 'gallery-new-arrivals hidden';
-    el.innerHTML =
-      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
-      '<path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
-      '<span class="gallery-new-arrivals-count"></span>';
-    document.body.appendChild(el);
-    el.addEventListener('click', function () {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      flushGalleryLiveQueue();
+  function galleryPendingQueued(shortId) {
+    return galleryPending.queue.some(function (item) {
+      return item.shortId === shortId;
     });
-    return el;
   }
 
-  function updateGalleryNewArrivalsBanner() {
-    var el = galleryNewArrivalsBanner();
-    var count = galleryLive.queue.length;
-    if (count === 0) {
-      el.classList.add('hidden');
-      return;
+  function galleryPendingLabel(newCount, badCount) {
+    var parts = [];
+    if (newCount > 0) parts.push('新着 ' + newCount + ' 件');
+    if (badCount > 0) parts.push('bad ' + badCount + ' 件を隠す');
+    return parts.join(' · ');
+  }
+
+  var GALLERY_PENDING_ARROW =
+    '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+    '<path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+
+  function galleryPendingControls(grid) {
+    var strip = document.getElementById('gallery-pending-strip');
+    if (!strip) {
+      strip = document.createElement('button');
+      strip.type = 'button';
+      strip.id = 'gallery-pending-strip';
+      strip.className = 'gallery-pending-strip hidden';
+      grid.parentNode.insertBefore(strip, grid);
+      strip.addEventListener('click', function () {
+        applyGalleryPending('strip');
+      });
     }
-    qs('.gallery-new-arrivals-count', el).textContent = '新着 ' + count + ' 件';
-    el.classList.remove('hidden');
+    var pill = document.getElementById('gallery-pending-pill');
+    if (!pill) {
+      pill = document.createElement('button');
+      pill.type = 'button';
+      pill.id = 'gallery-pending-pill';
+      pill.className = 'gallery-pending-pill hidden';
+      document.body.appendChild(pill);
+      pill.addEventListener('click', function () {
+        applyGalleryPending('pill');
+      });
+    }
+    return { strip: strip, pill: pill };
   }
 
-  // banner クリック、または手動での最上部への復帰の両方から呼ぶ (docs/ui.md「Gallery」)。
-  function flushGalleryLiveQueue() {
-    var grid = galleryLiveGrid();
-    var count = galleryLive.queue.length;
-    if (!grid || count === 0) return;
-    // queue は到着順 (古い→新しい)。先頭挿入を古い方から繰り返すと最終的に新しい方が
-    // 一番上に来る (newest first)。
-    galleryLive.queue.forEach(function (html) { galleryInsertCardHtml(html, grid); });
-    galleryLive.queue = [];
-    updateGalleryNewArrivalsBanner();
-    track('gallery.new_arrivals', { count: count, mode: 'banner' });
+  function updateGalleryPendingUi() {
+    var grid = galleryGrid();
+    if (!grid) return;
+    var newCount = galleryPending.queue.length;
+    var badCount = qsa('.card.card-pending-hide', grid).length;
+    var controls = galleryPendingControls(grid);
+    var label = galleryPendingLabel(newCount, badCount);
+    controls.strip.textContent = label;
+    controls.strip.classList.toggle('hidden', label === '');
+    controls.pill.innerHTML = (newCount > 0 ? GALLERY_PENDING_ARROW : '') + '<span></span>';
+    qs('span', controls.pill).textContent = label;
+    updateGalleryPendingPill();
+  }
+
+  // 帯が sticky toolbar の下へスクロールアウトしている間だけピルを出す。
+  function updateGalleryPendingPill() {
+    var strip = document.getElementById('gallery-pending-strip');
+    var pill = document.getElementById('gallery-pending-pill');
+    if (!strip || !pill) return;
+    var show = false;
+    if (!strip.classList.contains('hidden')) {
+      var toolbar = qs('.gallery-toolbar');
+      var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+      show = strip.getBoundingClientRect().bottom <= toolbarBottom;
+      // toolbar の高さは折り返しで変わるので、CSS の既定位置ではなく実測した直下に置く
+      if (show && toolbar) pill.style.top = toolbarBottom + 8 + 'px';
+    }
+    pill.classList.toggle('hidden', !show);
+  }
+
+  function applyGalleryPending(source) {
+    var grid = galleryGrid();
+    if (!grid) return;
+    var newCount = galleryPending.queue.length;
+    var badCards = qsa('.card.card-pending-hide', grid);
+    // 先頭挿入を古い方から繰り返すと、最終的に新しい方が一番上に来る (newest first)。
+    galleryPending.queue.forEach(function (item) {
+      galleryInsertCardHtml(item.html, grid);
+    });
+    galleryPending.queue = [];
+    badCards.forEach(function (card) {
+      card.remove();
+    });
+    updateGalleryPendingUi();
+    if (newCount > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
+    track('gallery.pending_apply', { new_count: newCount, hidden_count: badCards.length, source: source });
   }
 
   function handleGenerationMessage(msg) {
@@ -2335,6 +2293,7 @@ export const appJs = `
     var view = grid.getAttribute('data-gallery-view') || 'raw';
     if (!galleryLiveAcceptsView(view, msg.refines_generation_short_id)) return;
     if (grid.querySelector('.thumb-link[data-short-id="' + msg.short_id + '"]')) return; // already on the grid
+    if (galleryPendingQueued(msg.short_id)) return;
 
     fetch('/g/' + encodeURIComponent(msg.short_id) + '?partial=card')
       .then(function (res) {
@@ -2342,15 +2301,9 @@ export const appJs = `
         return res.text();
       })
       .then(function (html) {
-        var currentGrid = galleryLiveGrid();
-        if (!currentGrid) return;
-        if (galleryAtTop()) {
-          galleryInsertCardHtml(html, currentGrid);
-          track('gallery.new_arrivals', { count: 1, mode: 'auto' });
-        } else {
-          galleryLive.queue.push(html);
-          updateGalleryNewArrivalsBanner();
-        }
+        if (!galleryLiveGrid() || galleryPendingQueued(msg.short_id)) return;
+        galleryPending.queue.push({ shortId: msg.short_id, html: html });
+        updateGalleryPendingUi();
       })
       .catch(function (e) {
         trackError('gallery.new_arrivals', e, { short_id: msg.short_id });
@@ -2359,16 +2312,10 @@ export const appJs = `
 
   viewerSocketOn('generation', handleGenerationMessage);
 
-  function initGalleryLive() {
-    if (!galleryLiveGrid()) return;
-    viewerSocketConnect();
-    window.addEventListener(
-      'scroll',
-      function () {
-        if (galleryLive.queue.length > 0 && galleryAtTop()) flushGalleryLiveQueue();
-      },
-      { passive: true },
-    );
+  function initGalleryPending() {
+    if (!galleryGrid()) return;
+    if (galleryLiveGrid()) viewerSocketConnect();
+    window.addEventListener('scroll', updateGalleryPendingPill, { passive: true });
   }
 
   // --- Compare selection bar ---
@@ -3018,7 +2965,7 @@ export const appJs = `
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
-    initGalleryLive();
+    initGalleryPending();
     initLightbox();
     initRequestLive();
     initCompareBar();
