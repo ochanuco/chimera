@@ -34,11 +34,13 @@ function pageLink(filters: GalleryFilters, offset: number): string {
 }
 
 export function GalleryPage({
+  path,
   characters,
   items,
   total,
   filters,
 }: {
+  path: string;
   characters: { id: string; name: string }[];
   items: GalleryItem[];
   total: number;
@@ -48,7 +50,7 @@ export function GalleryPage({
   const hasNext = filters.offset + filters.limit < total;
 
   return (
-    <Layout title="Gallery">
+    <Layout title="Gallery" path={path}>
       <h1>Gallery</h1>
       <form class="filter-form" method="get" action="/gallery">
         <label>

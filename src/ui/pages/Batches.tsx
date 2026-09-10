@@ -1,9 +1,17 @@
 import { Layout } from '../layout';
 import { BatchRow, type BatchRowData } from '../components/BatchRow';
 
-export function BatchesPage({ items, bookmarkOnly }: { items: BatchRowData[]; bookmarkOnly: boolean }) {
+export function BatchesPage({
+  path,
+  items,
+  bookmarkOnly,
+}: {
+  path: string;
+  items: BatchRowData[];
+  bookmarkOnly: boolean;
+}) {
   return (
-    <Layout title="Batches">
+    <Layout title="Batches" path={path}>
       <h1>Batches</h1>
       <form class="filter-form" method="get" action="/batches">
         <label class="checkbox-field">

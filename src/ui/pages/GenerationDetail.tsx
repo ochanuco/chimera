@@ -146,6 +146,7 @@ function renderPassPromptField(
 }
 
 export function GenerationDetailPage({
+  path,
   data,
   tags,
   storyLinks,
@@ -160,6 +161,7 @@ export function GenerationDetailPage({
   imageMeta,
   finalizeRequests,
 }: {
+  path: string;
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
   /** Story neighbors of the owning Batch (both directions; filtered by data.batch.id below). */
@@ -304,7 +306,7 @@ export function GenerationDetailPage({
   });
 
   return (
-    <Layout title={`Generation ${data.short_id}`} fullBleed>
+    <Layout title={`Generation ${data.short_id}`} fullBleed path={path}>
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
@@ -321,14 +323,6 @@ export function GenerationDetailPage({
         <div class="detail-right">
           <h1>
             {data.short_id} <CopyIdButton value={data.short_id} />
-            {data.batch ? (
-              <>
-                {' '}
-                <a class="graph-jump" href={`/graph?root=${data.batch.short_id}&depth=3`}>
-                  Graph
-                </a>
-              </>
-            ) : null}
           </h1>
           {data.character ? <p>{data.character.name}</p> : null}
           <div class="card-top-row">
@@ -467,7 +461,7 @@ export function GenerationDetailPage({
                 <ul>
                   {storyLinks.map((s) => (
                     <li>
-                      <a href={`/stories/${s.story_id}`}>{s.story_name}</a>
+                      {s.story_name}
                       {s.label ? ` — ${s.label}` : ''}
                     </li>
                   ))}

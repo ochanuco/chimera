@@ -31,9 +31,17 @@ export function StatusBadge({ value }: { value: string }) {
   );
 }
 
-export function ExperimentsPage({ items, status }: { items: ExperimentListItem[]; status?: string }) {
+export function ExperimentsPage({
+  path,
+  items,
+  status,
+}: {
+  path: string;
+  items: ExperimentListItem[];
+  status?: string;
+}) {
   return (
-    <Layout title="Experiments">
+    <Layout title="Experiments" path={path}>
       <h1>Experiments</h1>
       <form class="filter-form" method="get" action="/experiments">
         <label>

@@ -20,15 +20,26 @@ comfyui-recipes（worker）が担います。
 
 ## Navigation
 
-MVPのトップレベル導線:
+トップレベル導線は、ブランド `Chimera`（`/gallery` へのリンク）に続けて次の項目です。
 
 ``` text
+Chimera
 Gallery
-Batches
-Stories
-Experiments
 Bookmarks
+More（Batches / Experiments）
 ```
+
+`More` は `<details><summary>`によるJSなしのドロップダウンです。開くと `Batches`
+`Experiments` の2リンクを持つパネルが summary の直下に現れます。
+
+現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
+var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
+`/b/{short_id}` `/experiments` 配下（`/experiments/{short_id}` `/experiments/{short_id}/ab`
+含む）では`More`のsummaryがアクティブになります。`/g/{short_id}` `/compare`はどの項目もアクティブに
+なりません。
+
+幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
+summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
 
 パスと内容の対応:
 
@@ -37,14 +48,13 @@ Bookmarks
 | `/gallery` | 画像グリッド。Character / Tag / Date / Rating / Bookmark で検索、カード上で rating・bookmark 変更 |
 | `/batches`, `/b/{short_id}` | 生成リクエスト単位の一覧・詳細 |
 | `/g/{short_id}` | Generation 詳細（canonical URL）。Summary / Semantic / References / Story / Prompt / Seed / Git などは折りたたみ表示 |
-| `/stories`, `/stories/{id}` | Story の一覧・DAG 表示。relation の label はインライン編集可 |
-| `/bookmarks` | Bookmark した Generation / Batch / Story / Experiment |
+| `/bookmarks` | Bookmark した Generation / Batch / Experiment |
 | `/compare?ids=a,b` | 2〜9枚比較。aspect を選んで Claude へ渡す指示テキストを生成・コピー |
-| `/graph` | 生成履歴全体の Graph 表示。Reference / Refinement / Story の3種のエッジを視覚的に区別、パン/ズーム可能 |
 | `/experiments`, `/experiments/{short_id}` | Experiment の一覧・詳細。Run ごとの override 差分・評価・Promotion を表示 |
 
-Graph View（`/graph`）はグローバルナビに含めません。Batch Detail / Generation
-Detailの見出し横にある「Graph」リンク（`/graph?root=<short_id>&depth=3`、そのBatch起点のスコープ付き）または直接URLからのみ到達します。
+Story一覧・DAG表示（`/stories`）と生成履歴全体のGraph表示（`/graph`）のSSR画面は持ちません。Batch
+Detail / Generation Detailは所属Storyの名前をリンクなしのテキストで表示します。`/api/v1/stories`
+`/api/v1/graph`のJSON APIとStory関連のMCPツールは引き続き提供します（[api.md](api.md)参照）。
 
 ## Gallery
 
@@ -103,8 +113,8 @@ good  🔖
 Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
 （CLAUDE.md の不変条件）ですが、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめ、各関係を
 FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、`family-strip`）で表示します。
-サムネイルは相手Batchの代表Generation（Graph Viewの`representativeGeneration()`と同じ選定順）、または相手
-GenerationそのものをFamilyCardリンク先にします。
+サムネイルは相手Batchの代表Generation（指定サムネイル → 先頭の`rating === 'good'`のGeneration →
+先頭のGeneration、の優先順で選ぶ）、または相手GenerationそのものをFamilyCardリンク先にします。
 
 -   親: このBatchの材料になったGeneration（バッジ `Reference`、purpose/aspect
     を表示）、このBatchをrefinementした元Batch（バッジ `Refinement`、reason
@@ -126,8 +136,8 @@ GenerationそのものをFamilyCardリンク先にします。
 ExperimentRun（`parent_run_id` / `run_index`）から読み取り時に導出するだけの表示専用の4本目の軸です
 （CLAUDE.mdの3種統合禁止の対象外で、行を作りません）。カードの補足テキストにはExperiment名を表示します。
 
-各カードのリンク先・short_idはshort_id優先（Reference/Refinement/StoryはGraph凡例と同じ配色:
-青・橙・緑。ExperimentはGraphに現れない4本目の軸なので専用の紫）。
+各カードのリンク先・short_idはshort_id優先（Reference/Refinement/Storyはそれぞれ固定配色:
+青・橙・緑。Experimentは他3種のいずれでもない4本目の軸なので専用の紫）。
 
 親セクションの直前には系譜ミニマップ（Mapセクション）を表示します。画像なし・short_idのみで、このBatch
 自身のBatchReference系譜（行ラベル `References`。材料として遡れる祖先と、このBatchのGenerationを材料に
@@ -411,23 +421,6 @@ Show descendants
 
 で展開します。
 
-## Story View
-
-Storyは生成provenanceとは別表示にします。
-
-各Batchは代表画像を1枚程度表示します。
-
-``` text
-B010
-├─ "海へ行く" → B020
-└─ "帰宅する" → B021
-```
-
-StoryRelationのlabel /
-descriptionはClaude生成ですが、人間が編集できます。
-
-Graph全体を常時表示せず、Storyを閲覧するときのみ使用します。
-
 ## Experiment View
 
 検証テーマ単位で「何を試し、どう変え、何が良かったか」を追う画面です。
@@ -538,98 +531,6 @@ Nextを押すと完了メッセージとExperiment詳細への戻りリンクの
 `baseline` / `arm` が未指定・不正・別Experiment・batch未attachのRunを指すときは、
 ペア画面の代わりに警告文を表示します。
 
-## Graph View
-
-`/graph` は生成履歴全体を1画面で見るための、`Provenance View`
-とは別の高度な表示です。Provenance View が選択
-Generation/Batch周辺の1 hopに留めるのに対し、Graph
-Viewは全Batchを一度にレイアウトします。
-
-グローバルナビには含まれません（[Navigation](#navigation)参照）。Batch Detailのコンテキストメニュー
-「Show subgraph from here」、または直接URL（`/graph`、`/graph?root=<short_id>`等）から到達します。
-
-サーバーサイドでレイヤード DAG レイアウトを計算し、SVG として SSR
-します。
-
-家系図のように上が親（祖先）、下が子（子孫）となる縦型レイアウトです。
-
-``` text
-layer(Batch) = 入次数ゼロのルートからの最長パス長
-y = layer（上から下へ）
-x = 同一layer内でのcreated_at順
-```
-
-BatchReference / BatchRelation / StoryRelationは統合せず、視覚的に区別します（Relation
-Separation、`docs/domain-model.md` 参照）。
-
-``` text
-Reference   実線・青系   生成材料として何を使ったか
-Refinement  破線・橙系   前Batchを受けてどう再試行したか
-Story       実線・緑系   作品上の続き
-```
-
-左上に凡例（3種の線種と意味）を固定表示します。
-
-ノードはBatchの「グループ枠」（角丸の矩形）です。中には代表Generation1枚のサムネイルのみを表示します（選定順:
-`thumbnail_generation_short_id`が指すGeneration →
-最初の`rating === 'good'`のGeneration → 先頭のGeneration。Generationが1件も無ければ空枠）。件数はサムネイルでは示さず、上部のヘッダー行にBatchのshort_id（monospace）と`status
-· count`で表示します。ノードの高さは常に1行分の固定値です。
-
-Reference（青）エッジは、参照元Generationが表示中の代表サムネイルと一致する場合はそのサムネイル下端から、一致しない場合（参照元が代表サムネイルとして選ばれていない、またはそのBatch自体が非表示スコープの場合）はBatch枠の下端にフォールバックして描画します。Relation（橙・破線）とStory（緑）のエッジは従来どおりBatch枠の下端→Batch枠の上端です。
-
-ナビゲーションはコンテキストメニュー経由のみです。Batchヘッダーの左クリックは何も起きません（ページ遷移なし）。Generationサムネイルの左クリックはCompare選択のトグルです（こちらもページ遷移なし）。1件以上選択すると画面下部にCompareバーが現れ、`/compare?ids=...`
-へリンクします（Galleryのcompareバーと同じ仕組み）。Generationサムネイル、またはBatchヘッダー/枠を右クリックするとコンテキストメニューが開き、「Copy
-ID」「Copy URL」「Open detail」（`/g/{short_id}`または`/b/{short_id}`を新規タブで開く）、「Show
-subgraph from here」（対象Batchを起点にrootスコープへ遷移）、Generationの場合はさらに「Add/Remove
-from compare」のトグルを提供します。
-
-パン/ズームはvanilla JSでSVGのviewBoxを操作します。JS
-無効時はコンテナのスクロールにフォールバックし、SVG自体は常に表示されます。
-
-サイクル（Story等が過去Batchに戻るケース）を検出した場合、そのエッジは描画は維持しつつlayer計算からのみ除外します。
-
-### 表示スコープ
-
-Batch数が増えるとレイアウト計算・レンダリングが重くなるため、表示範囲を絞るスコープを持ちます。白紙スタートは作らず、無指定でも必ず何かを表示します。
-
-スコープはURLクエリパラメータのみが状態を持ちます（localStorage等での永続化はしません）。
-
-``` text
-（無指定）                 Recent: created_atが最新のBatchを起点に、エッジを無向として辿った距離3以内のBatch
-?depth=N                  （root省略時）Recentの距離をNへ上書き
-?active=1                 Active tree: created_atが最新のBatchを含む連結成分（エッジを無向として辿る）
-?story=<story_id>         そのStoryのStoryRelationに現れるBatchのみ
-?root=<short_id>          指定Batchの祖先+子孫（3種エッジすべてを辿り、有向に到達可能な集合）+自身
-?root=<short_id>&depth=N  rootを起点に、エッジを無向として辿った距離N以内のBatch
-?all=1                    全Batch（従来表示）
-```
-
-`depth`は1〜10の整数にclampし、パース不能な値は3として扱います。
-
-凡例の近くにセレクタ（`Recent` / `Active tree` / `All` / Story一覧 /
-root絞り込み中のみ動的に現れる`Subgraph: <short_id>`）と、現在のスコープ名と表示件数（例:
-`Recent · 12 batches`）を表示します。
-
-`root`で指定したBatchが存在しない場合はempty-stateに「Batch not found:
-<値>」を表示します。Batchが1件も無い場合も同様にempty-stateを表示します。
-
-### リトライ鎖の集約（chain collapse）
-
-Refinement（BatchRelation、`relation`エッジ）で繋がったBatch群はほぼ再試行の鎖であり、そのままではノード数が増えて見通しを悪くします。そこでスコープ計算の前段で、`relation`エッジだけを無向に見た連結成分（サイズ2以上）を「鎖」とみなし、既定で1ノードへ畳みます。参照/Story等の他エッジ種別はこの連結成分の判定には使いません。
-
-各鎖の代表ノードは、鎖内でcreated_atが最も新しいBatch（同値ならid順で後のもの）です。畳んだ鎖は代表ノード1個に置き換わり、サムネイルグリッドの2列目に「⟳N」バッジ（Nは鎖に含まれるBatch総数）を表示します。クリックすると、現在のURLクエリを維持したまま`?expand=<代表のshort_id>`を追加して遷移し、その鎖だけを個別Batchへ展開します。展開中の鎖の代表ノードには、ヘッダー右上に小さな「⟲」バッジが現れ、クリックすると`expand`から該当short_idを取り除いて再び畳みます。
-
-`?expand=`には代表Batchのshort_idをカンマ区切りで並べます。また`?root=<short_id>`で指定したBatchがいずれかの鎖のメンバーである場合、そのBatchが畳まれて見えなくなることを避けるため、該当の鎖は指定がなくても自動的に展開されます。このroot起因の自動展開には「⟲」バッジを表示しません（rootが残る限り再読み込みで展開し直されるため）。
-
-集約は`?all=1`を含むすべてのスコープに適用されます（`all=1`は「全Batchを対象にする」であって「集約しない」ではありません）。以降の距離計算・連結成分計算・Storyフィルタ・隣接除外カウントは、すべて集約後のグラフを入力とします。鎖の内部エッジ（畳んだ鎖同士を結ぶ`relation`エッジ、および鎖の内部だけを結ぶ参照/Storyエッジ）は破棄し、鎖の外から鎖のメンバーへ向かうエッジは代表ノード宛てに付け替えます。付け替えた結果、種別・両端・Story IDが一致するエッジが複数生じた場合は1本にまとめます。
-
-スコープセレクタでの遷移（`Recent` / `Active tree` / `All` / Story切り替え）はクエリを作り直すため、`expand`は引き継がれません。
-
-### ドリルダウン（隠れた隣接Batch）
-
-スコープによって除外されたBatchがある場合、表示中のBatchのうち除外されたBatchへ直接（無向で）隣接しているものは、サムネイルグリッドの3列目に「⋯
-+N」スタブを表示します（Nはそのカードから見た、非表示になっている直接隣接Batchの数）。スタブをクリックすると、そのBatchを起点に`?root=<short_id>&depth=3`へ遷移し、隠れていた周辺を表示します。集約された鎖の代表ノードは、鎖の外にある隣接Batchが非表示スコープにある場合、集約バッジ（⟳N）と並んでこのスタブも表示することがあります。
-
 ## Bookmarks
 
 Bookmarkした対象を素早く呼び出します。
@@ -637,7 +538,6 @@ Bookmarkした対象を素早く呼び出します。
 ``` text
 Generations
 Batches
-Stories
 Experiments
 ```
 
@@ -690,7 +590,7 @@ good
 
 ## Bookmark
 
-Generation / Batch / Story /
+Generation / Batch /
 Experimentの各画面で1操作で切り替えられるようにします。
 
 ## Responsive / Density
@@ -728,8 +628,6 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
-| `graph.scope` | `scope` | Graphのscope切り替え（`initGraphScope`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
-| `story_relation.save` | `story_id`, `relation_id` | StoryRelationのラベル編集（`initStoryRelationEdit`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
 | `ui.error` | `action`, `message`, `status`, 該当操作のprops | 上記操作の失敗時 |

@@ -2,7 +2,6 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { app } from '../src/app';
 import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph } from './helpers';
-import { representativeGeneration, type GraphNodeData } from '../src/ui/pages/Graph';
 
 const BASE = 'https://chimera.test';
 
@@ -463,30 +462,33 @@ describe('Web GUI pages', () => {
     }
   });
 
-  it('GET /stories/{id} includes the relation label', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'move to the beach',
-    });
-
-    const res = await req(`/stories/${story.body.id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('move to the beach');
+  it('GET /stories 404s', async () => {
+    const res = await req('/stories');
+    expect(res.status).toBe(404);
   });
 
-  it('GET /stories/{id} 404s for an unknown story', async () => {
-    const res = await req('/stories/00000000-0000-0000-0000-000000000000');
+  it('GET /stories/{id} 404s even for an existing story', async () => {
+    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `ui-story-${crypto.randomUUID().slice(0, 8)}` });
+    const res = await req(`/stories/${story.body.id}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /graph 404s', async () => {
+    await createBatch();
+    const res = await req('/graph');
     expect(res.status).toBe(404);
   });
 
   it('GET /bookmarks returns 200', async () => {
     const res = await req('/bookmarks');
     expect(res.status).toBe(200);
+  });
+
+  it('GET /bookmarks has no Stories section', async () => {
+    const res = await req('/bookmarks');
+    const html = await res.text();
+    expect(html).not.toContain('>Stories<');
+    expect(html).not.toContain('href="/stories');
   });
 
   it('GET /batches returns 200 HTML', async () => {
@@ -806,307 +808,6 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     expect(body).toContain('render.positive');
   });
-
-  it('GET /graph returns 200 HTML with both batch short_ids, the legend, and all three edge types', async () => {
-    const { generation, batch: sourceBatch } = await createGeneration();
-    const targetBatch = await createBatch({
-      references: [{ source_generation_id: generation.id, purpose: 'composition', aspect: 'pose' }],
-      refinement: { source_batch_id: sourceBatch.id, actor: 'human', reason: 'retry' },
-    });
-
-    const story = await postJson<{ id: string }>('/api/v1/stories', {
-      name: `graph-ui-story-${crypto.randomUUID().slice(0, 8)}`,
-    });
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: sourceBatch.id,
-      target_batch_id: targetBatch.body.id,
-      label: 'continues the scene',
-    });
-
-    // sourceBatch/targetBatch form a size-2 retry chain (the refinement relation edge), which
-    // collapses by default -- expand it so both Batches and the relation edge itself render.
-    const res = await req(`/graph?expand=${targetBatch.body.short_id}`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toContain('text/html');
-    const body = await res.text();
-
-    expect(body).toContain(sourceBatch.short_id);
-    expect(body).toContain(targetBatch.body.short_id);
-    expect(body).toContain('graph-legend');
-    expect(body).toContain('legend-reference');
-    expect(body).toContain('legend-relation');
-    expect(body).toContain('legend-story');
-    expect(body).toContain('edge-reference');
-    expect(body).toContain('edge-relation');
-    expect(body).toContain('edge-story');
-    expect(body).toContain(`data-gen-short-id="${generation.short_id}"`);
-    expect(body).toContain(`data-batch-short-id="${sourceBatch.short_id}"`);
-    expect(body).toContain(`data-batch-short-id="${targetBatch.body.short_id}"`);
-    expect(body).toContain('id="graph-context-menu"');
-  });
-
-  it('GET /graph with no query params still renders the pan/zoom SVG container', async () => {
-    await createBatch();
-    const res = await req('/graph');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('id="graph-svg"');
-    expect(body).toContain('graph-viewport');
-  });
-
-  it('GET /graph?story= shows only the Batches connected to that Story', async () => {
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-    const other = await createBatch();
-    const story = await postJson<{ id: string }>('/api/v1/stories', {
-      name: `graph-scope-story-${crypto.randomUUID().slice(0, 8)}`,
-    });
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'continues',
-    });
-
-    const res = await req(`/graph?story=${story.body.id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-    expect(body).not.toContain(other.body.short_id);
-  });
-
-  it('GET /graph?root= shows only the ancestor/descendant subgraph of that Batch', async () => {
-    const a = await createBatch();
-    const b = await createBatch({ refinement: { source_batch_id: a.body.id, actor: 'human', reason: 'retry' } });
-    const c = await createBatch({ refinement: { source_batch_id: b.body.id, actor: 'human', reason: 'retry' } });
-    const unrelated = await createBatch();
-
-    const res = await req(`/graph?root=${b.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(a.body.short_id);
-    expect(body).toContain(b.body.short_id);
-    expect(body).toContain(c.body.short_id);
-    expect(body).not.toContain(unrelated.body.short_id);
-  });
-
-  it('GET /graph?root= with an unknown Batch shows a "Batch not found" message', async () => {
-    await createBatch();
-    const res = await req('/graph?root=doesnotexist');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('Batch not found: doesnotexist');
-  });
-
-  it('GET /graph?all=1 shows every Batch regardless of connectivity', async () => {
-    const isolatedOld = await createBatch();
-    const isolatedNew = await createBatch();
-
-    const res = await req('/graph?all=1');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(isolatedOld.body.short_id);
-    expect(body).toContain(isolatedNew.body.short_id);
-  });
-
-  it('GET /graph with no query params defaults to Recent (distance-limited from the newest Batch)', async () => {
-    const isolatedOld = await createBatch();
-    const isolatedNew = await createBatch();
-
-    const res = await req('/graph');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(isolatedNew.body.short_id);
-    expect(body).not.toContain(isolatedOld.body.short_id);
-  });
-
-  it('GET /graph?active=1 shows the whole connected component regardless of distance', async () => {
-    const isolated = await createBatch();
-    const b0 = await createBatch();
-    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-    const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
-    const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
-
-    // b0..b4 form one size-5 retry chain; expand it so this test still exercises
-    // per-Batch reachability rather than the (separately tested) chain collapse.
-    const res = await req(`/graph?active=1&expand=${b4.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(b0.body.short_id);
-    expect(body).toContain(b4.body.short_id);
-    expect(body).not.toContain(isolated.body.short_id);
-  });
-
-  it('GET /graph with no query params limits to distance 3 and stubs the boundary Batch', async () => {
-    const b0 = await createBatch();
-    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-    const b3 = await createBatch({ refinement: { source_batch_id: b2.body.id, actor: 'human', reason: 'retry' } });
-    const b4 = await createBatch({ refinement: { source_batch_id: b3.body.id, actor: 'human', reason: 'retry' } });
-
-    // b0..b4 form one size-5 retry chain; expand it so depth-limiting is exercised
-    // per-Batch rather than collapsing the whole chain to a single node.
-    const res = await req(`/graph?expand=${b4.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    // b0 is 4 hops from the newest Batch (b4) -- outside the default depth-3 window.
-    expect(body).not.toContain(b0.body.short_id);
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-    expect(body).toContain(b3.body.short_id);
-    expect(body).toContain(b4.body.short_id);
-    // b1 sits at the boundary and has one hidden neighbor (b0) -> drill-down stub.
-    expect(body).toContain('graph-node-stub');
-    expect(body).toContain('⋯ +1');
-  });
-
-  it('GET /graph?root=X&depth=1 limits to immediate neighbors of X only', async () => {
-    const a = await createBatch();
-    const b = await createBatch({ refinement: { source_batch_id: a.body.id, actor: 'human', reason: 'retry' } });
-    const c = await createBatch({ refinement: { source_batch_id: b.body.id, actor: 'human', reason: 'retry' } });
-    const d = await createBatch({ refinement: { source_batch_id: c.body.id, actor: 'human', reason: 'retry' } });
-
-    const res = await req(`/graph?root=${c.body.short_id}&depth=1`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).not.toContain(a.body.short_id);
-    expect(body).toContain(b.body.short_id);
-    expect(body).toContain(c.body.short_id);
-    expect(body).toContain(d.body.short_id);
-  });
-
-  it('GET /graph renders at most one <image> per Batch card even with many Generations', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
-    await ingestGeneration(job.body.id, { seed: 1, original_filename: 'multi-a.png', comfy_output_index: 0 });
-    await ingestGeneration(job.body.id, { seed: 2, original_filename: 'multi-b.png', comfy_output_index: 1 });
-    await ingestGeneration(job.body.id, { seed: 3, original_filename: 'multi-c.png', comfy_output_index: 2 });
-
-    const res = await req(`/graph?root=${batch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    const imageCount = (body.match(/<image /g) ?? []).length;
-    expect(imageCount).toBe(1);
-  });
-});
-
-describe('Graph View retry-chain collapse', () => {
-  /** Builds a size-3 relation chain b0 -> b1 -> b2 (each a refinement retry of the previous). */
-  async function createChain() {
-    const b0 = await createBatch();
-    const b1 = await createBatch({ refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' } });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-    return { b0, b1, b2 };
-  }
-
-  it('collapses a 3-Batch relation chain into its representative, with a ⟳3 badge', async () => {
-    const { b0, b1, b2 } = await createChain();
-
-    // active=1 isolates this test's own connected component (rooted at the newest Batch,
-    // b2) from unrelated Batches left behind by other tests sharing the same D1 instance.
-    const res = await req('/graph?active=1');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    // b2 is the most recently created member, so it is the chain's representative.
-    expect(body).toContain(b2.body.short_id);
-    expect(body).not.toContain(b0.body.short_id);
-    expect(body).not.toContain(b1.body.short_id);
-    expect(body).toContain('graph-node-chain');
-    expect(body).toContain('⟳3');
-  });
-
-  it('?expand=<representative short_id> shows all 3 chain members', async () => {
-    const { b0, b1, b2 } = await createChain();
-
-    const res = await req(`/graph?active=1&expand=${b2.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    expect(body).toContain(b0.body.short_id);
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-    expect(body).not.toContain('⟳3');
-    expect(body).toContain('graph-node-recollapse');
-  });
-
-  it('?root=<middle chain member> auto-expands the chain so the root stays visible', async () => {
-    const { b0, b1, b2 } = await createChain();
-
-    const res = await req(`/graph?root=${b1.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    expect(body).toContain(b0.body.short_id);
-    expect(body).toContain(b1.body.short_id);
-    expect(body).toContain(b2.body.short_id);
-  });
-
-  it('redirects a reference edge from outside the chain, into a middle member, onto the representative', async () => {
-    const { generation: extGeneration } = await createGeneration();
-    const b0 = await createBatch();
-    const b1 = await createBatch({
-      refinement: { source_batch_id: b0.body.id, actor: 'human', reason: 'retry' },
-      references: [{ source_generation_id: extGeneration.id, purpose: 'composition', aspect: 'pose' }],
-    });
-    const b2 = await createBatch({ refinement: { source_batch_id: b1.body.id, actor: 'human', reason: 'retry' } });
-
-    // active=1 isolates this test's own connected component from unrelated Batches left
-    // behind by other tests sharing the same D1 instance.
-    const res = await req('/graph?active=1');
-    expect(res.status).toBe(200);
-    const body = await res.text();
-
-    // b1 (the reference edge's original target) is collapsed away -- if the edge still pointed
-    // at it, the SSR layout would drop the edge entirely rather than render it dangling.
-    expect(body).not.toContain(b1.body.short_id);
-    const referenceEdgeCount = (body.match(/class="graph-edge edge-reference"/g) ?? []).length;
-    expect(referenceEdgeCount).toBe(1);
-  });
-});
-
-describe('representativeGeneration (Graph View thumbnail selection)', () => {
-  function makeNode(overrides: Partial<GraphNodeData> = {}): GraphNodeData {
-    return {
-      id: 'batch-1',
-      short_id: 'b1',
-      raw_instruction: null,
-      status: 'completed',
-      created_at: '2024-01-01T00:00:00Z',
-      generation_count: 0,
-      generations: [],
-      thumbnail_generation_short_id: null,
-      hidden_neighbor_count: 0,
-      ...overrides,
-    };
-  }
-
-  it('returns null when the Batch has no Generations', () => {
-    expect(representativeGeneration(makeNode())).toBeNull();
-  });
-
-  it('① picks the Generation matching thumbnail_generation_short_id first', () => {
-    const g1 = { short_id: 'g1', rating: null, bookmark: false } as const;
-    const g2 = { short_id: 'g2', rating: 'good', bookmark: false } as const;
-    const node = makeNode({ generations: [g1, g2], thumbnail_generation_short_id: 'g1' });
-    expect(representativeGeneration(node)?.short_id).toBe('g1');
-  });
-
-  it('② falls back to the first "good"-rated Generation when there is no thumbnail match', () => {
-    const g1 = { short_id: 'g1', rating: null, bookmark: false } as const;
-    const g2 = { short_id: 'g2', rating: 'good', bookmark: false } as const;
-    const g3 = { short_id: 'g3', rating: 'good', bookmark: false } as const;
-    const node = makeNode({ generations: [g1, g2, g3], thumbnail_generation_short_id: 'does-not-exist' });
-    expect(representativeGeneration(node)?.short_id).toBe('g2');
-  });
-
-  it('③ falls back to the first Generation when neither a thumbnail match nor a "good" rating exists', () => {
-    const g1 = { short_id: 'g1', rating: 'bad', bookmark: false } as const;
-    const g2 = { short_id: 'g2', rating: 'neutral', bookmark: false } as const;
-    const node = makeNode({ generations: [g1, g2], thumbnail_generation_short_id: null });
-    expect(representativeGeneration(node)?.short_id).toBe('g1');
-  });
 });
 
 describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
@@ -1178,15 +879,47 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(html).toContain('rel-badge rel-refinement');
   });
 
-  it('GET /gallery nav does not include a Graph link (route stays reachable directly)', async () => {
+  it('GET /gallery nav has Gallery, Bookmarks, and a More menu with Batches/Experiments but no Stories/Graph links', async () => {
     const res = await req('/gallery');
     expect(res.status).toBe(200);
     const html = await res.text();
+    expect(html).toContain('href="/gallery"');
+    expect(html).toContain('>Gallery<');
+    expect(html).toContain('href="/bookmarks"');
+    expect(html).toContain('>Bookmarks<');
+    expect(html).toContain('class="nav-more"');
+    expect(html).toContain('<summary');
+    expect(html).toContain('>More<');
+    expect(html).toContain('href="/batches"');
+    expect(html).toContain('>Batches<');
+    expect(html).toContain('href="/experiments"');
+    expect(html).toContain('>Experiments<');
+    expect(html).not.toContain('href="/stories"');
+    expect(html).not.toContain('>Stories<');
     expect(html).not.toContain('href="/graph"');
     expect(html).not.toContain('>Graph<');
+  });
 
-    const graphRes = await req('/graph');
-    expect(graphRes.status).toBe(200);
+  it('GET /gallery marks the Gallery nav link aria-current="page"', async () => {
+    const res = await req('/gallery');
+    const html = await res.text();
+    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
+  });
+
+  it('GET /batches marks the More summary aria-current="page" (Batches lives inside it)', async () => {
+    const res = await req('/batches');
+    const html = await res.text();
+    expect(html).toMatch(/<summary aria-current="page">\s*More/);
+  });
+
+  it('GET /b/{short_id} and GET /g/{short_id} no longer link to /graph', async () => {
+    const { generation, batch } = await createGeneration();
+
+    const batchHtml = await (await req(`/b/${batch.short_id}`)).text();
+    expect(batchHtml).not.toContain('/graph?');
+
+    const genHtml = await (await req(`/g/${generation.short_id}`)).text();
+    expect(genHtml).not.toContain('/graph?');
   });
 });
 

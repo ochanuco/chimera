@@ -1,21 +1,21 @@
 import type { FC, PropsWithChildren } from 'hono/jsx';
 import { assetVersion } from './static';
 
-// Graph (/graph) is intentionally not linked here — see docs/ui.md "Graph View": it's reached via
-// the "Graph" link on Batch/Generation detail pages (root-scoped) or a direct URL, not the global nav.
-const NAV_ITEMS = [
-  { href: '/gallery', label: 'Gallery' },
-  { href: '/batches', label: 'Batches' },
-  { href: '/stories', label: 'Stories' },
-  { href: '/experiments', label: 'Experiments' },
-  { href: '/bookmarks', label: 'Bookmarks' },
-];
+/** True when `path` is exactly `base` or a sub-path of it (`base` + `/...`). */
+function isActiveSection(path: string, base: string): boolean {
+  return path === base || path.startsWith(`${base}/`);
+}
 
-export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean }>> = ({
+export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean; path?: string }>> = ({
   title,
   fullBleed,
+  path = '',
   children,
 }) => {
+  const galleryActive = path === '/gallery';
+  const bookmarksActive = path === '/bookmarks';
+  const moreActive = isActiveSection(path, '/batches') || isActiveSection(path, '/b') || isActiveSection(path, '/experiments');
+
   return (
     <html lang="ja">
       <head>
@@ -30,9 +30,19 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean 
           <a class="brand" href="/gallery">
             Chimera
           </a>
-          {NAV_ITEMS.map((item) => (
-            <a href={item.href}>{item.label}</a>
-          ))}
+          <a href="/gallery" aria-current={galleryActive ? 'page' : undefined}>
+            Gallery
+          </a>
+          <a href="/bookmarks" aria-current={bookmarksActive ? 'page' : undefined}>
+            Bookmarks
+          </a>
+          <details class="nav-more">
+            <summary aria-current={moreActive ? 'page' : undefined}>More</summary>
+            <div class="nav-more-panel">
+              <a href="/batches">Batches</a>
+              <a href="/experiments">Experiments</a>
+            </div>
+          </details>
         </nav>
         <main class={fullBleed ? 'container container-full' : 'container'}>{children}</main>
         <script src={`/assets/app.js?v=${assetVersion}`}></script>

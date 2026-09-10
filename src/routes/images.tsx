@@ -197,6 +197,7 @@ images.get('/:shortId', async (c) => {
 
   return c.html(
     <GenerationDetailPage
+      path={c.req.path}
       data={data}
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
       storyLinks={storyLinks}

@@ -53,6 +53,63 @@ a:hover { text-decoration: underline; }
 }
 .nav a { color: var(--text); font-weight: 600; }
 .nav a.brand { color: var(--accent); margin-right: 0.5rem; }
+.nav a[aria-current="page"],
+.nav-more summary[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.45rem;
+}
+
+.nav-more { position: relative; }
+.nav-more summary {
+  color: var(--text);
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.nav-more summary::-webkit-details-marker { display: none; }
+.nav-more summary::after {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  margin-top: -0.2rem;
+}
+.nav-more-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 0.3rem;
+}
+.nav-more-panel a { padding: 0.5rem 0.6rem; border-radius: 5px; }
+.nav-more-panel a:hover { background: var(--bg); text-decoration: none; }
+
+@media (max-width: 600px) {
+  .nav {
+    padding: 0 1rem;
+    gap: 1.25rem;
+  }
+  .nav > a,
+  .nav-more > summary {
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+}
 
 .container { padding: 1.25rem; max-width: 1600px; margin: 0 auto; }
 .container-full { max-width: none; }
@@ -160,18 +217,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 .card-image-meta { margin: 0; text-align: left; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
-/* Root-scoped jump into Graph View from a detail page heading (the only in-app entry to /graph). */
-.graph-jump {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-  text-decoration: none;
-  vertical-align: middle;
-}
-.graph-jump:hover { color: var(--accent); border-color: var(--accent); }
 
 .copy-id-btn {
   background: none;
@@ -222,7 +267,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .tag-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.75rem; }
 
-/* Relation-type badges for 親/子/兄弟 rows (Batch/Generation Detail). Colors match the Graph legend. */
+/* Relation-type badges for 親/子/兄弟 rows (Batch/Generation Detail). */
 .rel-badge {
   display: inline-block;
   border-radius: 4px;
@@ -521,20 +566,6 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .hidden { display: none !important; }
 
-.story-tree ul { list-style: none; padding-left: 1.4rem; border-left: 1px dashed var(--border); }
-.story-tree li { margin: 0.5rem 0; }
-.story-node { display: flex; align-items: center; gap: 0.6rem; }
-.story-node img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: var(--checker); }
-.rel-edit-form { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
-.rel-edit-form input, .rel-edit-form textarea {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 0.25rem 0.4rem;
-  font-size: 0.78rem;
-}
-
 .compare-cols-picker { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-dim); }
 .compare-cols-picker select {
   background: var(--bg);
@@ -574,141 +605,6 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
 .bookmark-section { margin-bottom: 2rem; }
-
-.graph-scope-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.5rem;
-  font-size: 0.85rem;
-}
-.graph-scope-label { color: var(--text-dim); }
-
-.graph-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-}
-.legend-row { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
-.legend-swatch { display: inline-block; width: 22px; height: 0; border-top-width: 3px; border-top-style: solid; }
-.legend-swatch.legend-reference { border-color: var(--graph-reference); }
-.legend-swatch.legend-relation { border-color: var(--graph-relation); border-top-style: dashed; }
-.legend-swatch.legend-story { border-color: var(--graph-story); }
-
-.graph-stage { position: relative; }
-.graph-zoom-controls {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.graph-zoom-controls button {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  color: var(--fg);
-  font-size: 1rem;
-  cursor: pointer;
-}
-.graph-zoom-controls button:hover { border-color: var(--accent); }
-
-.graph-viewport {
-  position: relative;
-  height: 78vh;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-}
-/* Fill the frame so the whole viewport is pan/zoom-able; without JS the
-   viewBox still shows the entire graph scaled to fit. */
-#graph-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; transform-origin: 0 0; }
-#graph-svg.dragging { cursor: grabbing; }
-
-.graph-node-card { fill: var(--bg-elevated); stroke: var(--border); stroke-width: 1; }
-.graph-batch-header { cursor: default; }
-.graph-node-shortid {
-  fill: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-}
-.graph-node-status { fill: var(--text-dim); font-size: 11px; }
-
-.graph-gen-thumb { cursor: pointer; }
-.graph-gen-ring { fill: url(#graph-checker); stroke: transparent; stroke-width: 2; }
-.graph-gen-thumb.rating-good .graph-gen-ring { stroke: var(--good); }
-.graph-gen-thumb.selected .graph-gen-ring { stroke: var(--accent); stroke-width: 3; }
-.graph-gen-empty { fill: #000; stroke: var(--border); stroke-dasharray: 4 3; }
-
-.graph-node-stub { cursor: pointer; }
-.graph-node-stub rect { fill: var(--bg); stroke: var(--border); stroke-dasharray: 4 3; }
-.graph-node-stub:hover rect { stroke: var(--accent); }
-.graph-node-stub text { fill: var(--text-dim); font-size: 11px; }
-
-/* Retry-chain collapse badge ("⟳N" -- expand) and re-collapse badge ("⟲" -- collapse back). */
-.graph-node-chain { cursor: pointer; }
-.graph-node-chain rect { fill: var(--accent); stroke: var(--accent); }
-.graph-node-chain:hover rect { opacity: 0.85; }
-.graph-node-chain text { fill: var(--bg); font-size: 11px; font-weight: 600; }
-
-.graph-node-recollapse { cursor: pointer; }
-.graph-node-recollapse circle { fill: var(--bg-elevated); stroke: var(--accent); stroke-width: 1.5; }
-.graph-node-recollapse:hover circle { fill: var(--accent); }
-.graph-node-recollapse text { fill: var(--accent); font-size: 11px; }
-.graph-node-recollapse:hover text { fill: var(--bg); }
-
-.graph-context-menu {
-  position: fixed;
-  z-index: 30;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  padding: 0.3rem;
-  display: flex;
-  flex-direction: column;
-  min-width: 170px;
-}
-.graph-context-menu.hidden { display: none; }
-.graph-context-menu-item {
-  background: none;
-  border: none;
-  color: var(--text);
-  text-align: left;
-  padding: 0.45rem 0.65rem;
-  font-size: 0.82rem;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.graph-context-menu-item:hover { background: var(--bg); }
-
-.graph-edge path { fill: none; stroke-width: 2; }
-.graph-edge.edge-reference path { stroke: var(--graph-reference); }
-.graph-edge.edge-relation path { stroke: var(--graph-relation); stroke-dasharray: 7 5; }
-.graph-edge.edge-story path { stroke: var(--graph-story); }
-/* Font size / outline are overridden per zoom level by initGraphPanZoom so the
-   labels stay a constant on-screen size (matching the legend text). The static
-   values are the no-JS fallback. */
-.graph-edge text {
-  font-size: var(--graph-edge-font, 13px);
-  fill: var(--text);
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: var(--graph-edge-stroke, 4px);
-  stroke-linejoin: round;
-}
 
 /* Experiments */
 .status-badge {
@@ -933,7 +829,7 @@ export const appJs = `
     track('ui.error', Object.assign({ action: action, message: e && e.message ? e.message : String(e), status: e && e.status ? e.status : null }, props || {}));
   }
 
-  // --- Clipboard helpers (used by copy-id buttons and the Graph context menu) ---
+  // --- Clipboard helpers (used by copy-id buttons) ---
   function flashCopied(btn, text) {
     const original = btn.textContent;
     btn.textContent = text || 'Copied';
@@ -1481,15 +1377,9 @@ export const appJs = `
   }
 
   // --- Compare selection bar ---
-  // Feeds off two independent selection sources: Gallery's checkboxes
-  // (.compare-check) and Graph's clicked-to-select thumbnails (.graph-gen-thumb.selected).
+  // Fed by the generation cards' checkboxes (.compare-check).
   function collectCompareIds() {
-    const ids = qsa('.compare-check:checked').map(function (c) { return c.value; });
-    qsa('.graph-gen-thumb.selected').forEach(function (t) {
-      const id = t.getAttribute('data-gen-short-id');
-      if (id && ids.indexOf(id) === -1) ids.push(id);
-    });
-    return ids;
+    return qsa('.compare-check:checked').map(function (c) { return c.value; });
   }
   function updateCompareBar() {
     const bar = document.getElementById('compare-bar');
@@ -1516,470 +1406,6 @@ export const appJs = `
       track('compare.open', { count: collectCompareIds().length });
     });
     updateCompareBar();
-  }
-
-  // --- Graph thumbnail selection (feeds the compare bar) ---
-  function initGraphSelection() {
-    const svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    svg.addEventListener('click', function (ev) {
-      const thumb = ev.target.closest ? ev.target.closest('.graph-gen-thumb') : null;
-      if (!thumb) return;
-      thumb.classList.toggle('selected');
-      updateCompareBar();
-    });
-  }
-
-  // --- Graph scope selector (filters which Batches /graph renders) ---
-  // Scope lives only in the URL query string -- no localStorage persistence.
-  function goToGraphScope(query) {
-    window.location.href = query ? '/graph?' + query : '/graph';
-  }
-
-  function initGraphScope() {
-    var select = document.getElementById('graph-scope');
-    if (!select) return;
-    select.addEventListener('change', function () {
-      var value = select.value;
-      var query = '';
-      if (value === 'active') query = 'active=1';
-      else if (value === 'all') query = 'all=1';
-      else if (value.indexOf('story:') === 0) query = 'story=' + value.slice('story:'.length);
-      else if (value.indexOf('root:') === 0) query = 'root=' + value.slice('root:'.length);
-      track('graph.scope', { scope: value });
-      goToGraphScope(query);
-    });
-  }
-
-  // --- Graph drill-down stub (hidden-neighbor placeholder) ---
-  function initGraphStubs() {
-    var svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    svg.addEventListener('click', function (ev) {
-      var stub = ev.target.closest ? ev.target.closest('.graph-node-stub') : null;
-      if (!stub) return;
-      var shortId = stub.getAttribute('data-batch-short-id');
-      if (!shortId) return;
-      goToGraphScope('root=' + shortId + '&depth=3');
-    });
-  }
-
-  // --- Graph chain-collapse badges ("⟳N" expand / "⟲" re-collapse) ---
-  // Unlike the scope selector, these preserve every other query param -- only expand changes.
-  function withExpandParam(shortId, add) {
-    var params = new URLSearchParams(window.location.search);
-    var ids = (params.get('expand') || '').split(',').filter(Boolean);
-    if (add) {
-      if (ids.indexOf(shortId) === -1) ids.push(shortId);
-    } else {
-      ids = ids.filter(function (id) { return id !== shortId; });
-    }
-    if (ids.length > 0) params.set('expand', ids.join(','));
-    else params.delete('expand');
-    var qs = params.toString();
-    window.location.href = qs ? '/graph?' + qs : '/graph';
-  }
-
-  function initGraphChainBadges() {
-    var svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    svg.addEventListener('click', function (ev) {
-      var chainBadge = ev.target.closest ? ev.target.closest('.graph-node-chain') : null;
-      if (chainBadge) {
-        var expandShortId = chainBadge.getAttribute('data-batch-short-id');
-        if (expandShortId) withExpandParam(expandShortId, true);
-        return;
-      }
-      var recollapseBadge = ev.target.closest ? ev.target.closest('.graph-node-recollapse') : null;
-      if (recollapseBadge) {
-        var collapseShortId = recollapseBadge.getAttribute('data-batch-short-id');
-        if (collapseShortId) withExpandParam(collapseShortId, false);
-      }
-    });
-  }
-
-  // --- Graph right-click context menu ---
-  function initGraphContextMenu() {
-    const svg = document.getElementById('graph-svg');
-    const menu = document.getElementById('graph-context-menu');
-    if (!svg || !menu) return;
-
-    function closeMenu() {
-      menu.classList.add('hidden');
-      menu.innerHTML = '';
-    }
-
-    function addItem(label, onClick) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'graph-context-menu-item';
-      btn.textContent = label;
-      btn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        onClick(btn);
-      });
-      menu.appendChild(btn);
-    }
-
-    svg.addEventListener('contextmenu', function (ev) {
-      const genEl = ev.target.closest ? ev.target.closest('[data-gen-short-id]') : null;
-      const batchEl = !genEl && ev.target.closest ? ev.target.closest('[data-batch-short-id]') : null;
-      if (!genEl && !batchEl) return;
-      ev.preventDefault();
-
-      menu.innerHTML = '';
-
-      if (genEl) {
-        const shortId = genEl.getAttribute('data-gen-short-id');
-        const batchShortId = genEl.getAttribute('data-batch-short-id');
-        addItem('Copy ID', function (btn) { copyText(shortId, btn); });
-        addItem('Copy URL', function (btn) { copyText(window.location.origin + '/g/' + shortId, btn); });
-        addItem('Open detail', function () {
-          window.open(window.location.origin + '/g/' + shortId, '_blank');
-          closeMenu();
-        });
-        const selected = genEl.classList.contains('selected');
-        addItem(selected ? 'Remove from compare' : 'Add to compare', function () {
-          genEl.classList.toggle('selected');
-          updateCompareBar();
-          closeMenu();
-        });
-        addItem('Show subgraph from here', function () {
-          goToGraphScope('root=' + batchShortId);
-        });
-      } else if (batchEl) {
-        const shortId = batchEl.getAttribute('data-batch-short-id');
-        addItem('Copy ID', function (btn) { copyText(shortId, btn); });
-        addItem('Copy URL', function (btn) { copyText(window.location.origin + '/b/' + shortId, btn); });
-        addItem('Open detail', function () {
-          window.open(window.location.origin + '/b/' + shortId, '_blank');
-          closeMenu();
-        });
-        addItem('Show subgraph from here', function () {
-          goToGraphScope('root=' + shortId);
-        });
-      }
-
-      menu.style.left = ev.clientX + 'px';
-      menu.style.top = ev.clientY + 'px';
-      menu.classList.remove('hidden');
-    });
-
-    document.addEventListener('click', function () {
-      closeMenu();
-    });
-    document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') closeMenu();
-    });
-    document.addEventListener('scroll', function () {
-      closeMenu();
-    }, true);
-    svg.addEventListener('wheel', function () {
-      closeMenu();
-    });
-  }
-
-  // --- Story relation inline edit ---
-  function initStoryRelationEdit() {
-    document.addEventListener('click', function (ev) {
-      const btn = ev.target.closest('.rel-edit-toggle');
-      if (!btn) return;
-      const targetId = btn.getAttribute('data-target');
-      const form = document.getElementById(targetId);
-      if (form) form.classList.toggle('hidden');
-    });
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.rel-edit-form');
-      if (!form) return;
-      ev.preventDefault();
-      const storyId = form.getAttribute('data-story-id');
-      const relationId = form.getAttribute('data-relation-id');
-      const label = qs('input[name="label"]', form).value;
-      const description = qs('textarea[name="description"]', form).value;
-      try {
-        await api('/api/v1/stories/' + storyId + '/relations/' + relationId, 'PATCH', { label: label, description: description });
-        const display = document.querySelector('.rel-label-display[data-relation-id="' + relationId + '"]');
-        if (display) display.textContent = label || '(no label)';
-        form.classList.add('hidden');
-        track('story_relation.save', { story_id: storyId, relation_id: relationId });
-      } catch (e) {
-        trackError('story_relation.save', e, { story_id: storyId, relation_id: relationId });
-        alert('failed to update relation: ' + e.message);
-      }
-    });
-  }
-
-  // --- Graph pan/zoom ---
-  // During an active gesture (wheel, pinch, drag) this avoids touching the
-  // SVG's viewBox: a viewBox write forces the whole SVG — including the
-  // dozens of full-resolution PNG thumbnails it embeds as <image> — to
-  // re-rasterize, which is what makes pan/zoom feel janky. Instead the
-  // gesture only moves a CSS transform on the SVG element (GPU-composited,
-  // no re-rasterization). Once the gesture goes idle the transform is folded
-  // into the viewBox ("commit") and reset to identity, so viewBox stays the
-  // single source of truth between gestures — initial layout, the zoom
-  // buttons, persisted zoom, and graph selection/context-menu code all
-  // read/write viewBox only, never the transform.
-  function initGraphPanZoom() {
-    var svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    var parts = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
-    if (parts.length !== 4 || parts.some(function (n) { return isNaN(n); })) return;
-
-    var vb = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
-
-    // The SVG fills its frame (100%/100%). Initial view: open at the zoom scale
-    // the user last used (persisted in localStorage), defaulting to 0.7x of the
-    // design size. Content is centered horizontally; if taller than the frame,
-    // the newest (bottom) layer is anchored at the bottom edge.
-    var ZOOM_STORE_KEY = 'chimera-graph-zoom';
-    var scale = 0.7;
-    try {
-      var stored = parseFloat(localStorage.getItem(ZOOM_STORE_KEY) || '');
-      if (stored > 0.05 && stored < 20) scale = stored;
-    } catch (e) { /* localStorage unavailable */ }
-
-    var contentW = vb.w;
-    var contentH = vb.h;
-    var frame = svg.getBoundingClientRect();
-    if (frame.width > 0 && frame.height > 0) {
-      vb.w = frame.width / scale;
-      vb.h = frame.height / scale;
-      vb.x = (contentW - vb.w) / 2;
-      if (vb.h >= contentH) {
-        vb.y = (contentH - vb.h) / 2;
-      } else {
-        vb.y = contentH - vb.h;
-      }
-    }
-
-    var baseW = frame.width > 0 ? frame.width : vb.w;
-    var minScale = 0.05;
-    var maxScale = 20;
-
-    // pending is the not-yet-committed CSS transform layered on top of
-    // vb, expressed in the SVG element's own screen-space pixels: a point
-    // at local (pre-transform) coordinate p renders at k*p + (tx,ty).
-    // frameRect is the element's bounding rect cached while the transform
-    // is identity (init, right after commit, and on resize) — it must never
-    // be re-read while a gesture is live, because the CSS transform itself
-    // would skew getBoundingClientRect.
-    var pending = { k: 1, tx: 0, ty: 0 };
-    var frameRect = frame;
-
-    function persistScale() {
-      if (frame.width <= 0) return;
-      try {
-        localStorage.setItem(ZOOM_STORE_KEY, String(frame.width / vb.w));
-      } catch (e) { /* localStorage unavailable */ }
-    }
-
-    var initial = { x: vb.x, y: vb.y, w: vb.w, h: vb.h };
-    apply();
-
-    var LABEL_SCREEN_PX = 14; // 凡例テキストと同じ見た目サイズに揃える
-
-    function apply() {
-      svg.setAttribute('viewBox', vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h);
-      var rect = svg.getBoundingClientRect();
-      if (rect.width > 0) {
-        var fontSvg = (LABEL_SCREEN_PX * vb.w) / rect.width;
-        svg.style.setProperty('--graph-edge-font', fontSvg + 'px');
-        svg.style.setProperty('--graph-edge-stroke', fontSvg * 0.3 + 'px');
-      }
-    }
-
-    function zoomAt(clientX, clientY, factor) {
-      var rect = svg.getBoundingClientRect();
-      var pointerX = vb.x + ((clientX - rect.left) / rect.width) * vb.w;
-      var pointerY = vb.y + ((clientY - rect.top) / rect.height) * vb.h;
-      var newW = vb.w * factor;
-      var newH = vb.h * factor;
-      var scale = baseW / newW;
-      if (scale < minScale || scale > maxScale) return;
-      vb.x = pointerX - (pointerX - vb.x) * (newW / vb.w);
-      vb.y = pointerY - (pointerY - vb.y) * (newH / vb.h);
-      vb.w = newW;
-      vb.h = newH;
-      apply();
-      persistScale();
-    }
-
-    // --- transform-during-gesture / commit-on-idle plumbing ---
-
-    var rafPending = false;
-    function scheduleTransformFrame() {
-      if (rafPending) return;
-      rafPending = true;
-      requestAnimationFrame(function () {
-        rafPending = false;
-        svg.style.transform = 'translate(' + pending.tx + 'px,' + pending.ty + 'px) scale(' + pending.k + ')';
-      });
-    }
-
-    function beginGesture() {
-      svg.style.willChange = 'transform';
-    }
-
-    function endGesture() {
-      svg.style.willChange = '';
-    }
-
-    var COMMIT_DEBOUNCE_MS = 150;
-    var commitTimer = null;
-    function scheduleDebouncedCommit() {
-      if (commitTimer) clearTimeout(commitTimer);
-      commitTimer = setTimeout(function () {
-        commitTimer = null;
-        commit();
-      }, COMMIT_DEBOUNCE_MS);
-    }
-    function cancelDebouncedCommit() {
-      if (commitTimer) {
-        clearTimeout(commitTimer);
-        commitTimer = null;
-      }
-    }
-
-    // Folds the pending CSS transform into viewBox and resets it to
-    // identity. A no-op (besides clearing will-change) when nothing is
-    // pending, so it is safe to call unconditionally before any code path
-    // that reads vb or the SVG's rendered position.
-    function commit() {
-      cancelDebouncedCommit();
-      if (pending.k !== 1 || pending.tx !== 0 || pending.ty !== 0) {
-        var oldW = vb.w;
-        var oldH = vb.h;
-        var k = pending.k;
-        vb.w = oldW / k;
-        vb.h = oldH / k;
-        vb.x = vb.x - (pending.tx / k) * (oldW / frameRect.width);
-        vb.y = vb.y - (pending.ty / k) * (oldH / frameRect.height);
-        pending = { k: 1, tx: 0, ty: 0 };
-        svg.style.transform = '';
-        apply();
-        frameRect = svg.getBoundingClientRect();
-        persistScale();
-      }
-      endGesture();
-    }
-
-    // Discards the pending transform without folding it into vb — used by
-    // the reset button, which replaces vb outright.
-    function discardPending() {
-      cancelDebouncedCommit();
-      pending = { k: 1, tx: 0, ty: 0 };
-      svg.style.transform = '';
-      endGesture();
-    }
-
-    // A click or right-click anywhere can reach graph selection / the
-    // context menu (see initGraphSelection / initGraphContextMenu), which
-    // read the SVG's rendered position — so flush any in-flight gesture
-    // ahead of those handlers via a capturing listener.
-    document.addEventListener('contextmenu', commit, true);
-    document.addEventListener('click', commit, true);
-
-    window.addEventListener('resize', function () {
-      if (pending.k === 1 && pending.tx === 0 && pending.ty === 0) {
-        frameRect = svg.getBoundingClientRect();
-      }
-    });
-
-    function pendingZoomAt(clientX, clientY, factor) {
-      var f = 1 / factor;
-      var newK = f * pending.k;
-      var newScale = baseW / (vb.w / newK);
-      if (newScale < minScale || newScale > maxScale) return;
-      var cx = clientX - frameRect.left;
-      var cy = clientY - frameRect.top;
-      pending.tx = f * pending.tx + (1 - f) * cx;
-      pending.ty = f * pending.ty + (1 - f) * cy;
-      pending.k = newK;
-      scheduleTransformFrame();
-    }
-
-    // Trackpad-first wheel handling: pinch gestures reach the browser as wheel
-    // events with ctrlKey=true (Cmd+scroll opts in explicitly), so those zoom
-    // around the cursor; a plain two-finger scroll pans instead of zooming.
-    svg.addEventListener('wheel', function (ev) {
-      ev.preventDefault();
-      beginGesture();
-      if (ev.ctrlKey || ev.metaKey) {
-        pendingZoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.01));
-      } else {
-        pending.tx -= ev.deltaX;
-        pending.ty -= ev.deltaY;
-        scheduleTransformFrame();
-      }
-      scheduleDebouncedCommit();
-    }, { passive: false });
-
-    // Safari sends pinches as gesture* events instead of ctrl+wheel.
-    var gestureScale = 1;
-    svg.addEventListener('gesturestart', function (ev) {
-      ev.preventDefault();
-      gestureScale = ev.scale;
-      beginGesture();
-    });
-    svg.addEventListener('gesturechange', function (ev) {
-      ev.preventDefault();
-      if (!ev.scale) return;
-      pendingZoomAt(ev.clientX, ev.clientY, gestureScale / ev.scale);
-      gestureScale = ev.scale;
-      scheduleDebouncedCommit();
-    });
-    svg.addEventListener('gestureend', function (ev) {
-      ev.preventDefault();
-      commit();
-    });
-
-    var controls = document.getElementById('graph-zoom-controls');
-    if (controls) {
-      controls.addEventListener('click', function (ev) {
-        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-zoom]') : null;
-        if (!btn) return;
-        var action = btn.getAttribute('data-zoom');
-        if (action === 'reset') {
-          discardPending();
-          vb.x = initial.x; vb.y = initial.y; vb.w = initial.w; vb.h = initial.h;
-          persistScale();
-          apply();
-          frameRect = svg.getBoundingClientRect();
-          return;
-        }
-        commit();
-        var rect = svg.getBoundingClientRect();
-        if (action === 'in') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 0.8);
-        else if (action === 'out') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
-      });
-    }
-
-    var dragging = false;
-    var lastX = 0;
-    var lastY = 0;
-    svg.addEventListener('mousedown', function (ev) {
-      if (ev.target && ev.target.closest && ev.target.closest('a')) return;
-      dragging = true;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      svg.classList.add('dragging');
-      beginGesture();
-    });
-    window.addEventListener('mousemove', function (ev) {
-      if (!dragging) return;
-      pending.tx += ev.clientX - lastX;
-      pending.ty += ev.clientY - lastY;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      scheduleTransformFrame();
-    });
-    window.addEventListener('mouseup', function () {
-      if (!dragging) return;
-      dragging = false;
-      svg.classList.remove('dragging');
-      commit();
-    });
   }
 
   // --- A/B judge page ---
@@ -2162,13 +1588,6 @@ export const appJs = `
     initGalleryFilter();
     initRequestLive();
     initCompareBar();
-    initStoryRelationEdit();
-    initGraphScope();
-    initGraphPanZoom();
-    initGraphSelection();
-    initGraphStubs();
-    initGraphChainBadges();
-    initGraphContextMenu();
     initCopyIdButtons();
     initCompareCols();
     initExperimentStatus();
