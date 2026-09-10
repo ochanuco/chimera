@@ -18,6 +18,7 @@ export const styleCss = `
   --graph-story: #4fd8a4;
   --graph-experiment: #c77dff;
   --nav-h: 3.25rem;
+  --compare-bar-h: 3.75rem;
   --thumb-ar: 2 / 3;
   /* Generation 画像を置く面すべてに敷く市松。透過部分と余白を見分けるためのもので、img 自体には手を加えない */
   --checker:
@@ -447,7 +448,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   padding: 0.2rem 0.6rem;
 }
 
-/* Lightbox 比較エントリ (docs/ui.md「Lightbox」「Compare entry」)。sessionStorage の compare set をトグルする。 */
+/* 比較エントリ (docs/ui.md「Compare entry」)。sessionStorage の compare set をトグルする。 */
 .compare-add-btn {
   background: none;
   border: 1px solid var(--border);
@@ -459,26 +460,80 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .compare-add-btn.active { border-color: var(--accent); color: var(--accent); }
 
+/* Layout が全ページに置く。固定配置なので、表示中は main 末尾がバーに隠れないよう余白を足す */
 .compare-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  height: var(--compare-bar-h);
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
-  padding: 0.7rem 1.25rem;
+  padding: 0 1.25rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   z-index: 20;
 }
 .compare-bar.hidden { display: none; }
+body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--compare-bar-h)); }
+.compare-chips { flex: 1; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; }
+.compare-chip {
+  position: relative;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--checker);
+  cursor: pointer;
+}
+.compare-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.compare-chip-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: rgba(8, 8, 10, 0.8);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  text-align: center;
+}
+.compare-chip:hover { border-color: var(--bad); }
+.compare-chip:hover .compare-chip-x { background: var(--bad); }
+/* 先頭 9 件だけが /compare に渡る */
+.compare-chip-overflow { opacity: 0.4; }
+.compare-clear {
+  flex: none;
+  min-height: 2.75rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 0 0.8rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.compare-clear:hover { color: var(--text); }
 .compare-bar a.compare-go {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
   background: var(--accent);
   color: #10131c;
   border-radius: 6px;
-  padding: 0.4rem 0.9rem;
+  padding: 0 0.9rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .compare-bar { padding: 0 0.75rem; gap: 0.5rem; }
 }
 
 /* Gallery ツールバー (view switch / bad toggle / 絞り込みパネル)。nav の下に sticky で張り付く。 */
@@ -718,10 +773,9 @@ details.section .section-body { margin-top: 0.6rem; }
   .detail-right h1 { font-size: 1.15rem; margin: 0 0 0.5rem; }
   .detail-right details.section { padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; }
 
-  /* 固定配置の compare バー表示中はペイン末尾がバーに隠れるため、バー高さ分の余白を足す */
-  .detail-layout:has(~ #compare-bar:not(.hidden)) .detail-left,
-  .detail-layout:has(~ #compare-bar:not(.hidden)) .detail-right {
-    padding-bottom: 3.5rem;
+  /* compare バー表示中は main に足した余白の分だけ縮め、ページ全体をスクロールさせない */
+  body:has(#compare-bar:not(.hidden)) .detail-layout {
+    height: calc(100vh - var(--nav-h) - 2.5rem - var(--compare-bar-h));
   }
 }
 
@@ -1117,6 +1171,8 @@ body.lightbox-open { overflow: hidden; }
   .lightbox-stage {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 420px;
+    /* 行を auto にすると画像の原寸で行が伸び、max-height: 100% が効かず画像が見切れる */
+    grid-template-rows: minmax(0, 1fr);
     gap: 1.25rem;
     padding: 1.5rem 2rem;
     height: 100%;
@@ -1147,7 +1203,14 @@ body.lightbox-open { overflow: hidden; }
   .lightbox-topbar-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
   .lightbox-topbar-detail-link { margin-left: auto; font-size: 0.85rem; }
   .lightbox-stage { display: flex; flex-direction: column; overflow-y: auto; }
-  .lightbox-image-area img.lightbox-image { width: 100%; height: auto; }
+  .lightbox-image-area img.lightbox-image {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: calc(100dvh - 3.25rem);
+    margin: 0 auto;
+    object-fit: contain;
+  }
   .lightbox-nav { display: none; }
   .lightbox-panel { padding: 0.9rem 1rem 2rem; }
   .lightbox-panel .rate-btn { flex: 1; min-height: 2.75rem; }
@@ -1181,7 +1244,7 @@ body.lightbox-open { overflow: hidden; }
 }
 /* .undo-toast is appended to <body>, not inside <main>, so it isn't a sibling of #compare-bar --
    JS toggles this class instead of a :has(~ ...) selector. */
-.undo-toast.above-compare-bar { bottom: calc(1rem + 3.5rem); }
+.undo-toast.above-compare-bar { bottom: calc(1rem + var(--compare-bar-h)); }
 .undo-toast-undo {
   background: none;
   border: none;
@@ -2309,68 +2372,128 @@ export const appJs = `
   }
 
   // --- Compare selection bar ---
-  // Compare entry はカードのチェックボックスではなく、Lightboxの「比較に追加」ボタンが
-  // sessionStorageのcompare setをトグルする (docs/ui.md「Compare entry」)。#compare-bar は
-  // Gallery / Bookmarks / Batch Detailのどのページでもこのsetから描画する。
+  // Lightbox と Generation Detail の「比較に追加」ボタンが sessionStorage の compare set をトグルし、
+  // Layout が全ページに置く #compare-bar がこの set を描画する (docs/ui.md「Compare entry」)。
+  // 要素は { id, short_id }。short_id を持つのは、チップのサムネイルをカードと同じ画像 URL にして
+  // ブラウザキャッシュを共有するため。
   var COMPARE_SET_KEY = 'chimera-compare-set';
+  var COMPARE_MAX = 9;
 
   function readCompareSet() {
     try {
       var raw = sessionStorage.getItem(COMPARE_SET_KEY);
       var parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(function (e) {
+        return e && typeof e.id === 'string';
+      });
     } catch (e) {
       return [];
     }
   }
-  function writeCompareSet(ids) {
+  function writeCompareSet(entries) {
     try {
-      sessionStorage.setItem(COMPARE_SET_KEY, JSON.stringify(ids));
+      sessionStorage.setItem(COMPARE_SET_KEY, JSON.stringify(entries));
     } catch (e) {
       // sessionStorage unavailable (private mode 等) -- compare setはタブ内限定で諦める
     }
   }
+  function compareRef(entry) {
+    return entry.short_id || entry.id;
+  }
+  function compareIndexOf(entries, id) {
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].id === id) return i;
+    }
+    return -1;
+  }
+  function renderCompareChips(container, entries) {
+    var key = entries.map(compareRef).join(',');
+    if (container.getAttribute('data-ids') === key) return;
+    container.setAttribute('data-ids', key);
+    container.textContent = '';
+    entries.forEach(function (entry, i) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = i < COMPARE_MAX ? 'compare-chip' : 'compare-chip compare-chip-overflow';
+      chip.setAttribute('data-generation-id', entry.id);
+      chip.title = compareRef(entry) + ' を比較から外す';
+      chip.setAttribute('aria-label', chip.title);
+      var img = document.createElement('img');
+      img.src = '/g/' + encodeURIComponent(compareRef(entry)) + '/image';
+      img.alt = '';
+      var x = document.createElement('span');
+      x.className = 'compare-chip-x';
+      x.setAttribute('aria-hidden', 'true');
+      x.textContent = '×';
+      chip.appendChild(img);
+      chip.appendChild(x);
+      container.appendChild(chip);
+    });
+  }
   function updateCompareBar() {
-    var ids = readCompareSet();
+    var entries = readCompareSet();
     var bar = document.getElementById('compare-bar');
     if (bar) {
-      if (ids.length > 0) {
-        bar.classList.remove('hidden');
-        var displayCount = Math.min(ids.length, 9);
-        qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
-        qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
-      } else {
-        bar.classList.add('hidden');
-      }
+      bar.classList.toggle('hidden', entries.length === 0);
+      var link = qs('#compare-link', bar);
+      link.textContent = 'Compare (' + Math.min(entries.length, COMPARE_MAX) + ')';
+      link.setAttribute('href', '/compare?ids=' + entries.slice(0, COMPARE_MAX).map(compareRef).join(','));
+      renderCompareChips(qs('#compare-chips', bar), entries);
     }
-    var addBtn = qs('.compare-add-btn');
-    if (addBtn) {
-      var id = addBtn.getAttribute('data-generation-id');
-      var active = ids.indexOf(id) !== -1;
-      addBtn.classList.toggle('active', active);
-      addBtn.textContent = active ? '比較から外す' : '比較に追加';
-    }
+    qsa('.compare-add-btn').forEach(function (btn) {
+      var active = compareIndexOf(entries, btn.getAttribute('data-generation-id')) !== -1;
+      btn.classList.toggle('active', active);
+      btn.textContent = active ? '比較から外す' : '比較に追加';
+    });
   }
-  function toggleCompare(id) {
+  function toggleCompare(id, shortId) {
     if (!id) return;
-    var ids = readCompareSet();
-    var idx = ids.indexOf(id);
-    if (idx === -1) ids.push(id);
-    else ids.splice(idx, 1);
-    writeCompareSet(ids);
+    var entries = readCompareSet();
+    var idx = compareIndexOf(entries, id);
+    if (idx === -1) entries.push({ id: id, short_id: shortId || null });
+    else entries.splice(idx, 1);
+    writeCompareSet(entries);
     updateCompareBar();
-    track('compare.add', { generation_id: id, count: ids.length });
+    track('compare.add', { generation_id: id, count: entries.length });
+  }
+  function removeFromCompare(id) {
+    var entries = readCompareSet();
+    var idx = compareIndexOf(entries, id);
+    if (idx === -1) return;
+    entries.splice(idx, 1);
+    writeCompareSet(entries);
+    updateCompareBar();
+    track('compare.remove', { generation_id: id, count: entries.length });
+  }
+  function clearCompare() {
+    var count = readCompareSet().length;
+    writeCompareSet([]);
+    updateCompareBar();
+    track('compare.clear', { count: count });
   }
   function initCompareBar() {
     document.addEventListener('click', function (ev) {
-      var addBtn = ev.target.closest ? ev.target.closest('.compare-add-btn') : null;
+      if (!ev.target.closest) return;
+      var addBtn = ev.target.closest('.compare-add-btn');
       if (addBtn) {
-        toggleCompare(addBtn.getAttribute('data-generation-id'));
+        toggleCompare(addBtn.getAttribute('data-generation-id'), addBtn.getAttribute('data-short-id'));
         return;
       }
-      const link = ev.target.closest ? ev.target.closest('#compare-link') : null;
-      if (!link) return;
-      track('compare.open', { count: readCompareSet().length });
+      var chip = ev.target.closest('.compare-chip');
+      if (chip) {
+        removeFromCompare(chip.getAttribute('data-generation-id'));
+        return;
+      }
+      if (ev.target.closest('#compare-clear')) {
+        clearCompare();
+        return;
+      }
+      if (ev.target.closest('#compare-link')) track('compare.open', { count: readCompareSet().length });
+    });
+    // 別ページで set を変えてから Back で戻ったとき (bfcache 復元) にバーを描き直す
+    window.addEventListener('pageshow', function (ev) {
+      if (ev.persisted) updateCompareBar();
     });
     updateCompareBar();
   }
@@ -2696,6 +2819,21 @@ export const appJs = `
       { passive: true },
     );
 
+    // 画像・パネル・prev/next・トップバー以外のクリックで閉じる。押下も同じ背景で始まったときに
+    // 限るのは、パネル内のテキスト選択を背景で離したときの click で閉じないようにするため。
+    // document ではなく overlay で拾うのは、パネル内の委譲ハンドラが押された要素を DOM から
+    // 外す前に判定するため。
+    var LIGHTBOX_CONTENT = '.lightbox-image, .lightbox-panel, .lightbox-nav, .lightbox-topbar';
+    var backdropPressed = false;
+    overlay.addEventListener('pointerdown', function (ev) {
+      backdropPressed = !ev.target.closest(LIGHTBOX_CONTENT);
+    });
+    overlay.addEventListener('click', function (ev) {
+      var pressed = backdropPressed;
+      backdropPressed = false;
+      if (pressed && !ev.target.closest(LIGHTBOX_CONTENT)) closeLightbox();
+    });
+
     return overlay;
   }
 
@@ -2742,6 +2880,8 @@ export const appJs = `
   function showLightbox(shortId, link, mode) {
     if (!shortId) return;
     ensureLightboxOverlay();
+    // 狭い幅ではステージごと縦スクロールするので、別の画像に移ったら先頭 (画像) から見せる
+    if (lightboxTopbarShortId.textContent !== shortId) lightboxStage.scrollTop = 0;
     lightboxCurrentLink = link || lightboxFindByShortId(shortId);
     if (!lightboxLastFocused) lightboxLastFocused = document.activeElement;
     document.body.classList.add('lightbox-open');
@@ -2824,10 +2964,6 @@ export const appJs = `
     document.addEventListener('click', function (ev) {
       if (!lightboxOverlay) return;
       if (ev.target.closest && ev.target.closest('.lightbox-close')) {
-        closeLightbox();
-        return;
-      }
-      if (ev.target === lightboxOverlay) {
         closeLightbox();
         return;
       }

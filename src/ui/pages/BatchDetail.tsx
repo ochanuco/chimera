@@ -422,13 +422,6 @@ export function BatchDetailPage({
           </details>
         </div>
       </div>
-
-      <div id="compare-bar" class="compare-bar hidden">
-        <span id="compare-count">Compare (0)</span>
-        <a id="compare-link" class="compare-go" href="#">
-          Compare
-        </a>
-      </div>
     </Layout>
   );
 }

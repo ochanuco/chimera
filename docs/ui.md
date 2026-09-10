@@ -213,11 +213,14 @@ Note（折りたたみ）
 既に原寸相当のURLを持っているため、fragment自体は画像タグを含みません）。
 
 幅1100px以上では`rgba(8,8,10,0.78)`のscrim付き固定overlayで、`minmax(0,1fr) 420px`の2カラム
-（左: 画像フル表示、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。画像エリア
-左右端の中央に丸いprev/nextボタン（2.75rem）を重ねます。
+（左: 画像、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。行の高さは
+`minmax(0,1fr)`でoverlayの高さに固定し、画像は縦横とも画像エリアに収まるよう縮小します
+（見切れもスクロールもしません）。画像エリア左右端の中央に丸いprev/nextボタン（2.75rem）を
+重ねます。
 
 幅1100px未満では不透明（`--bg`）の全画面・縦スクロールです。上から3.25remのトップバー
-（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい）→ パネル（rating各ボタン・
+（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい、ただし高さは
+トップバーを除いた画面の高さまで）→ パネル（rating各ボタン・
 ボタン・入力を2.75rem以上のタップ領域にしたもの）の順に並びます。画像上の左右スワイプで
 prev/next、パネルのスクロール位置が最上部（`scrollTop === 0`）にあるときの下スワイプで
 閉じます。
@@ -229,7 +232,9 @@ Prev/Nextはページのグリッド内カードの現在のDOM順を辿りま�
 開いている状態はURLの`#g=<short_id>`に反映します（最初に開くときはpushState、Lightbox内の
 prev/next・bad非表示による自動遷移時の移動はreplaceState）。そのため、ブラウザのBackボタンで
 一度に閉じ、`#g=`付きURLを直接開く・再読み込みすると同じGenerationのLightboxが開き直します。
-`Esc`でも閉じます。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
+`Esc`と、画像・パネル・prev/next・トップバー以外の場所（scrimや画像の余白）のクリックでも
+閉じます。背景クリックは押下も背景で始まったときだけ数えるので、パネル内でテキストを選択して
+背景で離しても閉じません。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
 動かしません（開いている間は`body`のスクロールをロックします）。
 
 Lightbox内でratingを変えると、背後のカードのrating-groupにも同じ値を反映します（逆方向 —
@@ -250,11 +255,21 @@ compareバー表示中はその上に出し、幅600px以下では左右1rem残�
 
 ### Compare entry
 
-カードのチェックボックスは廃止しました。Lightboxの`比較に追加`ボタンがsessionStorageの
-compare set（タブ内限定）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
-telemetry `compare.add`）。`#compare-bar`はGallery / Bookmarks / Batch Detailのどのページでも
-このsetから`Compare (N)`を描画し、`/compare?ids=...`（先頭9件、従来通り）へリンクします
-（telemetry `compare.open`）。
+カードのチェックボックスは廃止しました。Lightboxと[Generation Detail](#generation-detail)の
+`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は`{ id, short_id }`）を
+トグルします（ボタンのラベルは`比較から外す`に切り替わります、telemetry `compare.add`）。
+
+`#compare-bar`はLayoutが全ページの下端に固定配置し、setが空でない間だけ表示します。表示中は
+`main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detail / Batch
+Detailの2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
+
+-   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
+    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/image`で、
+    10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
+-   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
+-   `Compare (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
+
+別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーを描き直します。
 
 ## Batch Detail
 
@@ -412,7 +427,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 情報を縦に並べます。それ未満の幅では画像を最上部に大きく表示する縦一列です。
 
 ``` text
-[ IMAGE ] | abc123
+[ IMAGE ] | abc123  比較に追加
 [ IMAGE ] | 結月ゆかり
 [ IMAGE ] | good  🔖
 [ IMAGE ] | #pose-good #outfit-good
@@ -728,9 +743,7 @@ GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外
 トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
 
 Generationsセクションのカードと[Lightbox](#lightbox)はGalleryと共通です（bad非表示との
-組み合わせは無いため、[bad hides with undo](#bad-hides-with-undo)は起きません）。ページ下部の
-`#compare-bar`もGalleryと同じくLightboxの[Compare entry](#compare-entry)から生まれるsessionStorage
-のsetを表示します。
+組み合わせは無いため、[bad hides with undo](#bad-hides-with-undo)は起きません）。
 
 ## Search
 
@@ -821,7 +834,9 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `rating.undo` | `generation_id`, `restored` | [bad hides with undo](#bad-hides-with-undo)のUndo |
-| `compare.add` | `generation_id`, `count` | Lightboxの[Compare entry](#compare-entry)（`比較に追加`/`比較から外す`） |
+| `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
+| `compare.remove` | `generation_id`, `count` | compareバーのチップで外す（`initCompareBar`） |
+| `compare.clear` | `count` | compareバーの`すべて解除`（`initCompareBar`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
 | `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
