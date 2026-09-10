@@ -106,6 +106,18 @@ describe('Web GUI pages', () => {
     expect(body).toContain(`/g/${generation.short_id}/image`);
   });
 
+  it('every page carries exactly one compare bar from the Layout, and Generation Detail has the compare entry button', async () => {
+    const { generation } = await createGeneration();
+    for (const path of ['/gallery', '/bookmarks', '/batches', '/experiments', `/g/${generation.short_id}`, '/compare?ids=']) {
+      const body = await (await req(path)).text();
+      expect(body.split('id="compare-bar"').length - 1, path).toBe(1);
+      expect(body, path).toContain('id="compare-clear"');
+    }
+
+    const detail = await (await req(`/g/${generation.short_id}`)).text();
+    expect(detail).toContain(`class="compare-add-btn" data-generation-id="${generation.id}" data-short-id="${generation.short_id}"`);
+  });
+
   it('GET /g/{short_id} shows the Workflow section with the checkpoint, Pass 1, positive chips, and Raw graph', async () => {
     const { generation, job } = await createGeneration();
     const graph = {

@@ -45,6 +45,15 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
           </details>
         </nav>
         <main class={fullBleed ? 'container container-full' : 'container'}>{children}</main>
+        <div id="compare-bar" class="compare-bar hidden">
+          <div id="compare-chips" class="compare-chips"></div>
+          <button type="button" id="compare-clear" class="compare-clear">
+            すべて解除
+          </button>
+          <a id="compare-link" class="compare-go" href="#">
+            Compare (0)
+          </a>
+        </div>
         <script src={`/assets/app.js?v=${assetVersion}`}></script>
       </body>
     </html>

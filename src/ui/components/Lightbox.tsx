@@ -51,7 +51,7 @@ export function LightboxPanel({
         <span class="lightbox-short-id">{shortId}</span>
         <CopyIdButton value={shortId} />
         <div class="lightbox-header-actions">
-          <button type="button" class="compare-add-btn" data-generation-id={generationId}>
+          <button type="button" class="compare-add-btn" data-generation-id={generationId} data-short-id={shortId}>
             比較に追加
           </button>
           <button type="button" class="lightbox-close" aria-label="close">

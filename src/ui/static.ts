@@ -18,6 +18,7 @@ export const styleCss = `
   --graph-story: #4fd8a4;
   --graph-experiment: #c77dff;
   --nav-h: 3.25rem;
+  --compare-bar-h: 3.75rem;
   --thumb-ar: 2 / 3;
   /* Generation 画像を置く面すべてに敷く市松。透過部分と余白を見分けるためのもので、img 自体には手を加えない */
   --checker:
@@ -447,7 +448,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   padding: 0.2rem 0.6rem;
 }
 
-/* Lightbox 比較エントリ (docs/ui.md「Lightbox」「Compare entry」)。sessionStorage の compare set をトグルする。 */
+/* 比較エントリ (docs/ui.md「Compare entry」)。sessionStorage の compare set をトグルする。 */
 .compare-add-btn {
   background: none;
   border: 1px solid var(--border);
@@ -459,26 +460,80 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .compare-add-btn.active { border-color: var(--accent); color: var(--accent); }
 
+/* Layout が全ページに置く。固定配置なので、表示中は main 末尾がバーに隠れないよう余白を足す */
 .compare-bar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  height: var(--compare-bar-h);
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
-  padding: 0.7rem 1.25rem;
+  padding: 0 1.25rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   z-index: 20;
 }
 .compare-bar.hidden { display: none; }
+body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--compare-bar-h)); }
+.compare-chips { flex: 1; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; }
+.compare-chip {
+  position: relative;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--checker);
+  cursor: pointer;
+}
+.compare-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.compare-chip-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: rgba(8, 8, 10, 0.8);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  text-align: center;
+}
+.compare-chip:hover { border-color: var(--bad); }
+.compare-chip:hover .compare-chip-x { background: var(--bad); }
+/* 先頭 9 件だけが /compare に渡る */
+.compare-chip-overflow { opacity: 0.4; }
+.compare-clear {
+  flex: none;
+  min-height: 2.75rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 0 0.8rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.compare-clear:hover { color: var(--text); }
 .compare-bar a.compare-go {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
   background: var(--accent);
   color: #10131c;
   border-radius: 6px;
-  padding: 0.4rem 0.9rem;
+  padding: 0 0.9rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .compare-bar { padding: 0 0.75rem; gap: 0.5rem; }
 }
 
 /* Gallery ツールバー (view switch / bad toggle / 絞り込みパネル)。nav の下に sticky で張り付く。 */
@@ -570,9 +625,28 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   min-height: 2rem;
 }
 
-/* Gallery live insertion の新着バナー (docs/ui.md「Gallery」)。sticky ツールバーの直下に
-   中央寄せで浮かぶ。 */
-.gallery-new-arrivals {
+/* Gallery の反映待ち (docs/ui.md「Gallery pending changes」)。帯はグリッドの直前、ピルは帯が
+   スクロールアウトしている間だけ sticky ツールバーの直下中央に浮かぶ。 */
+.gallery-pending-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-bottom: 0.75rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gallery-pending-strip:hover { background: var(--bg-elevated); border-color: var(--accent); }
+.gallery-pending-strip.hidden { display: none; }
+.card.card-pending-hide { opacity: 0.4; }
+.card.card-pending-hide:hover { opacity: 0.75; }
+.gallery-pending-pill {
   position: fixed;
   top: calc(var(--nav-h) + 0.6rem);
   left: 50%;
@@ -591,9 +665,10 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
-.gallery-new-arrivals.hidden { display: none; }
+.gallery-pending-pill { white-space: nowrap; }
+.gallery-pending-pill.hidden { display: none; }
 @media (max-width: 600px) {
-  .gallery-new-arrivals { min-height: 2.75rem; }
+  .gallery-pending-pill { min-height: 2.75rem; }
 }
 
 .load-more {
@@ -630,9 +705,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   }
   .card-row .rating-group { flex: 1; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
-
-  .undo-toast { left: 0.5rem; right: 0.5rem; width: auto; }
-  .undo-toast-undo { min-height: 2.75rem; }
 }
 
 details.section {
@@ -718,10 +790,9 @@ details.section .section-body { margin-top: 0.6rem; }
   .detail-right h1 { font-size: 1.15rem; margin: 0 0 0.5rem; }
   .detail-right details.section { padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; }
 
-  /* 固定配置の compare バー表示中はペイン末尾がバーに隠れるため、バー高さ分の余白を足す */
-  .detail-layout:has(~ #compare-bar:not(.hidden)) .detail-left,
-  .detail-layout:has(~ #compare-bar:not(.hidden)) .detail-right {
-    padding-bottom: 3.5rem;
+  /* compare バー表示中は main に足した余白の分だけ縮め、ページ全体をスクロールさせない */
+  body:has(#compare-bar:not(.hidden)) .detail-layout {
+    height: calc(100vh - var(--nav-h) - 2.5rem - var(--compare-bar-h));
   }
 }
 
@@ -1117,6 +1188,8 @@ body.lightbox-open { overflow: hidden; }
   .lightbox-stage {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 420px;
+    /* 行を auto にすると画像の原寸で行が伸び、max-height: 100% が効かず画像が見切れる */
+    grid-template-rows: minmax(0, 1fr);
     gap: 1.25rem;
     padding: 1.5rem 2rem;
     height: 100%;
@@ -1147,7 +1220,14 @@ body.lightbox-open { overflow: hidden; }
   .lightbox-topbar-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
   .lightbox-topbar-detail-link { margin-left: auto; font-size: 0.85rem; }
   .lightbox-stage { display: flex; flex-direction: column; overflow-y: auto; }
-  .lightbox-image-area img.lightbox-image { width: 100%; height: auto; }
+  .lightbox-image-area img.lightbox-image {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: calc(100dvh - 3.25rem);
+    margin: 0 auto;
+    object-fit: contain;
+  }
   .lightbox-nav { display: none; }
   .lightbox-panel { padding: 0.9rem 1rem 2rem; }
   .lightbox-panel .rate-btn { flex: 1; min-height: 2.75rem; }
@@ -1160,35 +1240,6 @@ body.lightbox-open { overflow: hidden; }
   .lightbox-panel .publication-remove-btn,
   .lightbox-panel .tag-remove-btn,
   .lightbox-panel .copy-id-btn { min-height: 0; }
-}
-
-/* bad hide + undo (Gallery のみ, docs/ui.md「Gallery」)。 */
-.undo-toast {
-  position: fixed;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  padding: 0.6rem 0.9rem;
-  font-size: 0.85rem;
-}
-/* .undo-toast is appended to <body>, not inside <main>, so it isn't a sibling of #compare-bar --
-   JS toggles this class instead of a :has(~ ...) selector. */
-.undo-toast.above-compare-bar { bottom: calc(1rem + 3.5rem); }
-.undo-toast-undo {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
 }
 `;
 
@@ -1306,7 +1357,7 @@ export const appJs = `
         await api('/api/v1/generations/' + id + '/rating', 'PUT', { rating: next });
         applyRatingToGroups(id, next);
         track('rating.set', { generation_id: id, rating: next, previous: current || null });
-        if (next === 'bad') await handleBadHide(id, current || null, btn);
+        markGalleryPendingBad(id, next === 'bad');
       } catch (e) {
         trackError('rating.set', e, { generation_id: id });
         alert('rating update failed: ' + e.message);
@@ -1332,96 +1383,6 @@ export const appJs = `
         alert('bookmark update failed: ' + e.message);
       }
     });
-  }
-
-  // --- Bad hides with undo (Gallery only, docs/ui.md「Gallery」「Lightbox」) ---
-  // [data-gallery-grid][data-hide-bad="true"] だけが対象 (bad=1 でも ids= でもない既定表示)。
-  // Bookmarks / Batch Detail のグリッドにはこの属性が無いので何もしない。
-  var undoToastTimer = null;
-
-  function showUndoToast(generationId, previousRating, restoreDom) {
-    var existing = qs('.undo-toast');
-    if (existing) existing.remove();
-    if (undoToastTimer) clearTimeout(undoToastTimer);
-
-    var toast = document.createElement('div');
-    toast.className = 'undo-toast';
-    var msg = document.createElement('span');
-    msg.textContent = 'bad にしました';
-    var undoBtn = document.createElement('button');
-    undoBtn.type = 'button';
-    undoBtn.className = 'undo-toast-undo';
-    undoBtn.textContent = '取り消す';
-    toast.appendChild(msg);
-    toast.appendChild(undoBtn);
-    var compareBar = document.getElementById('compare-bar');
-    if (compareBar && !compareBar.classList.contains('hidden')) toast.classList.add('above-compare-bar');
-    document.body.appendChild(toast);
-
-    var done = false;
-    function finish() {
-      if (done) return;
-      done = true;
-      toast.remove();
-    }
-    undoBtn.addEventListener('click', async function () {
-      if (done) return;
-      try {
-        await api('/api/v1/generations/' + generationId + '/rating', 'PUT', { rating: previousRating });
-        applyRatingToGroups(generationId, previousRating);
-        restoreDom();
-        track('rating.undo', { generation_id: generationId, restored: previousRating });
-      } catch (e) {
-        trackError('rating.undo', e, { generation_id: generationId });
-        alert('undo failed: ' + e.message);
-      } finally {
-        finish();
-      }
-    });
-    undoToastTimer = setTimeout(finish, 5000);
-  }
-
-  // 削除前の card の次に来るカードを返す。末尾なら (.load-more があれば) 次ページを
-  // ロードしてから返す。Lightbox の「次へ進む」に使う。
-  async function cardAfter(card) {
-    var next = card.nextElementSibling;
-    if (next && next.classList && next.classList.contains('card')) return next;
-    if (next && next.classList && next.classList.contains('load-more')) {
-      var loaded = await loadMoreGalleryCards(next);
-      if (!loaded) return null;
-      var after = card.nextElementSibling;
-      return after && after.classList && after.classList.contains('card') ? after : null;
-    }
-    return null;
-  }
-
-  async function handleBadHide(id, previousRating, btn) {
-    var grid = document.querySelector('[data-gallery-grid][data-hide-bad="true"]');
-    if (!grid) return;
-    var group = grid.querySelector('.rating-group[data-generation-id="' + id + '"]');
-    var card = group ? group.closest('.card') : null;
-    if (!card) return;
-
-    var inLightbox = Boolean(lightboxOverlay && !lightboxOverlay.hidden && btn.closest('.lightbox-panel'));
-    var target = inLightbox ? await cardAfter(card) : null;
-
-    var parent = card.parentNode;
-    var nextSibling = card.nextElementSibling;
-    card.remove();
-
-    showUndoToast(id, previousRating, function () {
-      if (nextSibling && nextSibling.parentNode === parent) parent.insertBefore(card, nextSibling);
-      else parent.appendChild(card);
-    });
-
-    if (inLightbox) {
-      if (target) {
-        var link = qs('.thumb-link', target);
-        if (link) showLightbox(link.getAttribute('data-short-id'), link, 'replace');
-      } else {
-        closeLightbox();
-      }
-    }
   }
 
   // --- Experiment status transition ---
@@ -2188,30 +2149,42 @@ export const appJs = `
     registerRequestElement(badge);
   }
 
-  // --- Gallery live insertion (docs/ui.md「Gallery」): 'generation' メッセージを受けて、
-  // 現在のview/フィルタに合致し未表示のGenerationをカードとしてグリッドへ差し込む。
-  // 上端にいなければキューに積み、新着バナーで知らせる。
-  var galleryLive = { queue: [] };
+  // --- Gallery pending changes (docs/ui.md「Gallery pending changes」) ---
+  // 新着 ('generation' メッセージ) と既定表示で bad にしたカードの非表示は、グリッドへ即座には
+  // 反映しない。操作中のカードが手元で動かないよう、件数をグリッド直前の帯 (帯が見えない間は
+  // ツールバー下に浮かぶピル) に出し、押したときにまとめて反映する。
+  // queue は到着順 (古い→新しい) の { shortId, html }。
+  var galleryPending = { queue: [] };
+
+  function galleryGrid() {
+    return document.querySelector('[data-gallery-grid]');
+  }
 
   function galleryLiveGrid() {
-    var grid = document.querySelector('[data-gallery-grid]');
+    var grid = galleryGrid();
     return grid && grid.getAttribute('data-gallery-live') === 'true' ? grid : null;
+  }
+
+  // bad=1 でも ids= でもない /gallery の既定表示だけ。Bookmarks / Batch Detail には属性が無い。
+  function galleryHideBadGrid() {
+    var grid = galleryGrid();
+    return grid && grid.getAttribute('data-hide-bad') === 'true' ? grid : null;
+  }
+
+  function markGalleryPendingBad(id, isBad) {
+    var grid = galleryHideBadGrid();
+    if (!grid) return;
+    var group = grid.querySelector('.rating-group[data-generation-id="' + id + '"]');
+    var card = group ? group.closest('.card') : null;
+    if (!card) return;
+    card.classList.toggle('card-pending-hide', isBad);
+    updateGalleryPendingUi();
   }
 
   function galleryLiveAcceptsView(view, refinesShortId) {
     if (view === 'raw') return !refinesShortId;
     if (view === 'refined') return Boolean(refinesShortId);
     return true; // 'all'
-  }
-
-  // グリッド先頭がsticky toolbarの直下に見えている(=ユーザーが最上部にいる)か。
-  function galleryAtTop() {
-    var grid = galleryLiveGrid();
-    if (!grid) return false;
-    var toolbar = qs('.gallery-toolbar');
-    var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
-    var gridTop = grid.getBoundingClientRect().top;
-    return gridTop >= toolbarBottom - 1 && gridTop <= window.innerHeight;
   }
 
   function galleryInsertCardHtml(html, grid) {
@@ -2223,47 +2196,95 @@ export const appJs = `
     qsa('[data-request-id]', card).forEach(registerRequestElement);
   }
 
-  function galleryNewArrivalsBanner() {
-    var el = document.getElementById('gallery-new-arrivals');
-    if (el) return el;
-    el = document.createElement('button');
-    el.type = 'button';
-    el.id = 'gallery-new-arrivals';
-    el.className = 'gallery-new-arrivals hidden';
-    el.innerHTML =
-      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
-      '<path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
-      '<span class="gallery-new-arrivals-count"></span>';
-    document.body.appendChild(el);
-    el.addEventListener('click', function () {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      flushGalleryLiveQueue();
+  function galleryPendingQueued(shortId) {
+    return galleryPending.queue.some(function (item) {
+      return item.shortId === shortId;
     });
-    return el;
   }
 
-  function updateGalleryNewArrivalsBanner() {
-    var el = galleryNewArrivalsBanner();
-    var count = galleryLive.queue.length;
-    if (count === 0) {
-      el.classList.add('hidden');
-      return;
+  function galleryPendingLabel(newCount, badCount) {
+    var parts = [];
+    if (newCount > 0) parts.push('新着 ' + newCount + ' 件');
+    if (badCount > 0) parts.push('bad ' + badCount + ' 件を隠す');
+    return parts.join(' · ');
+  }
+
+  var GALLERY_PENDING_ARROW =
+    '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+    '<path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+
+  function galleryPendingControls(grid) {
+    var strip = document.getElementById('gallery-pending-strip');
+    if (!strip) {
+      strip = document.createElement('button');
+      strip.type = 'button';
+      strip.id = 'gallery-pending-strip';
+      strip.className = 'gallery-pending-strip hidden';
+      grid.parentNode.insertBefore(strip, grid);
+      strip.addEventListener('click', function () {
+        applyGalleryPending('strip');
+      });
     }
-    qs('.gallery-new-arrivals-count', el).textContent = '新着 ' + count + ' 件';
-    el.classList.remove('hidden');
+    var pill = document.getElementById('gallery-pending-pill');
+    if (!pill) {
+      pill = document.createElement('button');
+      pill.type = 'button';
+      pill.id = 'gallery-pending-pill';
+      pill.className = 'gallery-pending-pill hidden';
+      document.body.appendChild(pill);
+      pill.addEventListener('click', function () {
+        applyGalleryPending('pill');
+      });
+    }
+    return { strip: strip, pill: pill };
   }
 
-  // banner クリック、または手動での最上部への復帰の両方から呼ぶ (docs/ui.md「Gallery」)。
-  function flushGalleryLiveQueue() {
-    var grid = galleryLiveGrid();
-    var count = galleryLive.queue.length;
-    if (!grid || count === 0) return;
-    // queue は到着順 (古い→新しい)。先頭挿入を古い方から繰り返すと最終的に新しい方が
-    // 一番上に来る (newest first)。
-    galleryLive.queue.forEach(function (html) { galleryInsertCardHtml(html, grid); });
-    galleryLive.queue = [];
-    updateGalleryNewArrivalsBanner();
-    track('gallery.new_arrivals', { count: count, mode: 'banner' });
+  function updateGalleryPendingUi() {
+    var grid = galleryGrid();
+    if (!grid) return;
+    var newCount = galleryPending.queue.length;
+    var badCount = qsa('.card.card-pending-hide', grid).length;
+    var controls = galleryPendingControls(grid);
+    var label = galleryPendingLabel(newCount, badCount);
+    controls.strip.textContent = label;
+    controls.strip.classList.toggle('hidden', label === '');
+    controls.pill.innerHTML = (newCount > 0 ? GALLERY_PENDING_ARROW : '') + '<span></span>';
+    qs('span', controls.pill).textContent = label;
+    updateGalleryPendingPill();
+  }
+
+  // 帯が sticky toolbar の下へスクロールアウトしている間だけピルを出す。
+  function updateGalleryPendingPill() {
+    var strip = document.getElementById('gallery-pending-strip');
+    var pill = document.getElementById('gallery-pending-pill');
+    if (!strip || !pill) return;
+    var show = false;
+    if (!strip.classList.contains('hidden')) {
+      var toolbar = qs('.gallery-toolbar');
+      var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+      show = strip.getBoundingClientRect().bottom <= toolbarBottom;
+      // toolbar の高さは折り返しで変わるので、CSS の既定位置ではなく実測した直下に置く
+      if (show && toolbar) pill.style.top = toolbarBottom + 8 + 'px';
+    }
+    pill.classList.toggle('hidden', !show);
+  }
+
+  function applyGalleryPending(source) {
+    var grid = galleryGrid();
+    if (!grid) return;
+    var newCount = galleryPending.queue.length;
+    var badCards = qsa('.card.card-pending-hide', grid);
+    // 先頭挿入を古い方から繰り返すと、最終的に新しい方が一番上に来る (newest first)。
+    galleryPending.queue.forEach(function (item) {
+      galleryInsertCardHtml(item.html, grid);
+    });
+    galleryPending.queue = [];
+    badCards.forEach(function (card) {
+      card.remove();
+    });
+    updateGalleryPendingUi();
+    if (newCount > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
+    track('gallery.pending_apply', { new_count: newCount, hidden_count: badCards.length, source: source });
   }
 
   function handleGenerationMessage(msg) {
@@ -2272,6 +2293,7 @@ export const appJs = `
     var view = grid.getAttribute('data-gallery-view') || 'raw';
     if (!galleryLiveAcceptsView(view, msg.refines_generation_short_id)) return;
     if (grid.querySelector('.thumb-link[data-short-id="' + msg.short_id + '"]')) return; // already on the grid
+    if (galleryPendingQueued(msg.short_id)) return;
 
     fetch('/g/' + encodeURIComponent(msg.short_id) + '?partial=card')
       .then(function (res) {
@@ -2279,15 +2301,9 @@ export const appJs = `
         return res.text();
       })
       .then(function (html) {
-        var currentGrid = galleryLiveGrid();
-        if (!currentGrid) return;
-        if (galleryAtTop()) {
-          galleryInsertCardHtml(html, currentGrid);
-          track('gallery.new_arrivals', { count: 1, mode: 'auto' });
-        } else {
-          galleryLive.queue.push(html);
-          updateGalleryNewArrivalsBanner();
-        }
+        if (!galleryLiveGrid() || galleryPendingQueued(msg.short_id)) return;
+        galleryPending.queue.push({ shortId: msg.short_id, html: html });
+        updateGalleryPendingUi();
       })
       .catch(function (e) {
         trackError('gallery.new_arrivals', e, { short_id: msg.short_id });
@@ -2296,81 +2312,135 @@ export const appJs = `
 
   viewerSocketOn('generation', handleGenerationMessage);
 
-  function initGalleryLive() {
-    if (!galleryLiveGrid()) return;
-    viewerSocketConnect();
-    window.addEventListener(
-      'scroll',
-      function () {
-        if (galleryLive.queue.length > 0 && galleryAtTop()) flushGalleryLiveQueue();
-      },
-      { passive: true },
-    );
+  function initGalleryPending() {
+    if (!galleryGrid()) return;
+    if (galleryLiveGrid()) viewerSocketConnect();
+    window.addEventListener('scroll', updateGalleryPendingPill, { passive: true });
   }
 
   // --- Compare selection bar ---
-  // Compare entry はカードのチェックボックスではなく、Lightboxの「比較に追加」ボタンが
-  // sessionStorageのcompare setをトグルする (docs/ui.md「Compare entry」)。#compare-bar は
-  // Gallery / Bookmarks / Batch Detailのどのページでもこのsetから描画する。
+  // Lightbox と Generation Detail の「比較に追加」ボタンが sessionStorage の compare set をトグルし、
+  // Layout が全ページに置く #compare-bar がこの set を描画する (docs/ui.md「Compare entry」)。
+  // 要素は { id, short_id }。short_id を持つのは、チップのサムネイルをカードと同じ画像 URL にして
+  // ブラウザキャッシュを共有するため。
   var COMPARE_SET_KEY = 'chimera-compare-set';
+  var COMPARE_MAX = 9;
 
   function readCompareSet() {
     try {
       var raw = sessionStorage.getItem(COMPARE_SET_KEY);
       var parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(function (e) {
+        return e && typeof e.id === 'string';
+      });
     } catch (e) {
       return [];
     }
   }
-  function writeCompareSet(ids) {
+  function writeCompareSet(entries) {
     try {
-      sessionStorage.setItem(COMPARE_SET_KEY, JSON.stringify(ids));
+      sessionStorage.setItem(COMPARE_SET_KEY, JSON.stringify(entries));
     } catch (e) {
       // sessionStorage unavailable (private mode 等) -- compare setはタブ内限定で諦める
     }
   }
+  function compareRef(entry) {
+    return entry.short_id || entry.id;
+  }
+  function compareIndexOf(entries, id) {
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].id === id) return i;
+    }
+    return -1;
+  }
+  function renderCompareChips(container, entries) {
+    var key = entries.map(compareRef).join(',');
+    if (container.getAttribute('data-ids') === key) return;
+    container.setAttribute('data-ids', key);
+    container.textContent = '';
+    entries.forEach(function (entry, i) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = i < COMPARE_MAX ? 'compare-chip' : 'compare-chip compare-chip-overflow';
+      chip.setAttribute('data-generation-id', entry.id);
+      chip.title = compareRef(entry) + ' を比較から外す';
+      chip.setAttribute('aria-label', chip.title);
+      var img = document.createElement('img');
+      img.src = '/g/' + encodeURIComponent(compareRef(entry)) + '/image';
+      img.alt = '';
+      var x = document.createElement('span');
+      x.className = 'compare-chip-x';
+      x.setAttribute('aria-hidden', 'true');
+      x.textContent = '×';
+      chip.appendChild(img);
+      chip.appendChild(x);
+      container.appendChild(chip);
+    });
+  }
   function updateCompareBar() {
-    var ids = readCompareSet();
+    var entries = readCompareSet();
     var bar = document.getElementById('compare-bar');
     if (bar) {
-      if (ids.length > 0) {
-        bar.classList.remove('hidden');
-        var displayCount = Math.min(ids.length, 9);
-        qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
-        qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
-      } else {
-        bar.classList.add('hidden');
-      }
+      bar.classList.toggle('hidden', entries.length === 0);
+      var link = qs('#compare-link', bar);
+      link.textContent = 'Compare (' + Math.min(entries.length, COMPARE_MAX) + ')';
+      link.setAttribute('href', '/compare?ids=' + entries.slice(0, COMPARE_MAX).map(compareRef).join(','));
+      renderCompareChips(qs('#compare-chips', bar), entries);
     }
-    var addBtn = qs('.compare-add-btn');
-    if (addBtn) {
-      var id = addBtn.getAttribute('data-generation-id');
-      var active = ids.indexOf(id) !== -1;
-      addBtn.classList.toggle('active', active);
-      addBtn.textContent = active ? '比較から外す' : '比較に追加';
-    }
+    qsa('.compare-add-btn').forEach(function (btn) {
+      var active = compareIndexOf(entries, btn.getAttribute('data-generation-id')) !== -1;
+      btn.classList.toggle('active', active);
+      btn.textContent = active ? '比較から外す' : '比較に追加';
+    });
   }
-  function toggleCompare(id) {
+  function toggleCompare(id, shortId) {
     if (!id) return;
-    var ids = readCompareSet();
-    var idx = ids.indexOf(id);
-    if (idx === -1) ids.push(id);
-    else ids.splice(idx, 1);
-    writeCompareSet(ids);
+    var entries = readCompareSet();
+    var idx = compareIndexOf(entries, id);
+    if (idx === -1) entries.push({ id: id, short_id: shortId || null });
+    else entries.splice(idx, 1);
+    writeCompareSet(entries);
     updateCompareBar();
-    track('compare.add', { generation_id: id, count: ids.length });
+    track('compare.add', { generation_id: id, count: entries.length });
+  }
+  function removeFromCompare(id) {
+    var entries = readCompareSet();
+    var idx = compareIndexOf(entries, id);
+    if (idx === -1) return;
+    entries.splice(idx, 1);
+    writeCompareSet(entries);
+    updateCompareBar();
+    track('compare.remove', { generation_id: id, count: entries.length });
+  }
+  function clearCompare() {
+    var count = readCompareSet().length;
+    writeCompareSet([]);
+    updateCompareBar();
+    track('compare.clear', { count: count });
   }
   function initCompareBar() {
     document.addEventListener('click', function (ev) {
-      var addBtn = ev.target.closest ? ev.target.closest('.compare-add-btn') : null;
+      if (!ev.target.closest) return;
+      var addBtn = ev.target.closest('.compare-add-btn');
       if (addBtn) {
-        toggleCompare(addBtn.getAttribute('data-generation-id'));
+        toggleCompare(addBtn.getAttribute('data-generation-id'), addBtn.getAttribute('data-short-id'));
         return;
       }
-      const link = ev.target.closest ? ev.target.closest('#compare-link') : null;
-      if (!link) return;
-      track('compare.open', { count: readCompareSet().length });
+      var chip = ev.target.closest('.compare-chip');
+      if (chip) {
+        removeFromCompare(chip.getAttribute('data-generation-id'));
+        return;
+      }
+      if (ev.target.closest('#compare-clear')) {
+        clearCompare();
+        return;
+      }
+      if (ev.target.closest('#compare-link')) track('compare.open', { count: readCompareSet().length });
+    });
+    // 別ページで set を変えてから Back で戻ったとき (bfcache 復元) にバーを描き直す
+    window.addEventListener('pageshow', function (ev) {
+      if (ev.persisted) updateCompareBar();
     });
     updateCompareBar();
   }
@@ -2696,6 +2766,21 @@ export const appJs = `
       { passive: true },
     );
 
+    // 画像・パネル・prev/next・トップバー以外のクリックで閉じる。押下も同じ背景で始まったときに
+    // 限るのは、パネル内のテキスト選択を背景で離したときの click で閉じないようにするため。
+    // document ではなく overlay で拾うのは、パネル内の委譲ハンドラが押された要素を DOM から
+    // 外す前に判定するため。
+    var LIGHTBOX_CONTENT = '.lightbox-image, .lightbox-panel, .lightbox-nav, .lightbox-topbar';
+    var backdropPressed = false;
+    overlay.addEventListener('pointerdown', function (ev) {
+      backdropPressed = !ev.target.closest(LIGHTBOX_CONTENT);
+    });
+    overlay.addEventListener('click', function (ev) {
+      var pressed = backdropPressed;
+      backdropPressed = false;
+      if (pressed && !ev.target.closest(LIGHTBOX_CONTENT)) closeLightbox();
+    });
+
     return overlay;
   }
 
@@ -2742,6 +2827,8 @@ export const appJs = `
   function showLightbox(shortId, link, mode) {
     if (!shortId) return;
     ensureLightboxOverlay();
+    // 狭い幅ではステージごと縦スクロールするので、別の画像に移ったら先頭 (画像) から見せる
+    if (lightboxTopbarShortId.textContent !== shortId) lightboxStage.scrollTop = 0;
     lightboxCurrentLink = link || lightboxFindByShortId(shortId);
     if (!lightboxLastFocused) lightboxLastFocused = document.activeElement;
     document.body.classList.add('lightbox-open');
@@ -2827,10 +2914,6 @@ export const appJs = `
         closeLightbox();
         return;
       }
-      if (ev.target === lightboxOverlay) {
-        closeLightbox();
-        return;
-      }
       const prev = ev.target.closest ? ev.target.closest('.lightbox-prev') : null;
       if (prev) {
         lightboxNavigate(-1);
@@ -2882,7 +2965,7 @@ export const appJs = `
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
-    initGalleryLive();
+    initGalleryPending();
     initLightbox();
     initRequestLive();
     initCompareBar();
