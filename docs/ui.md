@@ -41,6 +41,32 @@ var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`で�
 幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
 summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
 
+### キュー状態
+
+ナビ右端（`margin-left: auto`）に、キュー（[requests](api.md#request)）の状態を示す
+pillを置きます。`GET /api/v1/requests/summary`で初期表示し、以後はGalleryのnew
+arrivalsと同じ共有 viewer WebSocket（`/api/v1/requests/ws`）の`status` /
+`snapshot`メッセージを合図に再取得します（デバウンス500ms）。ページ非表示から復帰した
+とき、およびpillを開いたときにも再取得します。
+
+pillはdotとテキストで状態を表します。
+
+-   dot: workerが1台以上接続していれば緑、未接続かつ待ちがあれば黄、それ以外は灰
+-   テキスト: `実行中 N` `待ち N` `失敗 N`（直近24h）を該当する分だけ`·`区切りで並べ、
+    待ちがあってworker未接続なら`worker なし`を追加する。全て0のときはdotのみ（テキスト
+    無し、パディングを詰める）
+-   幅600px以下では日本語ラベルと区切りを落とし、色分けした数字だけを表示する
+
+pillは`<details><summary>`で開閉し、開くと`More`と同じ見た目のパネルが現れます。パネルは
+1行 = 1グループで、finalize/repair/masked_redrawはBatch単位、run_idを持つgenerateは
+Experiment単位、run_idの無いgenerateはrequest単位にまとめます（集計規則は
+[api.md](api.md#summary)）。各行はサムネイル・BatchまたはExperimentのshort_id・kind別件数・
+状態別件数を表示し、遷移先（Batch詳細 `/b/{short_id}` またはExperiment詳細
+`/experiments/{short_id}`）があればリンク、無ければリンクなしの行です。パネルは表示・
+遷移専用で、finalize/repairのような再実行やcancelledなどの操作は一切持ちません。パネル
+末尾にworker接続数（`worker N 台接続中` / `worker 未接続`）を出します。グループが無ければ
+「キューは空です」と表示します。
+
 パスと内容の対応:
 
 | パス | 内容 |

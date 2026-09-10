@@ -6,7 +6,16 @@
 // 起票する。逆方向 (ここから lib/experiments.ts) には依存しない — 循環 import を
 // 避けるため、touchExperiment は共通の lib/db.ts 側に置いている。
 
-import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso, touchExperiment } from './db';
+import {
+  chunk,
+  D1_MAX_BOUND_PARAMS,
+  getBatchByIdOrShortId,
+  getGenerationByIdOrShortId,
+  nowIso,
+  resolveBatchShortIds,
+  resolveBatchThumbnails,
+  touchExperiment,
+} from './db';
 import { parseJsonObject, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
@@ -590,4 +599,222 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   }
 
   return getRequestOr404(db, row.id);
+}
+
+/** ナビの queue pill が出す件数の窓 (docs/ui.md「キュー状態」)。24h を超えた failed は落ちる。 */
+const SUMMARY_FAILED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** キュー pill の展開パネルに出すグループ数の上限。 */
+const SUMMARY_GROUP_CAP = 20;
+
+export interface RequestSummaryWorker {
+  worker_id: string | null;
+  kinds: RequestKind[] | null;
+  connected_at: string | null;
+}
+
+export interface RequestSummaryGroup {
+  key: string;
+  batch: { id: string; short_id: string; thumbnail_generation_short_id: string | null } | null;
+  experiment: { id: string; short_id: string } | null;
+  /** Batch 詳細 (`/b/:short_id`) または Experiment 詳細 (`/experiments/:short_id`) への遷移先。無ければ null。 */
+  href: string | null;
+  kinds: Partial<Record<RequestKind, number>>;
+  counts: { queued: number; running: number; failed: number };
+  /** claimed_at / finished_at / created_at のうちグループ内最大値 (ISO8601、文字列比較で十分)。 */
+  latest_at: string;
+}
+
+export interface RequestSummary {
+  counts: { queued: number; running: number; failed_24h: number };
+  groups: RequestSummaryGroup[];
+}
+
+interface SummaryRequestRow {
+  id: string;
+  kind: RequestKind;
+  status: RequestStatus;
+  payload_json: string;
+  run_id: string | null;
+  claimed_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+function extractPayloadGenerationId(payloadJson: string): string | null {
+  try {
+    const payload = JSON.parse(payloadJson) as { generation_id?: unknown };
+    return typeof payload.generation_id === 'string' ? payload.generation_id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** finalize/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Batch id を引く。 */
+async function resolveGenerationBatchIds(db: D1Database, refs: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = Array.from(new Set(refs));
+  if (unique.length === 0) return map;
+  for (const part of chunk(unique, Math.floor(D1_MAX_BOUND_PARAMS / 2))) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(`SELECT id, short_id, batch_id FROM generations WHERE id IN (${placeholders}) OR short_id IN (${placeholders})`)
+      .bind(...part, ...part)
+      .all<{ id: string; short_id: string; batch_id: string }>();
+    for (const r of results ?? []) {
+      map.set(r.id, r.batch_id);
+      map.set(r.short_id, r.batch_id);
+    }
+  }
+  return map;
+}
+
+type SummaryExperimentRef = { id: string; short_id: string };
+
+/** generate request の run_id から所属 Experiment を引く (Run 単体の詳細ページは無いので遷移先は Experiment)。 */
+async function resolveRunExperiments(db: D1Database, runIds: string[]): Promise<Map<string, SummaryExperimentRef>> {
+  const map = new Map<string, SummaryExperimentRef>();
+  const unique = Array.from(new Set(runIds));
+  if (unique.length === 0) return map;
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(
+        `SELECT er.id AS run_id, e.id AS experiment_id, e.short_id AS experiment_short_id
+         FROM experiment_runs er JOIN experiments e ON e.id = er.experiment_id
+         WHERE er.id IN (${placeholders})`,
+      )
+      .bind(...part)
+      .all<{ run_id: string; experiment_id: string; experiment_short_id: string }>();
+    for (const r of results ?? []) map.set(r.run_id, { id: r.experiment_id, short_id: r.experiment_short_id });
+  }
+  return map;
+}
+
+function latestTimestamp(row: SummaryRequestRow): string {
+  let latest = row.created_at;
+  if (row.claimed_at && row.claimed_at > latest) latest = row.claimed_at;
+  if (row.finished_at && row.finished_at > latest) latest = row.finished_at;
+  return latest;
+}
+
+interface SummaryBucket {
+  key: string;
+  batchId: string | null;
+  experiment: SummaryExperimentRef | null;
+  kinds: Partial<Record<RequestKind, number>>;
+  counts: { queued: number; running: number; failed: number };
+  latest_at: string;
+}
+
+/**
+ * ナビの queue pill / パネル (docs/ui.md「キュー状態」) 向けの集計。1 グループ = 1 遷移先:
+ * Batch (finalize/repair/masked_redraw)、Experiment (generate で run_id があるとき)、
+ * request 単体 (generate で run_id が無いとき) — src/routes/requests.ts のルートはこれを呼んで組み立てるだけ。
+ */
+export async function summarizeRequests(db: D1Database, now: string): Promise<RequestSummary> {
+  const cutoff = new Date(new Date(now).getTime() - SUMMARY_FAILED_WINDOW_MS).toISOString();
+
+  const { results } = await db
+    .prepare(
+      `SELECT id, kind, status, payload_json, run_id, claimed_at, finished_at, created_at
+       FROM requests
+       WHERE status IN ('queued', 'running') OR (status = 'failed' AND finished_at >= ?)`,
+    )
+    .bind(cutoff)
+    .all<SummaryRequestRow>();
+  const rows = results ?? [];
+
+  const counts = { queued: 0, running: 0, failed_24h: 0 };
+  for (const row of rows) {
+    if (row.status === 'queued') counts.queued += 1;
+    else if (row.status === 'running') counts.running += 1;
+    else if (row.status === 'failed') counts.failed_24h += 1;
+  }
+
+  const generationRefs: string[] = [];
+  const runIds: string[] = [];
+  for (const row of rows) {
+    if (row.kind === 'generate') {
+      if (row.run_id) runIds.push(row.run_id);
+    } else {
+      const generationId = extractPayloadGenerationId(row.payload_json);
+      if (generationId) generationRefs.push(generationId);
+    }
+  }
+  const [generationToBatch, runToExperiment] = await Promise.all([
+    resolveGenerationBatchIds(db, generationRefs),
+    resolveRunExperiments(db, runIds),
+  ]);
+
+  const buckets = new Map<string, SummaryBucket>();
+  for (const row of rows) {
+    let key: string;
+    let batchId: string | null = null;
+    let experiment: SummaryExperimentRef | null = null;
+
+    if (row.kind === 'generate') {
+      const resolved = row.run_id ? (runToExperiment.get(row.run_id) ?? null) : null;
+      if (resolved) {
+        key = `experiment:${resolved.id}`;
+        experiment = resolved;
+      } else {
+        key = `request:${row.id}`;
+      }
+    } else {
+      const generationId = extractPayloadGenerationId(row.payload_json);
+      const resolvedBatchId = generationId ? (generationToBatch.get(generationId) ?? null) : null;
+      if (resolvedBatchId) {
+        key = `batch:${resolvedBatchId}`;
+        batchId = resolvedBatchId;
+      } else {
+        key = `request:${row.id}`;
+      }
+    }
+
+    const rowLatest = latestTimestamp(row);
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { key, batchId, experiment, kinds: {}, counts: { queued: 0, running: 0, failed: 0 }, latest_at: rowLatest };
+      buckets.set(key, bucket);
+    }
+    bucket.kinds[row.kind] = (bucket.kinds[row.kind] ?? 0) + 1;
+    if (row.status === 'queued') bucket.counts.queued += 1;
+    else if (row.status === 'running') bucket.counts.running += 1;
+    else if (row.status === 'failed') bucket.counts.failed += 1;
+    if (rowLatest > bucket.latest_at) bucket.latest_at = rowLatest;
+  }
+
+  const batchIds = Array.from(buckets.values())
+    .map((b) => b.batchId)
+    .filter((id): id is string => id !== null);
+  const [batchShortIds, batchThumbnails] = await Promise.all([
+    resolveBatchShortIds(db, batchIds),
+    resolveBatchThumbnails(db, batchIds),
+  ]);
+
+  const groups: RequestSummaryGroup[] = Array.from(buckets.values()).map((b) => {
+    let batch: RequestSummaryGroup['batch'] = null;
+    let href: string | null = null;
+    if (b.batchId) {
+      const shortId = batchShortIds.get(b.batchId);
+      if (shortId) {
+        batch = { id: b.batchId, short_id: shortId, thumbnail_generation_short_id: batchThumbnails.get(b.batchId) ?? null };
+        href = `/b/${shortId}`;
+      }
+    } else if (b.experiment) {
+      href = `/experiments/${b.experiment.short_id}`;
+    }
+    return { key: b.key, batch, experiment: b.experiment, href, kinds: b.kinds, counts: b.counts, latest_at: b.latest_at };
+  });
+
+  groups.sort((a, b) => {
+    const aRunning = a.counts.running > 0 ? 0 : 1;
+    const bRunning = b.counts.running > 0 ? 0 : 1;
+    if (aRunning !== bRunning) return aRunning - bRunning;
+    if (a.latest_at === b.latest_at) return 0;
+    return a.latest_at > b.latest_at ? -1 : 1;
+  });
+
+  return { counts, groups: groups.slice(0, SUMMARY_GROUP_CAP) };
 }
