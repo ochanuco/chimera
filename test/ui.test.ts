@@ -81,6 +81,12 @@ describe('Web GUI pages', () => {
     expect(html).toContain('<script src="/assets/telemetry.js">');
   });
 
+  it('GET /gallery carries the nav queue pill from the Layout', async () => {
+    const res = await req('/gallery?limit=1');
+    const html = await res.text();
+    expect(html).toContain('class="nav-queue"');
+  });
+
   it('gallery card image URLs keep the request origin (not localhost)', async () => {
     const { generation } = await createGeneration();
     const res = await req('/gallery?limit=200');

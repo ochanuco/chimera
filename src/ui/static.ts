@@ -99,6 +99,71 @@ a:hover { text-decoration: underline; }
 .nav-more-panel a { padding: 0.5rem 0.6rem; border-radius: 5px; }
 .nav-more-panel a:hover { background: var(--bg); text-decoration: none; }
 
+.nav-queue { margin-left: auto; position: relative; }
+.nav-queue-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  list-style: none;
+  cursor: pointer;
+}
+.nav-queue-pill::-webkit-details-marker { display: none; }
+.nav-queue-text { display: inline-flex; align-items: center; gap: 0.4375rem; }
+.nav-queue-text:empty { display: none; }
+.nav-queue-pill.nav-queue-empty { padding: 0 0.5625rem; }
+.nav-queue[open] .nav-queue-pill { border-color: var(--accent); }
+.nav-queue-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--text-dim); flex: none; }
+.nav-queue-dot.online { background: var(--good); }
+.nav-queue-dot.warn { background: var(--neutral); }
+.nav-queue-sep { color: var(--text-dim); font-weight: 400; }
+.nav-queue-running { color: var(--neutral); }
+.nav-queue-queued { color: var(--accent); }
+.nav-queue-failed { color: var(--bad); }
+.nav-queue-offline { color: var(--text-dim); }
+
+.nav-queue-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 0.3rem;
+}
+.nav-queue-empty-panel { padding: 0.6rem; font-size: 0.85rem; color: var(--text-dim); }
+.nav-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+a.nav-queue-row:hover { background: var(--bg); text-decoration: none; }
+.nav-queue-row-thumb { width: 28px; height: 42px; border-radius: 3px; flex: none; background: var(--checker); border: 1px solid var(--border); overflow: hidden; }
+.nav-queue-row-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nav-queue-row-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.nav-queue-row-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+.nav-queue-row-kinds { font-size: 0.75rem; color: var(--text-dim); }
+.nav-queue-row-counts { margin-left: auto; display: inline-flex; gap: 0.5rem; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.nav-queue-divider { border-top: 1px solid var(--border); margin: 0.25rem 0; }
+.nav-queue-foot { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem 0.375rem; font-size: 0.75rem; color: var(--text-dim); }
+
 @media (max-width: 600px) {
   .nav {
     padding: 0 1rem;
@@ -109,6 +174,13 @@ a:hover { text-decoration: underline; }
     min-height: 2.75rem;
     display: flex;
     align-items: center;
+  }
+  .nav-queue-label,
+  .nav-queue-sep {
+    display: none;
+  }
+  .nav-queue-panel {
+    width: calc(100vw - 2rem);
   }
 }
 
@@ -2345,6 +2417,221 @@ export const appJs = `
 
   viewerSocketOn('generation', handleGenerationMessage);
 
+  // --- Nav queue pill (docs/ui.md「キュー状態」): GET /api/v1/requests/summary で初期表示し、
+  // 以後は共有 viewer WebSocket (status/snapshot) を合図に再取得する。操作は持たず、パネルの
+  // 行は Batch/Experiment 詳細への遷移リンクだけ。
+  var navQueue = { fetching: false, pending: false, debounceTimer: null, lastSummary: null };
+
+  function navQueueRelativeTime(iso) {
+    var then = new Date(iso).getTime();
+    if (isNaN(then)) return '';
+    var seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+    if (seconds < 60) return seconds + ' 秒前';
+    var minutes = Math.round(seconds / 60);
+    if (minutes < 60) return minutes + ' 分前';
+    var hours = Math.round(minutes / 60);
+    return hours + ' 時間前';
+  }
+
+  function navQueuePillState(summary) {
+    var c = summary.counts;
+    var workersCount = (summary.workers || []).length;
+    var segs = [];
+    if (c.running > 0) segs.push({ cls: 'nav-queue-running', label: '実行中 ', value: c.running });
+    if (c.queued > 0) segs.push({ cls: 'nav-queue-queued', label: '待ち ', value: c.queued });
+    if (c.failed_24h > 0) segs.push({ cls: 'nav-queue-failed', label: '失敗 ', value: c.failed_24h });
+    if (c.queued > 0 && workersCount === 0) segs.push({ cls: 'nav-queue-offline nav-queue-label', text: 'worker なし' });
+    var dot = workersCount > 0 ? 'online' : (c.queued > 0 ? 'warn' : null);
+    return { segs: segs, dot: dot };
+  }
+
+  function renderNavQueuePill(summary) {
+    var details = document.getElementById('nav-queue');
+    if (!details) return;
+    var pill = qs('.nav-queue-pill', details);
+    var dotEl = qs('.nav-queue-dot', pill);
+    var textEl = qs('.nav-queue-text', pill);
+    var state = navQueuePillState(summary);
+
+    dotEl.className = 'nav-queue-dot' + (state.dot ? ' ' + state.dot : '');
+    while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
+    pill.classList.toggle('nav-queue-empty', state.segs.length === 0);
+
+    state.segs.forEach(function (seg, i) {
+      if (i > 0) {
+        var sep = document.createElement('span');
+        sep.className = 'nav-queue-sep';
+        sep.textContent = '·';
+        textEl.appendChild(sep);
+      }
+      var span = document.createElement('span');
+      span.className = seg.cls;
+      if (seg.text !== undefined) {
+        span.textContent = seg.text;
+      } else {
+        var label = document.createElement('span');
+        label.className = 'nav-queue-label';
+        label.textContent = seg.label;
+        span.appendChild(label);
+        span.appendChild(document.createTextNode(String(seg.value)));
+      }
+      textEl.appendChild(span);
+    });
+  }
+
+  function navQueueRowCounts(counts) {
+    var wrap = document.createElement('span');
+    wrap.className = 'nav-queue-row-counts';
+    [
+      ['running', '実行中 '],
+      ['queued', '待ち '],
+      ['failed', '失敗 '],
+    ].forEach(function (pair) {
+      var n = counts[pair[0]];
+      if (!n) return;
+      var span = document.createElement('span');
+      span.className = 'nav-queue-' + pair[0];
+      span.textContent = pair[1] + n;
+      wrap.appendChild(span);
+    });
+    return wrap;
+  }
+
+  function navQueueKindsText(group) {
+    var parts = Object.keys(group.kinds).map(function (kind) {
+      var count = group.kinds[kind];
+      return count > 1 ? kind + ' \xd7' + count : kind;
+    });
+    var failedOnly = group.counts.running === 0 && group.counts.queued === 0 && group.counts.failed > 0;
+    if (failedOnly) parts.push(navQueueRelativeTime(group.latest_at));
+    return parts.join(' · ');
+  }
+
+  function navQueueRowLabel(group) {
+    if (group.batch) return group.batch.short_id;
+    if (group.experiment) return group.experiment.short_id;
+    return group.key.replace(/^request:/, '').slice(0, 8);
+  }
+
+  function navQueueRow(group) {
+    var el = document.createElement(group.href ? 'a' : 'div');
+    el.className = 'nav-queue-row';
+    if (group.href) el.setAttribute('href', group.href);
+
+    var thumb = document.createElement('span');
+    thumb.className = 'nav-queue-row-thumb';
+    if (group.batch && group.batch.thumbnail_generation_short_id) {
+      var img = document.createElement('img');
+      img.src = '/g/' + encodeURIComponent(group.batch.thumbnail_generation_short_id) + '/image';
+      img.loading = 'lazy';
+      img.alt = '';
+      thumb.appendChild(img);
+    }
+    el.appendChild(thumb);
+
+    var meta = document.createElement('span');
+    meta.className = 'nav-queue-row-meta';
+    var id = document.createElement('span');
+    id.className = 'nav-queue-row-id';
+    id.textContent = navQueueRowLabel(group);
+    meta.appendChild(id);
+    var kinds = document.createElement('span');
+    kinds.className = 'nav-queue-row-kinds';
+    kinds.textContent = navQueueKindsText(group);
+    meta.appendChild(kinds);
+    el.appendChild(meta);
+
+    el.appendChild(navQueueRowCounts(group.counts));
+
+    el.addEventListener('click', function () {
+      track('queue.group.click', { kinds: group.kinds, has_batch: Boolean(group.batch) });
+    });
+
+    return el;
+  }
+
+  function renderNavQueuePanel(summary) {
+    var details = document.getElementById('nav-queue');
+    if (!details) return;
+    var panel = qs('.nav-queue-panel', details);
+    while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+    if (summary.groups.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'nav-queue-empty-panel';
+      empty.textContent = 'キューは空です';
+      panel.appendChild(empty);
+      return;
+    }
+
+    summary.groups.forEach(function (group) {
+      panel.appendChild(navQueueRow(group));
+    });
+
+    var divider = document.createElement('div');
+    divider.className = 'nav-queue-divider';
+    panel.appendChild(divider);
+
+    var foot = document.createElement('div');
+    foot.className = 'nav-queue-foot';
+    var workersCount = (summary.workers || []).length;
+    foot.textContent = workersCount > 0 ? 'worker ' + workersCount + ' 台接続中' : 'worker 未接続';
+    panel.appendChild(foot);
+  }
+
+  function renderNavQueue(summary) {
+    navQueue.lastSummary = summary;
+    renderNavQueuePill(summary);
+    renderNavQueuePanel(summary);
+  }
+
+  function fetchNavQueueSummary() {
+    if (navQueue.fetching) {
+      navQueue.pending = true;
+      return;
+    }
+    navQueue.fetching = true;
+    api('/api/v1/requests/summary')
+      .then(function (summary) {
+        renderNavQueue(summary);
+      })
+      .catch(function (e) {
+        trackError('queue.fetch', e, {});
+      })
+      .then(function () {
+        navQueue.fetching = false;
+        if (navQueue.pending) {
+          navQueue.pending = false;
+          fetchNavQueueSummary();
+        }
+      });
+  }
+
+  function debouncedFetchNavQueueSummary() {
+    if (navQueue.debounceTimer) clearTimeout(navQueue.debounceTimer);
+    navQueue.debounceTimer = setTimeout(fetchNavQueueSummary, 500);
+  }
+
+  function initNavQueue() {
+    var details = document.getElementById('nav-queue');
+    if (!details) return;
+
+    fetchNavQueueSummary();
+    viewerSocketConnect();
+    viewerSocketOn('status', debouncedFetchNavQueueSummary);
+    viewerSocketOn('snapshot', debouncedFetchNavQueueSummary);
+
+    details.addEventListener('toggle', function () {
+      if (!details.open) return;
+      fetchNavQueueSummary();
+      track('queue.open', { counts: navQueue.lastSummary ? navQueue.lastSummary.counts : null });
+    });
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') fetchNavQueueSummary();
+    });
+  }
+
   function initGalleryPending() {
     if (!galleryGrid()) return;
     if (galleryLiveGrid()) viewerSocketConnect();
@@ -3001,6 +3288,7 @@ export const appJs = `
     initGalleryPending();
     initLightbox();
     initRequestLive();
+    initNavQueue();
     initCompareBar();
     initCopyIdButtons();
     initCompareCols();
