@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { createGeneration, del, getJson, postJson, req } from './helpers';
 
 interface Publication {
@@ -138,43 +138,42 @@ describe('Generation Search / detail: published', () => {
   });
 });
 
-describe('publish tag compatibility (comfyui-recipes `comfy-recipes metadata tag <id> publish`)', () => {
-  it('POST /generations/{id}/tags with name "publish" creates a Publication, not a Tag, and is idempotent', async () => {
+describe('tag "publish"', () => {
+  // migrations/0021 backfill below inserts its own 'publish' tags row directly and needs the name
+  // free beforehand (tags.name is UNIQUE, and D1 state carries across tests in this file).
+  afterAll(async () => {
+    await env.DB.prepare("DELETE FROM generation_tags WHERE tag_id IN (SELECT id FROM tags WHERE name = 'publish')").run();
+    await env.DB.prepare("DELETE FROM tags WHERE name = 'publish'").run();
+  });
+
+  it('POST /generations/{id}/tags with name "publish" creates an ordinary Tag, not a Publication', async () => {
     const { generation } = await createGeneration();
 
-    const first = await postJson<{ id: string; name: string }>(`/api/v1/generations/${generation.id}/tags`, {
+    const created = await postJson<{ id: string; name: string }>(`/api/v1/generations/${generation.id}/tags`, {
       name: 'publish',
       created_by: 'claude',
     });
-    expect(first.status).toBe(201);
-    expect(first.body.name).toBe('publish');
+    expect(created.status).toBe(201);
+    expect(created.body.name).toBe('publish');
+
+    const context = await getJson<{ tags: string[] }>(`/api/v1/generations/${generation.id}/context`);
+    expect(context.body.tags).toEqual(['publish']);
 
     const publications = await getJson<{ items: Publication[] }>(`/api/v1/generations/${generation.id}/publications`);
-    expect(publications.body.items).toHaveLength(1);
-    expect(publications.body.items[0]?.id).toBe(first.body.id);
-    expect(publications.body.items[0]?.created_by).toBe('api');
-    expect(publications.body.items[0]?.url).toBeNull();
-
-    // No tag was created.
-    const context = await getJson<{ tags: string[] }>(`/api/v1/generations/${generation.id}/context`);
-    expect(context.body.tags).toEqual([]);
-
-    // Resend is idempotent: still exactly one Publication, same id, 200 this time.
-    const second = await postJson<{ id: string; name: string }>(`/api/v1/generations/${generation.id}/tags`, {
-      name: 'publish',
-    });
-    expect(second.status).toBe(200);
-    expect(second.body.id).toBe(first.body.id);
-    const publicationsAfter = await getJson<{ items: Publication[] }>(`/api/v1/generations/${generation.id}/publications`);
-    expect(publicationsAfter.body.items).toHaveLength(1);
+    expect(publications.body.items).toHaveLength(0);
   });
 
-  it('GET /generations?tag=publish behaves as published=true', async () => {
-    const { generation } = await createGeneration();
-    await postJson(`/api/v1/generations/${generation.id}/tags`, { name: 'publish' });
+  it('GET /generations?tag=publish filters by the tag only, not by Publication', async () => {
+    const { generation: tagged } = await createGeneration();
+    await postJson(`/api/v1/generations/${tagged.id}/tags`, { name: 'publish' });
+
+    const { generation: publishedOnly } = await createGeneration();
+    await postJson(`/api/v1/generations/${publishedOnly.id}/publications`, {});
 
     const byTag = await getJson<{ items: { short_id: string }[] }>('/api/v1/generations?tag=publish&limit=200');
-    expect(byTag.body.items.map((i) => i.short_id)).toContain(generation.short_id);
+    const shortIds = byTag.body.items.map((i) => i.short_id);
+    expect(shortIds).toContain(tagged.short_id);
+    expect(shortIds).not.toContain(publishedOnly.short_id);
   });
 });
 

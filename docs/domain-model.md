@@ -673,8 +673,7 @@ Generation が少なくとも1件の Publication を持つことです。
 
 かつては `publish` タグ（`look:<pose>` と組で付与）がこの役割を兼ねていましたが、
 1タグ1回きりの二値では複数回の納品や投稿URLを表現できないため、この専用エンティティに
-分離しました。comfyui-recipes 側がまだ `publish` タグを書く間の互換は
-[api.md](api.md#publication)「tag 互換」に閉じています。
+分離しました。
 
 Generation 本体と同じく Publication も物理削除は妥当な操作です（誤登録の取り消し）。
 Generation 自体を物理削除しない不変条件とは別物です。
