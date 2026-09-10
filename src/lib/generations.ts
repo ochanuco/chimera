@@ -5,6 +5,7 @@
 import { normalizeDateRange, parsePagination, toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
+import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
@@ -66,16 +67,17 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const context = await buildContext(db, org, generation);
-
-  const [batch, job] = await Promise.all([
+  const [context, batch, job, publications] = await Promise.all([
+    buildContext(db, org, generation),
     db.prepare('SELECT * FROM batches WHERE id = ?').bind(generation.batch_id).first<BatchRow>(),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
+    listPublicationsForGeneration(db, generation.id),
   ]);
   const renderFacts = job ? await renderFactsForJob(db, job) : null;
 
   return {
     ...context,
+    publications: publications.map(serializePublication),
     batch: batch
       ? {
           id: batch.id,
@@ -120,6 +122,8 @@ export interface GenerationListItem {
   image_size: number | null;
   /** short_id of the raw Generation this item's Batch refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
   refines_generation_short_id: string | null;
+  /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
+  published: boolean;
 }
 
 /** `ids=` の入力上限 (src/routes/pages.tsx の Gallery ids フィルタも同じ上限で使う)。 */
@@ -187,11 +191,19 @@ export async function queryGenerations(
       binds.push(query.character);
     }
   }
-  if (query.tag) {
+  // tag=publish は互換のため published=true の別名として扱う (docs/api.md#publication「tag 互換」) —
+  // タグはもう作られないため、他の tag と同じ EXISTS には乗せない。
+  if (query.tag && query.tag !== 'publish') {
     conditions.push(
       'EXISTS (SELECT 1 FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id AND t.name = ?)',
     );
     binds.push(query.tag);
+  }
+  const publishedFilter = query.tag === 'publish' ? 'true' : query.published;
+  if (publishedFilter === 'true') {
+    conditions.push('EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
+  } else if (publishedFilter === 'false') {
+    conditions.push('NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
   }
   if (query.rating) {
     conditions.push('g.rating = ?');
@@ -266,7 +278,8 @@ export async function queryGenerations(
   const { results } = await db
     .prepare(
       `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json,
-         rg.short_id AS refines_generation_short_id
+         rg.short_id AS refines_generation_short_id,
+         EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published
        FROM generations g
        LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
@@ -279,7 +292,14 @@ export async function queryGenerations(
        LIMIT ? OFFSET ?`,
     )
     .bind(...binds, limit + 1, query.cursor ? 0 : offset)
-    .all<GenerationRow & { character_name: string | null; tag_names_json: string; refines_generation_short_id: string | null }>();
+    .all<
+      GenerationRow & {
+        character_name: string | null;
+        tag_names_json: string;
+        refines_generation_short_id: string | null;
+        is_published: number;
+      }
+    >();
 
   const rows = results ?? [];
   const hasMore = rows.length > limit;
@@ -307,6 +327,7 @@ export async function queryGenerations(
       image_height: r.image_height,
       image_size: r.image_size,
       refines_generation_short_id: r.refines_generation_short_id,
+      published: toBool(r.is_published),
     };
   });
 

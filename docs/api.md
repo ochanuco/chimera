@@ -1123,7 +1123,8 @@ ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 
 `GET /api/v1/generations/{id}` はこの内容に `batch`（`prompt` / `recipe` /
 `raw_instruction` 込み）と `comfy_job`（`graph` / `render_facts`）、
-`original_filename` を加えたフルの detail です。ロジックは
+`original_filename`、`publications`（[Publication](#publication)の一覧、
+新しい順）を加えたフルの detail です。ロジックは
 `src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
 `get_generation` もここを呼ぶ同じ形を返します。
 
@@ -1138,6 +1139,7 @@ GET /api/v1/generations
 ``` text
 character
 tag
+published
 from
 to
 rating
@@ -1162,7 +1164,11 @@ to=2026-08-26
 
 検索結果には short ID、canonical URL、thumbnail/image
 URL、summary、`refines_generation_short_id`（この Generation の Batch が finalize/repair/
-masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）等の軽量情報を返します。
+masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）、`published`
+（[Publication](#publication)を1件以上持つか）等の軽量情報を返します。
+
+`published=true|false` は Publication の有無で絞り込みます。`tag=publish` は
+[Publication「tag 互換」](#tag-互換)により `published=true` の別名として扱います。
 
 `origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ finalize
 済みの出力のどちらかに絞ります。省略時は両方を返します。
@@ -1312,6 +1318,48 @@ StoryRelationに対応し、統合しません（Relation Separation、`domain-m
 参照）。reference エッジは、Generation起点のBatchReferenceをsource
 Generationが属するBatchへ集約したものです。source/targetが同一Batchになるものは除外します。
 
+## Publication
+
+Generation 1件の1回分の納品（X への投稿）です（[domain-model.md](domain-model.md#publication)）。
+1 Generation は複数の Publication を持てます。
+
+``` text
+GET    /api/v1/generations/{id}/publications        新しい順の一覧
+POST   /api/v1/generations/{id}/publications         {url?, published_at?, idempotency_key?}
+PATCH  /api/v1/publications/{id}                      {url}   url をセット/クリア
+DELETE /api/v1/publications/{id}                      204
+```
+
+`url` は省略・`null` いずれも「まだ無い」を表し、後から `PATCH` で埋められます。
+指定する場合は `https://` で始まる URL である必要があります（それ以外は400）。
+`published_at` を省略すると記録した時刻になります。`idempotency_key` を渡すと、
+同じキーの再送は新しい行を作らず既存行を200で返します（Batch create 等と同じ
+[Idempotency](#idempotency) パターン）。
+
+`GET /api/v1/generations` に `published=true|false` フィルタがあり、各アイテムに
+`published`（少なくとも1件 Publication を持つか）が付きます。`GET
+/api/v1/generations/{id}` は `publications` 配列（`GET
+.../publications` と同じ形）を持ちます。
+
+### tag 互換
+
+comfyui-recipes は移行までの間、納品したことを引き続き `comfy-recipes metadata
+tag <generation_id> publish` （`POST /api/v1/generations/{id}/tags`、`{"name":
+"publish", "created_by": "claude"}`）で書きます。GUI の tag 追加ボックスも同じ
+エンドポイントを叩くため、`name: "publish"` はどちらの入力元でも同じ扱いです。
+
+このエンドポイントは `name` が `"publish"` のとき、Tag を作らず Publication を
+1件作ります（`url: null`, `created_by: "api"`）。既にその Generation に
+Publication があれば新規作成せずそのまま返します（tag 追加の「既存タグを返す」
+冪等性と同じ形）。レスポンスは既存の tag 追加と同じ `{id, name}` 形（CLI は
+このレスポンスの中身を読まず、200/201 が返ることしか見ないため、フィールドの
+実体が変わっても影響しません）。`GET /api/v1/generations?tag=publish` は
+`published=true` の別名として扱います（同じ理由で、comfyui-recipes の
+`list_generations tag=publish` がそのまま動きます）。
+
+comfyui-recipes 側が `record_publication` / `published=true` に切り替え次第、
+この節ごと削除します。
+
 ## Tags
 
 対象別endpointを使用します。
@@ -1400,3 +1448,6 @@ ExperimentRun create の `idempotency_key` は任意です。Run
 がレスポンスを失って作成の成否が分からなくなった場合の再送手段として使います。
 人間がGUIから作る場合や一回限りのcurlなど、再送保護を必要としない経路も
 引き続きキーなしで使えるようにするため、他の3つと異なり必須にはしません。
+
+Publication create（`POST /api/v1/generations/{id}/publications`、MCP
+`record_publication`）の `idempotency_key` も同じ理由で任意です。

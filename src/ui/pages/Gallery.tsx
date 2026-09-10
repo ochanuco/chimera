@@ -13,6 +13,7 @@ export interface GalleryFilters {
   tag?: string;
   rating?: string;
   bookmark?: string;
+  published?: string;
 }
 
 /** Every currently-active query param (view/bad included), used as the base for the view/bad/load-more links. */
@@ -24,6 +25,7 @@ function activeParams(filters: GalleryFilters): URLSearchParams {
   if (filters.tag) params.set('tag', filters.tag);
   if (filters.rating) params.set('rating', filters.rating);
   if (filters.bookmark) params.set('bookmark', filters.bookmark);
+  if (filters.published) params.set('published', filters.published);
   return params;
 }
 
@@ -46,7 +48,7 @@ function FilterIcon() {
 }
 
 function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
-  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark);
+  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published);
   return (
     <div class="gallery-toolbar">
       <ViewSwitch basePath="/gallery" current={filters.view} params={activeParams(filters)} />
@@ -86,6 +88,10 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
           <label class="checkbox-field">
             <input type="checkbox" name="bookmark" value="true" checked={filters.bookmark === 'true'} />
             Bookmarked only
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="published" value="true" checked={filters.published === 'true'} />
+            公開済みのみ
           </label>
           <button type="submit">Search</button>
         </form>

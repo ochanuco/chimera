@@ -86,7 +86,12 @@ ID（複数可、改行またはカンマ区切り、short_id と UUID の混在
 Tag
 Rating
 Bookmarked only
+公開済みのみ
 ```
+
+「公開済みのみ」は`published=true`（[api.md](api.md#generation-search)）で、少なくとも1件
+[Publication](domain-model.md#publication)を持つGenerationだけに絞ります。他のフィルタと
+同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの判定にも数えます。
 
 Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはGUIから外しました
 （`GET /api/v1/generations`はこれらのqueryを引き続き受け付けます。agentがMCP/APIから直接
@@ -285,6 +290,7 @@ Compareは比較表示のみで、ComfyUIへの生成要求も指示テキスト
 Batch Detail の Parameters）のみ既定で畳みます。
 
 ``` text
+公開
 Finalize
 Summary
 Semantic
@@ -298,6 +304,15 @@ ComfyUI Job
 Git
 Note
 ```
+
+`公開`セクションはrating/bookmark行の直後にあります。[Publication](domain-model.md#publication)
+が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
+`--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・
+URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入力欄）・`×`削除ボタンの行として
+新しい順に並べ、末尾に`投稿 URL（空でも記録できる）`のテキスト入力と`公開を記録`ボタン
+（枠線・文字とも`#4fd8a4`、角丸6px）の追加フォームを置きます。追加・URL入力・削除の
+いずれも`/api/v1/generations/{id}/publications`・`/api/v1/publications/{id}`をfetchし、
+リロードなしでセクションを書き換えます。
 
 親・子・兄弟はBatch Detailと同じFamilyCard表示です。Batch
 Detailと異なり、このGenerationが属するBatch自体のRefinement/Story関係も合わせて表示するため、
@@ -657,6 +672,9 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `tag.add` | `kind`, `id`, `tag` | tag追加（`initTagAdd`） |
 | `tag.remove` | `kind`, `id`, `tag_id` | tag削除（`initTagRemove`） |
 | `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
+| `publication.add` | `generation_id`, `has_url` | Publicationの追加（`initPublicationAdd`） |
+| `publication.url` | `generation_id`, `has_url` | PublicationのURL入力（`initPublicationUrlSave`） |
+| `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |

@@ -55,6 +55,8 @@ import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeRe
 import { promoteGenerationToPreset } from './lib/promote';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
 import { createObservation, getObservation, listObservations } from './lib/observations';
+import { publicationUrlSchema } from './schemas/publications';
+import { createPublication, serializePublication } from './lib/publications';
 import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
@@ -201,6 +203,7 @@ const generationLineageInputSchema = z.object({
 /** 1:1 with GET /api/v1/generations's filters (src/lib/generations.ts queryGenerations). */
 const listGenerationsInputSchema = z.object({
   tag: z.string().min(1).optional(),
+  published: z.boolean().optional(),
   rating: z.enum(['bad', 'neutral', 'good']).optional(),
   bookmark: z.boolean().optional(),
   character: z.string().min(1).optional(),
@@ -208,6 +211,14 @@ const listGenerationsInputSchema = z.object({
   to: z.string().optional(),
   limit: z.number().int().min(1).optional(),
   offset: z.number().int().min(0).optional(),
+});
+
+/** `record_publication` の入力。generation_id は short_id / UUID どちらでも受ける。 */
+const recordPublicationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  url: publicationUrlSchema.nullable().optional(),
+  published_at: z.string().min(1).optional(),
+  idempotency_key: z.string().min(1).optional(),
 });
 
 const listCatalogInputSchema = z.object({ recipe_ref: z.string().regex(RECIPE_REF_RE).default('production') });
@@ -676,21 +687,23 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
         '(get_generation, get_generation_lineage, get_generation_image, finalize_generation, repair_generation, ' +
         "masked_redraw_generation, derive_request) assumes you already have one. Filters mirror the gallery's own " +
-        'filters (character, tag, rating, bookmark, created_at range) and combine freely; tag="publish" marks a ' +
-        'look that was delivered. rating is written by the human only, never by an agent — read it as the human\'s ' +
-        'verdict on the image, not something to set. Results are newest-first (created_at desc), paginated via ' +
-        'limit/offset (limit caps at 200, defaults to 50). Pick a short_id from the results and follow up with ' +
-        'get_generation / get_generation_lineage / get_generation_image.',
+        'filters (character, tag, rating, bookmark, created_at range) and combine freely; published=true is the ' +
+        "delivered-look index — every look that was posted, each still carrying its look:<pose> tag. rating is " +
+        "written by the human only, never by an agent — read it as the human's verdict on the image, not something " +
+        'to set. Results are newest-first (created_at desc), paginated via limit/offset (limit caps at 200, ' +
+        'defaults to 50). Pick a short_id from the results and follow up with get_generation / ' +
+        'get_generation_lineage / get_generation_image.',
       inputSchema: listGenerationsInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ tag, rating, bookmark, character, from, to, limit, offset }) => {
+    async ({ tag, published, rating, bookmark, character, from, to, limit, offset }) => {
       const query: Record<string, string | undefined> = {
         tag,
         rating,
         character,
         from,
         to,
+        published: published === undefined ? undefined : published ? 'true' : 'false',
         bookmark: bookmark === undefined ? undefined : bookmark ? 'true' : 'false',
         limit: limit === undefined ? undefined : String(limit),
         offset: offset === undefined ? undefined : String(offset),
@@ -702,6 +715,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           rating: item.rating,
           bookmark: item.bookmark,
           tags: item.tags,
+          published: item.published,
           summary: item.summary,
           character: item.character,
           created_at: item.created_at,
@@ -1010,6 +1024,30 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async (input) => {
       const row = await createObservation(db, input, 'mcp');
       return jsonResult(mcpOutputSchemas.record_observation, row);
+    },
+  );
+
+  server.registerTool(
+    'record_publication',
+    {
+      outputSchema: mcpOutputSchemas.record_publication,
+      description:
+        'Non-destructive: only records that a Generation was posted (docs/domain-model.md#publication). Never deletes, ' +
+        'overwrites, or sends anything — it does not post to X itself, it just records that a posting happened. url is ' +
+        'optional and can be filled in later (PATCH /api/v1/publications/{id} or the Generation Detail page). Pass a ' +
+        'fresh idempotency_key per posting you intend to record; resending the same key returns the row it already made.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: recordPublicationInputSchema,
+    },
+    async ({ generation_id, url, published_at, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const { row } = await createPublication(db, generation.id, {
+        url,
+        publishedAt: published_at,
+        createdBy: 'mcp',
+        idempotencyKey: idempotency_key,
+      });
+      return jsonResult(mcpOutputSchemas.record_publication, serializePublication(row));
     },
   );
 

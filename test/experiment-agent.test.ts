@@ -268,6 +268,7 @@ describe('MCP server at /mcp', () => {
         'list_observations',
         'get_observation',
         'record_observation',
+        'record_publication',
       ].sort(),
     );
   });
