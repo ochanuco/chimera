@@ -553,16 +553,17 @@ describe('Web GUI pages', () => {
   it('the Finalize forms show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
     const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
-    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(8);
+    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(9);
     const batchHtml = await (await req(`/b/${batch.id}`)).text();
-    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(8);
+    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(9);
   });
 
-  it('the Finalize forms disable repair_pad until a repair region is checked', async () => {
+  it('the Finalize forms disable repair_pad/repair_lora until a repair region is checked', async () => {
     const { generation, batch } = await createGeneration();
     for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
       const html = await (await req(path)).text();
       expect(html).toMatch(/<input type="number" name="repair_pad"[^>]*disabled/);
+      expect(html).toMatch(/<input type="number" name="repair_lora"[^>]*disabled/);
     }
   });
 
