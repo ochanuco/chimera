@@ -646,6 +646,39 @@ created_at
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
 status 等で扱います。
 
+## Publication
+
+Generation 1件の**1回分の納品**（X への投稿）を表す行です。
+
+```text
+Generation 1:N Publication
+```
+
+主な属性:
+
+```text
+id
+generation_id
+url
+published_at
+created_by
+created_at
+updated_at
+```
+
+1 Generation は複数の Publication を持てます（同じ画像を複数回・複数アカウントに
+投稿した場合など）。`url` は任意で、投稿直後は分からないため空のまま記録してよく、
+後から埋められます（`PATCH /api/v1/publications/{id}`）。「公開済み」とは、その
+Generation が少なくとも1件の Publication を持つことです。
+
+かつては `publish` タグ（`look:<pose>` と組で付与）がこの役割を兼ねていましたが、
+1タグ1回きりの二値では複数回の納品や投稿URLを表現できないため、この専用エンティティに
+分離しました。comfyui-recipes 側がまだ `publish` タグを書く間の互換は
+[api.md](api.md#publication)「tag 互換」に閉じています。
+
+Generation 本体と同じく Publication も物理削除は妥当な操作です（誤登録の取り消し）。
+Generation 自体を物理削除しない不変条件とは別物です。
+
 ## GenerationAsset
 
 Generation 本体（`r2_object_key` が指す完成画像 = composite）に対して、線画・マスク・分解レイヤー・PSD

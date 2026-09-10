@@ -53,6 +53,7 @@ pages.get('/gallery', async (c) => {
     tag: q.tag || undefined,
     rating: q.rating || undefined,
     bookmark: q.bookmark === 'true' ? 'true' : undefined,
+    published: q.published === 'true' ? 'true' : undefined,
   };
 
   const apiParams = new URLSearchParams();
@@ -67,6 +68,7 @@ pages.get('/gallery', async (c) => {
   if (filters.tag) apiParams.set('tag', filters.tag);
   if (filters.rating) apiParams.set('rating', filters.rating);
   if (filters.bookmark) apiParams.set('bookmark', filters.bookmark);
+  if (filters.published) apiParams.set('published', filters.published);
   const limit = q.limit ? Math.min(Math.max(Number(q.limit) || 24, 1), 200) : 24;
   apiParams.set('limit', String(limit));
   if (q.cursor) apiParams.set('cursor', q.cursor);

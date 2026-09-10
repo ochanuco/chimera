@@ -340,6 +340,44 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-size: 0.72rem;
 }
 
+/* 公開セクション (Generation Detail「公開」, docs/ui.md参照)。 */
+.publication-status { color: var(--text-dim); font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; margin: 0 0 0.5rem; }
+.publication-status.published { color: #4fd8a4; }
+.publication-list { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.publication-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; flex-wrap: wrap; }
+.publication-time { color: var(--text-dim); font-size: 0.75rem; white-space: nowrap; }
+.publication-nourl { color: var(--text-dim); }
+.publication-url-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  flex: 1;
+  min-width: 8rem;
+}
+.publication-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.85rem; margin-left: auto; }
+.publication-add-form { display: flex; gap: 0.4rem; }
+.publication-add-form input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+  flex: 1;
+}
+.publication-add-btn {
+  background: none;
+  border: 1px solid #4fd8a4;
+  color: #4fd8a4;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+}
+
 .compare-check-row { display: flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; color: var(--text-dim); }
 
 .compare-bar {
@@ -1259,6 +1297,142 @@ export const appJs = `
     });
   }
 
+  // --- Publication (Generation Detail「公開」, docs/ui.md参照) ---
+  // 'MM-DD HH:mm'（UTC）。src/ui/pages/GenerationDetail.tsx の formatPublishedAt と同じ書式。
+  function formatPublishedAt(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+
+  // src/ui/pages/GenerationDetail.tsx の PublishIcon と同じ markup。
+  var PUBLICATION_ICON_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+    '<path d="M14 2L2 7.5L7 9L9 14L14 2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path>' +
+    '<path d="M14 2L7 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>';
+
+  function updatePublicationStatus(section, count) {
+    var status = qs('.publication-status', section);
+    if (!status) return;
+    status.classList.toggle('published', count > 0);
+    status.innerHTML = count > 0 ? (PUBLICATION_ICON_SVG + ' 公開済み（' + count + '）') : '未公開';
+  }
+
+  function publicationRow(p) {
+    var li = document.createElement('li');
+    li.className = 'publication-row';
+    li.setAttribute('data-publication-id', p.id);
+
+    var time = document.createElement('span');
+    time.className = 'publication-time';
+    time.textContent = formatPublishedAt(p.published_at);
+    li.appendChild(time);
+
+    if (p.url) {
+      var a = document.createElement('a');
+      a.href = p.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = p.url;
+      li.appendChild(a);
+    } else {
+      var noUrl = document.createElement('span');
+      noUrl.className = 'publication-nourl';
+      noUrl.textContent = 'URL なし';
+      li.appendChild(noUrl);
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'publication-url-input';
+      input.placeholder = '投稿 URL';
+      li.appendChild(input);
+    }
+
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'publication-remove-btn';
+    removeBtn.textContent = '×';
+    li.appendChild(removeBtn);
+
+    return li;
+  }
+
+  function initPublicationAdd() {
+    document.addEventListener('submit', async function (ev) {
+      var form = ev.target.closest('.publication-add-form');
+      if (!form) return;
+      ev.preventDefault();
+      var section = form.closest('.publication-section');
+      var generationId = section ? section.getAttribute('data-generation-id') : null;
+      var input = qs('input[name="url"]', form);
+      var url = (input.value || '').trim();
+      try {
+        var publication = await api('/api/v1/generations/' + generationId + '/publications', 'POST', { url: url || null });
+        var list = qs('.publication-list', section);
+        if (list && !list.querySelector('[data-publication-id="' + publication.id + '"]')) {
+          list.insertBefore(publicationRow(publication), list.firstChild);
+        }
+        updatePublicationStatus(section, list ? list.children.length : 1);
+        input.value = '';
+        track('publication.add', { generation_id: generationId, has_url: Boolean(url) });
+      } catch (e) {
+        trackError('publication.add', e, { generation_id: generationId });
+        alert('failed to record publication: ' + e.message);
+      }
+    });
+  }
+
+  function initPublicationUrlSave() {
+    document.addEventListener('change', async function (ev) {
+      var input = ev.target.closest ? ev.target.closest('.publication-url-input') : null;
+      if (!input) return;
+      var row = input.closest('.publication-row');
+      var section = input.closest('.publication-section');
+      var generationId = section ? section.getAttribute('data-generation-id') : null;
+      var publicationId = row ? row.getAttribute('data-publication-id') : null;
+      var url = (input.value || '').trim();
+      if (!url) return;
+      try {
+        await api('/api/v1/publications/' + publicationId, 'PATCH', { url: url });
+        input.replaceWith((function () {
+          var a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = url;
+          return a;
+        })());
+        var noUrl = qs('.publication-nourl', row);
+        if (noUrl) noUrl.remove();
+        track('publication.url', { generation_id: generationId, has_url: true });
+      } catch (e) {
+        trackError('publication.url', e, { generation_id: generationId });
+        alert('failed to save publication url: ' + e.message);
+      }
+    });
+  }
+
+  function initPublicationRemove() {
+    document.addEventListener('click', async function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.publication-remove-btn') : null;
+      if (!btn) return;
+      var row = btn.closest('.publication-row');
+      var section = btn.closest('.publication-section');
+      var generationId = section ? section.getAttribute('data-generation-id') : null;
+      var publicationId = row ? row.getAttribute('data-publication-id') : null;
+      try {
+        await api('/api/v1/publications/' + publicationId, 'DELETE');
+        row.remove();
+        var list = qs('.publication-list', section);
+        updatePublicationStatus(section, list ? list.children.length : 0);
+        track('publication.remove', { generation_id: generationId, has_url: Boolean(row.querySelector('a')) });
+      } catch (e) {
+        trackError('publication.remove', e, { generation_id: generationId });
+        alert('failed to remove publication: ' + e.message);
+      }
+    });
+  }
+
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
   // Returns null when the form cannot be turned into options. In quiet mode (used by the
   // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
@@ -1755,6 +1929,9 @@ export const appJs = `
     initTagRemove();
     initTagSuggestions();
     initNoteForm();
+    initPublicationAdd();
+    initPublicationUrlSave();
+    initPublicationRemove();
     initFinalize();
     initFinalizeAll();
     initFinalizeBackdropColor();

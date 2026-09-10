@@ -268,6 +268,19 @@ export interface PresetRow {
   base_fingerprint: string | null;
 }
 
+export type PublicationCreatedBy = 'gui' | 'mcp' | 'api' | 'system';
+
+export interface GenerationPublicationRow {
+  id: string;
+  generation_id: string;
+  url: string | null;
+  published_at: string;
+  created_by: PublicationCreatedBy;
+  idempotency_key: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ObservationOutcome = 'accepted' | 'rejected' | 'inconclusive';
 export type ObservationSource = 'import' | 'mcp' | 'gui';
 
