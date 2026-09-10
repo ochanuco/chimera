@@ -89,6 +89,79 @@ describe('Batch relations', () => {
   });
 });
 
+describe('Batch refines_generation_id', () => {
+  it('is set on create when a refinement relation pairs with a rebuild reference to the source batch\'s generation', async () => {
+    const { batch: source, generation: sourceGen } = await createGeneration();
+
+    const created = await postJson<{ refines_generation_id: string | null }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      refinement: { source_batch_id: source.id, actor: 'claude', reason: 'finalize' },
+      references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.refines_generation_id).toBe(sourceGen.id);
+  });
+
+  it('stays null with only a refinement relation (no rebuild reference)', async () => {
+    const source = await createBatch();
+
+    const created = await postJson<{ refines_generation_id: string | null }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      refinement: { source_batch_id: source.body.id, actor: 'claude', reason: 'finalize' },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.refines_generation_id).toBeNull();
+  });
+
+  it("stays null when the rebuild reference points to a generation outside the relation's source batch", async () => {
+    const source = await createBatch();
+    const { generation: unrelatedGen } = await createGeneration();
+
+    const created = await postJson<{ refines_generation_id: string | null }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      refinement: { source_batch_id: source.body.id, actor: 'claude', reason: 'finalize' },
+      references: [{ source_generation_id: unrelatedGen.id, purpose: 'rebuild' }],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.refines_generation_id).toBeNull();
+  });
+
+  it('is recomputed after POST /batches/{id}/references adds the matching rebuild reference', async () => {
+    const { batch: source, generation: sourceGen } = await createGeneration();
+    const target = await postJson<{ id: string; refines_generation_id: string | null }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      refinement: { source_batch_id: source.id, actor: 'claude', reason: 'finalize' },
+    });
+    expect(target.body.refines_generation_id).toBeNull();
+
+    await postJson(`/api/v1/batches/${target.body.id}/references`, {
+      source_generation_id: sourceGen.id,
+      purpose: 'rebuild',
+    });
+
+    const detail = await getJson<{ refines_generation_id: string | null }>(`/api/v1/batches/${target.body.id}`);
+    expect(detail.body.refines_generation_id).toBe(sourceGen.id);
+  });
+
+  it('is recomputed after POST /batches/{target}/relations adds the matching refinement relation', async () => {
+    const { batch: source, generation: sourceGen } = await createGeneration();
+    const target = await postJson<{ id: string; refines_generation_id: string | null }>('/api/v1/batches', {
+      idempotency_key: crypto.randomUUID(),
+      references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+    });
+    expect(target.body.refines_generation_id).toBeNull();
+
+    await postJson(`/api/v1/batches/${target.body.id}/relations`, {
+      source_batch_id: source.id,
+      type: 'refinement',
+      actor: 'claude',
+    });
+
+    const detail = await getJson<{ refines_generation_id: string | null }>(`/api/v1/batches/${target.body.id}`);
+    expect(detail.body.refines_generation_id).toBe(sourceGen.id);
+  });
+});
+
 describe('Story relations', () => {
   it('creates a story, links batches, and lists them on the story', async () => {
     const story = await postJson<{ id: string }>('/api/v1/stories', { name: `summer arc-${crypto.randomUUID().slice(0, 8)}` });

@@ -100,6 +100,17 @@ const resolvedPresetSchema = presetSummarySchema.extend({
   patches: z.array(z.unknown()),
 });
 
+/** serializePublication (lib/publications.ts)。 */
+const publicationSchema = z.looseObject({
+  id: z.string(),
+  generation_id: z.string(),
+  url: z.string().nullable(),
+  published_at: z.string(),
+  created_by: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
 /** serializeObservation (lib/observations.ts)。 */
 const observationSchema = z.looseObject({
   id: z.string(),
@@ -204,6 +215,7 @@ export const mcpOutputSchemas = {
         rating: z.string().nullable(),
         bookmark: z.boolean(),
         tags: z.array(z.string()),
+        published: z.boolean(),
         summary: z.string().nullable(),
         character: z.looseObject({ id: z.string(), name: z.string().nullable() }).nullable(),
         created_at: z.string(),
@@ -224,6 +236,7 @@ export const mcpOutputSchemas = {
     batch: z.unknown().optional(),
     comfy_job: z.unknown().optional(),
     references: z.unknown().optional(),
+    publications: z.array(publicationSchema).optional(),
     original_filename: z.string().nullable().optional(),
   }),
 
@@ -280,4 +293,6 @@ export const mcpOutputSchemas = {
   list_observations: z.looseObject({ items: z.array(observationSchema), total: z.number() }),
   get_observation: observationSchema,
   record_observation: observationSchema,
+
+  record_publication: publicationSchema,
 } as const;

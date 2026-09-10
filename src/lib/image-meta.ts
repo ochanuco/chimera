@@ -44,3 +44,12 @@ export function formatBytes(size: number): string {
   }
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
+
+/** `1536×1536 · 2.9 MB`, size-only, or null when there's no ImageMeta (pre-backfill row). Shared by Generation Detail and the Lightbox panel. */
+export function formatImageMetaText(meta: ImageMeta | null): string | null {
+  if (!meta) return null;
+  if (meta.width !== null && meta.height !== null) {
+    return `${meta.width}×${meta.height} · ${formatBytes(meta.size)}`;
+  }
+  return formatBytes(meta.size);
+}

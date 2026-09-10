@@ -9,13 +9,20 @@ import { createJobSchema } from '../schemas/jobs';
 import { assignTagSchema } from '../schemas/tags';
 import { uuidv7 } from '../lib/uuidv7';
 import { createUniqueShortId } from '../lib/shortid';
-import { nowIso, parsePagination, getBatchByIdOrShortId, getGenerationByIdOrShortId } from '../lib/db';
+import {
+  nowIso,
+  parsePagination,
+  getBatchByIdOrShortId,
+  getGenerationByIdOrShortId,
+  resolveGenerationShortIds,
+} from '../lib/db';
 import { assignTag, listTagsForTarget, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeBatch, serializeGenerationLight } from '../lib/serialize';
 import { renderFactsForJob } from '../lib/render-facts';
 import { getExperimentRunFamily } from '../lib/experiments';
+import { refinesGenerationUpdateStatement } from '../lib/batch-refinement';
 import type {
   AppEnv,
   BatchRelationRow,
@@ -143,6 +150,8 @@ batches.post('/', async (c) => {
     // request が done になった時点で lib/requests.ts が書く (preset の pin から)。
     // Batch 作成時にはまだ確定していない。
     preset_versions_json: null,
+    // refinesGenerationUpdateStatement (下) が同じ db.batch 内で計算する。この時点では未確定。
+    refines_generation_id: null,
   };
 
   const statements = [
@@ -205,6 +214,10 @@ batches.post('/', async (c) => {
     );
   }
 
+  // references と refinement relation が上ですでに積まれているので、同じ db.batch トランザクション
+  // 内でこの直後に refines_generation_id を計算できる (src/lib/batch-refinement.ts)。
+  statements.push(refinesGenerationUpdateStatement(db, id));
+
   if (body.story) {
     for (const prevBatchId of resolvedStoryPreviousBatchIds) {
       statements.push(
@@ -243,6 +256,10 @@ batches.post('/', async (c) => {
     return c.json({ ...serializeBatch(raced), jobs: await buildReplayJobs(db, raced.id) }, 200);
   }
 
+  // refines_generation_id は db.batch 内の UPDATE で確定したので、in-memory の row (null 固定)
+  // ではなく確定後の行を読み直してレスポンスに使う。
+  const created = (await getBatchByIdOrShortId(db, id))!;
+
   // provenance の中核 (prompt / recipe / instruction) が全部空の登録は、API を
   // 直接叩いて request.json 契約を経由していない可能性が高い。自動化を壊さない
   // よう拒否はせず、warnings とログで気付けるようにするだけに留める。
@@ -256,10 +273,10 @@ batches.post('/', async (c) => {
     const warning =
       'batch created without generation metadata (raw_instruction / recipe / prompt / negative_prompt / parameters are all empty)';
     console.warn(`${warning}: batch=${row.short_id}`);
-    return c.json({ ...serializeBatch(row), warnings: [warning] }, 201);
+    return c.json({ ...serializeBatch(created), warnings: [warning] }, 201);
   }
 
-  return c.json(serializeBatch(row), 201);
+  return c.json(serializeBatch(created), 201);
 });
 
 batches.patch('/:id', async (c) => {
@@ -460,6 +477,26 @@ batches.get('/:id', async (c) => {
     await Promise.all(jobRows.map(async (j) => [j.id, await renderFactsForJob(db, j)] as const)),
   );
 
+  // Card badges (GenerationCard の from-badge / 公開済みピル): このBatchが refine
+  // したraw Generationのshort_id（Batch単位で全Generation共通）と、各Generationが
+  // 少なくとも1件Publicationを持つか。
+  const generationRows = generations.results ?? [];
+  const [refinesShortIds, publishedGenerationIds] = await Promise.all([
+    resolveGenerationShortIds(db, batch.refines_generation_id ? [batch.refines_generation_id] : []),
+    (async () => {
+      if (generationRows.length === 0) return new Set<string>();
+      const placeholders = generationRows.map(() => '?').join(', ');
+      const { results } = await db
+        .prepare(`SELECT DISTINCT generation_id FROM generation_publications WHERE generation_id IN (${placeholders})`)
+        .bind(...generationRows.map((g) => g.id))
+        .all<{ generation_id: string }>();
+      return new Set((results ?? []).map((r) => r.generation_id));
+    })(),
+  ]);
+  const refinesGenerationShortId = batch.refines_generation_id
+    ? (refinesShortIds.get(batch.refines_generation_id) ?? null)
+    : null;
+
   return c.json({
     ...serializeBatch(batch),
     jobs: jobRows.map((j) => ({
@@ -473,7 +510,11 @@ batches.get('/:id', async (c) => {
       created_at: j.created_at,
       updated_at: j.updated_at,
     })),
-    generations: (generations.results ?? []).map((g) => serializeGenerationLight(g, org)),
+    generations: generationRows.map((g) => ({
+      ...serializeGenerationLight(g, org),
+      refines_generation_short_id: refinesGenerationShortId,
+      published: publishedGenerationIds.has(g.id),
+    })),
     references: (references.results ?? []).map((r) => ({
       id: r.id,
       source_generation_id: r.source_generation_id,
@@ -606,12 +647,14 @@ batches.post('/:id/references', async (c) => {
 
   const id = uuidv7();
   const now = nowIso();
-  await db
-    .prepare(
-      'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    )
-    .bind(id, generation.id, batch.id, body.purpose ?? null, body.aspect ?? null, body.instruction ?? null, now)
-    .run();
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(id, generation.id, batch.id, body.purpose ?? null, body.aspect ?? null, body.instruction ?? null, now),
+    refinesGenerationUpdateStatement(db, batch.id),
+  ]);
 
   return c.json(
     {
@@ -637,12 +680,14 @@ batches.post('/:targetBatchId/relations', async (c) => {
 
   const id = uuidv7();
   const now = nowIso();
-  await db
-    .prepare(
-      'INSERT INTO batch_relations (id, source_batch_id, target_batch_id, type, actor, reason, raw_instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-    .bind(id, sourceBatch.id, targetBatch.id, body.type ?? null, body.actor, body.reason ?? null, body.raw_instruction ?? null, now)
-    .run();
+  await db.batch([
+    db
+      .prepare(
+        'INSERT INTO batch_relations (id, source_batch_id, target_batch_id, type, actor, reason, raw_instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(id, sourceBatch.id, targetBatch.id, body.type ?? null, body.actor, body.reason ?? null, body.raw_instruction ?? null, now),
+    refinesGenerationUpdateStatement(db, targetBatch.id),
+  ]);
 
   return c.json(
     {

@@ -13,14 +13,17 @@ import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
+import { queryGenerations } from '../lib/generations';
 import {
   GenerationDetailPage,
   type GenerationDetailData,
   type FinalizeRequestSummary,
   type ExperimentRunFamily,
 } from '../ui/pages/GenerationDetail';
+import { LightboxPanel } from '../ui/components/Lightbox';
+import { GenerationCard } from '../ui/components/GenerationCard';
 import { NotFoundPage } from '../ui/pages/NotFound';
-import { getImageMeta, type ImageMeta } from '../lib/image-meta';
+import { getImageMeta, formatImageMetaText, type ImageMeta } from '../lib/image-meta';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 import type { Context } from 'hono';
 
@@ -63,6 +66,16 @@ function wantsJson(c: Context): boolean {
   return accept.includes('application/json') && !accept.includes('text/html');
 }
 
+/** short_id of the raw Generation `batchId`'s Batch refines (GenerationCard/Lightbox "from" badge), or null for a raw Batch. */
+async function resolveRefinesGenerationShortId(c: Context, db: D1Database, batchId: string): Promise<string | null> {
+  const batchRes = await internalApiRequest(c, `/api/v1/batches/${batchId}`);
+  if (!batchRes.ok) return null;
+  const batchData = (await batchRes.json()) as { refines_generation_id: string | null };
+  if (!batchData.refines_generation_id) return null;
+  const shortIds = await resolveGenerationShortIds(db, [batchData.refines_generation_id]);
+  return shortIds.get(batchData.refines_generation_id) ?? null;
+}
+
 // GET /g/{short_id} — canonical human-facing Generation page (SSR HTML).
 // Callers that explicitly ask for JSON (Accept: application/json, or
 // ?format=json) get a small pointer payload to the machine-readable API
@@ -75,6 +88,16 @@ images.get('/:shortId', async (c) => {
   if (!generation) {
     if (wantsJson(c)) throw notFound('generation');
     return c.html(<NotFoundPage what="Generation" />, 404);
+  }
+
+  // Gallery live insertion fragment (docs/ui.md「Gallery」): the exact card the Gallery /
+  // Bookmarks list itself would render, reusing queryGenerations so the two never drift.
+  if (c.req.query('partial') === 'card') {
+    const origin = new URL(c.req.url).origin;
+    const cardData = await queryGenerations(db, { ids: generation.short_id }, origin);
+    const item = cardData.items[0];
+    if (!item) throw notFound('generation');
+    return c.html(<GenerationCard g={item} />);
   }
 
   if (wantsJson(c)) {
@@ -97,6 +120,27 @@ images.get('/:shortId', async (c) => {
   // Finalize セクション: このGenerationを対象にした最新のrequest (finalize / repair) を状況表示する
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
   const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
+
+  // Lightbox panel fragment (Gallery / Bookmarks / Batch Detail): same components as the full
+  // page below, minus the family-card / mini-map / workflow sections it doesn't need.
+  if (c.req.query('partial') === 'lightbox') {
+    const refinesGenerationShortId = data.batch ? await resolveRefinesGenerationShortId(c, db, data.batch.id) : null;
+    return c.html(
+      <LightboxPanel
+        generationId={data.id}
+        shortId={data.short_id}
+        imageMetaText={formatImageMetaText(imageMeta)}
+        refinesGenerationShortId={refinesGenerationShortId}
+        rating={data.rating}
+        bookmark={data.bookmark}
+        publications={data.publications}
+        tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
+        recipe={data.batch?.recipe ?? null}
+        finalizeRequests={finalizeRequests}
+        note={data.note}
+      />,
+    );
+  }
 
   // "親" (parent) material for a Generation is its own Batch's reference material
   // (batch_references where target_batch_id = the owning Batch), not `data.references`
@@ -197,6 +241,7 @@ images.get('/:shortId', async (c) => {
 
   return c.html(
     <GenerationDetailPage
+      path={c.req.path}
       data={data}
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
       storyLinks={storyLinks}

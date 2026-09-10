@@ -111,6 +111,8 @@ export interface BatchRow {
   patches_json: string | null;
   pose_fingerprint: string | null;
   preset_versions_json: string | null;
+  /** finalize/repair/masked_redraw で仕上げた元の raw Generation (migrations/0020, src/lib/batch-refinement.ts が計算)。 */
+  refines_generation_id: string | null;
 }
 
 export interface ComfyJobRow {
@@ -264,6 +266,19 @@ export interface PresetRow {
   created_at: string;
   idempotency_key: string | null;
   base_fingerprint: string | null;
+}
+
+export type PublicationCreatedBy = 'gui' | 'mcp' | 'api' | 'system';
+
+export interface GenerationPublicationRow {
+  id: string;
+  generation_id: string;
+  url: string | null;
+  published_at: string;
+  created_by: PublicationCreatedBy;
+  idempotency_key: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type ObservationOutcome = 'accepted' | 'rejected' | 'inconclusive';

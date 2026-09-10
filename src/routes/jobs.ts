@@ -2,11 +2,12 @@ import { Hono } from 'hono';
 import { updateJobSchema, ingestMetadataSchema } from '../schemas/jobs';
 import { uuidv7 } from '../lib/uuidv7';
 import { createUniqueShortId } from '../lib/shortid';
-import { nowIso } from '../lib/db';
+import { nowIso, resolveGenerationShortIds } from '../lib/db';
 import { badRequest, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import { parsePngDimensions } from '../lib/image-meta';
 import { extractRenderFacts } from '../lib/render-facts';
+import { notifyHubGeneration, runInBackground } from '../lib/hub-notify';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
 export const jobs = new Hono<AppEnv>();
@@ -170,6 +171,29 @@ jobs.post('/:jobId/generations', async (c) => {
   if (job.status !== 'ingested') {
     await db.prepare('UPDATE comfy_jobs SET status = ?, updated_at = ? WHERE id = ?').bind('ingested', now, job.id).run();
   }
+
+  // Gallery live insertion (docs/ui.md「Gallery」): only on the newly-created row, not on an
+  // idempotent resend — a re-ingest of the same (comfy_job_id, comfy_output_index) already
+  // exists on every viewer's grid.
+  const batchRow = await db
+    .prepare('SELECT refines_generation_id FROM batches WHERE id = ?')
+    .bind(job.batch_id)
+    .first<{ refines_generation_id: string | null }>();
+  let refinesGenerationShortId: string | null = null;
+  if (batchRow?.refines_generation_id) {
+    const shortIds = await resolveGenerationShortIds(db, [batchRow.refines_generation_id]);
+    refinesGenerationShortId = shortIds.get(batchRow.refines_generation_id) ?? null;
+  }
+  runInBackground(
+    c,
+    notifyHubGeneration(c.env, {
+      generation_id: id,
+      short_id: shortId,
+      batch_id: job.batch_id,
+      refines_generation_short_id: refinesGenerationShortId,
+      created_at: now,
+    }),
+  );
 
   return respond({ id, short_id: shortId, r2_object_key: r2ObjectKey }, 201);
 });

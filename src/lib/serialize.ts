@@ -47,6 +47,7 @@ export function serializeBatch(row: BatchRow) {
     patches: row.patches_json ? JSON.parse(row.patches_json) : null,
     pose_fingerprint: row.pose_fingerprint,
     preset_versions: row.preset_versions_json ? JSON.parse(row.preset_versions_json) : null,
+    refines_generation_id: row.refines_generation_id,
   };
 }
 

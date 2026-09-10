@@ -77,6 +77,3 @@ MVPでは以下を優先します。
 -   Experiment / ExperimentRun / ExperimentPromotion
 
 semantic 全文検索、GraphDB、統計分析などは後回しにします。
-
-全体 Graph 表示（`/graph`）は前倒しで実装済みです。詳細は
-[ui.md](ui.md) の「Graph View」を参照してください。

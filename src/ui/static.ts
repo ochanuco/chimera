@@ -53,6 +53,63 @@ a:hover { text-decoration: underline; }
 }
 .nav a { color: var(--text); font-weight: 600; }
 .nav a.brand { color: var(--accent); margin-right: 0.5rem; }
+.nav a[aria-current="page"],
+.nav-more summary[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.45rem;
+}
+
+.nav-more { position: relative; }
+.nav-more summary {
+  color: var(--text);
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.nav-more summary::-webkit-details-marker { display: none; }
+.nav-more summary::after {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  margin-top: -0.2rem;
+}
+.nav-more-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 0.3rem;
+}
+.nav-more-panel a { padding: 0.5rem 0.6rem; border-radius: 5px; }
+.nav-more-panel a:hover { background: var(--bg); text-decoration: none; }
+
+@media (max-width: 600px) {
+  .nav {
+    padding: 0 1rem;
+    gap: 1.25rem;
+  }
+  .nav > a,
+  .nav-more > summary {
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+}
 
 .container { padding: 1.25rem; max-width: 1600px; margin: 0 auto; }
 .container-full { max-width: none; }
@@ -130,6 +187,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 
 .card {
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -140,7 +198,73 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
-.card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.card-row { padding: 0.5rem 0.55rem; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+
+/* GenerationCard のサムネイルオーバーレイ (docs/ui.md「Gallery」カード)。from-badge は Lightbox の
+   from-row でも同じ見た目を静的な行として使う (position は .thumb-link の中でだけ絶対配置)。 */
+.card-from-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #402e21;
+  color: var(--graph-relation);
+}
+.card-from-badge-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.card-from-badge-link { text-decoration: none; }
+.card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
+
+/* from-badge と finalizeピルを縦に積むコンテナ (docs/ui.md「Gallery」)。from-badge が無ければ
+   finalizeピルだけがこの位置に来る。 */
+.card .thumb-link .thumb-badges-top {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  max-width: calc(100% - 0.8rem);
+}
+
+/* finalize/repair/masked_redraw の進捗ピル (docs/ui.md「Gallery」)。request-status-* は
+   .request-status-list と共通の色クラス (このファイル下方)。 */
+.card-finalize-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(18, 18, 20, 0.86);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-finalize-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.card-published-pill {
+  position: absolute;
+  bottom: 0.4rem;
+  left: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(18, 18, 20, 0.86);
+  border: 1px solid var(--border);
+  color: #4fd8a4;
+}
 
 #thumb-preview {
   position: fixed;
@@ -158,20 +282,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 #thumb-preview img { display: block; max-width: calc(100vw - 26px); max-height: calc(100vh - 26px); border-radius: 6px; background: var(--checker); }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
-.card-image-meta { margin: 0; text-align: left; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
-/* Root-scoped jump into Graph View from a detail page heading (the only in-app entry to /graph). */
-.graph-jump {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-  text-decoration: none;
-  vertical-align: middle;
-}
-.graph-jump:hover { color: var(--accent); border-color: var(--accent); }
 
 .copy-id-btn {
   background: none;
@@ -198,6 +309,9 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .rate-btn[data-rating="neutral"].active { background: var(--neutral); color: #1c1808; border-color: var(--neutral); }
 .rate-btn[data-rating="bad"].active { background: var(--bad); color: #200a08; border-color: var(--bad); }
 
+/* Lightbox の大きいrating group (docs/ui.md「Lightbox」)。 */
+.rating-group-lg .rate-btn { font-size: 0.8rem; padding: 0.3rem 0.75rem; }
+
 .bookmark-btn {
   background: transparent;
   border: none;
@@ -222,7 +336,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .tag-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.75rem; }
 
-/* Relation-type badges for 親/子/兄弟 rows (Batch/Generation Detail). Colors match the Graph legend. */
+/* Relation-type badges for 親/子/兄弟 rows (Batch/Generation Detail). */
 .rel-badge {
   display: inline-block;
   border-radius: 4px;
@@ -295,7 +409,55 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-size: 0.72rem;
 }
 
-.compare-check-row { display: flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; color: var(--text-dim); }
+/* 公開セクション (Generation Detail「公開」, docs/ui.md参照)。 */
+.publication-status { color: var(--text-dim); font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; margin: 0 0 0.5rem; }
+.publication-status.published { color: #4fd8a4; }
+.publication-list { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.publication-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; flex-wrap: wrap; }
+.publication-time { color: var(--text-dim); font-size: 0.75rem; white-space: nowrap; }
+.publication-nourl { color: var(--text-dim); }
+.publication-url-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  flex: 1;
+  min-width: 8rem;
+}
+.publication-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.85rem; margin-left: auto; }
+.publication-add-form { display: flex; gap: 0.4rem; }
+.publication-add-form input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+  flex: 1;
+}
+.publication-add-btn {
+  background: none;
+  border: 1px solid #4fd8a4;
+  color: #4fd8a4;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+}
+
+/* Lightbox 比較エントリ (docs/ui.md「Lightbox」「Compare entry」)。sessionStorage の compare set をトグルする。 */
+.compare-add-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.compare-add-btn.active { border-color: var(--accent); color: var(--accent); }
 
 .compare-bar {
   position: fixed;
@@ -319,8 +481,159 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-weight: 600;
 }
 
-.pagination { display: flex; gap: 1rem; align-items: center; margin: 1.5rem 0; }
-.pagination .disabled { color: var(--text-dim); pointer-events: none; }
+/* Gallery ツールバー (view switch / bad toggle / 絞り込みパネル)。nav の下に sticky で張り付く。 */
+.gallery-toolbar {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 9;
+  background: var(--bg);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+  margin-bottom: 1rem;
+}
+
+.view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+.view-switch-item {
+  padding: 0.35rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.view-switch-item:hover { text-decoration: none; }
+.view-switch-item[aria-current="true"] { background: var(--bg); color: var(--text); }
+
+.bad-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+}
+.bad-toggle:hover { text-decoration: none; color: var(--text); }
+.bad-toggle-box {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  display: inline-block;
+}
+.bad-toggle[aria-pressed="true"] .bad-toggle-box { background: var(--accent); border-color: var(--accent); }
+
+.filter-panel { position: relative; }
+.filter-panel summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.filter-panel summary::-webkit-details-marker { display: none; }
+.filter-panel[open] summary { border-color: var(--accent); color: var(--accent); }
+.filter-panel .filter-form {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 20;
+  min-width: 260px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.filter-form textarea[name="ids"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+  min-height: 2rem;
+}
+
+/* Gallery live insertion の新着バナー (docs/ui.md「Gallery」)。sticky ツールバーの直下に
+   中央寄せで浮かぶ。 */
+.gallery-new-arrivals {
+  position: fixed;
+  top: calc(var(--nav-h) + 0.6rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.gallery-new-arrivals.hidden { display: none; }
+@media (max-width: 600px) {
+  .gallery-new-arrivals { min-height: 2.75rem; }
+}
+
+.load-more {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.load-more:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+@media (max-width: 600px) {
+  .gallery-toolbar .view-switch { flex: 1 1 100%; }
+  .view-switch-item { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+  .bad-toggle, .filter-panel summary { min-height: 2.75rem; }
+
+  /* GenerationCard: bookmark はサムネイル右上のヒット領域に、rating は行いっぱいに広げる (docs/ui.md「Gallery」)。 */
+  .card .card-bookmark-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(18, 18, 20, 0.72);
+    border-radius: 999px;
+    z-index: 2;
+  }
+  .card-row .rating-group { flex: 1; }
+  .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+
+  .undo-toast { left: 0.5rem; right: 0.5rem; width: auto; }
+  .undo-toast-undo { min-height: 2.75rem; }
+}
 
 details.section {
   background: var(--bg-elevated);
@@ -521,20 +834,6 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .hidden { display: none !important; }
 
-.story-tree ul { list-style: none; padding-left: 1.4rem; border-left: 1px dashed var(--border); }
-.story-tree li { margin: 0.5rem 0; }
-.story-node { display: flex; align-items: center; gap: 0.6rem; }
-.story-node img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: var(--checker); }
-.rel-edit-form { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
-.rel-edit-form input, .rel-edit-form textarea {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 0.25rem 0.4rem;
-  font-size: 0.78rem;
-}
-
 .compare-cols-picker { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text-dim); }
 .compare-cols-picker select {
   background: var(--bg);
@@ -574,141 +873,6 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
 .bookmark-section { margin-bottom: 2rem; }
-
-.graph-scope-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.5rem;
-  font-size: 0.85rem;
-}
-.graph-scope-label { color: var(--text-dim); }
-
-.graph-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-}
-.legend-row { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
-.legend-swatch { display: inline-block; width: 22px; height: 0; border-top-width: 3px; border-top-style: solid; }
-.legend-swatch.legend-reference { border-color: var(--graph-reference); }
-.legend-swatch.legend-relation { border-color: var(--graph-relation); border-top-style: dashed; }
-.legend-swatch.legend-story { border-color: var(--graph-story); }
-
-.graph-stage { position: relative; }
-.graph-zoom-controls {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.graph-zoom-controls button {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  color: var(--fg);
-  font-size: 1rem;
-  cursor: pointer;
-}
-.graph-zoom-controls button:hover { border-color: var(--accent); }
-
-.graph-viewport {
-  position: relative;
-  height: 78vh;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-}
-/* Fill the frame so the whole viewport is pan/zoom-able; without JS the
-   viewBox still shows the entire graph scaled to fit. */
-#graph-svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; transform-origin: 0 0; }
-#graph-svg.dragging { cursor: grabbing; }
-
-.graph-node-card { fill: var(--bg-elevated); stroke: var(--border); stroke-width: 1; }
-.graph-batch-header { cursor: default; }
-.graph-node-shortid {
-  fill: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-}
-.graph-node-status { fill: var(--text-dim); font-size: 11px; }
-
-.graph-gen-thumb { cursor: pointer; }
-.graph-gen-ring { fill: url(#graph-checker); stroke: transparent; stroke-width: 2; }
-.graph-gen-thumb.rating-good .graph-gen-ring { stroke: var(--good); }
-.graph-gen-thumb.selected .graph-gen-ring { stroke: var(--accent); stroke-width: 3; }
-.graph-gen-empty { fill: #000; stroke: var(--border); stroke-dasharray: 4 3; }
-
-.graph-node-stub { cursor: pointer; }
-.graph-node-stub rect { fill: var(--bg); stroke: var(--border); stroke-dasharray: 4 3; }
-.graph-node-stub:hover rect { stroke: var(--accent); }
-.graph-node-stub text { fill: var(--text-dim); font-size: 11px; }
-
-/* Retry-chain collapse badge ("⟳N" -- expand) and re-collapse badge ("⟲" -- collapse back). */
-.graph-node-chain { cursor: pointer; }
-.graph-node-chain rect { fill: var(--accent); stroke: var(--accent); }
-.graph-node-chain:hover rect { opacity: 0.85; }
-.graph-node-chain text { fill: var(--bg); font-size: 11px; font-weight: 600; }
-
-.graph-node-recollapse { cursor: pointer; }
-.graph-node-recollapse circle { fill: var(--bg-elevated); stroke: var(--accent); stroke-width: 1.5; }
-.graph-node-recollapse:hover circle { fill: var(--accent); }
-.graph-node-recollapse text { fill: var(--accent); font-size: 11px; }
-.graph-node-recollapse:hover text { fill: var(--bg); }
-
-.graph-context-menu {
-  position: fixed;
-  z-index: 30;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  padding: 0.3rem;
-  display: flex;
-  flex-direction: column;
-  min-width: 170px;
-}
-.graph-context-menu.hidden { display: none; }
-.graph-context-menu-item {
-  background: none;
-  border: none;
-  color: var(--text);
-  text-align: left;
-  padding: 0.45rem 0.65rem;
-  font-size: 0.82rem;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.graph-context-menu-item:hover { background: var(--bg); }
-
-.graph-edge path { fill: none; stroke-width: 2; }
-.graph-edge.edge-reference path { stroke: var(--graph-reference); }
-.graph-edge.edge-relation path { stroke: var(--graph-relation); stroke-dasharray: 7 5; }
-.graph-edge.edge-story path { stroke: var(--graph-story); }
-/* Font size / outline are overridden per zoom level by initGraphPanZoom so the
-   labels stay a constant on-screen size (matching the legend text). The static
-   values are the no-JS fallback. */
-.graph-edge text {
-  font-size: var(--graph-edge-font, 13px);
-  fill: var(--text);
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: var(--graph-edge-stroke, 4px);
-  stroke-linejoin: round;
-}
 
 /* Experiments */
 .status-badge {
@@ -891,6 +1055,141 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-facts-diff { background: rgba(124, 156, 245, 0.18); }
 .exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
 .exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+
+/* Lightbox (Gallery / Bookmarks / Batch Detail のサムネイルクリック, docs/ui.md「Lightbox」)。
+   overlay/画像/prev-next はJSが組み立て、.lightbox-panel の中身だけ GET /g/:short_id?partial=lightbox
+   のfragmentをそのまま挿入する。 */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 8, 10, 0.78);
+  display: flex;
+  flex-direction: column;
+}
+.lightbox-overlay[hidden] { display: none; }
+body.lightbox-open { overflow: hidden; }
+
+.lightbox-topbar { display: none; }
+.lightbox-stage { flex: 1; min-height: 0; }
+.lightbox-image-area { position: relative; }
+.lightbox-image-area img.lightbox-image { background: var(--checker); display: block; }
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  background: rgba(27, 27, 31, 0.92);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lightbox-nav[hidden] { display: none; }
+.lightbox-prev { left: 0.75rem; }
+.lightbox-next { right: 0.75rem; }
+
+.lightbox-panel {
+  font-size: 0.85rem;
+}
+.lightbox-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; }
+.lightbox-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; font-weight: 600; }
+.lightbox-header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.lightbox-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightbox-close:hover { color: var(--text); }
+.lightbox-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--text-dim); margin: 0 0 0.6rem; }
+.lightbox-from-row { margin: 0 0 0.6rem; }
+
+@media (min-width: 1100px) {
+  .lightbox-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 1.25rem;
+    padding: 1.5rem 2rem;
+    height: 100%;
+  }
+  .lightbox-image-area { height: 100%; display: flex; align-items: center; justify-content: center; }
+  .lightbox-image-area img.lightbox-image { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 10px; }
+  .lightbox-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 1099.98px) {
+  .lightbox-overlay { background: var(--bg); }
+  .lightbox-topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    height: 3.25rem;
+    padding: 0 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .lightbox-topbar .lightbox-close { width: 2.75rem; height: 2.75rem; }
+  .lightbox-topbar-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+  .lightbox-topbar-detail-link { margin-left: auto; font-size: 0.85rem; }
+  .lightbox-stage { display: flex; flex-direction: column; overflow-y: auto; }
+  .lightbox-image-area img.lightbox-image { width: 100%; height: auto; }
+  .lightbox-nav { display: none; }
+  .lightbox-panel { padding: 0.9rem 1rem 2rem; }
+  .lightbox-panel .rate-btn { flex: 1; min-height: 2.75rem; }
+  .lightbox-panel .rating-group { flex: 1; display: flex; }
+  .lightbox-panel button,
+  .lightbox-panel input,
+  .lightbox-panel select,
+  .lightbox-panel textarea { min-height: 2.75rem; }
+  .lightbox-panel .tag-chip,
+  .lightbox-panel .publication-remove-btn,
+  .lightbox-panel .tag-remove-btn,
+  .lightbox-panel .copy-id-btn { min-height: 0; }
+}
+
+/* bad hide + undo (Gallery のみ, docs/ui.md「Gallery」)。 */
+.undo-toast {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+}
+/* .undo-toast is appended to <body>, not inside <main>, so it isn't a sibling of #compare-bar --
+   JS toggles this class instead of a :has(~ ...) selector. */
+.undo-toast.above-compare-bar { bottom: calc(1rem + 3.5rem); }
+.undo-toast-undo {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
 `;
 
 export const appJs = `
@@ -933,7 +1232,7 @@ export const appJs = `
     track('ui.error', Object.assign({ action: action, message: e && e.message ? e.message : String(e), status: e && e.status ? e.status : null }, props || {}));
   }
 
-  // --- Clipboard helpers (used by copy-id buttons and the Graph context menu) ---
+  // --- Clipboard helpers (used by copy-id buttons) ---
   function flashCopied(btn, text) {
     const original = btn.textContent;
     btn.textContent = text || 'Copied';
@@ -983,6 +1282,17 @@ export const appJs = `
   }
 
   // --- Rating ---
+  // group と Lightbox の両方に同じGenerationのrating-groupが同時に存在しうるので、
+  // data-generation-id が一致する全要素に反映する (docs/ui.md「Lightbox」)。
+  function applyRatingToGroups(id, rating) {
+    qsa('.rating-group[data-generation-id="' + id + '"]').forEach(function (group) {
+      group.setAttribute('data-current', rating || '');
+      qsa('.rate-btn', group).forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-rating') === rating);
+      });
+    });
+  }
+
   function initRating() {
     document.addEventListener('click', async function (ev) {
       const btn = ev.target.closest('.rate-btn');
@@ -994,11 +1304,9 @@ export const appJs = `
       const next = current === clicked ? null : clicked;
       try {
         await api('/api/v1/generations/' + id + '/rating', 'PUT', { rating: next });
-        group.setAttribute('data-current', next || '');
-        qsa('.rate-btn', group).forEach(function (b) {
-          b.classList.toggle('active', b.getAttribute('data-rating') === next);
-        });
+        applyRatingToGroups(id, next);
         track('rating.set', { generation_id: id, rating: next, previous: current || null });
+        if (next === 'bad') await handleBadHide(id, current || null, btn);
       } catch (e) {
         trackError('rating.set', e, { generation_id: id });
         alert('rating update failed: ' + e.message);
@@ -1024,6 +1332,96 @@ export const appJs = `
         alert('bookmark update failed: ' + e.message);
       }
     });
+  }
+
+  // --- Bad hides with undo (Gallery only, docs/ui.md「Gallery」「Lightbox」) ---
+  // [data-gallery-grid][data-hide-bad="true"] だけが対象 (bad=1 でも ids= でもない既定表示)。
+  // Bookmarks / Batch Detail のグリッドにはこの属性が無いので何もしない。
+  var undoToastTimer = null;
+
+  function showUndoToast(generationId, previousRating, restoreDom) {
+    var existing = qs('.undo-toast');
+    if (existing) existing.remove();
+    if (undoToastTimer) clearTimeout(undoToastTimer);
+
+    var toast = document.createElement('div');
+    toast.className = 'undo-toast';
+    var msg = document.createElement('span');
+    msg.textContent = 'bad にしました';
+    var undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'undo-toast-undo';
+    undoBtn.textContent = '取り消す';
+    toast.appendChild(msg);
+    toast.appendChild(undoBtn);
+    var compareBar = document.getElementById('compare-bar');
+    if (compareBar && !compareBar.classList.contains('hidden')) toast.classList.add('above-compare-bar');
+    document.body.appendChild(toast);
+
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      toast.remove();
+    }
+    undoBtn.addEventListener('click', async function () {
+      if (done) return;
+      try {
+        await api('/api/v1/generations/' + generationId + '/rating', 'PUT', { rating: previousRating });
+        applyRatingToGroups(generationId, previousRating);
+        restoreDom();
+        track('rating.undo', { generation_id: generationId, restored: previousRating });
+      } catch (e) {
+        trackError('rating.undo', e, { generation_id: generationId });
+        alert('undo failed: ' + e.message);
+      } finally {
+        finish();
+      }
+    });
+    undoToastTimer = setTimeout(finish, 5000);
+  }
+
+  // 削除前の card の次に来るカードを返す。末尾なら (.load-more があれば) 次ページを
+  // ロードしてから返す。Lightbox の「次へ進む」に使う。
+  async function cardAfter(card) {
+    var next = card.nextElementSibling;
+    if (next && next.classList && next.classList.contains('card')) return next;
+    if (next && next.classList && next.classList.contains('load-more')) {
+      var loaded = await loadMoreGalleryCards(next);
+      if (!loaded) return null;
+      var after = card.nextElementSibling;
+      return after && after.classList && after.classList.contains('card') ? after : null;
+    }
+    return null;
+  }
+
+  async function handleBadHide(id, previousRating, btn) {
+    var grid = document.querySelector('[data-gallery-grid][data-hide-bad="true"]');
+    if (!grid) return;
+    var group = grid.querySelector('.rating-group[data-generation-id="' + id + '"]');
+    var card = group ? group.closest('.card') : null;
+    if (!card) return;
+
+    var inLightbox = Boolean(lightboxOverlay && !lightboxOverlay.hidden && btn.closest('.lightbox-panel'));
+    var target = inLightbox ? await cardAfter(card) : null;
+
+    var parent = card.parentNode;
+    var nextSibling = card.nextElementSibling;
+    card.remove();
+
+    showUndoToast(id, previousRating, function () {
+      if (nextSibling && nextSibling.parentNode === parent) parent.insertBefore(card, nextSibling);
+      else parent.appendChild(card);
+    });
+
+    if (inLightbox) {
+      if (target) {
+        var link = qs('.thumb-link', target);
+        if (link) showLightbox(link.getAttribute('data-short-id'), link, 'replace');
+      } else {
+        closeLightbox();
+      }
+    }
   }
 
   // --- Experiment status transition ---
@@ -1258,6 +1656,142 @@ export const appJs = `
     });
   }
 
+  // --- Publication (Generation Detail「公開」, docs/ui.md参照) ---
+  // 'MM-DD HH:mm'（UTC）。src/ui/pages/GenerationDetail.tsx の formatPublishedAt と同じ書式。
+  function formatPublishedAt(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+
+  // src/ui/pages/GenerationDetail.tsx の PublishIcon と同じ markup。
+  var PUBLICATION_ICON_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+    '<path d="M14 2L2 7.5L7 9L9 14L14 2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path>' +
+    '<path d="M14 2L7 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>';
+
+  function updatePublicationStatus(section, count) {
+    var status = qs('.publication-status', section);
+    if (!status) return;
+    status.classList.toggle('published', count > 0);
+    status.innerHTML = count > 0 ? (PUBLICATION_ICON_SVG + ' 公開済み（' + count + '）') : '未公開';
+  }
+
+  function publicationRow(p) {
+    var li = document.createElement('li');
+    li.className = 'publication-row';
+    li.setAttribute('data-publication-id', p.id);
+
+    var time = document.createElement('span');
+    time.className = 'publication-time';
+    time.textContent = formatPublishedAt(p.published_at);
+    li.appendChild(time);
+
+    if (p.url) {
+      var a = document.createElement('a');
+      a.href = p.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = p.url;
+      li.appendChild(a);
+    } else {
+      var noUrl = document.createElement('span');
+      noUrl.className = 'publication-nourl';
+      noUrl.textContent = 'URL なし';
+      li.appendChild(noUrl);
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'publication-url-input';
+      input.placeholder = '投稿 URL';
+      li.appendChild(input);
+    }
+
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'publication-remove-btn';
+    removeBtn.textContent = '×';
+    li.appendChild(removeBtn);
+
+    return li;
+  }
+
+  function initPublicationAdd() {
+    document.addEventListener('submit', async function (ev) {
+      var form = ev.target.closest('.publication-add-form');
+      if (!form) return;
+      ev.preventDefault();
+      var section = form.closest('.publication-section');
+      var generationId = section ? section.getAttribute('data-generation-id') : null;
+      var input = qs('input[name="url"]', form);
+      var url = (input.value || '').trim();
+      try {
+        var publication = await api('/api/v1/generations/' + generationId + '/publications', 'POST', { url: url || null });
+        var list = qs('.publication-list', section);
+        if (list && !list.querySelector('[data-publication-id="' + publication.id + '"]')) {
+          list.insertBefore(publicationRow(publication), list.firstChild);
+        }
+        updatePublicationStatus(section, list ? list.children.length : 1);
+        input.value = '';
+        track('publication.add', { generation_id: generationId, has_url: Boolean(url) });
+      } catch (e) {
+        trackError('publication.add', e, { generation_id: generationId });
+        alert('failed to record publication: ' + e.message);
+      }
+    });
+  }
+
+  function initPublicationUrlSave() {
+    document.addEventListener('change', async function (ev) {
+      var input = ev.target.closest ? ev.target.closest('.publication-url-input') : null;
+      if (!input) return;
+      var row = input.closest('.publication-row');
+      var section = input.closest('.publication-section');
+      var generationId = section ? section.getAttribute('data-generation-id') : null;
+      var publicationId = row ? row.getAttribute('data-publication-id') : null;
+      var url = (input.value || '').trim();
+      if (!url) return;
+      try {
+        await api('/api/v1/publications/' + publicationId, 'PATCH', { url: url });
+        input.replaceWith((function () {
+          var a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = url;
+          return a;
+        })());
+        var noUrl = qs('.publication-nourl', row);
+        if (noUrl) noUrl.remove();
+        track('publication.url', { generation_id: generationId, has_url: true });
+      } catch (e) {
+        trackError('publication.url', e, { generation_id: generationId });
+        alert('failed to save publication url: ' + e.message);
+      }
+    });
+  }
+
+  function initPublicationRemove() {
+    document.addEventListener('click', async function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.publication-remove-btn') : null;
+      if (!btn) return;
+      var row = btn.closest('.publication-row');
+      var section = btn.closest('.publication-section');
+      var generationId = section ? section.getAttribute('data-generation-id') : null;
+      var publicationId = row ? row.getAttribute('data-publication-id') : null;
+      try {
+        await api('/api/v1/publications/' + publicationId, 'DELETE');
+        row.remove();
+        var list = qs('.publication-list', section);
+        updatePublicationStatus(section, list ? list.children.length : 0);
+        track('publication.remove', { generation_id: generationId, has_url: Boolean(row.querySelector('a')) });
+      } catch (e) {
+        trackError('publication.remove', e, { generation_id: generationId });
+        alert('failed to remove publication: ' + e.message);
+      }
+    });
+  }
+
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
   // Returns null when the form cannot be turned into options. In quiet mode (used by the
   // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
@@ -1368,6 +1902,22 @@ export const appJs = `
     });
   }
 
+  // Same <li> markup FinalizeSection (src/ui/components/FinalizeSection.tsx) renders server-side.
+  function requestStatusRow(request, showCreatedAt) {
+    var li = document.createElement('li');
+    li.className = 'request-status-' + request.status;
+    li.setAttribute('data-request-id', request.id);
+    li.setAttribute('data-request-status', request.status);
+    li.appendChild(document.createTextNode(request.status + ' '));
+    var progress = document.createElement('span');
+    progress.className = 'request-progress';
+    li.appendChild(progress);
+    if (showCreatedAt && request.created_at) li.appendChild(document.createTextNode(' · ' + request.created_at));
+    return li;
+  }
+
+  // Finalize submit は積んだ直後 (queued) の行をその場に足すだけで、以後の running/done は
+  // registerRequestElement 経由の initRequestLive が反映する (location.reload はしない)。
   function initFinalize() {
     document.addEventListener('submit', async function (ev) {
       const form = ev.target.closest('.finalize-form');
@@ -1377,9 +1927,21 @@ export const appJs = `
       const options = finalizeOptionsFrom(form);
       if (!options) return;
       try {
-        await postFinalizeRequest(shortId, options);
+        const request = await postFinalizeRequest(shortId, options);
         track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId }, options));
-        location.reload();
+        const container = form.parentElement;
+        if (container) {
+          let list = qs('.request-status-list', container);
+          if (!list) {
+            list = document.createElement('ul');
+            list.className = 'request-status-list';
+            container.insertBefore(list, form.nextSibling);
+          }
+          const row = requestStatusRow(request, true);
+          list.insertBefore(row, list.firstChild);
+          registerRequestElement(row);
+        }
+        upsertCardFinalizeBadge(shortId, request);
       } catch (e) {
         trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
         alert('finalize failed: ' + e.message);
@@ -1398,11 +1960,32 @@ export const appJs = `
       const options = finalizeOptionsFrom(form);
       if (!options) return;
       try {
+        const created = [];
         for (const shortId of ids) {
-          await postFinalizeRequest(shortId, options);
+          created.push(await postFinalizeRequest(shortId, options));
         }
         track('finalize.submit', Object.assign({ scope: 'all', count: ids.length }, options));
-        location.reload();
+        const container = form.parentElement;
+        if (container) {
+          const summary = qs('.finalize-summary', container);
+          if (summary) {
+            const match = /(\d+) queued/.exec(summary.textContent || '');
+            const currentQueued = match ? parseInt(match[1], 10) : 0;
+            summary.textContent = (summary.textContent || '').replace(/\d+ queued/, (currentQueued + created.length) + ' queued');
+          }
+          let list = qs('.request-status-list', container);
+          if (!list) {
+            list = document.createElement('ul');
+            list.className = 'request-status-list';
+            if (summary) container.insertBefore(list, summary.nextSibling);
+            else container.insertBefore(list, form.nextSibling);
+          }
+          created.forEach(function (request) {
+            const row = requestStatusRow(request, false);
+            list.insertBefore(row, list.firstChild);
+            registerRequestElement(row);
+          });
+        }
       } catch (e) {
         trackError('finalize.submit', e, { scope: 'all', count: ids.length });
         alert('finalize failed: ' + e.message);
@@ -1410,576 +1993,386 @@ export const appJs = `
     });
   }
 
-  // --- Request live status (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws
-  // から progress / status を受けて [data-request-id] 要素の表示を更新する。対象要素が
-  // ページに無ければ何もしない。
-  function initRequestLive() {
-    var els = qsa('[data-request-id]');
-    if (els.length === 0) return;
+  // --- Viewer WebSocket (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws への
+  // 接続を1本だけ共有する。requestLive (status/progress) と gallery live insertion
+  // (generation) はどちらもこの上に message type ごとのハンドラを登録するだけで、ソケットの
+  // 開閉・再接続 (1s→2s→4s…上限30s) は一箇所にまとめる。最初にどちらかが繋ぎに来た時点で開く。
+  var viewerSocket = { ws: null, connecting: false, backoff: 1000, handlers: {} };
 
-    var byId = {};
-    els.forEach(function (el) {
-      byId[el.getAttribute('data-request-id')] = el;
+  function viewerSocketOn(type, handler) {
+    if (!viewerSocket.handlers[type]) viewerSocket.handlers[type] = [];
+    viewerSocket.handlers[type].push(handler);
+  }
+
+  function viewerSocketConnect() {
+    if (viewerSocket.ws || viewerSocket.connecting) return;
+    viewerSocket.connecting = true;
+    var ws;
+    try {
+      var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
+    } catch (e) {
+      viewerSocket.connecting = false;
+      return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
+    }
+    viewerSocket.ws = ws;
+    ws.addEventListener('open', function () {
+      viewerSocket.connecting = false;
+      viewerSocket.backoff = 1000;
     });
-
-    function applyProgress(p) {
-      var el = byId[p.request_id];
-      if (!el) return;
-      var span = qs('.request-progress', el);
-      if (!span) return;
-      var text = p.phase || '';
-      if (typeof p.step === 'number' && typeof p.total === 'number') text += ' ' + p.step + '/' + p.total;
-      span.textContent = text;
-    }
-
-    function applyStatus(s) {
-      var el = byId[s.request_id];
-      if (!el) return;
-      el.className = el.className.replace(/request-status-\S+/, '').trim();
-      el.classList.add('request-status-' + s.status);
-      el.setAttribute('data-request-status', s.status);
-    }
-
-    var backoff = 1000;
-    function connect() {
-      var ws;
+    ws.addEventListener('message', function (ev) {
+      var data;
       try {
-        var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-        ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
+        data = JSON.parse(ev.data);
       } catch (e) {
-        return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
+        return;
       }
-      ws.addEventListener('open', function () {
-        backoff = 1000;
-      });
-      ws.addEventListener('message', function (ev) {
-        var data;
-        try {
-          data = JSON.parse(ev.data);
-        } catch (e) {
-          return;
-        }
-        if (data.type === 'snapshot') {
-          (data.progress || []).forEach(applyProgress);
-        } else if (data.type === 'progress') {
-          applyProgress(data);
-        } else if (data.type === 'status') {
-          applyStatus(data);
-        }
-      });
-      ws.addEventListener('close', function () {
-        setTimeout(connect, backoff);
-        backoff = Math.min(backoff * 2, 30000);
-      });
-      ws.addEventListener('error', function () {
-        try {
-          ws.close();
-        } catch (e) {}
-      });
+      if (!data || !data.type) return;
+      var handlers = viewerSocket.handlers[data.type];
+      if (handlers) handlers.forEach(function (h) { h(data); });
+    });
+    ws.addEventListener('close', function () {
+      viewerSocket.ws = null;
+      viewerSocket.connecting = false;
+      setTimeout(viewerSocketConnect, viewerSocket.backoff);
+      viewerSocket.backoff = Math.min(viewerSocket.backoff * 2, 30000);
+    });
+    ws.addEventListener('error', function () {
+      try {
+        ws.close();
+      } catch (e) {}
+    });
+  }
+
+  // --- Request live status: progress / status を受けて [data-request-id] 要素の表示を更新する
+  // ([data-request-id]は .request-status-list の <li> と GenerationCard の finalize 進捗ピルの
+  // 2種類。後者は setFinalizeBadgeText で組み立てを分ける)。ページ読み込み後に追加された要素
+  // (finalize submit / Lightbox 再オープン / gallery live insertion で挿入したカード) も
+  // registerRequestElement が都度登録し、まだ繋がっていなければソケットを開く。
+  var requestLive = { byId: {} };
+
+  function isFinalizeBadge(el) {
+    return el.classList.contains('card-finalize-badge');
+  }
+
+  // kind 表示ラベル。src/ui/components/GenerationCard.tsx の finalizeKindLabel と同じ規則。
+  function finalizeKindLabel(kind) {
+    return kind === 'repair' ? 'repair' : kind === 'masked_redraw' ? 'masked redraw' : 'finalize';
+  }
+
+  // GenerationCard.tsx の FinalizeBadge が組む構造と同じテキストを再現する。extra.step/total は
+  // running中のprogressメッセージから、extra.resultShortId はdone確定後のresult取得から渡す。
+  function setFinalizeBadgeText(el, extra) {
+    var kind = el.getAttribute('data-request-kind');
+    var status = el.getAttribute('data-request-status');
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.appendChild(document.createTextNode(finalizeKindLabel(kind) + ' · '));
+    if (status === 'running') {
+      var text = 'running';
+      if (extra && typeof extra.step === 'number' && typeof extra.total === 'number') {
+        text += ' ' + extra.step + '/' + extra.total;
+      }
+      el.appendChild(document.createTextNode(text));
+    } else if (status === 'done') {
+      el.appendChild(document.createTextNode('done → '));
+      var code = document.createElement('span');
+      code.className = 'card-finalize-result';
+      code.textContent = (extra && extra.resultShortId) || '';
+      el.appendChild(code);
+    } else {
+      el.appendChild(document.createTextNode(status || ''));
     }
-    connect();
+  }
+
+  function requestLiveApplyProgress(p) {
+    var el = requestLive.byId[p.request_id];
+    if (!el) return;
+    if (isFinalizeBadge(el)) {
+      if (el.getAttribute('data-request-status') === 'running') {
+        setFinalizeBadgeText(el, { step: p.step, total: p.total });
+      }
+      return;
+    }
+    var span = qs('.request-progress', el);
+    if (!span) return;
+    var text = p.phase || '';
+    if (typeof p.step === 'number' && typeof p.total === 'number') text += ' ' + p.step + '/' + p.total;
+    span.textContent = text;
+  }
+
+  async function requestLiveApplyStatus(s) {
+    var el = requestLive.byId[s.request_id];
+    if (!el) return;
+    el.className = el.className.replace(/request-status-\S+/, '').trim();
+    el.classList.add('request-status-' + s.status);
+    el.setAttribute('data-request-status', s.status);
+
+    if (isFinalizeBadge(el)) {
+      setFinalizeBadgeText(el);
+      if (s.status !== 'done') return;
+      try {
+        var badgeDetail = await api('/api/v1/requests/' + s.request_id, 'GET');
+        if (badgeDetail.result && badgeDetail.result.generation_ids && badgeDetail.result.generation_ids[0]) {
+          var badgeGen = await api('/api/v1/generations/' + badgeDetail.result.generation_ids[0], 'GET');
+          setFinalizeBadgeText(el, { resultShortId: badgeGen.short_id });
+        }
+      } catch (e) {
+        // 詳細取得に失敗してもstatusクラス自体は反映済みなので諦める
+      }
+      return;
+    }
+
+    if (s.status !== 'done' && s.status !== 'failed') return;
+    var existingResult = qs('.request-result', el);
+    if (existingResult) existingResult.remove();
+    try {
+      var detail = await api('/api/v1/requests/' + s.request_id, 'GET');
+      var span = document.createElement('span');
+      span.className = 'request-result';
+      if (s.status === 'done' && detail.result && detail.result.generation_ids && detail.result.generation_ids[0]) {
+        var gen = await api('/api/v1/generations/' + detail.result.generation_ids[0], 'GET');
+        span.appendChild(document.createTextNode(' — '));
+        var a = document.createElement('a');
+        a.href = '/g/' + gen.short_id;
+        a.textContent = gen.short_id;
+        span.appendChild(a);
+        el.appendChild(span);
+      } else if (s.status === 'failed' && detail.error) {
+        span.textContent = ' — ' + detail.error;
+        el.appendChild(span);
+      }
+    } catch (e) {
+      // 詳細取得に失敗してもstatusクラス自体は反映済みなので諦める
+    }
+  }
+
+  viewerSocketOn('snapshot', function (data) {
+    (data.progress || []).forEach(requestLiveApplyProgress);
+  });
+  viewerSocketOn('progress', requestLiveApplyProgress);
+  viewerSocketOn('status', requestLiveApplyStatus);
+
+  function registerRequestElement(el) {
+    var id = el.getAttribute('data-request-id');
+    if (!id) return;
+    requestLive.byId[id] = el;
+    viewerSocketConnect();
+  }
+
+  function initRequestLive() {
+    qsa('[data-request-id]').forEach(registerRequestElement);
+  }
+
+  // Finalize submitted from the Lightbox (docs/ui.md「Lightbox」): the underlying grid card
+  // (Gallery / Bookmarks / Batch Detail, found by its .thumb-link[data-short-id]) gets the same
+  // finalize badge the card fragment would render, in the queued state, live-updated from here on.
+  function upsertCardFinalizeBadge(shortId, request) {
+    var link = document.querySelector('.thumb-link[data-short-id="' + shortId + '"]');
+    if (!link) return;
+    var wrap = qs('.thumb-badges-top', link);
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'thumb-badges-top';
+      link.appendChild(wrap);
+    }
+    var badge = qs('.card-finalize-badge', wrap);
+    if (!badge) {
+      badge = document.createElement('span');
+      wrap.appendChild(badge);
+    }
+    badge.className = 'card-finalize-badge request-status-' + request.status;
+    badge.setAttribute('data-request-id', request.id);
+    badge.setAttribute('data-request-status', request.status);
+    badge.setAttribute('data-request-kind', request.kind);
+    setFinalizeBadgeText(badge);
+    registerRequestElement(badge);
+  }
+
+  // --- Gallery live insertion (docs/ui.md「Gallery」): 'generation' メッセージを受けて、
+  // 現在のview/フィルタに合致し未表示のGenerationをカードとしてグリッドへ差し込む。
+  // 上端にいなければキューに積み、新着バナーで知らせる。
+  var galleryLive = { queue: [] };
+
+  function galleryLiveGrid() {
+    var grid = document.querySelector('[data-gallery-grid]');
+    return grid && grid.getAttribute('data-gallery-live') === 'true' ? grid : null;
+  }
+
+  function galleryLiveAcceptsView(view, refinesShortId) {
+    if (view === 'raw') return !refinesShortId;
+    if (view === 'refined') return Boolean(refinesShortId);
+    return true; // 'all'
+  }
+
+  // グリッド先頭がsticky toolbarの直下に見えている(=ユーザーが最上部にいる)か。
+  function galleryAtTop() {
+    var grid = galleryLiveGrid();
+    if (!grid) return false;
+    var toolbar = qs('.gallery-toolbar');
+    var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+    var gridTop = grid.getBoundingClientRect().top;
+    return gridTop >= toolbarBottom - 1 && gridTop <= window.innerHeight;
+  }
+
+  function galleryInsertCardHtml(html, grid) {
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    var card = wrapper.querySelector('.card');
+    if (!card) return;
+    grid.insertBefore(card, grid.firstChild);
+    qsa('[data-request-id]', card).forEach(registerRequestElement);
+  }
+
+  function galleryNewArrivalsBanner() {
+    var el = document.getElementById('gallery-new-arrivals');
+    if (el) return el;
+    el = document.createElement('button');
+    el.type = 'button';
+    el.id = 'gallery-new-arrivals';
+    el.className = 'gallery-new-arrivals hidden';
+    el.innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+      '<path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>' +
+      '<span class="gallery-new-arrivals-count"></span>';
+    document.body.appendChild(el);
+    el.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      flushGalleryLiveQueue();
+    });
+    return el;
+  }
+
+  function updateGalleryNewArrivalsBanner() {
+    var el = galleryNewArrivalsBanner();
+    var count = galleryLive.queue.length;
+    if (count === 0) {
+      el.classList.add('hidden');
+      return;
+    }
+    qs('.gallery-new-arrivals-count', el).textContent = '新着 ' + count + ' 件';
+    el.classList.remove('hidden');
+  }
+
+  // banner クリック、または手動での最上部への復帰の両方から呼ぶ (docs/ui.md「Gallery」)。
+  function flushGalleryLiveQueue() {
+    var grid = galleryLiveGrid();
+    var count = galleryLive.queue.length;
+    if (!grid || count === 0) return;
+    // queue は到着順 (古い→新しい)。先頭挿入を古い方から繰り返すと最終的に新しい方が
+    // 一番上に来る (newest first)。
+    galleryLive.queue.forEach(function (html) { galleryInsertCardHtml(html, grid); });
+    galleryLive.queue = [];
+    updateGalleryNewArrivalsBanner();
+    track('gallery.new_arrivals', { count: count, mode: 'banner' });
+  }
+
+  function handleGenerationMessage(msg) {
+    var grid = galleryLiveGrid();
+    if (!grid) return;
+    var view = grid.getAttribute('data-gallery-view') || 'raw';
+    if (!galleryLiveAcceptsView(view, msg.refines_generation_short_id)) return;
+    if (grid.querySelector('.thumb-link[data-short-id="' + msg.short_id + '"]')) return; // already on the grid
+
+    fetch('/g/' + encodeURIComponent(msg.short_id) + '?partial=card')
+      .then(function (res) {
+        if (!res.ok) throw new Error('card fetch failed: ' + res.status);
+        return res.text();
+      })
+      .then(function (html) {
+        var currentGrid = galleryLiveGrid();
+        if (!currentGrid) return;
+        if (galleryAtTop()) {
+          galleryInsertCardHtml(html, currentGrid);
+          track('gallery.new_arrivals', { count: 1, mode: 'auto' });
+        } else {
+          galleryLive.queue.push(html);
+          updateGalleryNewArrivalsBanner();
+        }
+      })
+      .catch(function (e) {
+        trackError('gallery.new_arrivals', e, { short_id: msg.short_id });
+      });
+  }
+
+  viewerSocketOn('generation', handleGenerationMessage);
+
+  function initGalleryLive() {
+    if (!galleryLiveGrid()) return;
+    viewerSocketConnect();
+    window.addEventListener(
+      'scroll',
+      function () {
+        if (galleryLive.queue.length > 0 && galleryAtTop()) flushGalleryLiveQueue();
+      },
+      { passive: true },
+    );
   }
 
   // --- Compare selection bar ---
-  // Feeds off two independent selection sources: Gallery's checkboxes
-  // (.compare-check) and Graph's clicked-to-select thumbnails (.graph-gen-thumb.selected).
-  function collectCompareIds() {
-    const ids = qsa('.compare-check:checked').map(function (c) { return c.value; });
-    qsa('.graph-gen-thumb.selected').forEach(function (t) {
-      const id = t.getAttribute('data-gen-short-id');
-      if (id && ids.indexOf(id) === -1) ids.push(id);
-    });
-    return ids;
+  // Compare entry はカードのチェックボックスではなく、Lightboxの「比較に追加」ボタンが
+  // sessionStorageのcompare setをトグルする (docs/ui.md「Compare entry」)。#compare-bar は
+  // Gallery / Bookmarks / Batch Detailのどのページでもこのsetから描画する。
+  var COMPARE_SET_KEY = 'chimera-compare-set';
+
+  function readCompareSet() {
+    try {
+      var raw = sessionStorage.getItem(COMPARE_SET_KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function writeCompareSet(ids) {
+    try {
+      sessionStorage.setItem(COMPARE_SET_KEY, JSON.stringify(ids));
+    } catch (e) {
+      // sessionStorage unavailable (private mode 等) -- compare setはタブ内限定で諦める
+    }
   }
   function updateCompareBar() {
-    const bar = document.getElementById('compare-bar');
-    if (!bar) return;
-    const ids = collectCompareIds();
-    if (ids.length > 0) {
-      bar.classList.remove('hidden');
-      const displayCount = Math.min(ids.length, 9);
-      qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
-      qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
-    } else {
-      bar.classList.add('hidden');
+    var ids = readCompareSet();
+    var bar = document.getElementById('compare-bar');
+    if (bar) {
+      if (ids.length > 0) {
+        bar.classList.remove('hidden');
+        var displayCount = Math.min(ids.length, 9);
+        qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
+        qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
+      } else {
+        bar.classList.add('hidden');
+      }
     }
+    var addBtn = qs('.compare-add-btn');
+    if (addBtn) {
+      var id = addBtn.getAttribute('data-generation-id');
+      var active = ids.indexOf(id) !== -1;
+      addBtn.classList.toggle('active', active);
+      addBtn.textContent = active ? '比較から外す' : '比較に追加';
+    }
+  }
+  function toggleCompare(id) {
+    if (!id) return;
+    var ids = readCompareSet();
+    var idx = ids.indexOf(id);
+    if (idx === -1) ids.push(id);
+    else ids.splice(idx, 1);
+    writeCompareSet(ids);
+    updateCompareBar();
+    track('compare.add', { generation_id: id, count: ids.length });
   }
   function initCompareBar() {
-    const bar = document.getElementById('compare-bar');
-    if (!bar) return;
-    document.addEventListener('change', function (ev) {
-      if (ev.target.classList && ev.target.classList.contains('compare-check')) updateCompareBar();
-    });
     document.addEventListener('click', function (ev) {
-      const link = ev.target.closest ? ev.target.closest('#compare-link') : null;
-      if (!link) return;
-      track('compare.open', { count: collectCompareIds().length });
-    });
-    updateCompareBar();
-  }
-
-  // --- Graph thumbnail selection (feeds the compare bar) ---
-  function initGraphSelection() {
-    const svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    svg.addEventListener('click', function (ev) {
-      const thumb = ev.target.closest ? ev.target.closest('.graph-gen-thumb') : null;
-      if (!thumb) return;
-      thumb.classList.toggle('selected');
-      updateCompareBar();
-    });
-  }
-
-  // --- Graph scope selector (filters which Batches /graph renders) ---
-  // Scope lives only in the URL query string -- no localStorage persistence.
-  function goToGraphScope(query) {
-    window.location.href = query ? '/graph?' + query : '/graph';
-  }
-
-  function initGraphScope() {
-    var select = document.getElementById('graph-scope');
-    if (!select) return;
-    select.addEventListener('change', function () {
-      var value = select.value;
-      var query = '';
-      if (value === 'active') query = 'active=1';
-      else if (value === 'all') query = 'all=1';
-      else if (value.indexOf('story:') === 0) query = 'story=' + value.slice('story:'.length);
-      else if (value.indexOf('root:') === 0) query = 'root=' + value.slice('root:'.length);
-      track('graph.scope', { scope: value });
-      goToGraphScope(query);
-    });
-  }
-
-  // --- Graph drill-down stub (hidden-neighbor placeholder) ---
-  function initGraphStubs() {
-    var svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    svg.addEventListener('click', function (ev) {
-      var stub = ev.target.closest ? ev.target.closest('.graph-node-stub') : null;
-      if (!stub) return;
-      var shortId = stub.getAttribute('data-batch-short-id');
-      if (!shortId) return;
-      goToGraphScope('root=' + shortId + '&depth=3');
-    });
-  }
-
-  // --- Graph chain-collapse badges ("⟳N" expand / "⟲" re-collapse) ---
-  // Unlike the scope selector, these preserve every other query param -- only expand changes.
-  function withExpandParam(shortId, add) {
-    var params = new URLSearchParams(window.location.search);
-    var ids = (params.get('expand') || '').split(',').filter(Boolean);
-    if (add) {
-      if (ids.indexOf(shortId) === -1) ids.push(shortId);
-    } else {
-      ids = ids.filter(function (id) { return id !== shortId; });
-    }
-    if (ids.length > 0) params.set('expand', ids.join(','));
-    else params.delete('expand');
-    var qs = params.toString();
-    window.location.href = qs ? '/graph?' + qs : '/graph';
-  }
-
-  function initGraphChainBadges() {
-    var svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    svg.addEventListener('click', function (ev) {
-      var chainBadge = ev.target.closest ? ev.target.closest('.graph-node-chain') : null;
-      if (chainBadge) {
-        var expandShortId = chainBadge.getAttribute('data-batch-short-id');
-        if (expandShortId) withExpandParam(expandShortId, true);
+      var addBtn = ev.target.closest ? ev.target.closest('.compare-add-btn') : null;
+      if (addBtn) {
+        toggleCompare(addBtn.getAttribute('data-generation-id'));
         return;
       }
-      var recollapseBadge = ev.target.closest ? ev.target.closest('.graph-node-recollapse') : null;
-      if (recollapseBadge) {
-        var collapseShortId = recollapseBadge.getAttribute('data-batch-short-id');
-        if (collapseShortId) withExpandParam(collapseShortId, false);
-      }
+      const link = ev.target.closest ? ev.target.closest('#compare-link') : null;
+      if (!link) return;
+      track('compare.open', { count: readCompareSet().length });
     });
-  }
-
-  // --- Graph right-click context menu ---
-  function initGraphContextMenu() {
-    const svg = document.getElementById('graph-svg');
-    const menu = document.getElementById('graph-context-menu');
-    if (!svg || !menu) return;
-
-    function closeMenu() {
-      menu.classList.add('hidden');
-      menu.innerHTML = '';
-    }
-
-    function addItem(label, onClick) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'graph-context-menu-item';
-      btn.textContent = label;
-      btn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        onClick(btn);
-      });
-      menu.appendChild(btn);
-    }
-
-    svg.addEventListener('contextmenu', function (ev) {
-      const genEl = ev.target.closest ? ev.target.closest('[data-gen-short-id]') : null;
-      const batchEl = !genEl && ev.target.closest ? ev.target.closest('[data-batch-short-id]') : null;
-      if (!genEl && !batchEl) return;
-      ev.preventDefault();
-
-      menu.innerHTML = '';
-
-      if (genEl) {
-        const shortId = genEl.getAttribute('data-gen-short-id');
-        const batchShortId = genEl.getAttribute('data-batch-short-id');
-        addItem('Copy ID', function (btn) { copyText(shortId, btn); });
-        addItem('Copy URL', function (btn) { copyText(window.location.origin + '/g/' + shortId, btn); });
-        addItem('Open detail', function () {
-          window.open(window.location.origin + '/g/' + shortId, '_blank');
-          closeMenu();
-        });
-        const selected = genEl.classList.contains('selected');
-        addItem(selected ? 'Remove from compare' : 'Add to compare', function () {
-          genEl.classList.toggle('selected');
-          updateCompareBar();
-          closeMenu();
-        });
-        addItem('Show subgraph from here', function () {
-          goToGraphScope('root=' + batchShortId);
-        });
-      } else if (batchEl) {
-        const shortId = batchEl.getAttribute('data-batch-short-id');
-        addItem('Copy ID', function (btn) { copyText(shortId, btn); });
-        addItem('Copy URL', function (btn) { copyText(window.location.origin + '/b/' + shortId, btn); });
-        addItem('Open detail', function () {
-          window.open(window.location.origin + '/b/' + shortId, '_blank');
-          closeMenu();
-        });
-        addItem('Show subgraph from here', function () {
-          goToGraphScope('root=' + shortId);
-        });
-      }
-
-      menu.style.left = ev.clientX + 'px';
-      menu.style.top = ev.clientY + 'px';
-      menu.classList.remove('hidden');
-    });
-
-    document.addEventListener('click', function () {
-      closeMenu();
-    });
-    document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') closeMenu();
-    });
-    document.addEventListener('scroll', function () {
-      closeMenu();
-    }, true);
-    svg.addEventListener('wheel', function () {
-      closeMenu();
-    });
-  }
-
-  // --- Story relation inline edit ---
-  function initStoryRelationEdit() {
-    document.addEventListener('click', function (ev) {
-      const btn = ev.target.closest('.rel-edit-toggle');
-      if (!btn) return;
-      const targetId = btn.getAttribute('data-target');
-      const form = document.getElementById(targetId);
-      if (form) form.classList.toggle('hidden');
-    });
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.rel-edit-form');
-      if (!form) return;
-      ev.preventDefault();
-      const storyId = form.getAttribute('data-story-id');
-      const relationId = form.getAttribute('data-relation-id');
-      const label = qs('input[name="label"]', form).value;
-      const description = qs('textarea[name="description"]', form).value;
-      try {
-        await api('/api/v1/stories/' + storyId + '/relations/' + relationId, 'PATCH', { label: label, description: description });
-        const display = document.querySelector('.rel-label-display[data-relation-id="' + relationId + '"]');
-        if (display) display.textContent = label || '(no label)';
-        form.classList.add('hidden');
-        track('story_relation.save', { story_id: storyId, relation_id: relationId });
-      } catch (e) {
-        trackError('story_relation.save', e, { story_id: storyId, relation_id: relationId });
-        alert('failed to update relation: ' + e.message);
-      }
-    });
-  }
-
-  // --- Graph pan/zoom ---
-  // During an active gesture (wheel, pinch, drag) this avoids touching the
-  // SVG's viewBox: a viewBox write forces the whole SVG — including the
-  // dozens of full-resolution PNG thumbnails it embeds as <image> — to
-  // re-rasterize, which is what makes pan/zoom feel janky. Instead the
-  // gesture only moves a CSS transform on the SVG element (GPU-composited,
-  // no re-rasterization). Once the gesture goes idle the transform is folded
-  // into the viewBox ("commit") and reset to identity, so viewBox stays the
-  // single source of truth between gestures — initial layout, the zoom
-  // buttons, persisted zoom, and graph selection/context-menu code all
-  // read/write viewBox only, never the transform.
-  function initGraphPanZoom() {
-    var svg = document.getElementById('graph-svg');
-    if (!svg) return;
-    var parts = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
-    if (parts.length !== 4 || parts.some(function (n) { return isNaN(n); })) return;
-
-    var vb = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
-
-    // The SVG fills its frame (100%/100%). Initial view: open at the zoom scale
-    // the user last used (persisted in localStorage), defaulting to 0.7x of the
-    // design size. Content is centered horizontally; if taller than the frame,
-    // the newest (bottom) layer is anchored at the bottom edge.
-    var ZOOM_STORE_KEY = 'chimera-graph-zoom';
-    var scale = 0.7;
-    try {
-      var stored = parseFloat(localStorage.getItem(ZOOM_STORE_KEY) || '');
-      if (stored > 0.05 && stored < 20) scale = stored;
-    } catch (e) { /* localStorage unavailable */ }
-
-    var contentW = vb.w;
-    var contentH = vb.h;
-    var frame = svg.getBoundingClientRect();
-    if (frame.width > 0 && frame.height > 0) {
-      vb.w = frame.width / scale;
-      vb.h = frame.height / scale;
-      vb.x = (contentW - vb.w) / 2;
-      if (vb.h >= contentH) {
-        vb.y = (contentH - vb.h) / 2;
-      } else {
-        vb.y = contentH - vb.h;
-      }
-    }
-
-    var baseW = frame.width > 0 ? frame.width : vb.w;
-    var minScale = 0.05;
-    var maxScale = 20;
-
-    // pending is the not-yet-committed CSS transform layered on top of
-    // vb, expressed in the SVG element's own screen-space pixels: a point
-    // at local (pre-transform) coordinate p renders at k*p + (tx,ty).
-    // frameRect is the element's bounding rect cached while the transform
-    // is identity (init, right after commit, and on resize) — it must never
-    // be re-read while a gesture is live, because the CSS transform itself
-    // would skew getBoundingClientRect.
-    var pending = { k: 1, tx: 0, ty: 0 };
-    var frameRect = frame;
-
-    function persistScale() {
-      if (frame.width <= 0) return;
-      try {
-        localStorage.setItem(ZOOM_STORE_KEY, String(frame.width / vb.w));
-      } catch (e) { /* localStorage unavailable */ }
-    }
-
-    var initial = { x: vb.x, y: vb.y, w: vb.w, h: vb.h };
-    apply();
-
-    var LABEL_SCREEN_PX = 14; // 凡例テキストと同じ見た目サイズに揃える
-
-    function apply() {
-      svg.setAttribute('viewBox', vb.x + ' ' + vb.y + ' ' + vb.w + ' ' + vb.h);
-      var rect = svg.getBoundingClientRect();
-      if (rect.width > 0) {
-        var fontSvg = (LABEL_SCREEN_PX * vb.w) / rect.width;
-        svg.style.setProperty('--graph-edge-font', fontSvg + 'px');
-        svg.style.setProperty('--graph-edge-stroke', fontSvg * 0.3 + 'px');
-      }
-    }
-
-    function zoomAt(clientX, clientY, factor) {
-      var rect = svg.getBoundingClientRect();
-      var pointerX = vb.x + ((clientX - rect.left) / rect.width) * vb.w;
-      var pointerY = vb.y + ((clientY - rect.top) / rect.height) * vb.h;
-      var newW = vb.w * factor;
-      var newH = vb.h * factor;
-      var scale = baseW / newW;
-      if (scale < minScale || scale > maxScale) return;
-      vb.x = pointerX - (pointerX - vb.x) * (newW / vb.w);
-      vb.y = pointerY - (pointerY - vb.y) * (newH / vb.h);
-      vb.w = newW;
-      vb.h = newH;
-      apply();
-      persistScale();
-    }
-
-    // --- transform-during-gesture / commit-on-idle plumbing ---
-
-    var rafPending = false;
-    function scheduleTransformFrame() {
-      if (rafPending) return;
-      rafPending = true;
-      requestAnimationFrame(function () {
-        rafPending = false;
-        svg.style.transform = 'translate(' + pending.tx + 'px,' + pending.ty + 'px) scale(' + pending.k + ')';
-      });
-    }
-
-    function beginGesture() {
-      svg.style.willChange = 'transform';
-    }
-
-    function endGesture() {
-      svg.style.willChange = '';
-    }
-
-    var COMMIT_DEBOUNCE_MS = 150;
-    var commitTimer = null;
-    function scheduleDebouncedCommit() {
-      if (commitTimer) clearTimeout(commitTimer);
-      commitTimer = setTimeout(function () {
-        commitTimer = null;
-        commit();
-      }, COMMIT_DEBOUNCE_MS);
-    }
-    function cancelDebouncedCommit() {
-      if (commitTimer) {
-        clearTimeout(commitTimer);
-        commitTimer = null;
-      }
-    }
-
-    // Folds the pending CSS transform into viewBox and resets it to
-    // identity. A no-op (besides clearing will-change) when nothing is
-    // pending, so it is safe to call unconditionally before any code path
-    // that reads vb or the SVG's rendered position.
-    function commit() {
-      cancelDebouncedCommit();
-      if (pending.k !== 1 || pending.tx !== 0 || pending.ty !== 0) {
-        var oldW = vb.w;
-        var oldH = vb.h;
-        var k = pending.k;
-        vb.w = oldW / k;
-        vb.h = oldH / k;
-        vb.x = vb.x - (pending.tx / k) * (oldW / frameRect.width);
-        vb.y = vb.y - (pending.ty / k) * (oldH / frameRect.height);
-        pending = { k: 1, tx: 0, ty: 0 };
-        svg.style.transform = '';
-        apply();
-        frameRect = svg.getBoundingClientRect();
-        persistScale();
-      }
-      endGesture();
-    }
-
-    // Discards the pending transform without folding it into vb — used by
-    // the reset button, which replaces vb outright.
-    function discardPending() {
-      cancelDebouncedCommit();
-      pending = { k: 1, tx: 0, ty: 0 };
-      svg.style.transform = '';
-      endGesture();
-    }
-
-    // A click or right-click anywhere can reach graph selection / the
-    // context menu (see initGraphSelection / initGraphContextMenu), which
-    // read the SVG's rendered position — so flush any in-flight gesture
-    // ahead of those handlers via a capturing listener.
-    document.addEventListener('contextmenu', commit, true);
-    document.addEventListener('click', commit, true);
-
-    window.addEventListener('resize', function () {
-      if (pending.k === 1 && pending.tx === 0 && pending.ty === 0) {
-        frameRect = svg.getBoundingClientRect();
-      }
-    });
-
-    function pendingZoomAt(clientX, clientY, factor) {
-      var f = 1 / factor;
-      var newK = f * pending.k;
-      var newScale = baseW / (vb.w / newK);
-      if (newScale < minScale || newScale > maxScale) return;
-      var cx = clientX - frameRect.left;
-      var cy = clientY - frameRect.top;
-      pending.tx = f * pending.tx + (1 - f) * cx;
-      pending.ty = f * pending.ty + (1 - f) * cy;
-      pending.k = newK;
-      scheduleTransformFrame();
-    }
-
-    // Trackpad-first wheel handling: pinch gestures reach the browser as wheel
-    // events with ctrlKey=true (Cmd+scroll opts in explicitly), so those zoom
-    // around the cursor; a plain two-finger scroll pans instead of zooming.
-    svg.addEventListener('wheel', function (ev) {
-      ev.preventDefault();
-      beginGesture();
-      if (ev.ctrlKey || ev.metaKey) {
-        pendingZoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.01));
-      } else {
-        pending.tx -= ev.deltaX;
-        pending.ty -= ev.deltaY;
-        scheduleTransformFrame();
-      }
-      scheduleDebouncedCommit();
-    }, { passive: false });
-
-    // Safari sends pinches as gesture* events instead of ctrl+wheel.
-    var gestureScale = 1;
-    svg.addEventListener('gesturestart', function (ev) {
-      ev.preventDefault();
-      gestureScale = ev.scale;
-      beginGesture();
-    });
-    svg.addEventListener('gesturechange', function (ev) {
-      ev.preventDefault();
-      if (!ev.scale) return;
-      pendingZoomAt(ev.clientX, ev.clientY, gestureScale / ev.scale);
-      gestureScale = ev.scale;
-      scheduleDebouncedCommit();
-    });
-    svg.addEventListener('gestureend', function (ev) {
-      ev.preventDefault();
-      commit();
-    });
-
-    var controls = document.getElementById('graph-zoom-controls');
-    if (controls) {
-      controls.addEventListener('click', function (ev) {
-        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-zoom]') : null;
-        if (!btn) return;
-        var action = btn.getAttribute('data-zoom');
-        if (action === 'reset') {
-          discardPending();
-          vb.x = initial.x; vb.y = initial.y; vb.w = initial.w; vb.h = initial.h;
-          persistScale();
-          apply();
-          frameRect = svg.getBoundingClientRect();
-          return;
-        }
-        commit();
-        var rect = svg.getBoundingClientRect();
-        if (action === 'in') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 0.8);
-        else if (action === 'out') zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
-      });
-    }
-
-    var dragging = false;
-    var lastX = 0;
-    var lastY = 0;
-    svg.addEventListener('mousedown', function (ev) {
-      if (ev.target && ev.target.closest && ev.target.closest('a')) return;
-      dragging = true;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      svg.classList.add('dragging');
-      beginGesture();
-    });
-    window.addEventListener('mousemove', function (ev) {
-      if (!dragging) return;
-      pending.tx += ev.clientX - lastX;
-      pending.ty += ev.clientY - lastY;
-      lastX = ev.clientX;
-      lastY = ev.clientY;
-      scheduleTransformFrame();
-    });
-    window.addEventListener('mouseup', function () {
-      if (!dragging) return;
-      dragging = false;
-      svg.classList.remove('dragging');
-      commit();
-    });
+    updateCompareBar();
   }
 
   // --- A/B judge page ---
@@ -2146,6 +2539,330 @@ export const appJs = `
     });
   }
 
+  // --- Gallery / Bookmarks view switch + bad toggle (src/ui/components/ViewSwitch.tsx,
+  // src/ui/pages/Gallery.tsx .bad-toggle) --- Fires on click, before the normal GET
+  // navigation happens -- preventDefault is intentionally not called.
+  function initGalleryView() {
+    document.addEventListener('click', function (ev) {
+      const viewLink = ev.target.closest ? ev.target.closest('.view-switch a') : null;
+      const badLink = ev.target.closest ? ev.target.closest('.bad-toggle') : null;
+      if (viewLink) {
+        const badToggle = qs('.bad-toggle');
+        const bad = badToggle ? badToggle.getAttribute('aria-pressed') === 'true' : false;
+        track('gallery.view', { view: viewLink.getAttribute('data-view'), bad: bad });
+      } else if (badLink) {
+        const currentView = qs('.view-switch a[aria-current="true"]');
+        const view = currentView ? currentView.getAttribute('data-view') : null;
+        const bad = badLink.getAttribute('aria-pressed') !== 'true';
+        track('gallery.view', { view: view, bad: bad });
+      }
+    });
+  }
+
+  // --- Gallery infinite scroll (src/ui/pages/Gallery.tsx .load-more) ---
+  // Fetches the .load-more link's href with partial=1, appended as an HTML fragment
+  // (cards + the next .load-more link, or nothing). loadMoreGalleryCards is shared with the
+  // Lightbox's "next" navigation past the last loaded card (docs/ui.md「Lightbox」).
+  var galleryLoadMoreInFlight = false;
+  var galleryScrollObserver = null;
+
+  function galleryPartialUrl(href) {
+    const url = new URL(href, location.href);
+    url.searchParams.set('partial', '1');
+    return url.toString();
+  }
+
+  async function loadMoreGalleryCards(link) {
+    const grid = document.querySelector('[data-gallery-grid]');
+    if (!grid || !link) return false;
+    if (galleryLoadMoreInFlight) return false;
+    galleryLoadMoreInFlight = true;
+    if (galleryScrollObserver) galleryScrollObserver.unobserve(link);
+    try {
+      const res = await fetch(galleryPartialUrl(link.getAttribute('href')));
+      if (!res.ok) return false;
+      const html = await res.text();
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextLoadMore = wrapper.querySelector('.load-more');
+      qsa('.card, .load-more', wrapper).forEach(function (node) {
+        if (node !== nextLoadMore) grid.insertBefore(node, link);
+      });
+      link.remove();
+      if (nextLoadMore) {
+        grid.appendChild(nextLoadMore);
+        if (galleryScrollObserver) galleryScrollObserver.observe(nextLoadMore);
+      }
+      return true;
+    } catch (e) {
+      trackError('gallery.load_more', e, {});
+      return false;
+    } finally {
+      galleryLoadMoreInFlight = false;
+    }
+  }
+
+  function initGalleryInfiniteScroll() {
+    const grid = document.querySelector('[data-gallery-grid]');
+    if (!grid || !window.IntersectionObserver) return;
+    galleryScrollObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) loadMoreGalleryCards(entry.target);
+      });
+    });
+    const initial = qs('.load-more', grid);
+    if (initial) galleryScrollObserver.observe(initial);
+  }
+
+  // --- Lightbox (Gallery / Bookmarks / Batch Detail, docs/ui.md「Lightbox」) ---
+  // A plain left-click on a card thumbnail opens this instead of navigating; modifier/middle
+  // clicks and no-JS still follow the <a href="/g/{short_id}"> normally. The overlay chrome
+  // (image, prev/next, topbar) is built once here; only .lightbox-panel's contents come from
+  // the server fragment (GET /g/:short_id?partial=lightbox), so behaviour stays defined once
+  // in the section components it shares with Generation Detail.
+  var lightboxOverlay = null;
+  var lightboxStage = null;
+  var lightboxImage = null;
+  var lightboxPanel = null;
+  var lightboxPrevBtn = null;
+  var lightboxNextBtn = null;
+  var lightboxTopbarShortId = null;
+  var lightboxTopbarDetailLink = null;
+  var lightboxCurrentLink = null;
+  var lightboxLastFocused = null;
+  var lightboxLoadToken = 0;
+  var lightboxPushedHistory = false;
+
+  function ensureLightboxOverlay() {
+    if (lightboxOverlay) return lightboxOverlay;
+    const overlay = document.createElement('div');
+    overlay.id = 'lightbox-overlay';
+    overlay.className = 'lightbox-overlay';
+    overlay.hidden = true;
+    overlay.innerHTML =
+      '<div class="lightbox-topbar">' +
+        '<button type="button" class="lightbox-close" aria-label="close"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 4L16 16M16 4L4 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg></button>' +
+        '<span class="lightbox-topbar-short-id"></span>' +
+        '<a class="lightbox-topbar-detail-link" href="#">詳細ページ ↗</a>' +
+      '</div>' +
+      '<div class="lightbox-stage">' +
+        '<div class="lightbox-image-area">' +
+          '<button type="button" class="lightbox-nav lightbox-prev" aria-label="prev">‹</button>' +
+          '<img class="lightbox-image" alt="">' +
+          '<button type="button" class="lightbox-nav lightbox-next" aria-label="next">›</button>' +
+        '</div>' +
+        '<div class="lightbox-panel"></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    lightboxOverlay = overlay;
+    lightboxStage = qs('.lightbox-stage', overlay);
+    lightboxImage = qs('.lightbox-image', overlay);
+    lightboxPanel = qs('.lightbox-panel', overlay);
+    lightboxPrevBtn = qs('.lightbox-prev', overlay);
+    lightboxNextBtn = qs('.lightbox-next', overlay);
+    lightboxTopbarShortId = qs('.lightbox-topbar-short-id', overlay);
+    lightboxTopbarDetailLink = qs('.lightbox-topbar-detail-link', overlay);
+
+    // Swipe (narrow layout): horizontal = prev/next, vertical-down from the top of the scroll = close.
+    var touchStartX = null;
+    var touchStartY = null;
+    var touchStartAtTop = false;
+    var SWIPE_THRESHOLD = 50;
+    lightboxStage.addEventListener(
+      'touchstart',
+      function (ev) {
+        if (ev.touches.length !== 1) return;
+        touchStartX = ev.touches[0].clientX;
+        touchStartY = ev.touches[0].clientY;
+        touchStartAtTop = lightboxStage.scrollTop === 0;
+      },
+      { passive: true },
+    );
+    lightboxStage.addEventListener(
+      'touchend',
+      function (ev) {
+        if (touchStartX === null) return;
+        var touch = ev.changedTouches[0];
+        var dx = touch.clientX - touchStartX;
+        var dy = touch.clientY - touchStartY;
+        touchStartX = null;
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+          lightboxNavigate(dx < 0 ? 1 : -1);
+        } else if (dy > SWIPE_THRESHOLD && dy > Math.abs(dx) && touchStartAtTop) {
+          closeLightbox();
+        }
+      },
+      { passive: true },
+    );
+
+    return overlay;
+  }
+
+  function lightboxCardsInOrder() {
+    return qsa('.thumb-link');
+  }
+
+  function lightboxFindByShortId(shortId) {
+    var cards = lightboxCardsInOrder();
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i].getAttribute('data-short-id') === shortId) return cards[i];
+    }
+    return null;
+  }
+
+  function lightboxUpdateNavButtons() {
+    if (!lightboxPrevBtn || !lightboxNextBtn) return;
+    var cards = lightboxCardsInOrder();
+    var idx = lightboxCurrentLink ? cards.indexOf(lightboxCurrentLink) : -1;
+    lightboxPrevBtn.hidden = idx <= 0;
+    var hasMoreLink = Boolean(qs('.load-more'));
+    lightboxNextBtn.hidden = idx < 0 ? true : !(idx < cards.length - 1 || hasMoreLink);
+  }
+
+  async function lightboxNavigate(dir) {
+    var cards = lightboxCardsInOrder();
+    var idx = lightboxCurrentLink ? cards.indexOf(lightboxCurrentLink) : -1;
+    if (idx < 0) return;
+    var nextIdx = idx + dir;
+    if (dir > 0 && nextIdx >= cards.length) {
+      var link = qs('.load-more');
+      if (!link) return;
+      var loaded = await loadMoreGalleryCards(link);
+      if (!loaded) return;
+      cards = lightboxCardsInOrder();
+    }
+    var target = cards[nextIdx];
+    if (!target) return;
+    showLightbox(target.getAttribute('data-short-id'), target, 'replace');
+  }
+
+  // mode: 'push' (user opened a new image -- adds a history entry), 'replace' (navigating
+  // within an already-open lightbox), or 'none' (syncing to an already-current #g= hash).
+  function showLightbox(shortId, link, mode) {
+    if (!shortId) return;
+    ensureLightboxOverlay();
+    lightboxCurrentLink = link || lightboxFindByShortId(shortId);
+    if (!lightboxLastFocused) lightboxLastFocused = document.activeElement;
+    document.body.classList.add('lightbox-open');
+    lightboxOverlay.hidden = false;
+    lightboxUpdateNavButtons();
+
+    var img = lightboxCurrentLink ? qs('.thumb-fg', lightboxCurrentLink) : null;
+    lightboxImage.src = img ? img.src : '/g/' + encodeURIComponent(shortId) + '/image';
+    lightboxImage.alt = shortId;
+    lightboxTopbarShortId.textContent = shortId;
+    lightboxTopbarDetailLink.setAttribute('href', '/g/' + shortId);
+
+    const token = ++lightboxLoadToken;
+    fetch('/g/' + encodeURIComponent(shortId) + '?partial=lightbox')
+      .then(function (res) {
+        if (!res.ok) throw new Error('failed to load generation ' + shortId);
+        return res.text();
+      })
+      .then(function (html) {
+        if (token !== lightboxLoadToken) return;
+        lightboxPanel.innerHTML = html;
+        qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
+        updateCompareBar();
+      })
+      .catch(function (e) {
+        if (token !== lightboxLoadToken) return;
+        trackError('lightbox.open', e, { short_id: shortId });
+      });
+
+    if (mode === 'push' || mode === 'replace') {
+      const url = new URL(location.href);
+      url.hash = 'g=' + encodeURIComponent(shortId);
+      if (mode === 'push' && !lightboxPushedHistory) {
+        history.pushState({ lightbox: true }, '', url);
+        lightboxPushedHistory = true;
+      } else {
+        history.replaceState({ lightbox: true }, '', url);
+      }
+    }
+  }
+
+  function doCloseLightbox() {
+    if (!lightboxOverlay) return;
+    lightboxOverlay.hidden = true;
+    document.body.classList.remove('lightbox-open');
+    lightboxLoadToken++;
+    lightboxCurrentLink = null;
+    if (lightboxLastFocused && typeof lightboxLastFocused.focus === 'function') {
+      try {
+        lightboxLastFocused.focus();
+      } catch (e) {}
+    }
+    lightboxLastFocused = null;
+    lightboxPushedHistory = false;
+  }
+
+  // Manual close (X / Esc / backdrop) goes through history.back() only when this page pushed the
+  // #g= entry, so the Back button and the close button agree; doCloseLightbox (called from the
+  // popstate handler) does the DOM teardown. A lightbox restored from the URL on load has no
+  // entry of ours to pop -- going back there would leave the page -- so it just drops the hash.
+  function closeLightbox() {
+    if (!lightboxOverlay || lightboxOverlay.hidden) return;
+    if (lightboxPushedHistory) {
+      history.back();
+      return;
+    }
+    if (/(?:^|#)g=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+    doCloseLightbox();
+  }
+
+  function initLightbox() {
+    document.addEventListener('click', function (ev) {
+      const link = ev.target.closest ? ev.target.closest('.thumb-link') : null;
+      if (!link) return;
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+      showLightbox(link.getAttribute('data-short-id'), link, 'push');
+    });
+
+    document.addEventListener('click', function (ev) {
+      if (!lightboxOverlay) return;
+      if (ev.target.closest && ev.target.closest('.lightbox-close')) {
+        closeLightbox();
+        return;
+      }
+      if (ev.target === lightboxOverlay) {
+        closeLightbox();
+        return;
+      }
+      const prev = ev.target.closest ? ev.target.closest('.lightbox-prev') : null;
+      if (prev) {
+        lightboxNavigate(-1);
+        return;
+      }
+      const next = ev.target.closest ? ev.target.closest('.lightbox-next') : null;
+      if (next) {
+        lightboxNavigate(1);
+      }
+    });
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && lightboxOverlay && !lightboxOverlay.hidden) closeLightbox();
+    });
+
+    window.addEventListener('popstate', function () {
+      const match = /(?:^|#)g=([^&]+)/.exec(location.hash);
+      if (match) {
+        const shortId = decodeURIComponent(match[1]);
+        showLightbox(shortId, lightboxFindByShortId(shortId), 'none');
+      } else {
+        doCloseLightbox();
+      }
+    });
+
+    const initialMatch = /(?:^|#)g=([^&]+)/.exec(location.hash);
+    if (initialMatch) {
+      const shortId = decodeURIComponent(initialMatch[1]);
+      showLightbox(shortId, lightboxFindByShortId(shortId), 'none');
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -2154,21 +2871,21 @@ export const appJs = `
     initTagRemove();
     initTagSuggestions();
     initNoteForm();
+    initPublicationAdd();
+    initPublicationUrlSave();
+    initPublicationRemove();
     initFinalize();
     initFinalizeAll();
     initFinalizeBackdropColor();
     initFinalizeRepairPad();
     initFinalizePreview();
     initGalleryFilter();
+    initGalleryView();
+    initGalleryInfiniteScroll();
+    initGalleryLive();
+    initLightbox();
     initRequestLive();
     initCompareBar();
-    initStoryRelationEdit();
-    initGraphScope();
-    initGraphPanZoom();
-    initGraphSelection();
-    initGraphStubs();
-    initGraphChainBadges();
-    initGraphContextMenu();
     initCopyIdButtons();
     initCompareCols();
     initExperimentStatus();
