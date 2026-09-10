@@ -157,7 +157,7 @@ export function GalleryPage({
         <p class="empty-state">No generations match this filter.</p>
       ) : (
         <div
-          class="grid"
+          class="grid grid-gallery"
           data-gallery-grid
           data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}
           data-gallery-view={filters.view}
