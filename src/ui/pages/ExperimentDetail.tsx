@@ -562,15 +562,17 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
 }
 
 export function ExperimentDetailPage({
+  path,
   experiment,
   judgments,
 }: {
+  path: string;
   experiment: ExperimentDetailData;
   judgments: ExperimentJudgmentSummary;
 }) {
   const baseline = findBaseline(experiment.runs);
   return (
-    <Layout title={experiment.name}>
+    <Layout title={experiment.name} path={path}>
       <h1>
         {experiment.name} <span class="exp-short-id">{experiment.short_id}</span> <CopyIdButton value={experiment.short_id} />{' '}
         <button

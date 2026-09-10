@@ -205,7 +205,17 @@ function buildBasicRow(label: string, items: CompareItem[], extract: (item: Comp
 
 const CORE_FIELDS = ['pose', 'expression', 'outfit', 'style', 'composition'] as const;
 
-export function ComparePage({ items, missingIds, warning }: { items: CompareItem[]; missingIds: string[]; warning?: string }) {
+export function ComparePage({
+  path,
+  items,
+  missingIds,
+  warning,
+}: {
+  path: string;
+  items: CompareItem[];
+  missingIds: string[];
+  warning?: string;
+}) {
   const rows: CompareRow[] = [];
   if (items.length >= 2) {
     rows.push(buildBasicRow('batch', items, (i) => i.batch_short_id));
@@ -250,7 +260,7 @@ export function ComparePage({ items, missingIds, warning }: { items: CompareItem
   const showLegend = rows.some((row) => row.segments !== undefined);
 
   return (
-    <Layout title="Compare">
+    <Layout title="Compare" path={path}>
       <h1>Compare</h1>
       {warning ? <p class="empty-state">{warning}</p> : null}
       {missingIds.length > 0 ? <p class="empty-state">Not found: {missingIds.join(', ')}</p> : null}

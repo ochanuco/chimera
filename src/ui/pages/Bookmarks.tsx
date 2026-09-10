@@ -2,12 +2,6 @@ import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { BatchRow, type BatchRowData } from '../components/BatchRow';
 
-export interface BookmarkedStory {
-  id: string;
-  name: string;
-  batch_count: number;
-}
-
 export interface BookmarkedExperiment {
   id: string;
   name: string;
@@ -15,18 +9,18 @@ export interface BookmarkedExperiment {
 }
 
 export function BookmarksPage({
+  path,
   generations,
   batches,
-  stories,
   experiments,
 }: {
+  path: string;
   generations: GenerationCardData[];
   batches: BatchRowData[];
-  stories: BookmarkedStory[];
   experiments: BookmarkedExperiment[];
 }) {
   return (
-    <Layout title="Bookmarks">
+    <Layout title="Bookmarks" path={path}>
       <h1>Bookmarks</h1>
       <datalist id="tag-suggestions"></datalist>
 
@@ -49,21 +43,6 @@ export function BookmarksPage({
           <p class="empty-state">No bookmarked batches.</p>
         ) : (
           batches.map((b) => <BatchRow b={b} />)
-        )}
-      </section>
-
-      <section class="bookmark-section">
-        <h2>Stories</h2>
-        {stories.length === 0 ? (
-          <p class="empty-state">No bookmarked stories.</p>
-        ) : (
-          <ul>
-            {stories.map((s) => (
-              <li>
-                <a href={`/stories/${s.id}`}>{s.name}</a> ({s.batch_count} batches)
-              </li>
-            ))}
-          </ul>
         )}
       </section>
 

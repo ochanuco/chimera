@@ -29,12 +29,12 @@ function embedJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-export function ExperimentAbPage({ data }: { data: ExperimentAbData }) {
+export function ExperimentAbPage({ path, data }: { path: string; data: ExperimentAbData }) {
   const { experiment, warning, pairs, judged_count, total_seeds, baseline_run_id, arm_run_id, baseline_run_index, arm_run_index } =
     data;
 
   return (
-    <Layout title={`A/B - ${experiment.name}`} fullBleed>
+    <Layout title={`A/B - ${experiment.name}`} fullBleed path={path}>
       <h1>
         <a href={`/experiments/${experiment.short_id}`}>{experiment.name}</a>
       </h1>

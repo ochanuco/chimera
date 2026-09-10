@@ -65,6 +65,7 @@ function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string
 }
 
 export function BatchDetailPage({
+  path,
   batch,
   storyNames,
   miniMapRows,
@@ -75,6 +76,7 @@ export function BatchDetailPage({
   finalizeSummary,
   finalizeRequests,
 }: {
+  path: string;
   batch: BatchDetailData;
   storyNames: Record<string, string>;
   /** 系譜ミニマップ: 自Batchの再試行連結成分 + 自Batchが属する各Storyの全Batch。 */
@@ -219,7 +221,7 @@ export function BatchDetailPage({
   const siblingCount = siblingCards.length;
 
   return (
-    <Layout title={`Batch ${batch.short_id}`} fullBleed>
+    <Layout title={`Batch ${batch.short_id}`} fullBleed path={path}>
       <div class="detail-layout">
         <div class="detail-left">
           {batch.generations.length === 0 ? (
@@ -234,10 +236,7 @@ export function BatchDetailPage({
         </div>
         <div class="detail-right">
           <h1>
-            Batch {batch.short_id} <CopyIdButton value={batch.short_id} />{' '}
-            <a class="graph-jump" href={`/graph?root=${batch.short_id}&depth=3`}>
-              Graph
-            </a>
+            Batch {batch.short_id} <CopyIdButton value={batch.short_id} />
           </h1>
           <div class="card-top-row">
             <button
@@ -262,7 +261,7 @@ export function BatchDetailPage({
                 {storyIds.map((sid, i) => (
                   <>
                     {i > 0 ? ', ' : ''}
-                    <a href={`/stories/${sid}`}>{storyNames[sid] ?? sid}</a>
+                    {storyNames[sid] ?? sid}
                   </>
                 ))}
               </>

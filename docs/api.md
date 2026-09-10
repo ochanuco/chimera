@@ -1240,8 +1240,7 @@ POST /api/v1/stories/{story_id}/relations
 
 ## Graph
 
-生成履歴全体をBatch単位のノードとして返します。`/graph`
-のGraph View SSRが内部で利用しますが、外部からも利用可能です。
+生成履歴全体をBatch単位のノードとして返します。
 
 ``` text
 GET /api/v1/graph
