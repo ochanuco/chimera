@@ -556,7 +556,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
-        backgroundRemovalGuidance('generation.parameters.layerdiffuse: true') +
+        backgroundRemovalGuidance(
+          'generation.parameters.layerdiffuse: true in a kind "generate" payload (to redo an existing Generation that way, ' +
+            'use derive_request with parameters: {layerdiffuse: true})',
+        ) +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
