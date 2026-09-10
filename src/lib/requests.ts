@@ -655,7 +655,7 @@ async function resolveGenerationBatchIds(db: D1Database, refs: string[]): Promis
   const map = new Map<string, string>();
   const unique = Array.from(new Set(refs));
   if (unique.length === 0) return map;
-  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+  for (const part of chunk(unique, Math.floor(D1_MAX_BOUND_PARAMS / 2))) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
       .prepare(`SELECT id, short_id, batch_id FROM generations WHERE id IN (${placeholders}) OR short_id IN (${placeholders})`)

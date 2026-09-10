@@ -2561,7 +2561,6 @@ export const appJs = `
       empty.className = 'nav-queue-empty-panel';
       empty.textContent = 'キューは空です';
       panel.appendChild(empty);
-      return;
     }
 
     summary.groups.forEach(function (group) {
