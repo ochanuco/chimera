@@ -74,6 +74,7 @@ pages.get('/gallery', async (c) => {
   if (q.cursor) apiParams.set('cursor', q.cursor);
 
   const genRes = await internalApiRequest(c, `/api/v1/generations?${apiParams.toString()}`);
+  if (!genRes.ok) return genRes;
   const genData = (await genRes.json()) as { items: GalleryItem[]; total: number; next_cursor: string | null };
 
   // ids が厳密に1件の既存 Generation に解決したときは detail へ直行する。
