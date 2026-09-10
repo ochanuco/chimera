@@ -136,7 +136,10 @@ parameters ではないため）。起点 Batch の `recipe` / `parameters` / `p
 （Batch の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると
 pin が外れます）。patches を Batch から取るのは `semantic.attributes.patches` が後から
 書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。起点 Batch が recipe を
-持たない graph-mode の Batch なら 409 です。`reference` は起点 Generation への
+持たない graph-mode の Batch なら 409 です。起点 Batch が patches を持ちながら preset の pin を
+持たず、その recipe に Preset がある場合も 409 です。その patches は pin が入る前の preset 本文に
+対して書かれていて、現行の版に当てると needle 不在で落ちるためで、`replace_patches: true` で
+組み直すか pin を持つ Batch を起点にします（[worker-protocol.md](worker-protocol.md)）。`reference` は起点 Generation への
 purpose `"derive"` の Reference として payload に載り、遡った場合は指定した
 Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
 併せて載ります。レスポンスの `derived_from` に、指定した Generation と
@@ -215,9 +218,15 @@ repair_generation / masked_redraw_generation）は `destructiveHint: false` と
 としても返す。ChatGPT の開発者モードは outputSchema の無い tool を「出力スキーマ推奨」として
 警告し、結果を型の分からない JSON テキストとしてしか扱えない。schema の正本は各 serializer
 なので、`src/schemas/mcp-output.ts` 側は未知のキーを許す loose object にし、深い所
-（payload / graph / semantic / catalog record）は unknown のまま通す。SDK は
-structuredContent が schema を通らないと tool call ごと落とすため、ここを厳密に書くと
+（payload / graph / semantic / catalog record）は unknown のまま通す。ここを厳密に書くと
 serializer に欄が1つ増えただけで本番の呼び出しが失敗する。
+
+schema と serializer のずれは server 側では検出されず、structuredContent を検証する
+client の validation error として初めて出る。そのため二重に押さえてある。
+`jsonResult` は第1引数にその tool の outputSchema を取り、data をその schema の
+推論型でしか受け付けない（型検査でずれが出る）。テストの `mcpToolCall` は返ってきた
+structuredContent を宣言済み schema で parse する（実データでのずれが出る）。
+未知のキーを許す loose object のままなので、欄が増えるぶんには通る。
 
 `get_generation_image` の structuredContent は画像そのものではなく
 `{short_id, canonical_url, inlined, mime_type, reason}` で、画像は従来どおり content の

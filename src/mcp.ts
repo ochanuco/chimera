@@ -51,7 +51,7 @@ import { getBatchDigest } from './lib/batches';
 import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
-import { getPresetRow, listPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
+import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
 import { promoteGenerationToPreset } from './lib/promote';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
 import { createObservation, getObservation, listObservations } from './lib/observations';
@@ -82,10 +82,23 @@ function clampImageWidth(width: number | undefined): number {
   return Math.min(MAX_IMAGE_WIDTH, Math.max(MIN_IMAGE_WIDTH, Math.round(width)));
 }
 
+/** looseObject が付ける string index signature を落とす。これが残ると interface 由来の戻り値が構造的に代入不能になる。 */
+type Declared<T> = T extends readonly (infer U)[]
+  ? Declared<U>[]
+  : T extends object
+    ? { [K in keyof T as string extends K ? never : K]: Declared<T[K]> }
+    : T;
+
+/** get_generation_image だけは image block を返すため jsonResult を通らず、structuredContent を直に組む。 */
+type ImageResult = Declared<z.infer<typeof mcpOutputSchemas.get_generation_image>>;
+
 // text と structuredContent の両方を返す。outputSchema を宣言した tool は
 // structuredContent が無いと SDK が ProtocolError にするし、outputSchema を読まない
 // client のために text も要る（MCP 仕様 SEP-2106 §4.3 と同じ二重掲載）。
-function jsonResult(data: unknown) {
+// schema 引数は型の witness で、実行時には使わない。値で受け取らないと型引数の
+// 指定漏れが unknown に潰れて素通りし、schema と実体のずれが client 側の
+// validation error になるまで出てこない。
+function jsonResult<S extends z.ZodType>(_schema: S, data: Declared<z.infer<S>>) {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
     structuredContent: data as Record<string, unknown>,
@@ -290,7 +303,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
             : null,
         };
       });
-      return jsonResult({ items });
+      return jsonResult(mcpOutputSchemas.list_experiments, { items });
     },
   );
 
@@ -304,7 +317,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ id }) => {
       const experiment = await getExperimentOr404(db, id);
-      return jsonResult(await getExperimentDetail(db, experiment, origin));
+      return jsonResult(mcpOutputSchemas.get_experiment, await getExperimentDetail(db, experiment, origin));
     },
   );
 
@@ -340,7 +353,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         const requestRow = await getRequestOr404(db, request_id);
         notifyHubInBackground(env, 'queued', requestRow);
       }
-      return jsonResult({ created, run: { ...serializeExperimentRun(row), request_id } });
+      return jsonResult(mcpOutputSchemas.create_run, { created, run: { ...serializeExperimentRun(row), request_id } });
     },
   );
 
@@ -356,7 +369,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const run = await getRunOr404(db, run_id);
       const { decorated, experiment } = await getRunWithExperimentContext(db, run, origin);
       const generations = run.batch_id ? await listGenerationsLightForBatch(db, run.batch_id, origin) : [];
-      return jsonResult({
+      return jsonResult(mcpOutputSchemas.get_run, {
         ...decorated,
         experiment: {
           id: experiment.id,
@@ -398,7 +411,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           inlined: false,
           mime_type: null,
           reason,
-        },
+        } satisfies ImageResult,
       });
 
       if (head.size > MAX_TRANSFORM_INPUT_BYTES) {
@@ -440,7 +453,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           inlined: true,
           mime_type: mimeType,
           reason: null,
-        },
+        } satisfies ImageResult,
       };
     },
   );
@@ -458,7 +471,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ run_id, generation_id }) => {
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { generation_id });
-      return jsonResult(serializeExperimentRun(updated));
+      return jsonResult(mcpOutputSchemas.attach_generation, serializeExperimentRun(updated));
     },
   );
 
@@ -474,7 +487,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ run_id, evaluation }) => {
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { evaluation });
-      return jsonResult(serializeExperimentRun(updated));
+      return jsonResult(mcpOutputSchemas.set_evaluation, serializeExperimentRun(updated));
     },
   );
 
@@ -490,7 +503,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ run_id, decision }) => {
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { decision });
-      return jsonResult(serializeExperimentRun(updated));
+      return jsonResult(mcpOutputSchemas.set_decision, serializeExperimentRun(updated));
     },
   );
 
@@ -516,7 +529,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult({ created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputSchemas.create_request, { created, request: serializeRequest(row) });
     },
   );
 
@@ -558,7 +571,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult({ created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputSchemas.finalize_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -590,7 +603,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult({ created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputSchemas.repair_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -619,7 +632,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult({ created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputSchemas.masked_redraw_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -633,7 +646,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ id }) => {
       const row = await getRequestOr404(db, id);
-      return jsonResult(serializeRequest(row));
+      return jsonResult(mcpOutputSchemas.get_request, serializeRequest(row));
     },
   );
 
@@ -651,7 +664,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ status, kind, run_id }) => {
       const rows = await listRequests(db, { status, kind, run_id }, 200, 0);
-      return jsonResult({ items: rows.map(serializeRequest) });
+      return jsonResult(mcpOutputSchemas.list_requests, { items: rows.map(serializeRequest) });
     },
   );
 
@@ -683,7 +696,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         offset: offset === undefined ? undefined : String(offset),
       };
       const { items, total } = await queryGenerations(db, query, origin);
-      return jsonResult({
+      return jsonResult(mcpOutputSchemas.list_generations, {
         items: items.map((item) => ({
           short_id: item.short_id,
           rating: item.rating,
@@ -710,7 +723,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ generation_id }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
-      return jsonResult(await getGenerationDetail(db, origin, generation));
+      return jsonResult(mcpOutputSchemas.get_generation, await getGenerationDetail(db, origin, generation));
     },
   );
 
@@ -727,7 +740,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ batch_id }) => {
       const batch = await getBatchByIdOrShortId(db, batch_id);
       if (!batch) throw notFound('batch');
-      return jsonResult(await getBatchDigest(db, origin, batch));
+      return jsonResult(mcpOutputSchemas.list_batch, await getBatchDigest(db, origin, batch));
     },
   );
 
@@ -745,7 +758,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ generation_id, depth }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
-      return jsonResult(await getGenerationLineage(db, generation, depth));
+      return jsonResult(mcpOutputSchemas.get_generation_lineage, await getGenerationLineage(db, generation, depth));
     },
   );
 
@@ -760,7 +773,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'If from_generation_id is a finalized or repaired Generation, it is resolved back to the raw Generation it was made ' +
         'from before deriving (finalize/repair payloads are not generate parameters). ' +
         '404s if from_generation_id does not resolve; 409s if the resolved source Batch has no single recipe (graph-mode) ' +
-        'or if a refinement Batch in the chain has no rebuild reference to resolve through. ' +
+        'or if a refinement Batch in the chain has no rebuild reference to resolve through; ' +
+        'or if the source Batch carries patches but no pinned preset version on a recipe that has presets — pass ' +
+        'replace_patches: true (with patches restated against the current preset) or derive from a pinned batch instead. ' +
         'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
         'when it differs from the source). Pass a stable idempotency_key — the same key replays the original request ' +
@@ -786,6 +801,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
 
       const parentPatches = parseJsonArray(sourceBatch.patches_json);
       const parentPresets = parseJsonArray(sourceBatch.preset_versions_json) as { kind: string; name: string; version: number }[];
+      const parentRecipeHasPresets = sourceBatch.recipe ? await recipeHasPresets(db, sourceBatch.recipe) : false;
 
       const payload = buildDerivedRequestPayload({
         parentGenerationId: sourceGeneration.id,
@@ -794,6 +810,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         parentParameters: parseJsonObjectOrNull(sourceBatch?.parameters_json ?? null) ?? {},
         parentPatches,
         parentPresets,
+        parentRecipeHasPresets,
         instruction,
         count,
         seeds,
@@ -810,7 +827,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult({
+      return jsonResult(mcpOutputSchemas.derive_request, {
         created,
         request: serializeRequest(row),
         payload,
@@ -836,7 +853,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ recipe_ref }) => {
       const found = await getCatalog(db, recipe_ref);
       if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
-      return jsonResult({
+      return jsonResult(mcpOutputSchemas.list_catalog, {
         recipe_ref: found.row.recipe_ref,
         published_at: found.row.published_at,
         updated_at: found.row.updated_at,
@@ -860,7 +877,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (!record) throw notFound(`pose '${pose}' in recipe '${recipe}'`);
       // catalog は本文を持たない pose を裸の名前文字列で書ける。structuredContent は
       // object でなければならないので、その形だけここで {name} に揃える。
-      return jsonResult(typeof record === 'string' ? { name: record } : record);
+      return jsonResult(mcpOutputSchemas.get_catalog_pose, typeof record === 'string' ? { name: record } : record);
     },
   );
 
@@ -878,7 +895,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ recipe, kind, include_deprecated }) => {
       const items = await listPresets(db, { recipe, kind, includeDeprecated: include_deprecated });
-      return jsonResult({ items });
+      return jsonResult(mcpOutputSchemas.list_presets, { items });
     },
   );
 
@@ -898,7 +915,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const row = await getPresetRow(db, recipe, kind, name, version);
       if (!row) throw notFound(`preset '${recipe}/${kind}/${name}'`);
       const resolved = await resolvePreset(db, row);
-      return jsonResult(serializeResolvedPreset(row, resolved));
+      return jsonResult(mcpOutputSchemas.get_preset, serializeResolvedPreset(row, resolved));
     },
   );
 
@@ -931,7 +948,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         idempotency_key,
         created_by: 'mcp',
       });
-      return jsonResult(result);
+      return jsonResult(mcpOutputSchemas.promote_to_pose, result);
     },
   );
 
@@ -954,7 +971,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { character, pose, component, parameter, outcome, q },
         { limit: limit ?? 50, offset: 0 },
       );
-      return jsonResult({ items, total });
+      return jsonResult(mcpOutputSchemas.list_observations, { items, total });
     },
   );
 
@@ -969,7 +986,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ id }) => {
       const row = await getObservation(db, id);
       if (!row) throw notFound('observation');
-      return jsonResult(row);
+      return jsonResult(mcpOutputSchemas.get_observation, row);
     },
   );
 
@@ -992,7 +1009,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async (input) => {
       const row = await createObservation(db, input, 'mcp');
-      return jsonResult(row);
+      return jsonResult(mcpOutputSchemas.record_observation, row);
     },
   );
 

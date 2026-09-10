@@ -155,7 +155,7 @@ export const mcpOutputSchemas = {
     tags: z.array(z.string()),
     run_count: z.number(),
     runs: z.array(decoratedRunSchema),
-    promotions: z.array(z.looseObject({ id: z.string(), source_run_id: z.string(), status: z.string() })),
+    promotions: z.array(z.looseObject({ id: z.string(), source_run_id: z.string().nullable(), status: z.string() })),
   }),
 
   create_run: z.looseObject({
@@ -205,7 +205,7 @@ export const mcpOutputSchemas = {
         bookmark: z.boolean(),
         tags: z.array(z.string()),
         summary: z.string().nullable(),
-        character: z.string().nullable(),
+        character: z.looseObject({ id: z.string(), name: z.string().nullable() }).nullable(),
         created_at: z.string(),
         batch_id: z.string().nullable(),
         canonical_url: z.string(),
