@@ -1,8 +1,8 @@
 -- Publication: 1回分の納品（Xへの投稿）を表す行。1 Generation は複数の Publication を
 -- 持てる (docs/domain-model.md#publication)。idempotency_key は POST /api/v1/generations/{id}/publications
 -- と MCP record_publication の再送保護用（既存レコードとの対応は src/lib/publications.ts）。
--- created_by の 'api' は、comfyui-recipes がまだ `publish` タグ経由で書く間の互換
--- (docs/api.md#publication「tag 互換」) 専用。
+-- created_by は Publication の作成元を表す: 'gui'（GUI の「公開を記録」）、'mcp'
+-- （MCP tool record_publication）、'api'（REST 直叩き）、'system'（下の BACKFILL による移行）。
 CREATE TABLE generation_publications (
   id TEXT PRIMARY KEY,
   generation_id TEXT NOT NULL REFERENCES generations(id),
