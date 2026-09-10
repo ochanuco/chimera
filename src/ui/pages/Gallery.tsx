@@ -151,7 +151,7 @@ export function GalleryPage({
       {items.length === 0 ? (
         <p class="empty-state">No generations match this filter.</p>
       ) : (
-        <div class="grid" data-gallery-grid>
+        <div class="grid" data-gallery-grid data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}>
           <GalleryCards items={items} nextCursor={nextCursor} filters={filters} />
         </div>
       )}

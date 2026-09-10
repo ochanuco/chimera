@@ -106,24 +106,107 @@ Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込�
 リンクが画面に入ると次ページを自動でフェッチしてグリッドへ追記します（JS無効環境では
 リンクとして機能します）。
 
+カードはサムネイル1枚と、その下のrating（bad/neutral/good）・bookmarkだけの1行です。
+short_idリンク・コピーボタン・画像メタ（解像度/ファイルサイズ）・タグ・比較チェックボックスは
+カードから外し、サムネイルクリックで開く[Lightbox](#lightbox)に移しました。サムネイル左上には、
+このGenerationの所属Batchがfinalize/repair/masked_redrawで書き換えた元のraw Generationがある
+とき`from <short_id>`バッジ（`#402e21`地に橙文字、short_idは等幅）を、左下には
+[Publication](domain-model.md#publication)が1件以上あるとき送信アイコン付きの`公開済み`ピルを
+重ねます。幅600px以下ではbookmarkをサムネイル右上の2.75rem角のタップ領域へ移し、ratingの
+3ボタンは行いっぱいに広がります（各2.75rem以上）。
+
 カード表示例:
 
 ``` text
 [ IMAGE ]
+ from abc123          ← rawを書き換えた出力のときだけ
+ 公開済み             ← Publicationが1件以上あるときだけ
 
-abc123
-good  🔖
-#pose-good #outfit-good
+bad  neutral  good        🔖
 ```
 
-表示しないもの:
+Batch Detail / Bookmarksも同じカードコンポーネントを使い、同じバッジを表示します。
 
+表示しないもの（サムネイルクリックで[Lightbox](#lightbox)を開けば見られます）:
+
+-   short_idリンク・コピーボタン
+-   画像メタ（解像度/ファイルサイズ）
+-   タグ
 -   commit hash
 -   prompt全文
 -   git diff
 -   semantic全文
 -   Story graph
 -   ComfyUI workflow
+
+## Lightbox
+
+Gallery / Bookmarks / Batch Detailのカードサムネイルを、修飾キーなしの左クリックで開きます。
+中クリック・Cmd/Ctrl/Shift/Altを押しながらのクリック・JS無効環境では従来通りカードの
+`<a href="/g/{short_id}">`として`/g/{short_id}`（Generation Detail）へ遷移します。
+
+パネルのHTMLは`GET /g/{short_id}?partial=lightbox`が返すフラグメント（`<html>`を含まない）で、
+Generation Detailと同じコンポーネント（RatingBookmark / PublicationSection / TagsEditor /
+FinalizeSection / NoteSection）から組み立てるため、挙動を二重管理しません。パネルの内容は
+上から次の順です。
+
+``` text
+short_id + コピーボタン ・ 比較に追加 ・ 閉じる
+画像メタ（解像度/ファイルサイズ） + 詳細ページ ↗
+from <short_id>（refineしている場合のみ、カードと同じ見た目のリンク行）
+rating（大きいボタン） + bookmark
+公開
+Tag
+Finalize（展開）
+Note（折りたたみ）
+```
+
+画像本体とoverlayのUIはクリック側のJSが組み立てます（クリックしたカードの`<img class="thumb-fg">`が
+既に原寸相当のURLを持っているため、fragment自体は画像タグを含みません）。
+
+幅1100px以上では`rgba(8,8,10,0.78)`のscrim付き固定overlayで、`minmax(0,1fr) 420px`の2カラム
+（左: 画像フル表示、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。画像エリア
+左右端の中央に丸いprev/nextボタン（2.75rem）を重ねます。
+
+幅1100px未満では不透明（`--bg`）の全画面・縦スクロールです。上から3.25remのトップバー
+（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい）→ パネル（rating各ボタン・
+ボタン・入力を2.75rem以上のタップ領域にしたもの）の順に並びます。画像上の左右スワイプで
+prev/next、パネルのスクロール位置が最上部（`scrollTop === 0`）にあるときの下スワイプで
+閉じます。
+
+Prev/Nextはページのグリッド内カードの現在のDOM順を辿ります。Galleryで最後に読み込んだカードを
+過ぎたときは、「もっと見る」リンクがあれば無限スクロールと同じfetchで次ページを読み込んでから
+続けます。
+
+開いている状態はURLの`#g=<short_id>`に反映します（最初に開くときはpushState、Lightbox内の
+prev/next・bad非表示による自動遷移時の移動はreplaceState）。そのため、ブラウザのBackボタンで
+一度に閉じ、`#g=`付きURLを直接開く・再読み込みすると同じGenerationのLightboxが開き直します。
+`Esc`でも閉じます。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
+動かしません（開いている間は`body`のスクロールをロックします）。
+
+Lightbox内でratingを変えると、背後のカードのrating-groupにも同じ値を反映します（逆方向 —
+カード側での変更をLightboxへ反映 — はLightboxが開くたびに再フェッチするので不要です）。
+
+rating / bookmark / タグ追加・削除 / note保存 / 公開の追加・URL入力・削除 / finalizeの各ハンドラは
+すべて`document`へのイベント委譲なので、差し込まれたfragment内でも再初期化なしにそのまま動きます。
+
+### bad hides with undo
+
+`/gallery`でbadを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上またはLightbox内で
+ratingをbadにすると、そのカードを即座にグリッドから消し、画面下中央にUndoトースト
+（`--bg-elevated`・枠線・角丸8px・影付き、`bad にしました` + アクセント色の`取り消す`ボタン。
+compareバー表示中はその上に出し、幅600px以下では左右1rem残して全幅・ボタンは2.75rem）を
+出します。5秒以内に`取り消す`を押すとAPI経由で元のratingへ戻し、カードを元の位置へ戻します
+（telemetry `rating.undo`）。Lightbox内でbadにした場合は次の画像へ自動で進みます（それでも
+トーストは出ます）。BookmarksとBatch Detailでは何も隠しません。
+
+### Compare entry
+
+カードのチェックボックスは廃止しました。Lightboxの`比較に追加`ボタンがsessionStorageの
+compare set（タブ内限定）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
+telemetry `compare.add`）。`#compare-bar`はGallery / Bookmarks / Batch Detailのどのページでも
+このsetから`Compare (N)`を描画し、`/compare?ids=...`（先頭9件、従来通り）へリンクします
+（telemetry `compare.open`）。
 
 ## Batch Detail
 
@@ -132,6 +215,9 @@ good  🔖
 幅1100px以上（MBP 16インチのフルスクリーン運用を想定）では、左（Generation
 サムネイルグリッド）: 右（情報）= 2:1 の2ペインをビューポート1画面に収め、
 各ペインが独立してスクロールします。それ未満の幅では従来どおり縦一列です。
+
+左のサムネイルグリッドはGalleryと同じ[GenerationCard](#gallery)（from-badge / 公開済みピル
+込み）で、サムネイルクリックで同じ[Lightbox](#lightbox)を開きます。
 
 例（2ペイン時）:
 
@@ -201,8 +287,7 @@ Finalizeセクションと同じ仕組み、後述）。
 -   Generation rating
 -   Bookmark
 -   Tag
--   複数Generation選択
--   Compare
+-   Lightboxから比較に追加（[Compare entry](#compare-entry)）
 -   Finalize all arms
 -   provenance確認
 
@@ -424,18 +509,23 @@ repair feetのどちらもチェックされていない間`disabled`で、ど�
 serializer（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all
 armsも同じ項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
-"gui"`）を1件積んでページを再読み込みします。その下には、このGenerationを対象と
-した最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
+"gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
+`request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。Generation Detailと
+[Lightbox](#lightbox)のFinalizeフォームはどちらもこの仕組みです。この一覧には、このGenerationを
+対象とした最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
 
 各行は`data-request-id` / `data-request-status`を持ち、`/api/v1/requests/ws`
 （段階3 WorkerHub、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)参照）に
-繋いだ`initRequestLive()`が接続直後の`snapshot`と以後の`progress` / `status`を
-受けて、行内の`.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、
-`status`変化時は行のクラスと表示statusを書き換えます。Batch Detailの
-Finalize all armsセクションでも、集計行の下に同じ`request-status-list`を出し、
-同じ仕組みで各行が更新されます。WebSocketが張れない環境でも静的な表示のまま
-壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
+繋いだライブ接続が接続直後の`snapshot`と以後の`progress` / `status`を受けて、行内の
+`.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、`status`変化時は
+行のクラスと表示statusを書き換えます。`done` / `failed`への遷移時は該当requestと
+（`done`なら）納品Generationを取得し直し、ページ読み込み時と同じ結果リンク / errorをその場に
+追加します。ページ読み込み後に新しく現れた行（finalize送信直後の挿入、Lightboxの再オープン）も
+現れた時点でこの接続に登録され、まだ張っていなければソケットを開きます。Batch Detailの
+Finalize all armsセクションでも、finalize送信のたびに集計行（`N queued`）と
+`request-status-list`をその場で更新し、同じ仕組みで各行が進捗します。WebSocketが張れない
+環境でも静的な表示のまま壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
 
 手足の局所redraw（[worker-protocol.md](worker-protocol.md#repair)の`repair`）は
 GUIでは独立したセクションを持たず、Finalizeフォームの`repair hands` / `repair feet`
@@ -589,6 +679,11 @@ GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外
 `すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
 トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
 
+Generationsセクションのカードと[Lightbox](#lightbox)はGalleryと共通です（bad非表示との
+組み合わせは無いため、[bad hides with undo](#bad-hides-with-undo)は起きません）。ページ下部の
+`#compare-bar`もGalleryと同じくLightboxの[Compare entry](#compare-entry)から生まれるsessionStorage
+のsetを表示します。
+
 ## Search
 
 MVPの検索条件:
@@ -677,6 +772,8 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
+| `rating.undo` | `generation_id`, `restored` | [bad hides with undo](#bad-hides-with-undo)のUndo |
+| `compare.add` | `generation_id`, `count` | Lightboxの[Compare entry](#compare-entry)（`比較に追加`/`比較から外す`） |
 | `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
 | `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
