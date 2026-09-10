@@ -104,7 +104,7 @@ get_generation(generation_id)            GET /api/v1/generations/{id} と同じ�
 record_publication(generation_id, url?, published_at?, idempotency_key?)   Generation の納品を1件記録
 list_batch(batch_id)                     jobs / generations (rating・tags・semantic・seed 込み) / references / relations / experiment_run
 get_generation_lineage(generation_id, depth?)   Batch 単位の祖先・子孫 (reference / relation 両方)、depth 既定 5・上限 10
-derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
+derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?)
 list_catalog(recipe_ref?)                公開済み recipe catalog の要約 (既定 "production")
 get_catalog_pose(recipe, pose, recipe_ref?)   単一 pose のフルレコード
 list_presets(recipe?, kind?, include_deprecated?)   preset の名前と版の一覧 (record 本文なし)
@@ -117,7 +117,9 @@ Run の代表 Generation を選ぶだけでなく、その Generation を見て�
 `get_generation` / `list_batch` は REST の `GET /api/v1/generations/{id}` /
 `GET /api/v1/batches/{id}` と同じ `src/lib/generations.ts` /
 `src/lib/batches.ts` を呼ぶ薄い別窓口です（`list_batch` は UI 向けの
-siblings 等を持たない subset）。
+siblings 等を持たない subset）。`get_generation` の `comfy_job.prompt_not_reusable` が
+null でない Generation（repair / masked_redraw / repair 付き finalize）の render_facts の
+prompt は、generate の prompt として使いません（[api.md](api.md#generation-context)）。
 
 `get_generation_lineage` は Batch 単位で祖先・子孫を辿ります。祖先は
 「このBatchが材料に使った Generation の Batch」(`via: "reference"`、
@@ -147,6 +149,13 @@ Generation への purpose `"derive"` / aspect `"finalized"` の Reference も
 併せて載ります。レスポンスの `derived_from` に、指定した Generation と
 実際の起点 Generation の両方（id / short_id）が入ります。
 
+表情・背景・ポーズだけを変える派生は、`prompt.positive` 全体の replace ではなく
+`prompt.positive.<part>` を target にした patch で書きます。パーツ名は `get_catalog_pose` の
+`parts` です。identity を意図して変えるときだけ `identity_override` に理由を渡し、
+`generation.identity_override` に載せます。`create_request` で generate の payload を手で
+組むときも同じ規則です（[worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」
+「identity の上書き」）。
+
 `finalize_generation` / `repair_generation` / `masked_redraw_generation` は `create_request(kind: "finalize" | "repair" | "masked_redraw", ...)`
 と同じ requests 行を積む専用窓口で、`generation_id` を解決して
 `payload.generation_id` に short_id を詰め、`options` を渡された場合だけ
@@ -161,9 +170,10 @@ payload に載せます（[worker-protocol.md](worker-protocol.md)「finalize」
 
 `list_catalog` / `get_catalog_pose` は
 [api.md「Recipe Catalog」](api.md#recipe-catalog)で公開する recipe catalog
-の読み取り側です。`list_catalog` は pose / costume / expression の名前と
-`parameters`、`patches` の語彙、git 情報だけを返し（prompt 本文は含まない）、
-特定の pose の中身が要るときだけ `get_catalog_pose` でフルレコードを引きます。
+の読み取り側です。`list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
+`parts` と `identity_tags`、`parameters`、`patches` の語彙、git 情報だけを返し（prompt 本文は含まない）、
+特定の pose の中身（パーツに分かれた recipe なら `parts` の `{name, text}` 込み）が要るときだけ
+`get_catalog_pose` でフルレコードを引きます。
 どちらも recipe_ref を省略すると `"production"` を見ます。
 
 `list_presets` / `get_preset` / `promote_to_pose` は Preset

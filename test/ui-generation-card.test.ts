@@ -50,13 +50,15 @@ async function createRefinedGeneration(sourceBatchId: string, sourceGenerationId
 }
 
 describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', () => {
-  it('Gallery card has rating + bookmark and omits tag form / compare checkbox / short_id link text', async () => {
+  it('Gallery card has the click-to-copy short_id + rating + bookmark and omits tag form / compare checkbox / image meta', async () => {
     const { generation } = await createGeneration();
     const res = await req('/gallery?limit=200');
     const html = await res.text();
+    expect(html).toContain('class="grid grid-gallery"');
     const card = cardHtml(html, generation.short_id);
 
     expect(card).toContain(`data-generation-id="${generation.id}"`);
+    expect(card).toContain(`class="copy-id-btn copy-id-text card-id" data-copy-id="${generation.short_id}"`);
     expect(card).toContain('rating-group');
     expect(card).toContain('bookmark-btn');
     expect(card).not.toContain('tag-add-form');
@@ -64,9 +66,6 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
     expect(card).not.toContain('compare-check');
     expect(card).not.toContain('short-id-link');
     expect(card).not.toContain('image-meta');
-    // the thumbnail link still carries the short_id (href / data attribute / alt), just no
-    // visible short_id text link or copy button next to it
-    expect(card).not.toContain('copy-id-btn');
   });
 
   it('a raw, unpublished card shows neither the from-badge nor the 公開済み pill', async () => {

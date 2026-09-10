@@ -147,8 +147,12 @@ sticky toolbarの下へスクロールアウトしている間は、同じ文言
 ソケットが切れたときの再接続は同じ接続を使う[Generation Detail](#generation-detail)の
 request live更新と同じ指数バックオフ（1s→2s→…上限30s）です。
 
-カードはサムネイル1枚と、その下のrating（bad/neutral/good）・bookmarkだけの1行です。
-short_idリンク・コピーボタン・画像メタ（解像度/ファイルサイズ）・タグ・比較チェックボックスは
+Gallery / Bookmarksのグリッドは1行6枚です（幅1100px以下は4枚、800px以下は190px以上の幅で
+入るだけ並べます）。Batch Detailのグリッドは左ペインの幅に190px以上で入るだけ並べます。
+
+カードはサムネイル1枚と、その下の2行（short_idとbookmarkの行、rating（bad/neutral/good）の行）です。
+short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
+変えて末尾に✓を出します。画像メタ（解像度/ファイルサイズ）・タグ・比較チェックボックスは
 カードから外し、サムネイルクリックで開く[Lightbox](#lightbox)に移しました。サムネイル左上には
 （上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
@@ -156,6 +160,7 @@ masked_redrawで書き換えた元のraw Generationがあるとき`from <short_i
 requestがあるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
 1件以上あるとき送信アイコン付きの`公開済み`ピルを重ねます。幅600px以下ではbookmarkをサムネイル
 右上の2.75rem角のタップ領域へ移し、ratingの3ボタンは行いっぱいに広がります（各2.75rem以上）。
+short_idのボタンも高さ2.75rem以上にします。
 
 進捗ピル（`rgba(18,18,20,0.86)`地・`--border`の1px枠・角丸999px、テキストはstatusごとに
 色分け）はkind（`finalize`/`repair`/`masked redraw`）とstatusから組み立てます。
@@ -181,7 +186,8 @@ short_idを取得して`kind · done → <short_id>`に差し替えます）。L
  finalize · queued    ← finalize/repair/masked_redraw requestがあるときだけ
  公開済み             ← Publicationが1件以上あるときだけ
 
-bad  neutral  good        🔖
+abc123                    🔖   ← short_idはクリックでコピー
+bad  neutral  good
 ```
 
 Batch Detail / Bookmarksも同じカードコンポーネントを使い、from-badge / 公開済みピルは
@@ -191,7 +197,6 @@ Gallery live insertionのカードフラグメントだけが持つデータな�
 
 表示しないもの（サムネイルクリックで[Lightbox](#lightbox)を開けば見られます）:
 
--   short_idリンク・コピーボタン
 -   画像メタ（解像度/ファイルサイズ）
 -   タグ
 -   commit hash
