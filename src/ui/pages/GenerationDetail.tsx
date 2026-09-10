@@ -1,21 +1,17 @@
 import { Layout } from '../layout';
-import { formatBytes, type ImageMeta } from '../../lib/image-meta';
+import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
-import { FinalizeFields } from '../components/FinalizeFields';
+import { FinalizeSection } from '../components/FinalizeSection';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
+import { NoteSection } from '../components/NoteSection';
 import { PromptChips } from '../components/PromptChips';
+import { PublicationSection, type PublicationData } from '../components/PublicationSection';
+import { RatingBookmark } from '../components/RatingBookmark';
+import { TagsEditor } from '../components/TagsEditor';
 import type { RenderFacts, RenderLatentSource, RenderSampler } from '../../lib/render-facts';
 
-export interface PublicationData {
-  id: string;
-  generation_id: string;
-  url: string | null;
-  published_at: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
+export type { PublicationData };
 
 export interface GenerationDetailData {
   id: string;
@@ -66,26 +62,6 @@ export interface ExperimentRunFamily {
   parent: { run_id: string; run_index: number; batch_id: string } | null;
   children: { run_id: string; run_index: number; batch_id: string }[];
   siblings: { run_id: string; run_index: number; batch_id: string }[];
-}
-
-const RATINGS = ['bad', 'neutral', 'good'] as const;
-
-/** `MM-DD HH:mm`（UTC）。src/ui/static.ts の formatPublishedAt と同じ書式を保つこと。 */
-function formatPublishedAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-}
-
-/** src/ui/static.ts の updatePublicationStatus が同じ markup を JS 側で組み立てる。 */
-function PublishIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M14 2L2 7.5L7 9L9 14L14 2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
-      <path d="M14 2L7 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
-    </svg>
-  );
 }
 
 /** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
@@ -341,125 +317,21 @@ export function GenerationDetailPage({
           <div class="gen-detail-hero">
             <img src={data.image.url} alt={data.short_id} />
           </div>
-          {imageMeta ? (
-            <p class="image-meta">
-              {imageMeta.width !== null && imageMeta.height !== null
-                ? `${imageMeta.width}×${imageMeta.height} · ${formatBytes(imageMeta.size)}`
-                : formatBytes(imageMeta.size)}
-            </p>
-          ) : null}
+          {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
         </div>
         <div class="detail-right">
           <h1>
             {data.short_id} <CopyIdButton value={data.short_id} />
           </h1>
           {data.character ? <p>{data.character.name}</p> : null}
-          <div class="card-top-row">
-            <div class="rating-group" data-generation-id={data.id} data-current={data.rating ?? ''}>
-              {RATINGS.map((r) => (
-                <button type="button" class={`rate-btn${data.rating === r ? ' active' : ''}`} data-rating={r}>
-                  {r}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              class="bookmark-btn"
-              data-kind="generations"
-              data-id={data.id}
-              data-bookmarked={data.bookmark ? 'true' : 'false'}
-            >
-              🔖
-            </button>
-          </div>
+          <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
 
-          <details class="section publication-section" open data-generation-id={data.id}>
-            <summary>公開</summary>
-            <div class="section-body">
-              <p class={`publication-status${data.publications.length > 0 ? ' published' : ''}`}>
-                {data.publications.length > 0 ? (
-                  <>
-                    <PublishIcon /> {`公開済み（${data.publications.length}）`}
-                  </>
-                ) : (
-                  '未公開'
-                )}
-              </p>
-              <ul class="publication-list">
-                {data.publications.map((p) => (
-                  <li class="publication-row" data-publication-id={p.id}>
-                    <span class="publication-time">{formatPublishedAt(p.published_at)}</span>
-                    {p.url ? (
-                      <a href={p.url} target="_blank" rel="noopener noreferrer">
-                        {p.url}
-                      </a>
-                    ) : (
-                      <>
-                        <span class="publication-nourl">URL なし</span>
-                        <input type="text" class="publication-url-input" placeholder="投稿 URL" />
-                      </>
-                    )}
-                    <button type="button" class="publication-remove-btn">
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <form class="publication-add-form">
-                <input type="text" name="url" placeholder="投稿 URL（空でも記録できる）" />
-                <button type="submit" class="publication-add-btn">
-                  公開を記録
-                </button>
-              </form>
-            </div>
-          </details>
+          <PublicationSection generationId={data.id} publications={data.publications} />
 
           <datalist id="tag-suggestions"></datalist>
-          <div class="tag-chips">
-            {tags.map((t) => (
-              <span class="tag-chip">
-                #{t.name}
-                <button
-                  type="button"
-                  class="tag-remove-btn"
-                  data-kind="generations"
-                  data-id={data.id}
-                  data-tag-id={t.id}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-          <form class="tag-add-form" data-kind="generations" data-id={data.id} data-removable="true">
-            <input type="text" name="name" list="tag-suggestions" placeholder="add tag" />
-            <button type="submit">+</button>
-          </form>
+          <TagsEditor kind="generations" id={data.id} tags={tags} />
 
-          <details class="section" open>
-            <summary>Finalize</summary>
-            <div class="section-body">
-              <form class="finalize-form" data-generation-short-id={data.short_id} autocomplete="off">
-                <FinalizeFields recipe={data.batch?.recipe ?? null} submitLabel="Finalize" />
-              </form>
-              {finalizeRequests.length > 0 ? (
-                <ul class="request-status-list">
-                  {finalizeRequests.map((r) => (
-                    <li class={`request-status-${r.status}`} data-request-id={r.id} data-request-status={r.status}>
-                      {r.status} <span class="request-progress"></span> · {r.created_at}
-                      {r.status === 'done' && r.resultShortId ? (
-                        <>
-                          {' '}
-                          — <a href={`/g/${r.resultShortId}`}>{r.resultShortId}</a>
-                        </>
-                      ) : null}
-                      {r.status === 'failed' && r.error ? <> — {r.error}</> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </details>
+          <FinalizeSection shortId={data.short_id} recipe={data.batch?.recipe ?? null} requests={finalizeRequests} />
 
           <details class="section" open>
             <summary>Summary</summary>
@@ -685,17 +557,7 @@ export function GenerationDetailPage({
             </div>
           </details>
 
-          <details class="section" open>
-            <summary>Note</summary>
-            <div class="section-body">
-              <form class="note-form" data-kind="generations" data-id={data.id}>
-                <textarea name="note">{data.note ?? ''}</textarea>
-                <br />
-                <button type="submit">Save</button>
-                <span class="save-status"></span>
-              </form>
-            </div>
-          </details>
+          <NoteSection kind="generations" id={data.id} note={data.note} />
         </div>
       </div>
     </Layout>

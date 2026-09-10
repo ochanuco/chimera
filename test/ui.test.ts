@@ -288,7 +288,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain(`${png.byteLength} B`);
   });
 
-  it('GET /gallery shows the resolution and formatted file size in the card', async () => {
+  it('GET /gallery card omits resolution/file size; the lightbox fragment shows them', async () => {
     const png = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
       0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
@@ -310,8 +310,15 @@ describe('Web GUI pages', () => {
     const res = await req('/gallery?limit=200');
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('768×768');
-    expect(html).toContain(`${png.byteLength} B`);
+    expect(html).not.toContain('768×768');
+    expect(html).not.toContain(`${png.byteLength} B`);
+
+    const lightbox = await req(`/g/${ingest.body.short_id}?partial=lightbox`);
+    expect(lightbox.status).toBe(200);
+    const lightboxHtml = await lightbox.text();
+    expect(lightboxHtml).not.toContain('<html');
+    expect(lightboxHtml).toContain('768×768');
+    expect(lightboxHtml).toContain(`${png.byteLength} B`);
   });
 
   it('GET /gallery default view hides bad-rated and finalize-output generations', async () => {
@@ -579,12 +586,15 @@ describe('Web GUI pages', () => {
 
     const res = await req('/bookmarks');
     const html = await res.text();
-    expect(html).not.toContain(sourceGen.short_id);
+    // sourceGen's own card is absent (view=refined hides raw generations); its short_id can still
+    // appear inside the refined card's "from <short_id>" badge (GenerationCard), so assert on the
+    // card link specifically rather than the bare short_id string.
+    expect(html).not.toContain(`href="/g/${sourceGen.short_id}"`);
     expect(html).toContain(refined.generation.short_id);
 
     const all = await req('/bookmarks?view=all');
     const allHtml = await all.text();
-    expect(allHtml).toContain(sourceGen.short_id);
+    expect(allHtml).toContain(`href="/g/${sourceGen.short_id}"`);
     expect(allHtml).toContain(refined.generation.short_id);
   });
 

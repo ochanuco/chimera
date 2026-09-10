@@ -187,6 +187,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 
 .card {
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -197,7 +198,41 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
-.card-body { padding: 0.55rem 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.card-row { padding: 0.5rem 0.55rem; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+
+/* GenerationCard のサムネイルオーバーレイ (docs/ui.md「Gallery」カード)。from-badge は Lightbox の
+   from-row でも同じ見た目を静的な行として使う (position は .thumb-link の中でだけ絶対配置)。 */
+.card-from-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #402e21;
+  color: var(--graph-relation);
+}
+.card-from-badge-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.card-from-badge-link { text-decoration: none; }
+.card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
+.card .thumb-link .card-from-badge { position: absolute; top: 0.4rem; left: 0.4rem; z-index: 1; }
+
+.card-published-pill {
+  position: absolute;
+  bottom: 0.4rem;
+  left: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(18, 18, 20, 0.86);
+  border: 1px solid var(--border);
+  color: #4fd8a4;
+}
 
 #thumb-preview {
   position: fixed;
@@ -215,7 +250,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 #thumb-preview img { display: block; max-width: calc(100vw - 26px); max-height: calc(100vh - 26px); border-radius: 6px; background: var(--checker); }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
-.card-image-meta { margin: 0; text-align: left; }
 .short-id-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; color: var(--text); }
 
 .copy-id-btn {
@@ -242,6 +276,9 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .rate-btn[data-rating="good"].active { background: var(--good); color: #0c1a10; border-color: var(--good); }
 .rate-btn[data-rating="neutral"].active { background: var(--neutral); color: #1c1808; border-color: var(--neutral); }
 .rate-btn[data-rating="bad"].active { background: var(--bad); color: #200a08; border-color: var(--bad); }
+
+/* Lightbox の大きいrating group (docs/ui.md「Lightbox」)。 */
+.rating-group-lg .rate-btn { font-size: 0.8rem; padding: 0.3rem 0.75rem; }
 
 .bookmark-btn {
   background: transparent;
@@ -378,7 +415,17 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   padding: 0.2rem 0.6rem;
 }
 
-.compare-check-row { display: flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; color: var(--text-dim); }
+/* Lightbox 比較エントリ (docs/ui.md「Lightbox」「Compare entry」)。sessionStorage の compare set をトグルする。 */
+.compare-add-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.compare-add-btn.active { border-color: var(--accent); color: var(--accent); }
 
 .compare-bar {
   position: fixed;
@@ -508,6 +555,26 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   .gallery-toolbar .view-switch { flex: 1 1 100%; }
   .view-switch-item { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
   .bad-toggle, .filter-panel summary { min-height: 2.75rem; }
+
+  /* GenerationCard: bookmark はサムネイル右上のヒット領域に、rating は行いっぱいに広げる (docs/ui.md「Gallery」)。 */
+  .card .card-bookmark-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(18, 18, 20, 0.72);
+    border-radius: 999px;
+    z-index: 2;
+  }
+  .card-row .rating-group { flex: 1; }
+  .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+
+  .undo-toast { left: 0.5rem; right: 0.5rem; width: auto; }
+  .undo-toast-undo { min-height: 2.75rem; }
 }
 
 details.section {
@@ -930,6 +997,141 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-facts-diff { background: rgba(124, 156, 245, 0.18); }
 .exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
 .exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+
+/* Lightbox (Gallery / Bookmarks / Batch Detail のサムネイルクリック, docs/ui.md「Lightbox」)。
+   overlay/画像/prev-next はJSが組み立て、.lightbox-panel の中身だけ GET /g/:short_id?partial=lightbox
+   のfragmentをそのまま挿入する。 */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 8, 10, 0.78);
+  display: flex;
+  flex-direction: column;
+}
+.lightbox-overlay[hidden] { display: none; }
+body.lightbox-open { overflow: hidden; }
+
+.lightbox-topbar { display: none; }
+.lightbox-stage { flex: 1; min-height: 0; }
+.lightbox-image-area { position: relative; }
+.lightbox-image-area img.lightbox-image { background: var(--checker); display: block; }
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  background: rgba(27, 27, 31, 0.92);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lightbox-nav[hidden] { display: none; }
+.lightbox-prev { left: 0.75rem; }
+.lightbox-next { right: 0.75rem; }
+
+.lightbox-panel {
+  font-size: 0.85rem;
+}
+.lightbox-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; }
+.lightbox-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; font-weight: 600; }
+.lightbox-header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.lightbox-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lightbox-close:hover { color: var(--text); }
+.lightbox-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--text-dim); margin: 0 0 0.6rem; }
+.lightbox-from-row { margin: 0 0 0.6rem; }
+
+@media (min-width: 1100px) {
+  .lightbox-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 1.25rem;
+    padding: 1.5rem 2rem;
+    height: 100%;
+  }
+  .lightbox-image-area { height: 100%; display: flex; align-items: center; justify-content: center; }
+  .lightbox-image-area img.lightbox-image { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 10px; }
+  .lightbox-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 1099.98px) {
+  .lightbox-overlay { background: var(--bg); }
+  .lightbox-topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    height: 3.25rem;
+    padding: 0 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .lightbox-topbar .lightbox-close { width: 2.75rem; height: 2.75rem; }
+  .lightbox-topbar-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+  .lightbox-topbar-detail-link { margin-left: auto; font-size: 0.85rem; }
+  .lightbox-stage { display: flex; flex-direction: column; overflow-y: auto; }
+  .lightbox-image-area img.lightbox-image { width: 100%; height: auto; }
+  .lightbox-nav { display: none; }
+  .lightbox-panel { padding: 0.9rem 1rem 2rem; }
+  .lightbox-panel .rate-btn { flex: 1; min-height: 2.75rem; }
+  .lightbox-panel .rating-group { flex: 1; display: flex; }
+  .lightbox-panel button,
+  .lightbox-panel input,
+  .lightbox-panel select,
+  .lightbox-panel textarea { min-height: 2.75rem; }
+  .lightbox-panel .tag-chip,
+  .lightbox-panel .publication-remove-btn,
+  .lightbox-panel .tag-remove-btn,
+  .lightbox-panel .copy-id-btn { min-height: 0; }
+}
+
+/* bad hide + undo (Gallery のみ, docs/ui.md「Gallery」)。 */
+.undo-toast {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+}
+/* .undo-toast is appended to <body>, not inside <main>, so it isn't a sibling of #compare-bar --
+   JS toggles this class instead of a :has(~ ...) selector. */
+.undo-toast.above-compare-bar { bottom: calc(1rem + 3.5rem); }
+.undo-toast-undo {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
 `;
 
 export const appJs = `
@@ -1022,6 +1224,17 @@ export const appJs = `
   }
 
   // --- Rating ---
+  // group と Lightbox の両方に同じGenerationのrating-groupが同時に存在しうるので、
+  // data-generation-id が一致する全要素に反映する (docs/ui.md「Lightbox」)。
+  function applyRatingToGroups(id, rating) {
+    qsa('.rating-group[data-generation-id="' + id + '"]').forEach(function (group) {
+      group.setAttribute('data-current', rating || '');
+      qsa('.rate-btn', group).forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-rating') === rating);
+      });
+    });
+  }
+
   function initRating() {
     document.addEventListener('click', async function (ev) {
       const btn = ev.target.closest('.rate-btn');
@@ -1033,11 +1246,9 @@ export const appJs = `
       const next = current === clicked ? null : clicked;
       try {
         await api('/api/v1/generations/' + id + '/rating', 'PUT', { rating: next });
-        group.setAttribute('data-current', next || '');
-        qsa('.rate-btn', group).forEach(function (b) {
-          b.classList.toggle('active', b.getAttribute('data-rating') === next);
-        });
+        applyRatingToGroups(id, next);
         track('rating.set', { generation_id: id, rating: next, previous: current || null });
+        if (next === 'bad') await handleBadHide(id, current || null, btn);
       } catch (e) {
         trackError('rating.set', e, { generation_id: id });
         alert('rating update failed: ' + e.message);
@@ -1063,6 +1274,96 @@ export const appJs = `
         alert('bookmark update failed: ' + e.message);
       }
     });
+  }
+
+  // --- Bad hides with undo (Gallery only, docs/ui.md「Gallery」「Lightbox」) ---
+  // [data-gallery-grid][data-hide-bad="true"] だけが対象 (bad=1 でも ids= でもない既定表示)。
+  // Bookmarks / Batch Detail のグリッドにはこの属性が無いので何もしない。
+  var undoToastTimer = null;
+
+  function showUndoToast(generationId, previousRating, restoreDom) {
+    var existing = qs('.undo-toast');
+    if (existing) existing.remove();
+    if (undoToastTimer) clearTimeout(undoToastTimer);
+
+    var toast = document.createElement('div');
+    toast.className = 'undo-toast';
+    var msg = document.createElement('span');
+    msg.textContent = 'bad にしました';
+    var undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'undo-toast-undo';
+    undoBtn.textContent = '取り消す';
+    toast.appendChild(msg);
+    toast.appendChild(undoBtn);
+    var compareBar = document.getElementById('compare-bar');
+    if (compareBar && !compareBar.classList.contains('hidden')) toast.classList.add('above-compare-bar');
+    document.body.appendChild(toast);
+
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      toast.remove();
+    }
+    undoBtn.addEventListener('click', async function () {
+      if (done) return;
+      try {
+        await api('/api/v1/generations/' + generationId + '/rating', 'PUT', { rating: previousRating });
+        applyRatingToGroups(generationId, previousRating);
+        restoreDom();
+        track('rating.undo', { generation_id: generationId, restored: previousRating });
+      } catch (e) {
+        trackError('rating.undo', e, { generation_id: generationId });
+        alert('undo failed: ' + e.message);
+      } finally {
+        finish();
+      }
+    });
+    undoToastTimer = setTimeout(finish, 5000);
+  }
+
+  // 削除前の card の次に来るカードを返す。末尾なら (.load-more があれば) 次ページを
+  // ロードしてから返す。Lightbox の「次へ進む」に使う。
+  async function cardAfter(card) {
+    var next = card.nextElementSibling;
+    if (next && next.classList && next.classList.contains('card')) return next;
+    if (next && next.classList && next.classList.contains('load-more')) {
+      var loaded = await loadMoreGalleryCards(next);
+      if (!loaded) return null;
+      var after = card.nextElementSibling;
+      return after && after.classList && after.classList.contains('card') ? after : null;
+    }
+    return null;
+  }
+
+  async function handleBadHide(id, previousRating, btn) {
+    var grid = document.querySelector('[data-gallery-grid][data-hide-bad="true"]');
+    if (!grid) return;
+    var group = grid.querySelector('.rating-group[data-generation-id="' + id + '"]');
+    var card = group ? group.closest('.card') : null;
+    if (!card) return;
+
+    var inLightbox = Boolean(lightboxOverlay && !lightboxOverlay.hidden && btn.closest('.lightbox-panel'));
+    var target = inLightbox ? await cardAfter(card) : null;
+
+    var parent = card.parentNode;
+    var nextSibling = card.nextElementSibling;
+    card.remove();
+
+    showUndoToast(id, previousRating, function () {
+      if (nextSibling && nextSibling.parentNode === parent) parent.insertBefore(card, nextSibling);
+      else parent.appendChild(card);
+    });
+
+    if (inLightbox) {
+      if (target) {
+        var link = qs('.thumb-link', target);
+        if (link) showLightbox(link.getAttribute('data-short-id'), link, 'replace');
+      } else {
+        closeLightbox();
+      }
+    }
   }
 
   // --- Experiment status transition ---
@@ -1543,6 +1844,22 @@ export const appJs = `
     });
   }
 
+  // Same <li> markup FinalizeSection (src/ui/components/FinalizeSection.tsx) renders server-side.
+  function requestStatusRow(request, showCreatedAt) {
+    var li = document.createElement('li');
+    li.className = 'request-status-' + request.status;
+    li.setAttribute('data-request-id', request.id);
+    li.setAttribute('data-request-status', request.status);
+    li.appendChild(document.createTextNode(request.status + ' '));
+    var progress = document.createElement('span');
+    progress.className = 'request-progress';
+    li.appendChild(progress);
+    if (showCreatedAt && request.created_at) li.appendChild(document.createTextNode(' · ' + request.created_at));
+    return li;
+  }
+
+  // Finalize submit は積んだ直後 (queued) の行をその場に足すだけで、以後の running/done は
+  // registerRequestElement 経由の initRequestLive が反映する (location.reload はしない)。
   function initFinalize() {
     document.addEventListener('submit', async function (ev) {
       const form = ev.target.closest('.finalize-form');
@@ -1552,9 +1869,20 @@ export const appJs = `
       const options = finalizeOptionsFrom(form);
       if (!options) return;
       try {
-        await postFinalizeRequest(shortId, options);
+        const request = await postFinalizeRequest(shortId, options);
         track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId }, options));
-        location.reload();
+        const container = form.parentElement;
+        if (container) {
+          let list = qs('.request-status-list', container);
+          if (!list) {
+            list = document.createElement('ul');
+            list.className = 'request-status-list';
+            container.insertBefore(list, form.nextSibling);
+          }
+          const row = requestStatusRow(request, true);
+          list.insertBefore(row, list.firstChild);
+          registerRequestElement(row);
+        }
       } catch (e) {
         trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
         alert('finalize failed: ' + e.message);
@@ -1573,11 +1901,32 @@ export const appJs = `
       const options = finalizeOptionsFrom(form);
       if (!options) return;
       try {
+        const created = [];
         for (const shortId of ids) {
-          await postFinalizeRequest(shortId, options);
+          created.push(await postFinalizeRequest(shortId, options));
         }
         track('finalize.submit', Object.assign({ scope: 'all', count: ids.length }, options));
-        location.reload();
+        const container = form.parentElement;
+        if (container) {
+          const summary = qs('.finalize-summary', container);
+          if (summary) {
+            const match = /(\d+) queued/.exec(summary.textContent || '');
+            const currentQueued = match ? parseInt(match[1], 10) : 0;
+            summary.textContent = (summary.textContent || '').replace(/\d+ queued/, (currentQueued + created.length) + ' queued');
+          }
+          let list = qs('.request-status-list', container);
+          if (!list) {
+            list = document.createElement('ul');
+            list.className = 'request-status-list';
+            if (summary) container.insertBefore(list, summary.nextSibling);
+            else container.insertBefore(list, form.nextSibling);
+          }
+          created.forEach(function (request) {
+            const row = requestStatusRow(request, false);
+            list.insertBefore(row, list.firstChild);
+            registerRequestElement(row);
+          });
+        }
       } catch (e) {
         trackError('finalize.submit', e, { scope: 'all', count: ids.length });
         alert('finalize failed: ' + e.message);
@@ -1586,103 +1935,169 @@ export const appJs = `
   }
 
   // --- Request live status (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws
-  // から progress / status を受けて [data-request-id] 要素の表示を更新する。対象要素が
-  // ページに無ければ何もしない。
-  function initRequestLive() {
-    var els = qsa('[data-request-id]');
-    if (els.length === 0) return;
+  // から progress / status を受けて [data-request-id] 要素の表示を更新する。ページ読み込み後に
+  // 追加された行 (finalize submit / Lightbox 再オープン) も registerRequestElement が
+  // 都度登録し、まだ繋がっていなければソケットを開く。
+  var requestLive = { byId: {}, ws: null, connecting: false, backoff: 1000 };
 
-    var byId = {};
-    els.forEach(function (el) {
-      byId[el.getAttribute('data-request-id')] = el;
-    });
+  function requestLiveApplyProgress(p) {
+    var el = requestLive.byId[p.request_id];
+    if (!el) return;
+    var span = qs('.request-progress', el);
+    if (!span) return;
+    var text = p.phase || '';
+    if (typeof p.step === 'number' && typeof p.total === 'number') text += ' ' + p.step + '/' + p.total;
+    span.textContent = text;
+  }
 
-    function applyProgress(p) {
-      var el = byId[p.request_id];
-      if (!el) return;
-      var span = qs('.request-progress', el);
-      if (!span) return;
-      var text = p.phase || '';
-      if (typeof p.step === 'number' && typeof p.total === 'number') text += ' ' + p.step + '/' + p.total;
-      span.textContent = text;
-    }
-
-    function applyStatus(s) {
-      var el = byId[s.request_id];
-      if (!el) return;
-      el.className = el.className.replace(/request-status-\S+/, '').trim();
-      el.classList.add('request-status-' + s.status);
-      el.setAttribute('data-request-status', s.status);
-    }
-
-    var backoff = 1000;
-    function connect() {
-      var ws;
-      try {
-        var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-        ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
-      } catch (e) {
-        return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
+  async function requestLiveApplyStatus(s) {
+    var el = requestLive.byId[s.request_id];
+    if (!el) return;
+    el.className = el.className.replace(/request-status-\S+/, '').trim();
+    el.classList.add('request-status-' + s.status);
+    el.setAttribute('data-request-status', s.status);
+    if (s.status !== 'done' && s.status !== 'failed') return;
+    var existingResult = qs('.request-result', el);
+    if (existingResult) existingResult.remove();
+    try {
+      var detail = await api('/api/v1/requests/' + s.request_id, 'GET');
+      var span = document.createElement('span');
+      span.className = 'request-result';
+      if (s.status === 'done' && detail.result && detail.result.generation_ids && detail.result.generation_ids[0]) {
+        var gen = await api('/api/v1/generations/' + detail.result.generation_ids[0], 'GET');
+        span.appendChild(document.createTextNode(' — '));
+        var a = document.createElement('a');
+        a.href = '/g/' + gen.short_id;
+        a.textContent = gen.short_id;
+        span.appendChild(a);
+        el.appendChild(span);
+      } else if (s.status === 'failed' && detail.error) {
+        span.textContent = ' — ' + detail.error;
+        el.appendChild(span);
       }
-      ws.addEventListener('open', function () {
-        backoff = 1000;
-      });
-      ws.addEventListener('message', function (ev) {
-        var data;
-        try {
-          data = JSON.parse(ev.data);
-        } catch (e) {
-          return;
-        }
-        if (data.type === 'snapshot') {
-          (data.progress || []).forEach(applyProgress);
-        } else if (data.type === 'progress') {
-          applyProgress(data);
-        } else if (data.type === 'status') {
-          applyStatus(data);
-        }
-      });
-      ws.addEventListener('close', function () {
-        setTimeout(connect, backoff);
-        backoff = Math.min(backoff * 2, 30000);
-      });
-      ws.addEventListener('error', function () {
-        try {
-          ws.close();
-        } catch (e) {}
-      });
+    } catch (e) {
+      // 詳細取得に失敗してもstatusクラス自体は反映済みなので諦める
     }
-    connect();
+  }
+
+  function requestLiveConnect() {
+    if (requestLive.ws || requestLive.connecting) return;
+    requestLive.connecting = true;
+    var ws;
+    try {
+      var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      ws = new WebSocket(proto + location.host + '/api/v1/requests/ws');
+    } catch (e) {
+      requestLive.connecting = false;
+      return; // WebSocket 未対応環境等 — 静的な表示のまま諦める
+    }
+    requestLive.ws = ws;
+    ws.addEventListener('open', function () {
+      requestLive.connecting = false;
+      requestLive.backoff = 1000;
+    });
+    ws.addEventListener('message', function (ev) {
+      var data;
+      try {
+        data = JSON.parse(ev.data);
+      } catch (e) {
+        return;
+      }
+      if (data.type === 'snapshot') {
+        (data.progress || []).forEach(requestLiveApplyProgress);
+      } else if (data.type === 'progress') {
+        requestLiveApplyProgress(data);
+      } else if (data.type === 'status') {
+        requestLiveApplyStatus(data);
+      }
+    });
+    ws.addEventListener('close', function () {
+      requestLive.ws = null;
+      requestLive.connecting = false;
+      setTimeout(requestLiveConnect, requestLive.backoff);
+      requestLive.backoff = Math.min(requestLive.backoff * 2, 30000);
+    });
+    ws.addEventListener('error', function () {
+      try {
+        ws.close();
+      } catch (e) {}
+    });
+  }
+
+  function registerRequestElement(el) {
+    var id = el.getAttribute('data-request-id');
+    if (!id) return;
+    requestLive.byId[id] = el;
+    requestLiveConnect();
+  }
+
+  function initRequestLive() {
+    qsa('[data-request-id]').forEach(registerRequestElement);
   }
 
   // --- Compare selection bar ---
-  // Fed by the generation cards' checkboxes (.compare-check).
-  function collectCompareIds() {
-    return qsa('.compare-check:checked').map(function (c) { return c.value; });
-  }
-  function updateCompareBar() {
-    const bar = document.getElementById('compare-bar');
-    if (!bar) return;
-    const ids = collectCompareIds();
-    if (ids.length > 0) {
-      bar.classList.remove('hidden');
-      const displayCount = Math.min(ids.length, 9);
-      qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
-      qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
-    } else {
-      bar.classList.add('hidden');
+  // Compare entry はカードのチェックボックスではなく、Lightboxの「比較に追加」ボタンが
+  // sessionStorageのcompare setをトグルする (docs/ui.md「Compare entry」)。#compare-bar は
+  // Gallery / Bookmarks / Batch Detailのどのページでもこのsetから描画する。
+  var COMPARE_SET_KEY = 'chimera-compare-set';
+
+  function readCompareSet() {
+    try {
+      var raw = sessionStorage.getItem(COMPARE_SET_KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
     }
   }
+  function writeCompareSet(ids) {
+    try {
+      sessionStorage.setItem(COMPARE_SET_KEY, JSON.stringify(ids));
+    } catch (e) {
+      // sessionStorage unavailable (private mode 等) -- compare setはタブ内限定で諦める
+    }
+  }
+  function updateCompareBar() {
+    var ids = readCompareSet();
+    var bar = document.getElementById('compare-bar');
+    if (bar) {
+      if (ids.length > 0) {
+        bar.classList.remove('hidden');
+        var displayCount = Math.min(ids.length, 9);
+        qs('#compare-count', bar).textContent = 'Compare (' + displayCount + ')';
+        qs('#compare-link', bar).setAttribute('href', '/compare?ids=' + ids.slice(0, 9).join(','));
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+    var addBtn = qs('.compare-add-btn');
+    if (addBtn) {
+      var id = addBtn.getAttribute('data-generation-id');
+      var active = ids.indexOf(id) !== -1;
+      addBtn.classList.toggle('active', active);
+      addBtn.textContent = active ? '比較から外す' : '比較に追加';
+    }
+  }
+  function toggleCompare(id) {
+    if (!id) return;
+    var ids = readCompareSet();
+    var idx = ids.indexOf(id);
+    if (idx === -1) ids.push(id);
+    else ids.splice(idx, 1);
+    writeCompareSet(ids);
+    updateCompareBar();
+    track('compare.add', { generation_id: id, count: ids.length });
+  }
   function initCompareBar() {
-    const bar = document.getElementById('compare-bar');
-    if (!bar) return;
-    document.addEventListener('change', function (ev) {
-      if (ev.target.classList && ev.target.classList.contains('compare-check')) updateCompareBar();
-    });
     document.addEventListener('click', function (ev) {
+      var addBtn = ev.target.closest ? ev.target.closest('.compare-add-btn') : null;
+      if (addBtn) {
+        toggleCompare(addBtn.getAttribute('data-generation-id'));
+        return;
+      }
       const link = ev.target.closest ? ev.target.closest('#compare-link') : null;
       if (!link) return;
-      track('compare.open', { count: collectCompareIds().length });
+      track('compare.open', { count: readCompareSet().length });
     });
     updateCompareBar();
   }
@@ -1873,52 +2288,306 @@ export const appJs = `
 
   // --- Gallery infinite scroll (src/ui/pages/Gallery.tsx .load-more) ---
   // Fetches the .load-more link's href with partial=1, appended as an HTML fragment
-  // (cards + the next .load-more link, or nothing), and re-observes the new link.
+  // (cards + the next .load-more link, or nothing). loadMoreGalleryCards is shared with the
+  // Lightbox's "next" navigation past the last loaded card (docs/ui.md「Lightbox」).
+  var galleryLoadMoreInFlight = false;
+  var galleryScrollObserver = null;
+
+  function galleryPartialUrl(href) {
+    const url = new URL(href, location.href);
+    url.searchParams.set('partial', '1');
+    return url.toString();
+  }
+
+  async function loadMoreGalleryCards(link) {
+    const grid = document.querySelector('[data-gallery-grid]');
+    if (!grid || !link) return false;
+    if (galleryLoadMoreInFlight) return false;
+    galleryLoadMoreInFlight = true;
+    if (galleryScrollObserver) galleryScrollObserver.unobserve(link);
+    try {
+      const res = await fetch(galleryPartialUrl(link.getAttribute('href')));
+      if (!res.ok) return false;
+      const html = await res.text();
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const nextLoadMore = wrapper.querySelector('.load-more');
+      qsa('.card, .load-more', wrapper).forEach(function (node) {
+        if (node !== nextLoadMore) grid.insertBefore(node, link);
+      });
+      link.remove();
+      if (nextLoadMore) {
+        grid.appendChild(nextLoadMore);
+        if (galleryScrollObserver) galleryScrollObserver.observe(nextLoadMore);
+      }
+      return true;
+    } catch (e) {
+      trackError('gallery.load_more', e, {});
+      return false;
+    } finally {
+      galleryLoadMoreInFlight = false;
+    }
+  }
+
   function initGalleryInfiniteScroll() {
     const grid = document.querySelector('[data-gallery-grid]');
     if (!grid || !window.IntersectionObserver) return;
-
-    let loading = false;
-    const observer = new IntersectionObserver(function (entries) {
+    galleryScrollObserver = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        if (entry.isIntersecting) loadMore(entry.target);
+        if (entry.isIntersecting) loadMoreGalleryCards(entry.target);
       });
     });
+    const initial = qs('.load-more', grid);
+    if (initial) galleryScrollObserver.observe(initial);
+  }
 
-    function partialUrl(href) {
-      const url = new URL(href, location.href);
-      url.searchParams.set('partial', '1');
-      return url.toString();
-    }
+  // --- Lightbox (Gallery / Bookmarks / Batch Detail, docs/ui.md「Lightbox」) ---
+  // A plain left-click on a card thumbnail opens this instead of navigating; modifier/middle
+  // clicks and no-JS still follow the <a href="/g/{short_id}"> normally. The overlay chrome
+  // (image, prev/next, topbar) is built once here; only .lightbox-panel's contents come from
+  // the server fragment (GET /g/:short_id?partial=lightbox), so behaviour stays defined once
+  // in the section components it shares with Generation Detail.
+  var lightboxOverlay = null;
+  var lightboxStage = null;
+  var lightboxImage = null;
+  var lightboxPanel = null;
+  var lightboxPrevBtn = null;
+  var lightboxNextBtn = null;
+  var lightboxTopbarShortId = null;
+  var lightboxTopbarDetailLink = null;
+  var lightboxCurrentLink = null;
+  var lightboxLastFocused = null;
+  var lightboxLoadToken = 0;
+  var lightboxPushedHistory = false;
 
-    async function loadMore(link) {
-      if (loading) return;
-      loading = true;
-      observer.unobserve(link);
-      try {
-        const res = await fetch(partialUrl(link.getAttribute('href')));
-        if (!res.ok) return;
-        const html = await res.text();
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = html;
-        const nextLoadMore = wrapper.querySelector('.load-more');
-        qsa('.card, .load-more', wrapper).forEach(function (node) {
-          if (node !== nextLoadMore) grid.insertBefore(node, link);
-        });
-        link.remove();
-        if (nextLoadMore) {
-          grid.appendChild(nextLoadMore);
-          observer.observe(nextLoadMore);
+  function ensureLightboxOverlay() {
+    if (lightboxOverlay) return lightboxOverlay;
+    const overlay = document.createElement('div');
+    overlay.id = 'lightbox-overlay';
+    overlay.className = 'lightbox-overlay';
+    overlay.hidden = true;
+    overlay.innerHTML =
+      '<div class="lightbox-topbar">' +
+        '<button type="button" class="lightbox-close" aria-label="close"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 4L16 16M16 4L4 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg></button>' +
+        '<span class="lightbox-topbar-short-id"></span>' +
+        '<a class="lightbox-topbar-detail-link" href="#">詳細ページ ↗</a>' +
+      '</div>' +
+      '<div class="lightbox-stage">' +
+        '<div class="lightbox-image-area">' +
+          '<button type="button" class="lightbox-nav lightbox-prev" aria-label="prev">‹</button>' +
+          '<img class="lightbox-image" alt="">' +
+          '<button type="button" class="lightbox-nav lightbox-next" aria-label="next">›</button>' +
+        '</div>' +
+        '<div class="lightbox-panel"></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    lightboxOverlay = overlay;
+    lightboxStage = qs('.lightbox-stage', overlay);
+    lightboxImage = qs('.lightbox-image', overlay);
+    lightboxPanel = qs('.lightbox-panel', overlay);
+    lightboxPrevBtn = qs('.lightbox-prev', overlay);
+    lightboxNextBtn = qs('.lightbox-next', overlay);
+    lightboxTopbarShortId = qs('.lightbox-topbar-short-id', overlay);
+    lightboxTopbarDetailLink = qs('.lightbox-topbar-detail-link', overlay);
+
+    // Swipe (narrow layout): horizontal = prev/next, vertical-down from the top of the scroll = close.
+    var touchStartX = null;
+    var touchStartY = null;
+    var touchStartAtTop = false;
+    var SWIPE_THRESHOLD = 50;
+    lightboxStage.addEventListener(
+      'touchstart',
+      function (ev) {
+        if (ev.touches.length !== 1) return;
+        touchStartX = ev.touches[0].clientX;
+        touchStartY = ev.touches[0].clientY;
+        touchStartAtTop = lightboxStage.scrollTop === 0;
+      },
+      { passive: true },
+    );
+    lightboxStage.addEventListener(
+      'touchend',
+      function (ev) {
+        if (touchStartX === null) return;
+        var touch = ev.changedTouches[0];
+        var dx = touch.clientX - touchStartX;
+        var dy = touch.clientY - touchStartY;
+        touchStartX = null;
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+          lightboxNavigate(dx < 0 ? 1 : -1);
+        } else if (dy > SWIPE_THRESHOLD && dy > Math.abs(dx) && touchStartAtTop) {
+          closeLightbox();
         }
-      } catch (e) {
-        trackError('gallery.load_more', e, {});
-      } finally {
-        loading = false;
+      },
+      { passive: true },
+    );
+
+    return overlay;
+  }
+
+  function lightboxCardsInOrder() {
+    return qsa('.thumb-link');
+  }
+
+  function lightboxFindByShortId(shortId) {
+    var cards = lightboxCardsInOrder();
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i].getAttribute('data-short-id') === shortId) return cards[i];
+    }
+    return null;
+  }
+
+  function lightboxUpdateNavButtons() {
+    if (!lightboxPrevBtn || !lightboxNextBtn) return;
+    var cards = lightboxCardsInOrder();
+    var idx = lightboxCurrentLink ? cards.indexOf(lightboxCurrentLink) : -1;
+    lightboxPrevBtn.hidden = idx <= 0;
+    var hasMoreLink = Boolean(qs('.load-more'));
+    lightboxNextBtn.hidden = idx < 0 ? true : !(idx < cards.length - 1 || hasMoreLink);
+  }
+
+  async function lightboxNavigate(dir) {
+    var cards = lightboxCardsInOrder();
+    var idx = lightboxCurrentLink ? cards.indexOf(lightboxCurrentLink) : -1;
+    if (idx < 0) return;
+    var nextIdx = idx + dir;
+    if (dir > 0 && nextIdx >= cards.length) {
+      var link = qs('.load-more');
+      if (!link) return;
+      var loaded = await loadMoreGalleryCards(link);
+      if (!loaded) return;
+      cards = lightboxCardsInOrder();
+    }
+    var target = cards[nextIdx];
+    if (!target) return;
+    showLightbox(target.getAttribute('data-short-id'), target, 'replace');
+  }
+
+  // mode: 'push' (user opened a new image -- adds a history entry), 'replace' (navigating
+  // within an already-open lightbox), or 'none' (syncing to an already-current #g= hash).
+  function showLightbox(shortId, link, mode) {
+    if (!shortId) return;
+    ensureLightboxOverlay();
+    lightboxCurrentLink = link || lightboxFindByShortId(shortId);
+    if (!lightboxLastFocused) lightboxLastFocused = document.activeElement;
+    document.body.classList.add('lightbox-open');
+    lightboxOverlay.hidden = false;
+    lightboxUpdateNavButtons();
+
+    var img = lightboxCurrentLink ? qs('.thumb-fg', lightboxCurrentLink) : null;
+    lightboxImage.src = img ? img.src : '/g/' + encodeURIComponent(shortId) + '/image';
+    lightboxImage.alt = shortId;
+    lightboxTopbarShortId.textContent = shortId;
+    lightboxTopbarDetailLink.setAttribute('href', '/g/' + shortId);
+
+    const token = ++lightboxLoadToken;
+    fetch('/g/' + encodeURIComponent(shortId) + '?partial=lightbox')
+      .then(function (res) {
+        if (!res.ok) throw new Error('failed to load generation ' + shortId);
+        return res.text();
+      })
+      .then(function (html) {
+        if (token !== lightboxLoadToken) return;
+        lightboxPanel.innerHTML = html;
+        qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
+        updateCompareBar();
+      })
+      .catch(function (e) {
+        if (token !== lightboxLoadToken) return;
+        trackError('lightbox.open', e, { short_id: shortId });
+      });
+
+    if (mode === 'push' || mode === 'replace') {
+      const url = new URL(location.href);
+      url.hash = 'g=' + encodeURIComponent(shortId);
+      if (mode === 'push' && !lightboxPushedHistory) {
+        history.pushState({ lightbox: true }, '', url);
+        lightboxPushedHistory = true;
+      } else {
+        history.replaceState({ lightbox: true }, '', url);
       }
     }
+  }
 
-    const initial = qs('.load-more', grid);
-    if (initial) observer.observe(initial);
+  function doCloseLightbox() {
+    if (!lightboxOverlay) return;
+    lightboxOverlay.hidden = true;
+    document.body.classList.remove('lightbox-open');
+    lightboxLoadToken++;
+    lightboxCurrentLink = null;
+    if (lightboxLastFocused && typeof lightboxLastFocused.focus === 'function') {
+      try {
+        lightboxLastFocused.focus();
+      } catch (e) {}
+    }
+    lightboxLastFocused = null;
+    lightboxPushedHistory = false;
+  }
+
+  // Manual close (X / Esc / backdrop) goes through history.back() only when this page pushed the
+  // #g= entry, so the Back button and the close button agree; doCloseLightbox (called from the
+  // popstate handler) does the DOM teardown. A lightbox restored from the URL on load has no
+  // entry of ours to pop -- going back there would leave the page -- so it just drops the hash.
+  function closeLightbox() {
+    if (!lightboxOverlay || lightboxOverlay.hidden) return;
+    if (lightboxPushedHistory) {
+      history.back();
+      return;
+    }
+    if (/(?:^|#)g=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+    doCloseLightbox();
+  }
+
+  function initLightbox() {
+    document.addEventListener('click', function (ev) {
+      const link = ev.target.closest ? ev.target.closest('.thumb-link') : null;
+      if (!link) return;
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      ev.preventDefault();
+      showLightbox(link.getAttribute('data-short-id'), link, 'push');
+    });
+
+    document.addEventListener('click', function (ev) {
+      if (!lightboxOverlay) return;
+      if (ev.target.closest && ev.target.closest('.lightbox-close')) {
+        closeLightbox();
+        return;
+      }
+      if (ev.target === lightboxOverlay) {
+        closeLightbox();
+        return;
+      }
+      const prev = ev.target.closest ? ev.target.closest('.lightbox-prev') : null;
+      if (prev) {
+        lightboxNavigate(-1);
+        return;
+      }
+      const next = ev.target.closest ? ev.target.closest('.lightbox-next') : null;
+      if (next) {
+        lightboxNavigate(1);
+      }
+    });
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && lightboxOverlay && !lightboxOverlay.hidden) closeLightbox();
+    });
+
+    window.addEventListener('popstate', function () {
+      const match = /(?:^|#)g=([^&]+)/.exec(location.hash);
+      if (match) {
+        const shortId = decodeURIComponent(match[1]);
+        showLightbox(shortId, lightboxFindByShortId(shortId), 'none');
+      } else {
+        doCloseLightbox();
+      }
+    });
+
+    const initialMatch = /(?:^|#)g=([^&]+)/.exec(location.hash);
+    if (initialMatch) {
+      const shortId = decodeURIComponent(initialMatch[1]);
+      showLightbox(shortId, lightboxFindByShortId(shortId), 'none');
+    }
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -1940,6 +2609,7 @@ export const appJs = `
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
+    initLightbox();
     initRequestLive();
     initCompareBar();
     initCopyIdButtons();
