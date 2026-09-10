@@ -368,6 +368,15 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 キーも封筒を素通しします。MCP `derive_request` は `identity_override` 引数をこのキーに
 写し、派生元の値は引き継ぎません。
 
+#### 背景と描き足された小物の除去
+
+背景や、モデルが勝手に描き足す家具などを消したいときは `generation.parameters.layerdiffuse: true`
+を使います（recipe `yukari` / `yukari-sketch`。`yukari-anima` は拒否します）。背景は透明になり、
+人物に触れていない物（椅子・紙ナプキンなど）は消えます。pose の上で人物が触れている小物
+（テーブル・カップなど）は残ります。negative prompt に furniture / chair / indoors などを入れても
+描き足しは消えません。layerdiffuse の Generation を finalize すると、既定で透過ステッカーになります
+（「finalize」の `transparent`）。
+
 ### finalize
 
 ``` json
@@ -420,7 +429,7 @@ worker は `failed` にします。`generation.identity_override` に理由の�
   skin                bool                      `--skin`
   toe_guard           null | true | number      `--toe-guard [WEIGHT]`
   keep_scene          bool                      `--keep-scene`
-  transparent         null | bool               `--opaque` が false（null は recipe 既定）
+  transparent         null | bool               `--opaque` が false（null は recipe 既定。layerdiffuse の Generation では白帯と紫縁の外側が alpha 0 の透過ステッカーが既定で、`backdrop` / `keep_scene` / false を指定したときだけ帯付き不透明）
   backdrop            null | string             `--backdrop #RRGGBB`
   upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
   lora_strength       null | number             `--lora-strength 0..2`
