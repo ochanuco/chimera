@@ -166,13 +166,6 @@ export function GalleryPage({
           <GalleryCards items={items} nextCursor={nextCursor} filters={filters} />
         </div>
       )}
-
-      <div id="compare-bar" class="compare-bar hidden">
-        <span id="compare-count">Compare (0)</span>
-        <a id="compare-link" class="compare-go" href="#">
-          Compare
-        </a>
-      </div>
     </Layout>
   );
 }
