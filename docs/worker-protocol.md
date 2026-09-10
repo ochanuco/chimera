@@ -678,6 +678,15 @@ preset の名前ではなく `recipe_pose` が入っています。ここをコ�
 版の両方が残るので、派生は pin ごと引き継げます。patches の引き継ぎ元も Batch の
 `patches_json`（α の分だけ）で、preset の分は pin が運びます。
 
+pin の無い Batch の patches は引き継ぎません。`preset_versions_json` が空の Batch は pin が
+入る前のもので、その patches は当時の preset 本文に対して書かれています。worker は pin が
+無ければ現行の版を解決するため、そのまま引き継ぐと text op が needle 不在で落ち、request を
+積んでから失敗します。起点 Batch が patches を持ち pin を持たず、その `recipe` に Preset が
+1件でもあれば 409 です。`replace_patches: true` で現行の preset に対して patches を組み直すか、
+pin を持つ Batch を起点にします。`recipe` に Preset が1件も無ければ動く本文が無いので、その
+Batch からはそのまま引き継ぎます（pin 自体を飛ばす条件と同じ）。chimera は patch の op を
+読まないので、needle に依存する op だけを選り分けることはしません。
+
 `derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
 別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から
 `recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます。
@@ -871,7 +880,9 @@ chimera が patch を検証するのにこれが要ります。
     request 側が版を指名します。
 -   base が動いて patches が当たらなくなる。text op は needle 不在で落ちますが、worker の
     claim 直後の probe が Batch を作る前に落とし、request が `failed` になります。
-    `base_fingerprint` の突き合わせで、使う前に気付けるようにします。
+    `derive_request` は pin の無い Batch の patches を引き継がないので、この経路では
+    request を積む前に 409 になります。`base_fingerprint` の突き合わせで、使う前に
+    気付けるようにします。
 -   chimera が落ちると preset を引けない。claim 自体 chimera を要するので、cache が効く窓は
     「claim 済みで preset 未解決の request」だけです。版が不変なので cache は素直に効きます。
 

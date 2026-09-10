@@ -1,5 +1,11 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { buildDerivedRequestPayload, type BuildDerivedRequestPayloadInput } from '../src/lib/requests';
 import { createBatch, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
+
+function uniqueRecipe(): string {
+  return `yukari-${crypto.randomUUID()}`;
+}
 
 interface GenerationDetail {
   id: string;
@@ -399,5 +405,84 @@ describe('MCP derive_request', () => {
     });
     expect(call.isError).toBe(true);
     expect(call.text).toContain('rebuild reference');
+  });
+
+  describe('replaying patches against an unpinned preset body', () => {
+    function deriveInput(overrides: Partial<BuildDerivedRequestPayloadInput> = {}): BuildDerivedRequestPayloadInput {
+      return {
+        parentGenerationId: 'parent-generation',
+        parentRecipe: 'yukari',
+        parentParameters: { pose: 'lounge' },
+        parentPatches: [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }],
+        parentPresets: [],
+        parentRecipeHasPresets: true,
+        instruction: 'try a variant',
+        count: 1,
+        replacePatches: false,
+        semantic: { summary: 'x' },
+        ...overrides,
+      };
+    }
+
+    it('throws when the parent carries patches but no pin, on a recipe that has presets', () => {
+      expect(() => buildDerivedRequestPayload(deriveInput())).toThrow(/pin/i);
+    });
+
+    it('succeeds when replace_patches is true, even without a pin', () => {
+      const payload = buildDerivedRequestPayload(deriveInput({ replacePatches: true }));
+      expect((payload.generation as Record<string, unknown>).patches).toBeUndefined();
+    });
+
+    it('succeeds when the recipe has no presets at all', () => {
+      const payload = buildDerivedRequestPayload(deriveInput({ parentRecipeHasPresets: false }));
+      expect((payload.generation as Record<string, unknown>).patches).toEqual([
+        { target: 'pose', op: 'set', value: 'lounge', reason: 'base' },
+      ]);
+    });
+
+    it('succeeds when the parent already carries a pin, carrying both patches and presets forward', () => {
+      const payload = buildDerivedRequestPayload(
+        deriveInput({ parentPresets: [{ kind: 'pose', name: 'lounge', version: 1 }] }),
+      );
+      expect((payload.generation as Record<string, unknown>).patches).toEqual([
+        { target: 'pose', op: 'set', value: 'lounge', reason: 'base' },
+      ]);
+      expect((payload.generation as Record<string, unknown>).presets).toEqual([{ kind: 'pose', name: 'lounge', version: 1 }]);
+    });
+
+    it('409s over MCP when the source batch carries patches but no pin on a recipe with presets', async () => {
+      const recipe = uniqueRecipe();
+      const patches = [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }];
+      const { generation } = await createParent({ recipe, patches });
+
+      await env.DB.prepare(
+        `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, created_by, created_at)
+         VALUES (?, ?, 'pose', 'lounge', 1, '{}', 'active', 'import', 'test', ?)`,
+      )
+        .bind(crypto.randomUUID(), recipe, new Date().toISOString())
+        .run();
+
+      const blocked = await mcpToolCall('derive_request', {
+        from_generation_id: generation.id,
+        instruction: 'try a variant',
+        count: 1,
+        semantic: { summary: 'x' },
+        idempotency_key: crypto.randomUUID(),
+      });
+      expect(blocked.isError).toBe(true);
+      expect(blocked.text).toContain('pin');
+
+      const allowed = await mcpToolCall<{ payload: { generation: Record<string, unknown> } }>('derive_request', {
+        from_generation_id: generation.id,
+        instruction: 'try a variant',
+        count: 1,
+        patches: [{ target: 'costume', op: 'set', value: 'v2', reason: 'new' }],
+        replace_patches: true,
+        semantic: { summary: 'x' },
+        idempotency_key: crypto.randomUUID(),
+      });
+      expect(allowed.isError).toBe(false);
+      expect(allowed.data?.payload.generation.patches).toEqual([{ target: 'costume', op: 'set', value: 'v2', reason: 'new' }]);
+    });
   });
 });

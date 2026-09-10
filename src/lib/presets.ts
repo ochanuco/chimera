@@ -219,8 +219,7 @@ export async function pinPresets(db: D1Database, payload: JsonObject): Promise<J
   if (given) assertPinsMatchParameters(generation);
 
   const recipe = generation.recipe;
-  const hasAnyPreset = await db.prepare('SELECT 1 FROM presets WHERE recipe = ? LIMIT 1').bind(recipe).first();
-  if (!hasAnyPreset) return payload;
+  if (!(await recipeHasPresets(db, recipe))) return payload;
 
   const parameters = isJsonObject(generation.parameters) ? generation.parameters : {};
   const pinnedKinds = new Set((given ?? []).map((pin) => pin.kind));
@@ -299,6 +298,12 @@ export async function listPresetVersions(
     .all<PresetRow>();
 
   return (results ?? []).map(summarizePreset);
+}
+
+/** Whether `recipe` has any Preset row at all, regardless of kind/status. */
+export async function recipeHasPresets(db: D1Database, recipe: string): Promise<boolean> {
+  const row = await db.prepare('SELECT 1 FROM presets WHERE recipe = ? LIMIT 1').bind(recipe).first();
+  return row !== null;
 }
 
 /** version omitted resolves to the latest active version; an explicit version ignores status, since a past request may have pinned a version since deprecated. */
