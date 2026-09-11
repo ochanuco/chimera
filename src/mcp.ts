@@ -21,6 +21,7 @@ import {
   RECIPE_REF_RE,
   payloadEnvelopeIssues,
   finalizeOptionsSchema,
+  finalizeProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
 } from './schemas/requests';
@@ -52,7 +53,7 @@ import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
 import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
-import { promoteGenerationToPreset } from './lib/promote';
+import { promoteGenerationToPreset, promoteGenerationToProfile } from './lib/promote';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { publicationUrlSchema } from './schemas/publications';
@@ -175,10 +176,11 @@ const createRequestInputSchema = z
     }
   });
 
-/** `finalize_generation` の入力。options は finalizePayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+/** `finalize_generation` の入力。options / profile は finalizePayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
 const finalizeGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   options: finalizeOptionsSchema.optional(),
+  profile: finalizeProfileRefSchema.optional(),
   idempotency_key: z.string().min(1),
 });
 
@@ -274,6 +276,13 @@ const promoteToPoseInputSchema = z.object({
   name: z.string().min(1),
   kind: presetKindSchema.default('pose'),
   base_version: z.number().int().positive().optional(),
+  note: z.string().optional(),
+  idempotency_key: z.string().min(1),
+});
+
+const promoteToProfileInputSchema = z.object({
+  generation_id: z.string().min(1),
+  name: z.string().min(1),
   note: z.string().optional(),
   idempotency_key: z.string().min(1),
 });
@@ -605,14 +614,20 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
         'repair_size (repair redraw longest side), ' +
         'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number). ' +
-        'Follow status with get_request.',
+        'Every dial-able option (denoise, keep_legwear, toe_guard, lora_strength, repair_denoise, repair_lora) also accepts ' +
+        'a word string instead of a number/true — the word vocabulary for this recipe is list_catalog\'s ' +
+        'recipes[].dials.finalize (chimera only checks the type; the worker resolves the word). ' +
+        'profile {name, version?} resolves a finalize Preset (list_presets kind="finalize") for the source ' +
+        "Generation's recipe (latest active version when version is omitted) and uses its options as the base — " +
+        'any key also given in options overrides it, explicit null included. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: finalizeGenerationInputSchema,
     },
-    async ({ generation_id, options, idempotency_key }) => {
+    async ({ generation_id, options, profile, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const payload: Record<string, unknown> = { generation_id: generation.short_id };
       if (options) payload.options = options;
+      if (profile) payload.profile = profile;
       const { row, created } = await createRequest(
         db,
         { kind: 'finalize', payload, idempotency_key, created_by: 'mcp' },
@@ -638,6 +653,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'denoise (redraw strength, recipe default), seeds (up to 16 seeds to try, worker default), ' +
         'size (redraw longest side, recipe default), pad (detected-region padding factor, worker default), ' +
         'lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number). ' +
+        'denoise and lora also accept a word string instead of a number/true — the word vocabulary for this ' +
+        "recipe is list_catalog's recipes[].dials.repair (chimera only checks the type; the worker resolves the word). " +
         'Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: repairGenerationInputSchema,
@@ -665,7 +682,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a generic masked redraw / garment inpaint request (docs/worker-protocol.md "masked_redraw"): ' +
         'the source Generation is left unchanged and the worker creates a new refinement Batch with a rebuild ' +
         'Reference back to it. generation_id accepts a short_id. options requires one or more non-overlapping ' +
-        'normalized [x0,y0,x1,y1] rectangles and a non-empty prompt_patch; denoise is (0,0.75], ' +
+        'normalized [x0,y0,x1,y1] rectangles and a non-empty prompt_patch; denoise is (0,0.75] or a word string ' +
+        "(chimera only checks the word's type; no catalog dials namespace is defined for masked_redraw yet, so " +
+        'validity is the worker\'s concern), ' +
         'mask_padding/mask_feather are pixel distances (pad/feather are accepted and canonicalized aliases), and size/seeds are optional. ' +
         'Use this for arbitrary garment or local redraw regions; use repair_generation for the hands/feet-specific compatibility API. ' +
         'Follow status with get_request.',
@@ -929,8 +948,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
         'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
-        'has them, per-recipe parameters, the patches vocabulary, and git info. No prompt bodies — ' +
-        'use get_catalog_pose for a single pose\'s full record.',
+        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for finalize/repair ' +
+        'dial-able options, keyed by the option name — the word vocabulary finalize_generation/repair_generation accept ' +
+        'in place of a number), and git info. No prompt bodies — use get_catalog_pose for a single pose\'s full record.',
       inputSchema: listCatalogInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -973,7 +993,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputSchemas.list_presets,
       description:
-        'List Presets (pose/costume/expression), one row per name at its latest version — no record body. ' +
+        'List Presets (pose/costume/expression/finalize), one row per name at its latest version — no record body. ' +
         "Unlike list_catalog/get_catalog_pose, which read the comfyui-recipes catalog snapshot, Presets are " +
         "chimera's own versioned source of truth for prompt bodies (docs/domain-model.md#preset). Defaults to " +
         'status=active only; include_deprecated also surfaces names whose latest version has been deprecated.',
@@ -994,7 +1014,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get a Preset resolved to its full body: record plus, for a promoted version, the patches accumulated ' +
         "from its base chain (oldest first). version defaults to the name's latest active version; an explicit " +
         'version can still be read once deprecated. Presets are chimera\'s own versioned source of truth for ' +
-        'prompt bodies (docs/domain-model.md#preset) — unlike get_catalog_pose, which reads a comfyui-recipes snapshot.',
+        'prompt bodies (docs/domain-model.md#preset) — unlike get_catalog_pose, which reads a comfyui-recipes snapshot. ' +
+        'kind "finalize" is a different shape: record is {options} (a finalize_generation options object, words ' +
+        'preserved) and patches is always [] — it has no base chain.',
       inputSchema: getPresetInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -1036,6 +1058,29 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         created_by: 'mcp',
       });
       return jsonResult(mcpOutputSchemas.promote_to_pose, result);
+    },
+  );
+
+  server.registerTool(
+    'promote_to_profile',
+    {
+      outputSchema: mcpOutputSchemas.promote_to_profile,
+      description:
+        'Non-destructive: only appends one new Preset version. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
+        'Turn a rating=good finalize-kind Generation into a new kind="finalize" Preset version (a reusable profile of ' +
+        'finalize options, docs/worker-protocol.md「finalize profile」). generation_id must be a Generation produced by a ' +
+        'finalize request (the delivered Generation or, if it also carried a repair, either sibling) — found via the ' +
+        "finalize request whose result attached this Generation's Batch. 409s when rating is not good or when " +
+        'generation_id was not produced by a finalize request. The new version\'s body is that request\'s queued ' +
+        'options verbatim (dial words preserved). Never rewrites an existing version — pass an existing name for a new ' +
+        'version of it, or a new name to start it at version 1. idempotency_key replay returns the already-created ' +
+        'version unchanged. Use the result with finalize_generation\'s profile input or list_presets kind="finalize".',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: promoteToProfileInputSchema,
+    },
+    async ({ generation_id, name, note, idempotency_key }) => {
+      const result = await promoteGenerationToProfile(db, { generation_id, name, note, idempotency_key, created_by: 'mcp' });
+      return jsonResult(mcpOutputSchemas.promote_to_profile, result);
     },
   );
 

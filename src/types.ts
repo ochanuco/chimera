@@ -246,7 +246,7 @@ export interface RecipeCatalogRow {
   updated_at: string;
 }
 
-export type PresetKind = 'pose' | 'costume' | 'expression';
+export type PresetKind = 'pose' | 'costume' | 'expression' | 'finalize';
 export type PresetStatus = 'active' | 'deprecated';
 export type PresetSource = 'import' | 'promote';
 export type PresetCreatedBy = 'system' | 'mcp' | 'gui';

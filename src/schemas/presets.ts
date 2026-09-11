@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { RECIPE_REF_RE } from './requests';
+import { RECIPE_REF_RE, finalizeOptionsSchema } from './requests';
 
-export const presetKindSchema = z.enum(['pose', 'costume', 'expression']);
+export const presetKindSchema = z.enum(['pose', 'costume', 'expression', 'finalize']);
 
 export const presetImportRequestSchema = z.object({
   recipe_ref: z.string().regex(RECIPE_REF_RE),
@@ -36,6 +36,21 @@ const presetBodyPromoteSchema = z
   })
   .strict();
 
-export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema]);
+/**
+ * kind `finalize` の本文: その場で入れ子になった `finalizeOptionsSchema` そのもの
+ * (docs/domain-model.md「Preset」body の形)。pose/costume/expression と違って base
+ * への参照も patches も持たない — promote_to_profile が起点の finalize request から
+ * 直接書き、以降の版もその場限りの全文上書きで、チェーンを作らない。
+ */
+export const presetBodyFinalizeSchema = z.object({ options: finalizeOptionsSchema }).strict();
+
+export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema, presetBodyFinalizeSchema]);
 
 export type PresetBody = z.infer<typeof presetBodySchema>;
+
+export const presetPromoteProfileRequestSchema = z.object({
+  generation_id: z.string().min(1),
+  name: z.string().min(1),
+  note: z.string().optional(),
+  idempotency_key: z.string().min(1),
+});

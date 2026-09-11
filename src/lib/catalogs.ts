@@ -99,6 +99,9 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     if ('parts' in r) summary.parts = r.parts;
     if ('identity_tags' in r) summary.identity_tags = r.identity_tags;
     if ('parameters' in r) summary.parameters = r.parameters;
+    // dials: {finalize?, repair?, patches?} の word -> number map。chimera は表示にしか使わず、
+    // word の実在確認や number への解決は worker が行う (docs/worker-protocol.md「finalize profile」)。
+    if ('dials' in r) summary.dials = r.dials;
     return summary;
   });
   return {
@@ -108,6 +111,15 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     git_branch: doc.git_branch ?? null,
     generated_at: doc.generated_at ?? null,
   };
+}
+
+/** `recipes[].dials.finalize` for one recipe name — the word -> number map FinalizeFields renders as buttons. null when the catalog, recipe, or its dials.finalize are absent. */
+export function findFinalizeDials(doc: RecipeCatalogDoc, recipeName: string): Record<string, Record<string, number>> | null {
+  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
+  if (!recipe) return null;
+  const dials = (recipe as { dials?: { finalize?: unknown } }).dials;
+  const finalize = dials?.finalize;
+  return finalize && typeof finalize === 'object' && !Array.isArray(finalize) ? (finalize as Record<string, Record<string, number>>) : null;
 }
 
 /** Looks up a single pose record (full body, prompts included) by recipe name + pose name. Either miss returns null. */

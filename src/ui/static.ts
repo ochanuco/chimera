@@ -968,6 +968,21 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
+.dial-group, .profile-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
+.dial-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.dial-btn-active { background: var(--accent); color: #10131c; border-color: var(--accent); }
+.promote-profile-form { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+.promote-profile-status { font-size: 0.8rem; color: var(--text-dim); }
+
 .request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
 .request-status-queued { color: var(--accent); }
 .request-status-running { color: var(--neutral); }
@@ -1853,11 +1868,139 @@ export const appJs = `
     });
   }
 
+  // --- Finalize dial groups (denoise / keep_legwear / repair_lora word buttons) ---
+  // A dial group's state lives in its own data-dial-mode attribute: 'default'/'off' (no value
+  // sent, the plain default), a word (sent as that string), or 'custom' (read the number input).
+  function dialGroupValue(form, key) {
+    var group = qs('[data-dial-key="' + key + '"]', form);
+    if (!group) return undefined; // no dial-group rendered for this key -> caller falls back to the plain input
+    var mode = group.getAttribute('data-dial-mode') || 'default';
+    if (mode === 'default' || mode === 'off') return null;
+    if (mode === 'custom') {
+      var input = qs('.dial-custom-input', group);
+      var raw = input ? input.value : '';
+      return raw === '' ? null : Number(raw);
+    }
+    return mode; // the word itself, e.g. 'tidy' or 'on'
+  }
+
+  function setDialGroupValue(group, value) {
+    var input = qs('.dial-custom-input', group);
+    var isTristate = group.classList.contains('dial-group-tristate');
+    var mode, buttonValue;
+    if (value === null || value === undefined) {
+      mode = isTristate ? 'off' : 'default';
+      buttonValue = '';
+    } else if (value === true) {
+      mode = 'on';
+      buttonValue = 'on';
+    } else if (typeof value === 'string') {
+      mode = value;
+      buttonValue = value;
+    } else {
+      mode = 'custom';
+      buttonValue = '__custom__';
+    }
+    group.setAttribute('data-dial-mode', mode);
+    qsa('.dial-btn', group).forEach(function (b) {
+      b.classList.toggle('dial-btn-active', b.getAttribute('data-dial-value') === buttonValue);
+    });
+    if (input) {
+      if (mode === 'custom') {
+        input.hidden = false;
+        input.disabled = false;
+        input.value = typeof value === 'number' ? String(value) : '';
+      } else {
+        input.hidden = true;
+        input.disabled = true;
+        input.value = '';
+      }
+    }
+  }
+
+  // Dial button clicks: word / 既定 / off / on select that mode directly; custom reveals the number input.
+  function initDialGroups() {
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.dial-group .dial-btn') : null;
+      if (!btn) return;
+      var group = btn.closest('.dial-group');
+      if (!group) return;
+      ev.preventDefault();
+      var value = btn.getAttribute('data-dial-value');
+      var input = qs('.dial-custom-input', group);
+      var isTristate = group.classList.contains('dial-group-tristate');
+      if (value === '__custom__') {
+        group.setAttribute('data-dial-mode', 'custom');
+        if (input) { input.hidden = false; input.disabled = false; input.focus(); }
+      } else {
+        group.setAttribute('data-dial-mode', value === '' ? (isTristate ? 'off' : 'default') : value);
+        if (input) { input.hidden = true; input.disabled = true; input.value = ''; }
+      }
+      qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
+    });
+  }
+
+  // --- Finalize profile buttons ---
+  function applyProfileOptionsToForm(form, options) {
+    Object.keys(options).forEach(function (key) {
+      var value = options[key];
+      var group = qs('[data-dial-key="' + key + '"]', form);
+      if (group) {
+        setDialGroupValue(group, value);
+        return;
+      }
+      var plainInput = qs('input[name="' + key + '"]', form);
+      if (plainInput && plainInput.type === 'number') {
+        plainInput.value = (value === null || value === undefined || typeof value === 'boolean') ? '' : String(value);
+        return;
+      }
+      if (plainInput && plainInput.type === 'checkbox') {
+        plainInput.checked = value === true;
+        return;
+      }
+      var select = qs('select[name="' + key + '"]', form);
+      if (select && typeof value === 'string') select.value = value;
+    });
+  }
+
+  function initProfileButtons() {
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.profile-group .dial-btn') : null;
+      if (!btn) return;
+      var group = btn.closest('.profile-group');
+      var form = group ? group.closest('.finalize-form, .finalize-all-form') : null;
+      if (!group || !form) return;
+      ev.preventDefault();
+      qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
+
+      var nameInput = qs('input[name="profile_name"]', form);
+      var versionInput = qs('input[name="profile_version"]', form);
+      if (btn.classList.contains('profile-btn-custom')) {
+        nameInput.value = '';
+        versionInput.value = '';
+        return;
+      }
+      nameInput.value = btn.getAttribute('data-profile-name') || '';
+      versionInput.value = btn.getAttribute('data-profile-version') || '';
+
+      var options = {};
+      try { options = JSON.parse(btn.getAttribute('data-profile-options') || '{}'); } catch (e) { options = {}; }
+      applyProfileOptionsToForm(form, options);
+    });
+  }
+
+  function profileRefFrom(form) {
+    var nameInput = qs('input[name="profile_name"]', form);
+    if (!nameInput || !nameInput.value) return null;
+    var versionInput = qs('input[name="profile_version"]', form);
+    var version = versionInput && versionInput.value ? Number(versionInput.value) : undefined;
+    return version === undefined ? { name: nameInput.value } : { name: nameInput.value, version: version };
+  }
+
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
   // Returns null when the form cannot be turned into options. In quiet mode (used by the
   // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
   function finalizeOptionsFrom(form, quiet) {
-    var denoiseRaw = qs('input[name="denoise"]', form).value;
     var recolor = qs('input[name="recolor"]', form);
     var backdropMode = qs('select[name="backdrop"]', form).value;
     var backdrop = backdropMode === 'transparent' ? null : backdropMode;
@@ -1869,11 +2012,26 @@ export const appJs = `
       }
     }
     var strokeLight = qs('select[name="stroke_light"]', form).value;
+
+    var denoiseFromDial = dialGroupValue(form, 'denoise');
+    var denoise;
+    if (denoiseFromDial === undefined) {
+      var denoiseRaw = qs('input[name="denoise"]', form).value;
+      denoise = denoiseRaw === '' ? null : Number(denoiseRaw);
+    } else {
+      denoise = denoiseFromDial;
+    }
+
+    var keepLegwearFromDial = dialGroupValue(form, 'keep_legwear');
+    var keepLegwear = keepLegwearFromDial === undefined
+      ? (qs('input[name="keep_legwear"]', form).checked ? true : null)
+      : keepLegwearFromDial;
+
     var options = {
       repin: qs('input[name="repin"]', form).checked,
       recolor: recolor ? recolor.checked : false,
-      keep_legwear: qs('input[name="keep_legwear"]', form).checked ? true : null,
-      denoise: denoiseRaw === '' ? null : Number(denoiseRaw),
+      keep_legwear: keepLegwear,
+      denoise: denoise,
       backdrop: backdrop,
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
@@ -1886,8 +2044,15 @@ export const appJs = `
     var repairPadRaw = qs('input[name="repair_pad"]', form).value;
     if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
 
-    var repairLoraRaw = qs('input[name="repair_lora"]', form).value;
-    if (repair.length > 0 && repairLoraRaw !== '') options.repair_lora = Number(repairLoraRaw);
+    var repairLoraFromDial = dialGroupValue(form, 'repair_lora');
+    var repairLora;
+    if (repairLoraFromDial === undefined) {
+      var repairLoraRaw = qs('input[name="repair_lora"]', form).value;
+      repairLora = repairLoraRaw === '' ? null : Number(repairLoraRaw);
+    } else {
+      repairLora = repairLoraFromDial;
+    }
+    if (repair.length > 0 && repairLora !== null) options.repair_lora = repairLora;
 
     return options;
   }
@@ -1923,6 +2088,13 @@ export const appJs = `
     });
   }
 
+  // Resolves a dial word to its catalog number for display, e.g. denoise='tidy' -> 0.65.
+  function resolveDialNumber(dials, key, value) {
+    if (typeof value !== 'string') return null;
+    var words = dials && dials[key];
+    return words && Object.prototype.hasOwnProperty.call(words, value) ? words[value] : null;
+  }
+
   // Mirrors finalizeOptionsFrom's payload so the preview can never drift from what gets sent.
   function renderFinalizePreview(form) {
     var preview = qs('.finalize-preview', form);
@@ -1932,25 +2104,34 @@ export const appJs = `
       preview.textContent = '送信内容: —';
       return;
     }
+    var dials = {};
+    try { dials = JSON.parse(form.getAttribute('data-dials') || '{}'); } catch (e) { dials = {}; }
+    var parts = [];
+    var profile = profileRefFrom(form);
+    if (profile) parts.push('profile ' + profile.name + (profile.version !== undefined ? ' v' + profile.version : ''));
     // backdrop is always sent and always meaningful, null included: null is the transparent choice.
-    var parts = ['backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop)];
+    parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
     Object.keys(options).forEach(function (key) {
+      if (key === 'backdrop') return;
       var value = options[key];
-      if (key === 'backdrop' || value === false || value === null || value === undefined) return;
+      if (value === false || value === null || value === undefined) return;
       if (value === true) {
         parts.push(key);
       } else if (Array.isArray(value)) {
         parts.push(key + '=' + value.join('+'));
+      } else if (typeof value === 'string') {
+        var num = resolveDialNumber(dials, key, value);
+        parts.push(key + ' ' + value + (num !== null ? ' (' + num + ')' : ''));
       } else {
         parts.push(key + '=' + value);
       }
     });
-    preview.textContent = '送信内容: ' + parts.join(', ');
+    preview.textContent = '送信内容: ' + parts.join(' · ');
   }
 
   function initFinalizePreview() {
     qsa('.finalize-form, .finalize-all-form').forEach(renderFinalizePreview);
-    ['change', 'input'].forEach(function (type) {
+    ['change', 'input', 'click'].forEach(function (type) {
       document.addEventListener(type, function (ev) {
         var form = ev.target.closest('.finalize-form, .finalize-all-form');
         if (!form) return;
@@ -1959,10 +2140,12 @@ export const appJs = `
     });
   }
 
-  function postFinalizeRequest(generationShortId, options) {
+  function postFinalizeRequest(generationShortId, options, profile) {
+    var payload = { generation_id: generationShortId, options: options };
+    if (profile) payload.profile = profile;
     return api('/api/v1/requests', 'POST', {
       kind: 'finalize',
-      payload: { generation_id: generationShortId, options: options },
+      payload: payload,
       idempotency_key: 'gui:finalize:' + generationShortId + ':' + crypto.randomUUID(),
       created_by: 'gui',
     });
@@ -1992,9 +2175,10 @@ export const appJs = `
       const shortId = form.getAttribute('data-generation-short-id');
       const options = finalizeOptionsFrom(form);
       if (!options) return;
+      const profile = profileRefFrom(form);
       try {
-        const request = await postFinalizeRequest(shortId, options);
-        track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId }, options));
+        const request = await postFinalizeRequest(shortId, options, profile);
+        track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId, profile: profile }, options));
         const container = form.parentElement;
         if (container) {
           let list = qs('.request-status-list', container);
@@ -2025,12 +2209,13 @@ export const appJs = `
       const ids = idsAttr.split(',').filter(function (id) { return id.length > 0; });
       const options = finalizeOptionsFrom(form);
       if (!options) return;
+      const profile = profileRefFrom(form);
       try {
         const created = [];
         for (const shortId of ids) {
-          created.push(await postFinalizeRequest(shortId, options));
+          created.push(await postFinalizeRequest(shortId, options, profile));
         }
-        track('finalize.submit', Object.assign({ scope: 'all', count: ids.length }, options));
+        track('finalize.submit', Object.assign({ scope: 'all', count: ids.length, profile: profile }, options));
         const container = form.parentElement;
         if (container) {
           const summary = qs('.finalize-summary', container);
@@ -2055,6 +2240,32 @@ export const appJs = `
       } catch (e) {
         trackError('finalize.submit', e, { scope: 'all', count: ids.length });
         alert('finalize failed: ' + e.message);
+      }
+    });
+  }
+
+  // --- Promote a finalize result to a profile (worker-protocol.md「finalize profile」) ---
+  function initPromoteToProfile() {
+    document.addEventListener('submit', async function (ev) {
+      var form = ev.target.closest('.promote-profile-form');
+      if (!form) return;
+      ev.preventDefault();
+      var generationId = form.getAttribute('data-generation-id');
+      var nameInput = qs('input[name="name"]', form);
+      var name = nameInput.value.trim();
+      if (!name) return;
+      var status = qs('.promote-profile-status', form);
+      try {
+        var result = await api('/api/v1/presets/promote-profile', 'POST', {
+          generation_id: generationId,
+          name: name,
+          idempotency_key: 'gui:promote-profile:' + generationId + ':' + crypto.randomUUID(),
+        });
+        if (status) status.textContent = 'registered: ' + result.name + ' v' + result.version;
+        track('promote_profile.submit', { generation_id: generationId, name: result.name, version: result.version });
+      } catch (e) {
+        trackError('promote_profile.submit', e, { generation_id: generationId });
+        alert('promote failed: ' + e.message);
       }
     });
   }
@@ -3281,6 +3492,9 @@ export const appJs = `
     initFinalizeBackdropColor();
     initFinalizeRepairPad();
     initFinalizePreview();
+    initDialGroups();
+    initProfileButtons();
+    initPromoteToProfile();
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();

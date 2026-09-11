@@ -3,12 +3,14 @@
 // どちらのファイルにも属さずここに置く（presets.ts は requests.ts を import しない —
 // requests.ts が presets.ts の pinPresets を使う片方向の依存と衝突させないため）。
 
-import { getGenerationByIdOrShortId, nowIso } from './db';
+import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso } from './db';
 import { resolveDerivationSource } from './requests';
 import { conflict, notFound } from './errors';
 import { getPresetRow, resolvePreset, serializeResolvedPreset } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
+import { finalizeOptionsSchema } from '../schemas/requests';
+import { presetBodyFinalizeSchema } from '../schemas/presets';
 import type { PresetCreatedBy, PresetKind, PresetRow } from '../types';
 
 export interface PromoteGenerationToPresetInput {
@@ -151,6 +153,83 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
     // 同じ idempotency_key での同時 promote が UNIQUE (idempotency_key) に落ちるレース。
     // 先に確定した側を読み直す。version の衝突 (別 idempotency_key の同時 promote) はここでは
     // 拾えないので、そのまま呼び出し元に投げる。
+    const raced = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
+    if (!raced) throw err;
+    return serializeResolvedPreset(raced, await resolvePreset(db, raced));
+  }
+
+  const row = await db.prepare('SELECT * FROM presets WHERE id = ?').bind(id).first<PresetRow>();
+  if (!row) throw new Error('promoted preset row missing after insert');
+
+  return serializeResolvedPreset(row, await resolvePreset(db, row));
+}
+
+/** The most recent `finalize` request whose `result.batch_id` is `batchId` — i.e. the request that produced it. */
+export async function findFinalizeRequestForBatch(db: D1Database, batchId: string): Promise<{ payload_json: string } | null> {
+  return db
+    .prepare(
+      `SELECT payload_json FROM requests WHERE kind = 'finalize' AND json_extract(result_json, '$.batch_id') = ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(batchId)
+    .first<{ payload_json: string }>();
+}
+
+export interface PromoteGenerationToProfileInput {
+  generation_id: string;
+  name: string;
+  note?: string;
+  idempotency_key: string;
+  created_by: PresetCreatedBy;
+}
+
+/**
+ * Turns a rating=good finalize-kind Generation into a new `finalize` Preset version
+ * (docs/worker-protocol.md「finalize profile」). Unlike promoteGenerationToPreset, there is no
+ * base chain to resolve — the body is that Generation's own finalize request payload.options,
+ * as queued (words preserved, after any profile expansion applyFinalizeProfile already did).
+ */
+export async function promoteGenerationToProfile(db: D1Database, input: PromoteGenerationToProfileInput) {
+  const existing = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
+
+  const generation = await getGenerationByIdOrShortId(db, input.generation_id);
+  if (!generation) throw notFound('generation');
+
+  // 再送は同じ入力のときだけ既存の版を返す (promoteGenerationToPreset と同じ規則)。
+  if (existing) {
+    const sameInput = existing.source_generation_id === generation.id && existing.kind === 'finalize' && existing.name === input.name;
+    if (!sameInput) throw conflict('idempotency_key already used for a different promotion');
+    return serializeResolvedPreset(existing, await resolvePreset(db, existing));
+  }
+
+  if (generation.rating !== 'good') throw conflict('promote requires rating good');
+
+  const batch = await getBatchByIdOrShortId(db, generation.batch_id);
+  if (!batch || !batch.recipe) throw conflict('promote requires a recipe-mode batch');
+
+  const finalizeRequest = await findFinalizeRequestForBatch(db, batch.id);
+  if (!finalizeRequest) throw conflict('generation is not a finalize-kind result; nothing to promote from');
+
+  const payload = JSON.parse(finalizeRequest.payload_json) as { options?: unknown };
+  const options = finalizeOptionsSchema.parse(payload.options ?? {});
+  const bodyJson = JSON.stringify(presetBodyFinalizeSchema.parse({ options }));
+
+  const id = uuidv7();
+  const now = nowIso();
+
+  try {
+    // MAX(version) の読み取りと確定を1文にする (promoteGenerationToPreset と同じ、
+    // 同じ (recipe, kind, name) への同時 promote のレース対策)。
+    await db
+      .prepare(
+        `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, idempotency_key, base_fingerprint)
+         SELECT ?, ?, 'finalize', ?, COALESCE(MAX(version), 0) + 1, ?, 'active', 'promote', ?, ?, ?, ?, ?, NULL
+         FROM presets WHERE recipe = ? AND kind = 'finalize' AND name = ?`,
+      )
+      .bind(id, batch.recipe, input.name, bodyJson, generation.id, input.note ?? null, input.created_by, now, input.idempotency_key, batch.recipe, input.name)
+      .run();
+  } catch (err) {
+    // 同じ idempotency_key での同時 promote が UNIQUE (idempotency_key) に落ちるレース。
     const raced = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
     if (!raced) throw err;
     return serializeResolvedPreset(raced, await resolvePreset(db, raced));
