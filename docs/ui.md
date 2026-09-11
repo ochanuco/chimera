@@ -375,7 +375,9 @@ retry元Batchのprompt / negative_promptを基準にトークン単位でdiffし
 Finalize all armsセクションは、このBatch配下の全GenerationについてFinalizeと
 同じoptions（`repin` / `recolor` / `keep legwear` / `denoise`）で1 Generation
 1行のfinalize requestを順に積みます（Generation Detailの Finalize
-参照、[worker-protocol.md](worker-protocol.md)）。直下には
+参照、[worker-protocol.md](worker-protocol.md)）。フォーム自体はGeneration Detailと
+同じコンポーネントで、このBatchのrecipeにprofile / dialがあれば同じdial対応表示に
+切り替わります。直下には
 `finalize: N queued · M running · K done · F failed`の集計行と、その下に各requestを
 1行ずつ持つ`request-status-list`を表示します（進捗の反映はGeneration Detailの
 Finalizeセクションと同じ仕組み、後述）。
@@ -581,10 +583,27 @@ GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / rep
 ホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけのCSS実装（JS不使用）で、
 `repair hands` / `repair feet`は1つのマーカーを共有します。
 
-仕上げグループは`repin` / `recolor` / `keep legwear`のチェックボックスと、空欄が
-recipe既定を意味する`denoise`の数値入力を持ちます。`recolor`はBatchのrecipeが
-`yukari`のときだけ表示します（`yukari-sketch`のfinalizeはrecolorを受け付けず、
-workerが`failed`にします）。
+このBatchのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
+どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
+無いrecipeは今まで通りの数値入力・チェックボックスのままです（後方互換。
+[domain-model.md](domain-model.md#finalize-プロファイル)）。
+
+dial対応フォームは`仕上げ`グループの直前に`profile`の行を持ち、そのrecipeの
+`finalize`プロファイル（`list_presets kind=finalize`の最新active版）をボタンで
+並べ、先頭に`custom`（プロファイルを指名しない）を置きます。プロファイルを押すと
+下のフィールド群がそのプロファイルの`options`で埋まり、以後フィールドを編集しても
+プロファイルの指名（hiddenな`profile_name` / `profile_version`）は外れません —
+送信時は常にフォームの現在値を`options`として送りつつ、`profile`も一緒に送ります。
+サーバー側がこの2つを`{ ...profile.options, ...options }`で合成するため（明示した
+キーが勝つ）、結果はどのキーを人が実際に変えたかに関わらず一致します。
+
+`denoise`のような数値フィールドは、そのrecipeのcatalogが`dials.finalize.denoise`
+（word → number）を持つときだけ、数値入力の代わりに word ボタンの列（＋`既定`
+＋`custom`）になります。`custom`を押すと数値入力が現れ、どのwordボタンも押していない
+状態（`既定`）は空欄送信と同じ`null`です。`keep legwear` / `repair lora`は
+dial対応フォームに切り替わった時点で、catalogの語彙の有無にかかわらず常に
+`off` / `on` / `custom`の3択になります（`on`は真偽値`true`ではなくword文字列
+`"on"`を送ります。スキーマは両方を受け付けますが、GUIはwordの語彙に統一します）。
 
 納品の見た目グループは`backdrop`のselect（`stripes`既定 / `transparent` /
 `color`）を持ち、`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
@@ -601,11 +620,15 @@ repair feetのどちらもチェックされていない間`disabled`で、ど�
 有効になります。
 
 送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
-積まれるoptionsのkeyだけを`送信内容: repin, backdrop=stripes`のように表示します
-（backdropが不正な値のときは`送信内容: —`）。`backdrop`は常に送るキーなので
-必ず出し、`transparent`を選んで`null`を送る場合も`backdrop=transparent`と表示します。この表示はsubmit時と同じ
-serializer（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all
-armsも同じ項目・同じ条件です。
+積まれるoptionsのkeyだけを`profile daily v2 · backdrop=stripes · denoise tidy (0.65)
+· keep_legwear on (0.62)`のように`·`区切りで表示します（backdropが不正な値の
+ときは`送信内容: —`）。プロファイルを指名していれば先頭に`profile <name> v<version>`
+を置きます。`backdrop`は常に送るキーなので必ず出し、`transparent`を選んで`null`を
+送る場合も`backdrop=transparent`と表示します。wordを送るキーは、そのrecipeの
+`dials.finalize`が対応するnumberを持っていれば`<word> (<number>)`と添えて表示します
+（catalogに無いwordは数値無しでそのまま表示）。この表示はsubmit時と同じserializer
+（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all armsも同じ
+項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
 `request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。Generation Detailと
@@ -624,6 +647,14 @@ Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 Finalize all armsセクションでも、finalize送信のたびに集計行（`N queued`）と
 `request-status-list`をその場で更新し、同じ仕組みで各行が進捗します。WebSocketが張れない
 環境でも静的な表示のまま壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
+
+このGenerationが`rating = good`で、かつfinalize requestが産んだもの（納品
+Generationか、相乗りしたrepairのsiblingのどちらか）であるときだけ、Finalizeの
+request一覧の下に`profile に登録`フォーム（名前入力＋ボタン）を表示します。送信すると
+`POST /api/v1/presets/promote-profile`を呼び、その場に`registered: <name>
+v<version>`を表示します（リロードなし）。それ以外のGenerationにはこのフォームは
+出ません。[Lightbox](#lightbox)のFinalizeパネルにはこのフォームを置きません —
+フルページのGeneration Detailだけです。
 
 手足の局所redraw（[worker-protocol.md](worker-protocol.md#repair)の`repair`）は
 GUIでは独立したセクションを持たず、Finalizeフォームの`repair hands` / `repair feet`

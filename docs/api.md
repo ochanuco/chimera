@@ -696,11 +696,13 @@ GET  /api/v1/presets                                    名前ごとの最新版
 GET  /api/v1/presets/{recipe}/{kind}/{name}             その名前の全版（record 本文なし）
 GET  /api/v1/presets/{recipe}/{kind}/{name}/{version}   解決済みの本文。無ければ404
 POST /api/v1/presets/import                             catalog の pose 名を参照として取り込む（冪等）
-POST /api/v1/presets/promote                            rating good の Generation から新しい版を足す
+POST /api/v1/presets/promote                            rating good の Generation から新しい版を足す（pose/costume/expression）
+POST /api/v1/presets/promote-profile                    rating good の finalize 結果から新しい finalize プロファイルの版を足す
 ```
 
-`kind` は `pose` / `costume` / `expression` です。一覧は既定で `status = active` の版だけを
-返し、`?include_deprecated=1` で全部返します。
+`kind` は `pose` / `costume` / `expression` / `finalize` です。一覧は既定で `status = active` の版だけを
+返し、`?include_deprecated=1` で全部返します。`finalize` は他の3つと body の形が違います
+（下記）。
 
 解決済みの本文は `base` の連鎖を根まで辿った結果です。`patches` は常に配列で、空でも
 キーを省きません。`record` は根の pose への参照で、本文ではありません。参照を本文に解決して patches を畳むのは worker 側の graph compiler で、
@@ -747,6 +749,51 @@ recipe を持たない graph-mode なら 409、Batch が patches を持たなけ
 ので、何度呼んでも同じ結果です。取り込むのは pose だけで、catalog の `costumes` /
 `expressions` は名前の配列でしか publish されておらず、参照にしても何も足しません。移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)。
+
+### finalize プロファイル (kind = finalize)
+
+finalize request の `options` をまとめて一発で選ぶための Preset です
+（[domain-model.md](domain-model.md#finalize-プロファイル)、
+[worker-protocol.md](worker-protocol.md#finalize-profile)）。pose/costume/expression と
+違い、`record` は `{ options }` そのもので、`patches` は常に `[]` です。
+
+``` json
+{
+  "id": "0199...",
+  "recipe": "yukari",
+  "kind": "finalize",
+  "name": "daily",
+  "version": 2,
+  "status": "active",
+  "source": "promote",
+  "source_generation_id": "abc123",
+  "base_fingerprint": null,
+  "note": null,
+  "record": { "options": { "denoise": "tidy", "keep_legwear": "on" } },
+  "patches": [],
+  "created_at": "..."
+}
+```
+
+`POST /api/v1/presets/promote-profile` の body:
+
+``` json
+{ "generation_id": "abc123", "name": "daily", "note": "...", "idempotency_key": "..." }
+```
+
+`generation_id` は `rating = good` かつ、`result.batch_id` がその Batch を指す
+`kind = finalize` request を持つ Generation（納品 Generation か、相乗りした repair が
+あればその sibling）でなければならず、それ以外は409
+（`generation is not a finalize-kind result; nothing to promote from`）。body はその
+finalize request が queued した時点の `payload.options`（profile 展開後、word はそのまま）を
+複製します。`name` が既存なら次の版、新しい名前なら version 1。rating が good でなければ
+409（`promote requires rating good`）。既存の版は書き換えません。`idempotency_key` の再送は
+既に作られた版をそのまま 200 で返します。
+
+finalize request の payload に `profile: { name, version? }` を渡すと、chimera がその版を
+解決して `options` の下敷きにします（明示した `options` の同じキーが勝つ、明示 `null` も
+含めて勝つ）。未知の profile は 404 で、queued 行は作りません
+（[worker-protocol.md](worker-protocol.md#finalize-profile)）。
 
 ## Observation
 
@@ -846,11 +893,17 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 `recipes[].poses` 以外のキー（`costumes` / `expressions` / `parameters` など）は
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
 MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
-`parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、git
+`parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、git
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
 MCP `get_catalog_pose` で1件だけ引きます。
+
+`dials` は `{ finalize?: {optionKey: {word: number}}, repair?: {...}, patches?: {...} }` の
+形で、finalize / repair の options にある dial-able キーごとの word → number です
+（[worker-protocol.md](worker-protocol.md#finalize-profile)）。chimera は語彙も数値も
+検証せず、GUI がボタンに出す表示にだけ使います。worker へは number に解決せず word を
+そのまま渡し、word の実在確認と number への解決は worker の責務です。
 
 ## WebSocket
 

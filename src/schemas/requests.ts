@@ -10,6 +10,13 @@ export const jsonObject = z.record(z.string(), z.unknown());
 export const RECIPE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
 /**
+ * catalog の `dials` が定義する word の語彙 (docs/worker-protocol.md「finalize profile」)。
+ * 値が実在する word かは worker が検証する — chimera が見るのは型だけ。
+ */
+export const DIAL_WORD_RE = /^[a-z][a-z0-9-]*$/;
+const dialWord = z.string().regex(DIAL_WORD_RE);
+
+/**
  * repair の region は width/height に対する分数の矩形 [x0, y0, x1, y1] で、
  * x0<x1 かつ y0<y1 を要求する。単体の repair request (`regions`) と finalize
  * に相乗りする repair (`repair_regions`) が共有する。
@@ -40,29 +47,37 @@ function regionsOverlap(a: readonly [number, number, number, number], b: readonl
  */
 export const finalizeOptionsSchema = z
   .object({
-    denoise: z.number().nullable().optional(),
+    denoise: z.union([z.number(), dialWord]).nullable().optional(),
     repin: z.boolean().optional(),
     recolor: z.boolean().optional(),
-    keep_legwear: z.union([z.literal(true), z.number()]).nullable().optional(),
+    keep_legwear: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
     route: z.enum(['latent', 'pixel']).nullable().optional(),
     finalizer: z.string().nullable().optional(),
     size: z.number().int().nullable().optional(),
     handdrawn: z.boolean().optional(),
     skin: z.boolean().optional(),
-    toe_guard: z.union([z.literal(true), z.number()]).nullable().optional(),
+    toe_guard: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
     keep_scene: z.boolean().optional(),
     transparent: z.boolean().nullable().optional(),
     backdrop: z.string().nullable().optional(),
     upscale: z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional(),
-    lora_strength: z.number().nullable().optional(),
+    lora_strength: z.union([z.number(), dialWord]).nullable().optional(),
     deliver_size: z.number().int().nullable().optional(),
     stroke_light: z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional(),
     repair: z.array(z.enum(['hands', 'feet'])).nullable().optional(),
     repair_regions: z.array(repairRegionSchema).nullable().optional(),
-    repair_denoise: z.number().gt(0).lte(1).nullable().optional(),
+    repair_denoise: z.union([z.number().gt(0).lte(1), dialWord]).nullable().optional(),
     repair_pad: z.number().min(0.5).max(3).nullable().optional(),
     repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
-    repair_lora: z.union([z.literal(true), z.number()]).nullable().optional(),
+    repair_lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
+  })
+  .strict();
+
+/** finalize payload の `profile` — a finalize preset の参照 (docs/worker-protocol.md「finalize profile」)。version 省略は最新 active 版。 */
+export const finalizeProfileRefSchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -70,6 +85,7 @@ export const finalizePayloadSchema = z
   .object({
     generation_id: z.string().min(1),
     options: finalizeOptionsSchema.optional(),
+    profile: finalizeProfileRefSchema.optional(),
   })
   .strict();
 
@@ -81,11 +97,11 @@ export const repairOptionsSchema = z
   .object({
     parts: z.array(z.enum(['hands', 'feet'])).optional(),
     regions: z.array(repairRegionSchema).optional(),
-    denoise: z.number().gt(0).lte(1).nullable().optional(),
+    denoise: z.union([z.number().gt(0).lte(1), dialWord]).nullable().optional(),
     seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
     size: z.number().int().min(256).multipleOf(8).nullable().optional(),
     pad: z.number().min(0.5).max(3).nullable().optional(),
-    lora: z.union([z.literal(true), z.number()]).nullable().optional(),
+    lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
   })
   .strict();
 
@@ -109,7 +125,7 @@ export const maskedRedrawOptionsSchema = z
   .object({
     regions: z.array(maskedRedrawRegionSchema).min(1, 'at least one region is required'),
     prompt_patch: z.string().trim().min(1, 'prompt_patch must not be empty').max(4096),
-    denoise: z.number().gt(0).lte(MASKED_REDRAW_MAX_DENOISE).optional(),
+    denoise: z.union([z.number().gt(0).lte(MASKED_REDRAW_MAX_DENOISE), dialWord]).optional(),
     mask_padding: z.number().min(0).max(512).optional(),
     mask_feather: z.number().min(0).max(256).optional(),
     // Narrow aliases keep the contract easy to adapt to comfyui-recipes' existing masked
@@ -210,11 +226,18 @@ export const claimRequestSchema = z.object({
 
 export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
 
-export const updateRequestResultSchema = z.object({
-  batch_id: z.string().min(1),
-  generation_ids: z.array(z.string().min(1)),
-  recipe_commit: z.string().optional(),
-});
+/**
+ * `.passthrough()`: worker が finalize/repair/masked_redraw の done に添える `resolved_options`
+ * (docs/worker-protocol.md「finalize profile」) のような追加欄を、素の z.object が黙って
+ * 落とさないようにする。chimera はこの欄を不透明な JSON として保存するだけで、形を検証しない。
+ */
+export const updateRequestResultSchema = z
+  .object({
+    batch_id: z.string().min(1),
+    generation_ids: z.array(z.string().min(1)),
+    recipe_commit: z.string().optional(),
+  })
+  .passthrough();
 
 /**
  * worker が書く running/queued/done/failed は claim 済みの worker_id を伴う (409 の元にする

@@ -265,6 +265,7 @@ describe('MCP server at /mcp', () => {
         'list_presets',
         'get_preset',
         'promote_to_pose',
+        'promote_to_profile',
         'list_observations',
         'get_observation',
         'record_observation',

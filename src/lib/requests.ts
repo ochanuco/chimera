@@ -20,7 +20,7 @@ import { parseJsonObject, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
 import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
-import { extractPins, pinPresets } from './presets';
+import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import type {
   BatchRow,
@@ -214,6 +214,19 @@ export async function getRequestOr404(db: D1Database, id: string): Promise<Reque
   return row;
 }
 
+/** The most recent finalize/repair/masked_redraw request whose `result.generation_ids` includes `generationId` — the request that produced it. */
+export async function findProducingRequest(db: D1Database, generationId: string): Promise<RequestRow | null> {
+  return db
+    .prepare(
+      `SELECT * FROM requests
+       WHERE kind IN ('finalize', 'repair', 'masked_redraw') AND result_json IS NOT NULL
+       AND EXISTS (SELECT 1 FROM json_each(result_json, '$.generation_ids') WHERE value = ?)
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(generationId)
+    .first<RequestRow>();
+}
+
 /**
  * backfill 行 (migrations/0011_requests.sql) は payload_hash に SQL では再現できない
  * TS 側の SHA-256 を持てないため 'backfill' を仮置きしている。再送の一致判定では
@@ -273,16 +286,19 @@ export async function createRequest(
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
   // Keep the persisted/hashed worker contract stable when callers use the short
-  // masked-redraw aliases, and pin preset versions before generate payloads are hashed
-  // (docs/worker-protocol.md「preset の pin」). REST and MCP validate the envelope before
-  // reaching here; this shared normalization also covers internal callers and idempotency
-  // replays.
+  // masked-redraw aliases, pin preset versions before generate payloads are hashed
+  // (docs/worker-protocol.md「preset の pin」), and expand a finalize profile into options
+  // before it is hashed (docs/worker-protocol.md「finalize profile」). REST and MCP validate
+  // the envelope before reaching here; this shared normalization also covers internal
+  // callers and idempotency replays.
   const payload =
     input.kind === 'masked_redraw'
       ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject)
       : input.kind === 'generate'
         ? await pinPresets(db, input.payload)
-        : input.payload;
+        : input.kind === 'finalize'
+          ? await applyFinalizeProfile(db, input.payload)
+          : input.payload;
   const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
   const existing = await db
