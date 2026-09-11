@@ -402,7 +402,7 @@ pin できる Generation には条件があります。
 しない不変条件）。
 
 `plain_render` は pin された seed（または明示した `seed`）で、その pose の catalog 既定
-（`parameters: { pose, costume? }`、patches なし）を1件だけ描かせる generate request を
+（`parameters: { pose }` のみ、costume は recipe が pose 既定を当てる、patches なし）を1件だけ描かせる generate request を
 起票します。pin がまだ無い pose には `seed` を明示して呼ぶことで、最初の基準 render を
 起こせます。
 
