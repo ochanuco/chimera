@@ -814,8 +814,10 @@ seed は遡った先の raw Generation を作った comfy_job から取ります
 `superseded_at` で閉じてから新しい行を挿むので、それまでの pin は物理削除されず履歴に
 残ります。
 
-`plain_render` はその pin の seed（明示すれば `seed`）で `recipe`/`pose` の catalog 既定
-（patches なし）を1件だけ描かせる、`kind: "generate"` の requests 行を積みます。既定の
+`plain_render` はその pin の seed（明示すれば `seed`）で `recipe`/`pose` の既定
+（patches なし）を1件だけ描かせる、`kind: "generate"` の requests 行を積みます。pose は
+Preset として存在すればよく（`promote_to_pose` で作った pose も含む）、catalog に載って
+いる必要はありません。既定の
 `idempotency_key` は `plain:<recipe>:<pose>:<seed>:<catalog の git_commit>` で、同じ
 catalog commit のまま繰り返し呼べば複製せず再送になります。pin も `seed` も無ければ
 409（`no reference pinned for ...; pass seed or set_pose_reference first`）です。

@@ -2,7 +2,7 @@
 // (lib/preset-references.ts) を種に、recipe の既定 (patches なし) で pose を再度描く。
 
 import { getPresetRow } from './presets';
-import { getCatalog, findCatalogPose } from './catalogs';
+import { getCatalog } from './catalogs';
 import { getCurrentReference, referenceView, type PresetReferenceView } from './preset-references';
 import { conflict, notFound } from './errors';
 import type { JsonObject } from './overrides';
@@ -27,7 +27,9 @@ export interface PlainRenderRequestBuild {
  * pose that has no pin yet. 409s when neither is available. `parameters` names only the pose:
  * the recipe applies the pose's default costume itself, and naming it here would make
  * createRequest's pinPresets demand a costume Preset, which import never creates
- * (docs/domain-model.md「Preset」body の形).
+ * (docs/domain-model.md「Preset」body の形). The pose has to exist as a Preset, not in the
+ * catalog: a promoted pose (promote_to_pose) lives only in presets, and the worker resolves it
+ * through the pin. The catalog is consulted only for the git_commit in the default key.
  */
 export async function buildPlainRenderRequest(db: D1Database, input: PlainRenderInput): Promise<PlainRenderRequestBuild> {
   const presetRow = await getPresetRow(db, input.recipe, 'pose', input.pose);
@@ -35,8 +37,6 @@ export async function buildPlainRenderRequest(db: D1Database, input: PlainRender
 
   const found = await getCatalog(db, input.recipe_ref);
   if (!found) throw notFound(`recipe catalog '${input.recipe_ref}'`);
-  const record = findCatalogPose(found.doc, input.recipe, input.pose);
-  if (!record) throw notFound(`pose '${input.pose}' in recipe '${input.recipe}'`);
 
   const reference = await referenceView(db, await getCurrentReference(db, input.recipe, 'pose', input.pose));
 
