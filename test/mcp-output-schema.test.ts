@@ -78,7 +78,7 @@ describe('MCP outputSchema', () => {
 
     const call = await mcpToolCall('get_catalog_pose', { recipe: 'yukari', pose: 'seated', recipe_ref: recipeRef });
     expect(call.isError).toBe(false);
-    expect(call.structured).toEqual({ name: 'seated' });
+    expect(call.structured).toEqual({ name: 'seated', reference: null });
   });
 
   it('carries the image tool result in structuredContent as well as the image block', async () => {
