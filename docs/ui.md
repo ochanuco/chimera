@@ -113,11 +113,15 @@ Tag
 Rating
 Bookmarked only
 公開済みのみ
+基準のみ
 ```
 
 「公開済みのみ」は`published=true`（[api.md](api.md#generation-search)）で、少なくとも1件
-[Publication](domain-model.md#publication)を持つGenerationだけに絞ります。他のフィルタと
-同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの判定にも数えます。
+[Publication](domain-model.md#publication)を持つGenerationだけに絞ります。「基準のみ」は
+`reference=true`（[api.md](api.md#generation-search)）で、いずれかのpose の基準 render として
+pin されているGenerationだけに絞ります（[domain-model.md](domain-model.md#基準-render-の-pin)）。
+どちらも他のフィルタと同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの
+判定にも数えます。
 
 Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはGUIから外しました
 （`GET /api/v1/generations`はこれらのqueryを引き続き受け付けます。agentがMCP/APIから直接
@@ -184,7 +188,9 @@ short_idは等幅の文字そのものがボタンで、クリックするとク
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
 橙文字、short_idは等幅）、このGenerationを対象にした最新のfinalize/repair/masked_redraw
 requestがあるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
-1件以上あるとき送信アイコン付きの`公開済み`ピルを重ねます。幅600px以下ではbookmarkをサムネイル
+1件以上あるとき送信アイコン付きの`公開済み`ピルを、このGenerationがpose の基準 render として
+pin されているとき`基準 <pose名>`ピル（[domain-model.md](domain-model.md#基準-render-の-pin)）を、両方
+あれば横並びで重ねます。幅600px以下ではbookmarkをサムネイル
 右上の2.75rem角のタップ領域へ移し、ratingの3ボタンは行いっぱいに広がります（各2.75rem以上）。
 short_idのボタンも高さ2.75rem以上にします。
 
@@ -248,11 +254,20 @@ short_id + コピーボタン ・ 比較に追加 ・ 閉じる
 画像メタ（解像度/ファイルサイズ） + 詳細ページ ↗
 from <short_id>（refineしている場合のみ、カードと同じ見た目のリンク行）
 rating（大きいボタン） + bookmark
+基準（pin済みならピル、未pinなら「基準にする」ボタン）
 公開
 Tag
 Finalize（展開）
 Note（折りたたみ）
 ```
+
+基準行は、この render が既にpose の基準としてpinされていれば（[domain-model.md](domain-model.md)
+[domain-model.md](domain-model.md#基準-render-の-pin)）カードと同じ`基準 <pose名>`ピルを、まだなら`基準にする`ボタンを出します。
+ボタンは`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md)）を呼び、成功したらその場で
+ピルへ差し替え、背後のグリッドカードにも同じピルを反映します（Lightbox内でratingを変えたときの
+`rating-group`反映と同じ仕組み）。rating good でない・resolved Batchがpose/recipeを特定できない等の
+409は、理由をそのまま`alert`で表示します。Generation Detailのフルページにも同じ行を置きます
+（rating/bookmark行の直後）。
 
 画像本体とoverlayのUIはクリック側のJSが組み立てます（クリックしたカードの`<img class="thumb-fg">`が
 既に原寸相当のURLを持っているため、fragment自体は画像タグを含みません）。

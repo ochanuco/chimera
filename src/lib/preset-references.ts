@@ -9,7 +9,7 @@ import { conflict, notFound } from './errors';
 import { getPresetRow } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
-import type { PresetCreatedBy, PresetKind, PresetReferenceRow } from '../types';
+import type { BatchRow, PresetCreatedBy, PresetKind, PresetReferenceRow } from '../types';
 
 /** Parses a stored JSON array column (`patches_json` / `preset_versions_json`); NULL や非配列は `[]`。 */
 function parseJsonArray(raw: string | null): unknown[] {
@@ -26,6 +26,14 @@ export interface PresetReferenceView {
   generation_id: string;
   short_id: string;
   seed: number;
+}
+
+/** Which pose a Batch drew: an explicit pose pin in `preset_versions_json` wins, else `parameters_json.pose`. undefined for neither (e.g. graph-mode). */
+export function drawnPoseOf(batch: BatchRow): string | undefined {
+  const parameters = parseJsonObjectOrNull(batch.parameters_json) ?? {};
+  const presetVersions = parseJsonArray(batch.preset_versions_json) as { kind?: unknown; name?: unknown }[];
+  const posePin = presetVersions.find((p) => p && typeof p === 'object' && p.kind === 'pose');
+  return typeof posePin?.name === 'string' ? posePin.name : typeof parameters.pose === 'string' ? parameters.pose : undefined;
 }
 
 /** The current (not superseded) pin for one (recipe, kind, name), or null when none has ever been set. */
@@ -179,10 +187,7 @@ export async function setPoseReference(db: D1Database, input: SetPoseReferenceIn
   const reasons: string[] = [];
   if (batch.recipe !== input.recipe) reasons.push(`recipe is '${batch.recipe ?? 'none (graph-mode)'}'`);
 
-  const parameters = parseJsonObjectOrNull(batch.parameters_json) ?? {};
-  const presetVersions = parseJsonArray(batch.preset_versions_json) as { kind?: unknown; name?: unknown }[];
-  const posePin = presetVersions.find((p) => p && typeof p === 'object' && p.kind === 'pose');
-  const drawnPose = typeof posePin?.name === 'string' ? posePin.name : typeof parameters.pose === 'string' ? parameters.pose : undefined;
+  const drawnPose = drawnPoseOf(batch);
   if (drawnPose !== input.pose) reasons.push(`pose is '${drawnPose ?? 'unset'}'`);
 
   const patches = parseJsonArray(batch.patches_json);
@@ -245,4 +250,59 @@ export async function setPoseReference(db: D1Database, input: SetPoseReferenceIn
   const row = await db.prepare('SELECT * FROM preset_references WHERE id = ?').bind(id).first<PresetReferenceRow>();
   if (!row) throw new Error('preset reference row missing after insert');
   return toResult(db, row, true, superseded);
+}
+
+export interface SetPoseReferenceForGenerationInput {
+  generation_id: string;
+  idempotency_key: string;
+  created_by: PresetCreatedBy;
+}
+
+/**
+ * GUI 版 set_pose_reference (docs/domain-model.md「基準 render の pin」): 呼び出し側は
+ * recipe/pose を知らない（lightbox は Generation しか持たない）ので、resolveDerivationSource
+ * で遡った raw Batch から推測してから setPoseReference に委譲する。setPoseReference は
+ * 内部でもう一度同じ解決をやり直すが、409 の理由付けを1箇所（そちら）にまとめるための
+ * 重複であり、ここでは「どのpose/recipeを狙うか」の決定だけを行う。
+ */
+export async function setPoseReferenceForGeneration(
+  db: D1Database,
+  input: SetPoseReferenceForGenerationInput,
+): Promise<SetPoseReferenceResult> {
+  const generation = await getGenerationByIdOrShortId(db, input.generation_id);
+  if (!generation) throw notFound('generation');
+
+  const { batch } = await resolveDerivationSource(db, generation);
+  const recipe = batch.recipe;
+  const pose = drawnPoseOf(batch);
+  if (!recipe || !pose) {
+    const missing = [!recipe ? 'recipe' : null, !pose ? 'pose' : null].filter(Boolean).join('/');
+    throw conflict(`resolved batch '${batch.short_id}' names no ${missing}; cannot infer which pose to pin`);
+  }
+
+  return setPoseReference(db, {
+    recipe,
+    pose,
+    generation_id: input.generation_id,
+    idempotency_key: input.idempotency_key,
+    created_by: input.created_by,
+  });
+}
+
+export interface GenerationPoseReference {
+  recipe: string;
+  pose: string;
+}
+
+/** The current pose pin (kind='pose') whose generation_id is this Generation, or null — for the GUI's 基準 badge. */
+export async function getPoseReferenceOfGeneration(db: D1Database, generationId: string): Promise<GenerationPoseReference | null> {
+  const row = await db
+    .prepare(
+      `SELECT recipe, name FROM preset_references
+       WHERE generation_id = ? AND kind = 'pose' AND superseded_at IS NULL
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(generationId)
+    .first<{ recipe: string; name: string }>();
+  return row ? { recipe: row.recipe, pose: row.name } : null;
 }

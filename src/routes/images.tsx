@@ -171,6 +171,7 @@ images.get('/:shortId', async (c) => {
         refinesGenerationShortId={refinesGenerationShortId}
         rating={data.rating}
         bookmark={data.bookmark}
+        poseReference={data.pose_reference}
         publications={data.publications}
         tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
         recipe={data.batch?.recipe ?? null}

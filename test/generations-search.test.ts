@@ -19,6 +19,7 @@ interface SearchItem {
   created_at: string;
   refines_generation_short_id: string | null;
   finalize_request: FinalizeRequestBadge | null;
+  reference: { recipe: string; pose: string } | null;
 }
 
 interface SearchResult {
@@ -320,5 +321,96 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
     const { generation } = await createGeneration();
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
     expect(res.body.items[0]?.finalize_request).toBeNull();
+  });
+});
+
+describe('POST /api/v1/generations/{id}/pose-reference + reference filter (docs/domain-model.md「基準 render の pin」)', () => {
+  function uniqueRecipe(): string {
+    return `pose-ref-${crypto.randomUUID()}`;
+  }
+
+  function sampleCatalog(recipe: string) {
+    return {
+      schema_version: 1,
+      recipes: [
+        {
+          name: recipe,
+          poses: [{ name: 'lounge', prompt: 'reclining on a beanbag, warm light', costume: 'default' }],
+          costumes: [{ name: 'default', prompt: 'plain roomwear' }],
+          expressions: [{ name: 'smile', prompt: 'a gentle smile' }],
+        },
+      ],
+      patches: {},
+      git_commit: 'abc1234',
+      git_branch: 'main',
+      generated_at: '2026-09-08T00:00:00.000Z',
+    };
+  }
+
+  async function publishAndImport(recipe: string): Promise<void> {
+    const recipeRef = `test-${crypto.randomUUID()}`;
+    await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(recipe), 'PUT');
+    const res = await postJson<{ imported: unknown[] }>('/api/v1/presets/import', { recipe_ref: recipeRef });
+    expect(res.status).toBe(200);
+  }
+
+  async function setRatingGood(generationId: string): Promise<void> {
+    const res = await postJson(`/api/v1/generations/${generationId}/rating`, { rating: 'good' }, 'PUT');
+    expect(res.status).toBe(200);
+  }
+
+  interface PoseReferenceResult {
+    created: boolean;
+    recipe: string;
+    kind: string;
+    name: string;
+    reference: { generation_id: string; short_id: string; seed: number };
+  }
+
+  it('pins from the GUI route, filters the gallery, and folds into the item/detail shape', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+
+    const { generation: pinned } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: other } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    await setRatingGood(pinned.id);
+
+    const pin = await postJson<PoseReferenceResult>(`/api/v1/generations/${pinned.id}/pose-reference`, {});
+    expect(pin.status).toBe(201);
+    expect(pin.body.name).toBe('lounge');
+    expect(pin.body.recipe).toBe(recipe);
+
+    const onlyPinned = await getJson<SearchResult>('/api/v1/generations?reference=true&limit=200');
+    expect(onlyPinned.body.items.map((g) => g.id)).toEqual([pinned.id]);
+    expect(onlyPinned.body.items[0]?.reference).toEqual({ recipe, pose: 'lounge' });
+
+    const excluded = await getJson<SearchResult>('/api/v1/generations?reference=false&limit=200');
+    expect(excluded.body.items.map((g) => g.id)).not.toContain(pinned.id);
+    expect(excluded.body.items.map((g) => g.id)).toContain(other.id);
+
+    const withBoth = await getJson<SearchResult>(`/api/v1/generations?ids=${pinned.id},${other.id}`);
+    expect(withBoth.body.items.find((g) => g.id === other.id)?.reference).toBeNull();
+
+    const detail = await getJson<{ pose_reference: { recipe: string; pose: string } | null }>(`/api/v1/generations/${pinned.id}`);
+    expect(detail.body.pose_reference).toEqual({ recipe, pose: 'lounge' });
+  });
+
+  it('409s when rating is not good', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/generations/${generation.id}/pose-reference`, {});
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain('requires rating good');
+  });
+
+  it('409s with "cannot infer" for a graph-mode batch (no recipe)', async () => {
+    const { generation } = await createGeneration();
+    await setRatingGood(generation.id);
+
+    const res = await postJson<{ error: { message: string } }>(`/api/v1/generations/${generation.id}/pose-reference`, {});
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain('cannot infer');
   });
 });
