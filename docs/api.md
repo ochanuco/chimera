@@ -591,6 +591,7 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 ``` text
 POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容)
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&batch_id=&pending=true&limit=&offset=
+GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
@@ -608,6 +609,39 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) 
 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。
+
+### Summary
+
+`GET /api/v1/requests/summary` は queued / running の全件と、直近24hに failed
+になった件のみを対象に、Batch（finalize/repair/masked_redraw）または Experiment（generate、
+`run_id` があるとき）単位にまとめて返します。GUI ナビの queue pill 専用で、他のフィルタは
+持ちません。
+
+``` json
+{
+  "counts": { "queued": 3, "running": 1, "failed_24h": 1 },
+  "workers": [{ "worker_id": "w1", "kinds": ["finalize"], "connected_at": "2026-09-11T00:00:00.000Z" }],
+  "groups": [
+    {
+      "key": "batch:...",
+      "batch": { "id": "...", "short_id": "b_7k2m9q", "thumbnail_generation_short_id": "g_..." },
+      "experiment": null,
+      "href": "/b/b_7k2m9q",
+      "kinds": { "finalize": 2 },
+      "counts": { "queued": 1, "running": 1, "failed": 0 },
+      "latest_at": "2026-09-11T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+-   `workers` は [WorkerHub](#websocket) の `GET /state` をそのまま渡したもの。DO への
+    fetch が失敗しても `workers: []` で 200 を返します
+-   `groups` は最大20件。running を含むグループを先頭に、次いで `latest_at`（グループ内の
+    `claimed_at` / `finished_at` / `created_at` の最大値）降順
+-   `batch` / `experiment` / `href` は解決できないとき（generate で `run_id` が無い行など）null
+-   generate かつ `run_id` があるグループは `experiment` に所属 Experiment の `id` / `short_id`
+    を持ち、`href` はその詳細ページ（`/experiments/{short_id}`）
 
 ### Generic masked redraw
 

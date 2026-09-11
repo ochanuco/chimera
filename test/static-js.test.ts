@@ -7,4 +7,9 @@ describe('served app.js', () => {
   it('parses as a script', () => {
     expect(() => new Function(appJs)).not.toThrow();
   });
+
+  it('wires up the nav queue pill against the summary endpoint', () => {
+    expect(appJs).toContain('initNavQueue');
+    expect(appJs).toContain('/api/v1/requests/summary');
+  });
 });
