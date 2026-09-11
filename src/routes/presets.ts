@@ -3,6 +3,7 @@ import { presetImportRequestSchema, presetKindSchema, presetPromoteRequestSchema
 import { badRequest, notFound } from '../lib/errors';
 import { getPresetRow, importFromCatalog, listPresets, listPresetVersions, resolvePreset, serializeResolvedPreset } from '../lib/presets';
 import { promoteGenerationToPreset, promoteGenerationToProfile } from '../lib/promote';
+import { attachReferences, getCurrentReference, referenceView } from '../lib/preset-references';
 import type { AppEnv, PresetKind } from '../types';
 
 export const presets = new Hono<AppEnv>();
@@ -44,11 +45,13 @@ presets.post('/promote-profile', async (c) => {
 
 presets.get('/', async (c) => {
   const kindRaw = c.req.query('kind');
-  const items = await listPresets(c.env.DB, {
-    recipe: c.req.query('recipe'),
-    kind: kindRaw ? requireKind(kindRaw) : undefined,
-    includeDeprecated: isIncludeDeprecated(c.req.query('include_deprecated')),
-  });
+  const recipe = c.req.query('recipe');
+  const kind = kindRaw ? requireKind(kindRaw) : undefined;
+  const items = await attachReferences(
+    c.env.DB,
+    await listPresets(c.env.DB, { recipe, kind, includeDeprecated: isIncludeDeprecated(c.req.query('include_deprecated')) }),
+    { recipe, kind },
+  );
   return c.json({ items });
 });
 
@@ -58,7 +61,8 @@ presets.get('/:recipe/:kind/:name', async (c) => {
   const name = c.req.param('name');
   const items = await listPresetVersions(c.env.DB, recipe, kind, name, isIncludeDeprecated(c.req.query('include_deprecated')));
   if (items.length === 0) throw notFound('preset');
-  return c.json({ items });
+  const reference = await referenceView(c.env.DB, await getCurrentReference(c.env.DB, recipe, kind, name));
+  return c.json({ items: items.map((item) => ({ ...item, reference })) });
 });
 
 presets.get('/:recipe/:kind/:name/:version', async (c) => {
@@ -70,5 +74,6 @@ presets.get('/:recipe/:kind/:name/:version', async (c) => {
   const row = await getPresetRow(c.env.DB, recipe, kind, name, version);
   if (!row) throw notFound('preset');
   const resolved = await resolvePreset(c.env.DB, row);
-  return c.json(serializeResolvedPreset(row, resolved));
+  const reference = await referenceView(c.env.DB, await getCurrentReference(c.env.DB, recipe, kind, name));
+  return c.json({ ...serializeResolvedPreset(row, resolved), reference });
 });

@@ -744,6 +744,8 @@ derive_request(from_generation_id, instruction, count?, seeds?, parameters?, pat
 list_presets(recipe?, kind?, include_deprecated?)
 get_preset(recipe, kind, name, version?)
 promote_to_pose(generation_id, name, kind?, note?, idempotency_key)
+set_pose_reference(recipe, pose, generation_id, idempotency_key)   基準 render を (recipe, 'pose', pose) に pin する
+plain_render(recipe, pose, seed?, idempotency_key?, recipe_ref?)   pin (または明示 seed) で recipe 既定を再度描く
 promote_to_profile(generation_id, name, note?, idempotency_key)
 ```
 
@@ -802,12 +804,29 @@ base になる版は、その Batch を作った generate request が pin して
 どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です。
 chimera は base を推測しません。`idempotency_key` の再送は、既に作られた版をそのまま返します。
 
+`set_pose_reference` は `(recipe, 'pose', pose)` の基準 render を pin します
+（[domain-model.md](domain-model.md#基準-render-の-pin)）。`generation_id` は
+`rating = good` でなければならず、finalize / repair 済みなら `derive_request` と同じ規則で
+raw の Generation まで遡ります。遡った先の Batch は recipe が一致し、その pose を描き、
+patches を持たず、その Batch を起こした generate request が prompt を上書きしていない
+「素の render」でなければ 409 で、満たさない条件はまとめて1つのメッセージで返します。
+seed は遡った先の raw Generation を作った comfy_job から取ります。再設定は現行の pin を
+`superseded_at` で閉じてから新しい行を挿むので、それまでの pin は物理削除されず履歴に
+残ります。
+
+`plain_render` はその pin の seed（明示すれば `seed`）で `recipe`/`pose` の catalog 既定
+（patches なし）を1件だけ描かせる、`kind: "generate"` の requests 行を積みます。既定の
+`idempotency_key` は `plain:<recipe>:<pose>:<seed>:<catalog の git_commit>` で、同じ
+catalog commit のまま繰り返し呼べば複製せず再送になります。pin も `seed` も無ければ
+409（`no reference pinned for ...; pass seed or set_pose_reference first`）です。
+
 `list_presets` / `get_preset` は preset の読み取り側です。`list_presets` は名前と版の
 一覧（`record` の本文は含まない）、`get_preset` は解決済みの本文（`record` 1件と平坦化
 した patches）を返します。版を省略すると最新の `active` 版を見ます。段階 C で
 `list_catalog` / `get_catalog_pose` を置き換えます。どちらも `kind` に `finalize` を
 渡せます — その場合 `record` は `{ options }`、`patches` は常に `[]` です
-（[finalize profile](#finalize-profile)）。
+（[finalize profile](#finalize-profile)）。どちらのレスポンスにも `set_pose_reference` が
+pin した現行の基準 render を `reference`（無ければ `null`）で返します。
 
 `promote_to_profile` は `rating = good` かつ finalize request が産んだ Generation を
 新しい kind `finalize` の Preset の版にします。`generation_id` の Batch に対する

@@ -268,6 +268,21 @@ export interface PresetRow {
   base_fingerprint: string | null;
 }
 
+/** pose の基準 render の pin (migrations/0022, src/lib/preset-references.ts)。 */
+export interface PresetReferenceRow {
+  id: string;
+  recipe: string;
+  kind: PresetKind;
+  name: string;
+  generation_id: string;
+  source_generation_id: string;
+  seed: number;
+  idempotency_key: string | null;
+  created_by: PresetCreatedBy;
+  created_at: string;
+  superseded_at: string | null;
+}
+
 export type PublicationCreatedBy = 'gui' | 'mcp' | 'api' | 'system';
 
 export interface GenerationPublicationRow {
