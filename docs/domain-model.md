@@ -404,9 +404,11 @@ pin できる Generation には条件があります。
 その pose に何を基準にしてきたかの履歴は消えずに残ります（Preset 本体と同じ、物理削除
 しない不変条件）。
 
-`plain_render` は pin された seed（または明示した `seed`）で、その pose の catalog 既定
+`plain_render` は pin された seed（または明示した `seed`）で、その pose の既定
 （`parameters: { pose }` のみ、costume は recipe が pose 既定を当てる、patches なし）を1件だけ描かせる generate request を
-起票します。pin がまだ無い pose には `seed` を明示して呼ぶことで、最初の基準 render を
+起票します。pose は Preset として存在すればよく、catalog に載っている必要はありません。
+`promote_to_pose` で作った pose も、pin された版を worker が解決して同じように描けます。
+pin がまだ無い pose には `seed` を明示して呼ぶことで、最初の基準 render を
 起こせます。
 
 ## Observation

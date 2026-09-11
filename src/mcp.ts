@@ -1127,8 +1127,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
         'Enqueues one kind=generate request that renders recipe/pose at the recipe\'s defaults — no patches — at the seed ' +
         "set_pose_reference last pinned for that pose, or at seed when given (also how a pose that has no pin yet gets " +
-        'bootstrapped). 404s when recipe/pose has no Preset, or when recipe/pose is not in the recipe_ref catalog ' +
-        '(default "production"). 409s when neither a pin nor seed is available. ' +
+        'bootstrapped). Works for promoted poses too — the pose must exist as a Preset (list_presets), not in the ' +
+        'catalog. 404s when recipe/pose has no Preset, or when the recipe_ref catalog (default "production") is not ' +
+        'published. 409s when neither a pin nor seed is available. ' +
         'Default idempotency_key is `plain:<recipe>:<pose>:<seed>:<catalog git_commit>`, so repeated calls at the same ' +
         'catalog commit replay (created: false) instead of duplicating; pass an explicit one to force a fresh request at ' +
         'the same seed and catalog.',

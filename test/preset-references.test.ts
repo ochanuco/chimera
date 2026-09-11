@@ -535,4 +535,27 @@ describe('MCP plain_render', () => {
     expect(call.data?.seed).toBe(42);
     expect(call.data?.reference).toBeNull();
   });
+
+  it('renders a pose that exists only as a Preset (promoted, absent from the catalog)', async () => {
+    const recipe = uniqueRecipe();
+    const recipeRef = await publishAndImport(recipe);
+    await env.DB.prepare(
+      `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at)
+       VALUES (?, ?, 'pose', 'floor', 1, ?, 'active', 'promote', NULL, NULL, 'mcp', ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        recipe,
+        JSON.stringify({ base: { recipe, kind: 'pose', name: 'lounge', version: 1 }, patches: [{ target: 'pose', op: 'append', value: 'on the floor' }] }),
+        new Date().toISOString(),
+      )
+      .run();
+
+    const call = await mcpToolCall<PlainRenderResult>('plain_render', { recipe, pose: 'floor', recipe_ref: recipeRef, seed: 8 });
+    expect(call.isError).toBe(false);
+    expect(call.data?.created).toBe(true);
+    expect(call.data?.payload.generation.parameters).toEqual({ pose: 'floor' });
+    expect(call.data?.request.payload).toMatchObject({ generation: { presets: [{ kind: 'pose', name: 'floor', version: 1 }] } });
+    expect(call.data?.request.idempotency_key).toBe(`plain:${recipe}:floor:8:abc1234`);
+  });
 });
