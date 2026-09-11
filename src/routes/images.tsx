@@ -14,11 +14,17 @@ import { listTagsForTarget } from '../lib/tags';
 import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { queryGenerations } from '../lib/generations';
+import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
+import { getCatalog, findFinalizeDials } from '../lib/catalogs';
+import { listFinalizeProfiles } from '../lib/presets';
+import { findFinalizeRequestForBatch } from '../lib/promote';
+import type { FinalizeDials } from '../ui/finalize-options';
 import {
   GenerationDetailPage,
   type GenerationDetailData,
   type FinalizeRequestSummary,
   type ExperimentRunFamily,
+  type ProducedByOptions,
 } from '../ui/pages/GenerationDetail';
 import { LightboxPanel } from '../ui/components/Lightbox';
 import { GenerationCard } from '../ui/components/GenerationCard';
@@ -38,12 +44,24 @@ async function resolveImageMeta(bucket: R2Bucket, generation: GenerationRow): Pr
 }
 
 /** Shape shared by FinalizeRequestSummary / RepairRequestSummary: both requests kinds carry generation_id + options-only payloads. */
-async function requestSummaries<T extends { id: string; status: string; created_at: string; error: string | null; resultShortId: string | null }>(
-  db: D1Database,
-  res: Response,
-): Promise<T[]> {
+async function requestSummaries<
+  T extends {
+    id: string;
+    status: string;
+    created_at: string;
+    error: string | null;
+    resultShortId: string | null;
+    resolvedOptions: Record<string, unknown> | null;
+  },
+>(db: D1Database, res: Response): Promise<T[]> {
   const data = (await res.json()) as {
-    items: { id: string; status: string; created_at: string; error: string | null; result: { generation_ids: string[] } | null }[];
+    items: {
+      id: string;
+      status: string;
+      created_at: string;
+      error: string | null;
+      result: { generation_ids: string[]; resolved_options?: Record<string, unknown> } | null;
+    }[];
   };
   const resultGenerationIds = data.items.flatMap((r) => r.result?.generation_ids ?? []);
   const resultShortIds = await resolveGenerationShortIds(db, resultGenerationIds);
@@ -55,8 +73,19 @@ async function requestSummaries<T extends { id: string; status: string; created_
         created_at: r.created_at,
         error: r.error,
         resultShortId: r.result?.generation_ids[0] ? (resultShortIds.get(r.result.generation_ids[0]) ?? null) : null,
+        resolvedOptions: r.result?.resolved_options ?? null,
       }) as T,
   );
+}
+
+/** `{requested, resolved}` for the finalize/repair/masked_redraw request that produced `generation` — null when it wasn't produced by one, or the worker hasn't written `resolved_options` yet. */
+async function findProducedByOptions(db: D1Database, generationId: string): Promise<ProducedByOptions | null> {
+  const row = await findProducingRequest(db, generationId);
+  if (!row || !row.result_json) return null;
+  const result = JSON.parse(row.result_json) as { resolved_options?: Record<string, unknown> };
+  if (!result.resolved_options) return null;
+  const payload = JSON.parse(row.payload_json) as { options?: Record<string, unknown> };
+  return { requested: payload.options ?? null, resolved: result.resolved_options };
 }
 
 /** Explicit JSON opt-out from the default HTML Generation Detail page. */
@@ -121,6 +150,15 @@ images.get('/:shortId', async (c) => {
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
   const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
 
+  // dials / profile buttons (FinalizeFields): both the lightbox and the full page need these,
+  // neither needs more than one catalog + preset lookup for it.
+  const recipe = data.batch?.recipe ?? null;
+  const [catalogDoc, finalizeProfiles] = await Promise.all([
+    recipe ? getCatalog(db, defaultRecipeRef(c.env)) : Promise.resolve(null),
+    recipe ? listFinalizeProfiles(db, recipe) : Promise.resolve([]),
+  ]);
+  const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
+
   // Lightbox panel fragment (Gallery / Bookmarks / Batch Detail): same components as the full
   // page below, minus the family-card / mini-map / workflow sections it doesn't need.
   if (c.req.query('partial') === 'lightbox') {
@@ -138,9 +176,21 @@ images.get('/:shortId', async (c) => {
         recipe={data.batch?.recipe ?? null}
         finalizeRequests={finalizeRequests}
         note={data.note}
+        finalizeDials={finalizeDials}
+        finalizeProfiles={finalizeProfiles}
       />,
     );
   }
+
+  // promote-profile の表示条件: rating good で、かつこの Generation が finalize request の
+  // 納品物であること。full page のみで引く追加クエリなので lightbox / card / json には出さない。
+  const canPromoteToProfile =
+    data.rating === 'good' && data.batch !== null && (await findFinalizeRequestForBatch(db, data.batch.id)) !== null;
+
+  // resolved_options (worker が done の result に書く解決済みの値、docs/worker-protocol.md
+  // 「finalize profile」): このGeneration自身を産んだ request からしか出せない。worker がまだ
+  // 書かない行は null（段階的ロールアウトの間は何も増えない）。
+  const producedByOptions = await findProducedByOptions(db, generation.id);
 
   // "親" (parent) material for a Generation is its own Batch's reference material
   // (batch_references where target_batch_id = the owning Batch), not `data.references`
@@ -255,6 +305,10 @@ images.get('/:shortId', async (c) => {
       experimentRun={experimentRun}
       imageMeta={imageMeta}
       finalizeRequests={finalizeRequests}
+      finalizeDials={finalizeDials}
+      finalizeProfiles={finalizeProfiles}
+      canPromoteToProfile={canPromoteToProfile}
+      producedByOptions={producedByOptions}
     />,
   );
 });

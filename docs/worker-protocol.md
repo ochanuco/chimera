@@ -242,6 +242,11 @@ Generation への `rebuild` Reference と source Batch への Refinement を持�
 同じ形ですが、元 Generation を変更せず、明示したマスク領域だけを worker が
 `comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
 
+finalize / repair / masked_redraw の done はこれに加えて `resolved_options`
+（`payload.options` のうち dial word を worker が実際に解決した数値に置き換えたもの、
+[finalize profile](#finalize-profile) 参照）を持ちます。chimera は `result` を不透明な
+JSON として保存するだけで、この欄の形を検証も解釈もしません。
+
 ## payload
 
 ### generate
@@ -384,6 +389,7 @@ worker は `failed` にします。`generation.identity_override` に理由の�
   "kind": "finalize",
   "payload": {
     "generation_id": "abc123",
+    "profile": { "name": "daily", "version": 3 },
     "options": {
       "denoise": null,
       "repin": false,
@@ -419,33 +425,40 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 
   options             型                        CLI
   ------------------- ------------------------- ------------------------------
-  denoise             null | number             `--denoise 0.55`（null は recipe 既定。IL 併用 0.55、Anima 単体 0.75 など recipe が持つ）
+  denoise             null | number | word      `--denoise 0.55`（null は recipe 既定。IL 併用 0.55、Anima 単体 0.75 など recipe が持つ）
   repin               bool                      `--repin`
   recolor             bool                      `--recolor`
-  keep_legwear        null | true | number      `--keep-legwear`（true は既定 0.62、number はその値）
+  keep_legwear        null | true | number | word  `--keep-legwear`（true は既定 0.62、number はその値）
   route               null | "latent" | "pixel" `--latent-route` / `--pixel-route`（null は recipe 既定）
   finalizer           null | string             `--finalizer MODEL`
   size                null | integer            `--size LONGEST`
   handdrawn           bool                      `--handdrawn`
   skin                bool                      `--skin`
-  toe_guard           null | true | number      `--toe-guard [WEIGHT]`
+  toe_guard           null | true | number | word  `--toe-guard [WEIGHT]`
   keep_scene          bool                      `--keep-scene`
   transparent         null | bool               `--opaque` が false（null は recipe 既定。layerdiffuse の Generation では白帯と紫縁の外側が alpha 0 の透過ステッカーが既定で、`backdrop` / `keep_scene` / false を指定したときだけ帯付き不透明）
   backdrop            null | string             `--backdrop #RRGGBB`
   upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
-  lora_strength       null | number             `--lora-strength 0..2`
+  lora_strength       null | number | word      `--lora-strength 0..2`
   deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
   stroke_light        null | "n".."nw"          `--stroke-light DIR`（8 方位、紫縁を光源側で細く影側で太く）
   repair              null | array\<"hands" \| "feet"\>  `--repair hands,feet`（同じ finalize request に相乗りする repair。null / 省略 / 空配列は off）
   repair_regions      null | array\<[x0, y0, x1, y1]\>   `--repair-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1）
-  repair_denoise      null | number (0, 1]      `--repair-denoise 0.6`
+  repair_denoise      null | number (0, 1] | word  `--repair-denoise 0.6`
   repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
-  repair_lora         null | true | number      `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値）
+  repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
 の語彙は単体の repair request（後述）と揃えてあります。
+
+`denoise` / `keep_legwear` / `toe_guard` / `lora_strength` / `repair_denoise` /
+`repair_lora` は、number / null / （`keep_legwear` 等は加えて `true`）に加えて、
+`^[a-z][a-z0-9-]*$` にマッチする word 文字列も受け取ります。word の語彙は recipe ごとに
+catalog が `recipes[].dials.finalize` として公開するもので、chimera はそれを表示にだけ
+使い、word が実在するかの検証と number への解決は worker が行います（未知の word は
+`failed`）。`profile` は [finalize profile](#finalize-profile) を参照してください。
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
 `backdrop` / `stroke_light` に加えて、repair のチェックボックスを使った場合は
@@ -456,6 +469,35 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 `null`（recipe 既定）です。「repair hands」「repair feet」はどちらも既定オフで、
 チェックした分だけ `repair` に積みます。`repair pad` / `repair lora` の入力欄は空が既定で、
 空のまま積めば省略（worker 既定）です。
+
+#### finalize profile
+
+profile は finalize options をまとめて一発で選ぶための、chimera 自身が持つ kind
+`finalize` の Preset です（[domain-model.md](domain-model.md#preset)）。word（上の dial
+語彙）が comfyui-recipes 側で定義されるのに対し、profile は「どの word / 数値をどう
+組み合わせるか」という、良かった結果から人間が育てる chimera 側の再利用単位です。
+
+`payload.profile` は `{ name, version? }`。chimera は requests 行を作るときに、source
+Generation の Batch が持つ `recipe` でその profile を解決し（`version` 省略は最新
+`active` 版）、`payload.options = { ...profile.options, ...payload.options }`
+（`payload.options` の同じキーが勝つ。明示 `null` も含めて勝つ）と展開してから hash・
+保存します。`profile` 自身も解決した版で `{ name, version }` に書き換えて保存します。
+未知の profile 名 / 版は 404 相当で、queued 行は作られません。worker が読むのは
+展開済みの `payload.options` だけで、`payload.profile` は見ません。
+
+body の形は次の通りです。pose/costume/expression の Preset と違い、base への参照も
+patches も持たない全文上書きです。
+
+``` json
+{ "options": { "denoise": "tidy", "keep_legwear": "on" } }
+```
+
+`POST /api/v1/presets/promote-profile`（body `{ generation_id, name, note?, idempotency_key }`）が
+新しい版を作ります。`generation_id` は `rating = good` かつ finalize request が産んだ
+Generation（納品 Generation か、同じ request に repair が相乗りしていればその sibling の
+どちらでも）でなければならず、それ以外は 409 です。body は、その finalize request が
+queued した時点の `payload.options`（profile 展開後、word はそのまま）をそのまま複製します。
+`name` が既存ならその次の版、新しい名前なら version 1 です。既存の版は書き換えません。
 
 ### repair
 
@@ -489,14 +531,17 @@ worker 実行です。finalize と同じく semantic 判断を伴わない再実
   ---------- ------------------------------- ----------------------------------------------
   parts      array\<"hands" \| "feet"\>      redraw するパーツ（省略時 worker 既定で両方）
   regions    array\<[x0, y0, x1, y1]\>       width/height に対する分数の矩形（省略時 worker が自動検出）。x0<x1 かつ y0<y1
-  denoise    number (0, 1]                   redraw の denoise 強度（省略時 recipe 既定）
+  denoise    number (0, 1] \| word           redraw の denoise 強度（省略時 recipe 既定）
   seeds      array\<integer\>（最大16件）    試す seed の列（省略時 worker 既定）
   size       integer（256 以上、8 の倍数）   redraw 解像度の長辺（省略時 recipe 既定）
   pad        number (0.5-3)                  検出領域の外側マージン係数（省略時 worker 既定）
-  lora       null \| true \| number          描き直した部位の part LoRA weight（true は既定 0.8、number はその値、省略/null は off）
+  lora       null \| true \| number \| word   描き直した部位の part LoRA weight（true は既定 0.8、number はその値、省略/null は off）
 
 省略したキーは worker 既定です。chimera が検証するのは型だけで、組み合わせの
-妥当性は worker が判定して `failed` にします。
+妥当性は worker が判定して `failed` にします。`denoise` / `lora` は number / null
+（`lora` は加えて `true`）に加えて、word 文字列（`^[a-z][a-z0-9-]*$`）も受け取ります —
+語彙は catalog の `recipes[].dials.repair`（finalize に相乗りする `repair_denoise` /
+`repair_lora` とは別の、単体 repair request 専用の namespace）です。
 
 ### masked_redraw
 
@@ -527,7 +572,7 @@ semantic 判断主体が MCP `masked_redraw_generation` から積みます。
   ---------------- --------------------------------------- ----------------------------------------------
   regions          array\<[x0, y0, x1, y1]\>               width/height に対する分数の矩形。1件以上必須。各値は0..1、x0<x1かつy0<y1、矩形同士は重複不可
   prompt_patch     non-empty string                        source prompt に適用する instruction / prompt patch。空文字は400
-  denoise          number (0, 0.75]                        masked-img2img の denoise。低〜中程度は0.2〜0.65を推奨
+  denoise          number (0, 0.75] \| word                masked-img2img の denoise。低〜中程度は0.2〜0.65を推奨。word（`^[a-z][a-z0-9-]*$`）も受け取るが、masked_redraw 用の catalog dials namespace は今のところ無く、word の実在確認は worker に委ねる
   mask_padding     number (0..512)                         mask の外側へ足す pixel 数。省略時 worker / recipe 既定
   mask_feather     number (0..256)                         mask 境界をぼかす pixel 数。省略時 worker / recipe 既定
   pad              number (0..512)                         `mask_padding` の API 短縮 alias（受け付け後に canonicalize）
@@ -690,7 +735,7 @@ Compare が比較表示のみである点は変わりません。
 
 ``` text
 create_request(kind, payload, recipe_ref?, idempotency_key)
-finalize_generation(generation_id, options?, idempotency_key)
+finalize_generation(generation_id, options?, profile?, idempotency_key)
 repair_generation(generation_id, options?, idempotency_key)
 masked_redraw_generation(generation_id, options, idempotency_key)
 get_request(id)
@@ -699,6 +744,7 @@ derive_request(from_generation_id, instruction, count?, seeds?, parameters?, pat
 list_presets(recipe?, kind?, include_deprecated?)
 get_preset(recipe, kind, name, version?)
 promote_to_pose(generation_id, name, kind?, note?, idempotency_key)
+promote_to_profile(generation_id, name, note?, idempotency_key)
 ```
 
 `create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
@@ -710,6 +756,8 @@ promote_to_pose(generation_id, name, kind?, note?, idempotency_key)
 masked redraw の `pad` / `feather` alias は canonical key に正規化されます。手で payload の封筒を組み立てる `create_request` に対して、
 この3つは finalize / repair / masked redraw に特化した窓口です。masked redraw は options
 （regions / prompt_patch / denoise / mask_padding / mask_feather）が必須です。
+`finalize_generation` は `profile` も受け取り、渡せば `create_request` と同じく
+[finalize profile](#finalize-profile) の展開を通します。
 
 `derive_request` が preset の pin を引き継ぐ元は Batch の `preset_versions_json` です。
 Batch の `parameters` は worker が preset を解決した後の値なので、`parameters.pose` には
@@ -757,7 +805,18 @@ chimera は base を推測しません。`idempotency_key` の再送は、既に
 `list_presets` / `get_preset` は preset の読み取り側です。`list_presets` は名前と版の
 一覧（`record` の本文は含まない）、`get_preset` は解決済みの本文（`record` 1件と平坦化
 した patches）を返します。版を省略すると最新の `active` 版を見ます。段階 C で
-`list_catalog` / `get_catalog_pose` を置き換えます。
+`list_catalog` / `get_catalog_pose` を置き換えます。どちらも `kind` に `finalize` を
+渡せます — その場合 `record` は `{ options }`、`patches` は常に `[]` です
+（[finalize profile](#finalize-profile)）。
+
+`promote_to_profile` は `rating = good` かつ finalize request が産んだ Generation を
+新しい kind `finalize` の Preset の版にします。`generation_id` の Batch に対する
+`result.batch_id` を持つ直近の `kind = finalize` request を探し、その `payload.options`
+（profile 展開後）をそのまま body にします。見つからなければ 409
+（`generation is not a finalize-kind result; nothing to promote from`）、rating が good
+でなければ 409（`promote requires rating good`）です。`promote_to_pose` と同じく
+既存の版は書き換えず、`name` が既存ならその次の版、新しい名前なら version 1、
+`idempotency_key` の再送は既に作られた版をそのまま返します。
 
 ## 段階 3: WorkerHub
 

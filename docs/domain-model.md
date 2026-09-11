@@ -245,7 +245,7 @@ Preset が解いているのは別の問題です。良かった生成の patche
 ``` text
 id
 recipe                yukari
-kind                  pose | costume | expression
+kind                  pose | costume | expression | finalize
 name                  lounge
 version               1 以上。(recipe, kind, name) の中で単調増加
 body_json             { recipe_pose } または { base, patches }
@@ -344,6 +344,36 @@ chimera はこの文字列を不透明に保存し、突き合わせにしか使
 落ち方自体は静かではありません。worker は claim 直後の probe で patch の適用を試し、
 落ちれば Batch を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
 より前に気付くための層です。
+
+### finalize プロファイル
+
+pose/costume/expression が prompt 本文の派生なのに対し、kind `finalize` は
+finalize request の `options`（docs/worker-protocol.md「finalize」）をまとめて一発で
+選ぶための、まったく別の問題を解いています。`options` の値は comfyui-recipes が公開する
+dial word か、chimera が検証しない数値で、chimera が語彙を持たないのは他の kind と同じ
+ですが、base も patches も持ちません — 版ごと全文上書きの leaf です。
+
+``` json
+{ "options": { "denoise": "tidy", "keep_legwear": "on" } }
+```
+
+不変条件は pose/costume/expression と共有するものと、finalize 固有のものがあります。
+
+-   行は物理削除しません。版は書き換えません。`promote` の起点 Generation は
+    `rating = good` でなければなりません（他の kind と同じ、[Rating](#rating)）。
+-   base への参照も patches の層も持ちません。`resolvePreset` はこの body を見た時点で
+    即座に返します — pose/costume/expression のように base を遡りません。
+-   昇格の起点は「finalize request が産んだ Generation」であって、「Batch が patches を
+    持つ generate 由来の Generation」ではありません。その Batch（納品 Batch、相乗りした
+    repair があれば sibling も含む）に対する `result.batch_id` を持つ直近の
+    `kind = finalize` request を探し、その request が queued した時点の `payload.options`
+    （profile 展開後、word は解決せずそのまま）を丸ごと body にします — 起点 Batch の
+    `patches_json` は見ません（そもそも持ちません）。
+-   `base_fingerprint` は使いません（base という概念が無いので、base の drift を検知する
+    対象がありません）。
+-   request 側は `payload.profile = { name, version? }` で1つを指名し、chimera が
+    その `options` を request 自身の `options` に下敷きとして展開します（明示キーが
+    勝つ、明示 `null` を含む）。version 省略は最新 `active` 版です。
 
 ## Observation
 

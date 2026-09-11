@@ -3,6 +3,7 @@ import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { FinalizeSection } from '../components/FinalizeSection';
+import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 import { NoteSection } from '../components/NoteSection';
 import { PromptChips } from '../components/PromptChips';
@@ -72,6 +73,14 @@ export interface FinalizeRequestSummary {
   error: string | null;
   /** done の場合の納品 Generation の short_id（resolveGenerationShortIds で解決済み）。 */
   resultShortId: string | null;
+  /** worker が done の `result` に書く解決済みの値 (docs/worker-protocol.md「finalize profile」)。opaque。 */
+  resolvedOptions: Record<string, unknown> | null;
+}
+
+/** `options` が requested のまま、`result.resolved_options` が worker の解決値 — このGenerationを産んだ finalize/repair/masked_redraw request から。 */
+export interface ProducedByOptions {
+  requested: Record<string, unknown> | null;
+  resolved: Record<string, unknown>;
 }
 
 /** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
@@ -165,6 +174,10 @@ export function GenerationDetailPage({
   experimentRun,
   imageMeta,
   finalizeRequests,
+  finalizeDials,
+  finalizeProfiles,
+  canPromoteToProfile,
+  producedByOptions,
 }: {
   path: string;
   data: GenerationDetailData;
@@ -188,6 +201,11 @@ export function GenerationDetailPage({
   imageMeta: ImageMeta | null;
   /** 最新の finalize request 一覧 (最大5件、新しい順)。段階2の GUI はここに積むだけで進捗はここで見る。 */
   finalizeRequests: FinalizeRequestSummary[];
+  finalizeDials: FinalizeDials | null;
+  finalizeProfiles: FinalizeProfileOption[];
+  canPromoteToProfile: boolean;
+  /** このGeneration自身を産んだ finalize/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
+  producedByOptions: ProducedByOptions | null;
 }) {
   const ownBatchId = data.batch?.id;
 
@@ -334,7 +352,32 @@ export function GenerationDetailPage({
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />
 
-          <FinalizeSection shortId={data.short_id} recipe={data.batch?.recipe ?? null} requests={finalizeRequests} />
+          <FinalizeSection
+            shortId={data.short_id}
+            recipe={data.batch?.recipe ?? null}
+            requests={finalizeRequests}
+            dials={finalizeDials}
+            profiles={finalizeProfiles}
+            canPromoteToProfile={canPromoteToProfile}
+          />
+
+          {producedByOptions ? (
+            <details class="section" open>
+              <summary>仕上げの解決値</summary>
+              <div class="section-body">
+                <table class="kv-table">
+                  <tr>
+                    <td>requested</td>
+                    <td>{JSON.stringify(producedByOptions.requested ?? {})}</td>
+                  </tr>
+                  <tr>
+                    <td>resolved</td>
+                    <td>{JSON.stringify(producedByOptions.resolved)}</td>
+                  </tr>
+                </table>
+              </div>
+            </details>
+          ) : null}
 
           <details class="section" open>
             <summary>Summary</summary>
