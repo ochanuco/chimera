@@ -24,8 +24,10 @@ export interface PlainRenderRequestBuild {
 
 /**
  * seed defaults to the pose's current basis-render pin; pass `seed` explicitly to bootstrap a
- * pose that has no pin yet. 409s when neither is available. `costume` is included only when the
- * catalog's pose record carries one (some recipes fold it into the pose prompt instead).
+ * pose that has no pin yet. 409s when neither is available. `parameters` names only the pose:
+ * the recipe applies the pose's default costume itself, and naming it here would make
+ * createRequest's pinPresets demand a costume Preset, which import never creates
+ * (docs/domain-model.md「Preset」body の形).
  */
 export async function buildPlainRenderRequest(db: D1Database, input: PlainRenderInput): Promise<PlainRenderRequestBuild> {
   const presetRow = await getPresetRow(db, input.recipe, 'pose', input.pose);
@@ -43,16 +45,10 @@ export async function buildPlainRenderRequest(db: D1Database, input: PlainRender
     throw conflict(`no reference pinned for ${input.recipe}/${input.pose}; pass seed or set_pose_reference first`);
   }
 
-  const costume =
-    record && typeof record === 'object' && !Array.isArray(record) && typeof (record as Record<string, unknown>).costume === 'string'
-      ? ((record as Record<string, unknown>).costume as string)
-      : undefined;
-  const parameters: JsonObject = costume !== undefined ? { pose: input.pose, costume } : { pose: input.pose };
-
   const payload: JsonObject = {
     schema_version: 1,
     request: { count: 1, instruction: `plain ${input.pose}`, seeds: [seed] },
-    generation: { recipe: input.recipe, parameters },
+    generation: { recipe: input.recipe, parameters: { pose: input.pose } },
     semantic: { summary: `plain render of ${input.recipe} ${input.pose}: recipe defaults, no patches, seed ${seed}` },
   };
 
