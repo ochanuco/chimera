@@ -79,7 +79,10 @@ const requestSchema = z.looseObject({
 
 const createdRequestSchema = z.looseObject({ created: z.boolean(), request: requestSchema });
 
-/** summarizePreset (lib/presets.ts)。 */
+/** referenceView (lib/preset-references.ts) — the current basis-render pin for a (recipe, kind, name). */
+const presetReferenceSchema = z.looseObject({ generation_id: z.string(), short_id: z.string(), seed: z.number() });
+
+/** summarizePreset (lib/presets.ts), plus attachReferences'/referenceView's `reference`. */
 const presetSummarySchema = z.looseObject({
   id: z.string(),
   recipe: z.string(),
@@ -92,6 +95,7 @@ const presetSummarySchema = z.looseObject({
   base_fingerprint: z.string().nullable(),
   note: z.string().nullable(),
   created_at: z.string(),
+  reference: presetReferenceSchema.nullable().optional(),
 });
 
 /** serializeResolvedPreset — summary に base 連鎖を畳んだ record / patches を足したもの。 */
@@ -284,12 +288,30 @@ export const mcpOutputSchemas = {
   }),
 
   // catalog の pose record は comfyui-recipes 側の形。chimera は中身を定義しない。
-  get_catalog_pose: z.looseObject({ name: z.string().optional() }),
+  get_catalog_pose: z.looseObject({ name: z.string().optional(), reference: presetReferenceSchema.nullable().optional() }),
 
   list_presets: z.looseObject({ items: z.array(presetSummarySchema) }),
   get_preset: resolvedPresetSchema,
   promote_to_pose: resolvedPresetSchema,
   promote_to_profile: resolvedPresetSchema,
+
+  // setPoseReference (lib/preset-references.ts)。
+  set_pose_reference: z.looseObject({
+    created: z.boolean(),
+    recipe: z.string(),
+    kind: z.string(),
+    name: z.string(),
+    reference: presetReferenceSchema,
+    source: z.looseObject({ generation_id: z.string(), short_id: z.string() }),
+    superseded: presetReferenceSchema.nullable(),
+  }),
+  plain_render: z.looseObject({
+    created: z.boolean(),
+    request: requestSchema,
+    payload: jsonObject,
+    seed: z.number(),
+    reference: presetReferenceSchema.nullable(),
+  }),
 
   list_observations: z.looseObject({ items: z.array(observationSchema), total: z.number() }),
   get_observation: observationSchema,

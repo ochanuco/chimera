@@ -256,6 +256,8 @@ source_generation_id  promote の起点 Generation（import は null）
 note
 created_by            system | mcp | gui
 created_at
+reference             読み出し時に付く、(recipe, kind, name) の現行 pin。無ければ null
+                       （「基準 render の pin」節）
 ```
 
 `(recipe, kind, name, version)` が一意です。`recipe_ref` は持ちません。ブランチで
@@ -374,6 +376,35 @@ dial word か、chimera が検証しない数値で、chimera が語彙を持た
 -   request 側は `payload.profile = { name, version? }` で1つを指名し、chimera が
     その `options` を request 自身の `options` に下敷きとして展開します（明示キーが
     勝つ、明示 `null` を含む）。version 省略は最新 `active` 版です。
+
+### 基準 render の pin
+
+`preset_references` 行 1つが「この pose はこの render のように見えるべき」という基準を
+指します。Preset の版が patches の積み重ねを表すのに対し、pin は版ではなく名前
+`(recipe, 'pose', name)` に付きます — バージョンは差分の層、pin はその pose がどう見える
+べきかという基準そのものだからです。MCP `set_pose_reference` が書き、`plain_render` が
+その基準の seed で recipe の既定（patches なし）を再度描かせます。
+
+pin できる Generation には条件があります。
+
+-   `rating = good` でなければなりません（他の kind と同じ、[Rating](#rating)）。
+-   finalize / repair の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
+    raw Generation まで遡ります。rating を見るのは指定した Generation 自身、pin する
+    render とその seed は遡った先の raw Generation です。
+-   遡った先の Batch は「recipe/pose の素の render」でなければなりません: recipe が
+    一致し、その pose を実際に描き、patches を持たず、その Batch を起こした generate
+    request が prompt / negative_prompt を上書きしていないこと。どれか1つでも外れれば
+    409 で、満たさない条件は1回の呼び出しですべて列挙されます。
+-   seed は遡った先の raw Generation を作った comfy_job の seed です。
+
+再設定は現行の行を上書きしません。`superseded_at` で閉じてから新しい行を挿むので、
+その pose に何を基準にしてきたかの履歴は消えずに残ります（Preset 本体と同じ、物理削除
+しない不変条件）。
+
+`plain_render` は pin された seed（または明示した `seed`）で、その pose の catalog 既定
+（`parameters: { pose, costume? }`、patches なし）を1件だけ描かせる generate request を
+起票します。pin がまだ無い pose には `seed` を明示して呼ぶことで、最初の基準 render を
+起こせます。
 
 ## Observation
 
