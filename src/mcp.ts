@@ -54,6 +54,8 @@ import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
 import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
 import { promoteGenerationToPreset, promoteGenerationToProfile } from './lib/promote';
+import { attachReferences, getCurrentReference, referenceView, setPoseReference } from './lib/preset-references';
+import { buildPlainRenderRequest } from './lib/plain-render';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { publicationUrlSchema } from './schemas/publications';
@@ -285,6 +287,21 @@ const promoteToProfileInputSchema = z.object({
   name: z.string().min(1),
   note: z.string().optional(),
   idempotency_key: z.string().min(1),
+});
+
+const setPoseReferenceInputSchema = z.object({
+  recipe: z.string().min(1),
+  pose: z.string().min(1),
+  generation_id: z.string().min(1),
+  idempotency_key: z.string().min(1),
+});
+
+const plainRenderInputSchema = z.object({
+  recipe: z.string().min(1),
+  pose: z.string().min(1),
+  seed: z.number().int().optional(),
+  idempotency_key: z.string().min(1).optional(),
+  recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
 });
 
 const listObservationsInputSchema = z.object({
@@ -973,7 +990,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production"). ' +
         'Where the recipe splits its prompt into parts, `parts` is [{name, text}] in order (the texts concatenate to the ' +
-        'positive prompt); patch one of them with target "prompt.positive.<name>" instead of replacing the whole prompt.',
+        'positive prompt); patch one of them with target "prompt.positive.<name>" instead of replacing the whole prompt. ' +
+        'reference is the pose\'s current basis-render pin (set_pose_reference), or null if none has been set.',
       inputSchema: getCatalogPoseInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -982,9 +1000,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
       const record = findCatalogPose(found.doc, recipe, pose);
       if (!record) throw notFound(`pose '${pose}' in recipe '${recipe}'`);
+      const reference = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
       // catalog は本文を持たない pose を裸の名前文字列で書ける。structuredContent は
       // object でなければならないので、その形だけここで {name} に揃える。
-      return jsonResult(mcpOutputSchemas.get_catalog_pose, typeof record === 'string' ? { name: record } : record);
+      const recordObject = typeof record === 'string' ? { name: record } : (record as Record<string, unknown>);
+      return jsonResult(mcpOutputSchemas.get_catalog_pose, { ...recordObject, reference });
     },
   );
 
@@ -1001,7 +1021,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       annotations: { readOnlyHint: true },
     },
     async ({ recipe, kind, include_deprecated }) => {
-      const items = await listPresets(db, { recipe, kind, includeDeprecated: include_deprecated });
+      const items = await attachReferences(db, await listPresets(db, { recipe, kind, includeDeprecated: include_deprecated }), {
+        recipe,
+        kind,
+      });
       return jsonResult(mcpOutputSchemas.list_presets, { items });
     },
   );
@@ -1024,7 +1047,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const row = await getPresetRow(db, recipe, kind, name, version);
       if (!row) throw notFound(`preset '${recipe}/${kind}/${name}'`);
       const resolved = await resolvePreset(db, row);
-      return jsonResult(mcpOutputSchemas.get_preset, serializeResolvedPreset(row, resolved));
+      const reference = await referenceView(db, await getCurrentReference(db, row.recipe, row.kind, row.name));
+      return jsonResult(mcpOutputSchemas.get_preset, { ...serializeResolvedPreset(row, resolved), reference });
     },
   );
 
@@ -1057,7 +1081,72 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         idempotency_key,
         created_by: 'mcp',
       });
-      return jsonResult(mcpOutputSchemas.promote_to_pose, result);
+      const reference = await referenceView(db, await getCurrentReference(db, result.recipe, result.kind, result.name));
+      return jsonResult(mcpOutputSchemas.promote_to_pose, { ...result, reference });
+    },
+  );
+
+  server.registerTool(
+    'set_pose_reference',
+    {
+      outputSchema: mcpOutputSchemas.set_pose_reference,
+      description:
+        'Non-destructive: only appends one new preset_references row. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
+        'Pins generation_id as the basis render for recipe/pose — the render plain_render reproduces (at its seed) as the ' +
+        "pose's recipe-default look. The pin belongs to the (recipe, pose) name, not a version: a Preset version carries " +
+        'patches, the pin says which render is the baseline the pose should look like. ' +
+        'generation_id must carry rating=good. If it is a finalized/repaired Generation, it is resolved back to the raw ' +
+        'Generation the same way derive_request does — but rating is read from generation_id itself. The resolved Batch ' +
+        'must then be a *plain render* of recipe/pose: same recipe, drew this pose, no patches, and the queued generate ' +
+        'request (when one exists) did not override prompt/negative_prompt — every failing rule is named in one 409, not ' +
+        'just the first. 404s when recipe/pose has no Preset yet, or generation_id does not resolve. 409s when rating is ' +
+        "not good, the resolved Batch isn't a plain render, or the resolved Generation has no recorded seed. " +
+        'Re-setting supersedes the previous pin rather than replacing it in place — every pin ever set stays in the ' +
+        'history (superseded_at), never deleted; the response returns it as superseded. idempotency_key replay with the ' +
+        'same recipe/pose/generation_id returns the existing pin (created: false, superseded: null); reused with ' +
+        'different arguments, 409s.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: setPoseReferenceInputSchema,
+    },
+    async ({ recipe, pose, generation_id, idempotency_key }) => {
+      const result = await setPoseReference(db, { recipe, pose, generation_id, idempotency_key, created_by: 'mcp' });
+      return jsonResult(mcpOutputSchemas.set_pose_reference, result);
+    },
+  );
+
+  server.registerTool(
+    'plain_render',
+    {
+      outputSchema: mcpOutputSchemas.plain_render,
+      description:
+        'Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never ' +
+        'deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
+        'Enqueues one kind=generate request that renders recipe/pose at the recipe\'s defaults — no patches — at the seed ' +
+        "set_pose_reference last pinned for that pose, or at seed when given (also how a pose that has no pin yet gets " +
+        'bootstrapped). 404s when recipe/pose has no Preset, or when recipe/pose is not in the recipe_ref catalog ' +
+        '(default "production"). 409s when neither a pin nor seed is available. ' +
+        'Default idempotency_key is `plain:<recipe>:<pose>:<seed>:<catalog git_commit>`, so repeated calls at the same ' +
+        'catalog commit replay (created: false) instead of duplicating; pass an explicit one to force a fresh request at ' +
+        'the same seed and catalog.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: plainRenderInputSchema,
+    },
+    async ({ recipe, pose, seed, idempotency_key, recipe_ref }) => {
+      const resolvedRecipeRef = recipe_ref ?? defaultRecipeRef(env);
+      const built = await buildPlainRenderRequest(db, { recipe, pose, seed, idempotency_key, recipe_ref: resolvedRecipeRef });
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'generate', payload: built.payload, recipe_ref: resolvedRecipeRef, idempotency_key: built.idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.plain_render, {
+        created,
+        request: serializeRequest(row),
+        payload: built.payload,
+        seed: built.seed,
+        reference: built.reference,
+      });
     },
   );
 
@@ -1080,7 +1169,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ generation_id, name, note, idempotency_key }) => {
       const result = await promoteGenerationToProfile(db, { generation_id, name, note, idempotency_key, created_by: 'mcp' });
-      return jsonResult(mcpOutputSchemas.promote_to_profile, result);
+      const reference = await referenceView(db, await getCurrentReference(db, result.recipe, result.kind, result.name));
+      return jsonResult(mcpOutputSchemas.promote_to_profile, { ...result, reference });
     },
   );
 

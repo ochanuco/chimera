@@ -708,6 +708,11 @@ POST /api/v1/presets/promote-profile                    rating good の finalize
 キーを省きません。`record` は根の pose への参照で、本文ではありません。参照を本文に解決して patches を畳むのは worker 側の graph compiler で、
 `parameters.costume` の上書きはそこで今まで通り効きます。
 
+`reference` は `(recipe, kind, name)` の現行の基準 render の pin
+（[domain-model.md](domain-model.md#基準-render-の-pin)）で、一覧・全版・単体のどの読み出しにも
+付きます。pin が無ければ `null` です。書き込みは MCP `set_pose_reference` だけが行い、
+REST の書き込みエンドポイントはありません。
+
 ``` json
 {
   "id": "0199...",
@@ -722,7 +727,8 @@ POST /api/v1/presets/promote-profile                    rating good の finalize
   "note": null,
   "record": { "recipe_pose": "lounge" },
   "patches": [{ "target": "pose", "op": "append", "reason": "...", "value": "..." }],
-  "created_at": "..."
+  "created_at": "...",
+  "reference": { "generation_id": "0199...", "short_id": "5gmzy0", "seed": 737373737 }
 }
 ```
 
@@ -897,7 +903,8 @@ MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ�
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
-MCP `get_catalog_pose` で1件だけ引きます。
+MCP `get_catalog_pose` で1件だけ引きます。`get_catalog_pose` のレスポンスにも Preset と
+同じ形の `reference`（pin が無ければ `null`）が付きます。
 
 `dials` は `{ finalize?: {optionKey: {word: number}}, repair?: {...}, patches?: {...} }` の
 形で、finalize / repair の options にある dial-able キーごとの word → number です

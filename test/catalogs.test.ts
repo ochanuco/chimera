@@ -201,7 +201,7 @@ describe('MCP list_catalog / get_catalog_pose', () => {
       recipe_ref: recipeRef,
     });
     expect(tool.isError).toBe(false);
-    expect(tool.data).toEqual({ name: 'seated', prompt: 'seated, hands on knees' });
+    expect(tool.data).toEqual({ name: 'seated', prompt: 'seated, hands on knees', reference: null });
   });
 
   it('get_catalog_pose returns a pose\'s parts array verbatim', async () => {

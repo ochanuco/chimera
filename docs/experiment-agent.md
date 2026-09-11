@@ -110,6 +110,8 @@ get_catalog_pose(recipe, pose, recipe_ref?)   単一 pose のフルレコード
 list_presets(recipe?, kind?, include_deprecated?)   preset の名前と版の一覧 (record 本文なし)
 get_preset(recipe, kind, name, version?)            解決済みの本文、既定は最新の active 版
 promote_to_pose(generation_id, name, kind?, note?, idempotency_key)   rating good を新しい版へ昇格
+set_pose_reference(recipe, pose, generation_id, idempotency_key)   基準 render を (recipe, pose) に pin する
+plain_render(recipe, pose, seed?, idempotency_key?, recipe_ref?)   pin (または明示 seed) で recipe 既定を再度描く
 ```
 
 Run の代表 Generation を選ぶだけでなく、その Generation を見て次の一手を決める段になったら `get_generation` / `list_batch` / `get_generation_lineage` を使います。Experiment を経由しない単発の派生 (「この Generation のポーズを少し変えて3枚」) には `derive_request` を使い、`create_run` は Experiment のサイクルに乗せる場合に使い分けます。
@@ -200,6 +202,20 @@ Generation の Batch から `recipe` と pin されていた preset の版を、
 rating が good でなければ 409 で、Rating を書けるのは人間だけなので、Agent が単独で
 preset を本番へ入れることはできません。既存の版は書き換わらないため、昇格が過去の
 request の再現性を壊すこともありません。
+
+`set_pose_reference` / `plain_render` は「この pose はこう見えるべき」という基準を pin し、
+それを起点に同じ render を繰り返す tool のペアです
+（[domain-model.md](domain-model.md#基準-render-の-pin)）。`set_pose_reference` は
+`rating = good` の Generation を `(recipe, pose)` の pin にします。finalize / repair 済みの
+Generation なら `derive_request` と同じ規則で raw の Generation まで遡り、遡った先の Batch
+が recipe 一致・その pose を描いた・patches なし・prompt 未上書きの「素の render」でなければ
+409 で、満たさない条件は一度に返ります。seed は遡った先の raw Generation の comfy_job から
+取ります。再設定は現行の pin を `superseded_at` で閉じてから新しい行を足すので、それまでの
+pin も履歴として残ります。`plain_render` はその pin の seed（または明示した `seed`）で
+`recipe`/`pose` を patches なしの recipe 既定のまま描く `generate` request を積みます。pin
+も `seed` も無ければ 409 で、pin がまだ無い pose には `seed` を渡して最初の基準 render を
+起こせます。既定の `idempotency_key` は catalog の `git_commit` を含むので、同じ commit の
+まま繰り返し呼んでも複製せず再送になります。
 
 `list_generations` の `published=true` は納品済み Generation の索引です。かつての
 `tag="publish"` に代わるもので、返る各 Generation は引き続き `look:<pose>` タグを
