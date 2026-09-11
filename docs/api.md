@@ -710,8 +710,9 @@ POST /api/v1/presets/promote-profile                    rating good の finalize
 
 `reference` は `(recipe, kind, name)` の現行の基準 render の pin
 （[domain-model.md](domain-model.md#基準-render-の-pin)）で、一覧・全版・単体のどの読み出しにも
-付きます。pin が無ければ `null` です。書き込みは MCP `set_pose_reference` だけが行い、
-REST の書き込みエンドポイントはありません。
+付きます。pin が無ければ `null` です。書き込みは MCP `set_pose_reference`、または
+[Pose Reference Pin](#pose-reference-pin)（`POST /api/v1/generations/{id}/pose-reference`、
+GUI 用に `recipe`/`pose` を Generation から推測する薄いラッパー）が行います。
 
 ``` json
 {
@@ -1220,7 +1221,9 @@ ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 `GET /api/v1/generations/{id}` はこの内容に `batch`（`prompt` / `recipe` /
 `raw_instruction` 込み）と `comfy_job`（`graph` / `render_facts`）、
 `original_filename`、`publications`（[Publication](#publication)の一覧、
-新しい順）を加えたフルの detail です。ロジックは
+新しい順）、`pose_reference`（このGenerationが現行の pose 基準 render として pin
+されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
+[Pose Reference Pin](#pose-reference-pin)参照）を加えたフルの detail です。ロジックは
 `src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
 `get_generation` もここを呼ぶ同じ形を返します。
 
@@ -1250,6 +1253,7 @@ GET /api/v1/generations
 character
 tag
 published
+reference
 from
 to
 rating
@@ -1275,7 +1279,9 @@ to=2026-08-26
 検索結果には short ID、canonical URL、thumbnail/image
 URL、summary、`refines_generation_short_id`（この Generation の Batch が finalize/repair/
 masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）、`published`
-（[Publication](#publication)を1件以上持つか）、`finalize_request`
+（[Publication](#publication)を1件以上持つか）、`reference`（現行の pose 基準 render として
+pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
+[Pose Reference Pin](#pose-reference-pin)参照）、`finalize_request`
 等の軽量情報を返します。
 
 `finalize_request` は、この Generation を対象にした最新の finalize / repair /
@@ -1292,6 +1298,10 @@ short_id のどちらかと一致する行のうち、最新の1件）です。�
 Gallery live insertion カードフラグメント）も同じフィールドを同じ形で返します。
 
 `published=true|false` は Publication の有無で絞り込みます。
+
+`reference=true|false` は、いずれかの pose の現行の基準 render として pin されているか
+（`preset_references` の `superseded_at IS NULL` 行）で絞り込みます
+（[Pose Reference Pin](#pose-reference-pin)参照）。
 
 `origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ finalize
 済みの出力のどちらかに絞ります。省略時は両方を返します。
@@ -1463,6 +1473,26 @@ DELETE /api/v1/publications/{id}                      204
 `published`（少なくとも1件 Publication を持つか）が付きます。`GET
 /api/v1/generations/{id}` は `publications` 配列（`GET
 .../publications` と同じ形）を持ちます。
+
+## Pose Reference Pin
+
+``` text
+POST /api/v1/generations/{id}/pose-reference   {idempotency_key?}
+```
+
+GUI の Lightbox / Generation Detail の「基準にする」ボタンが呼ぶ窓口です
+（[ui.md](ui.md#lightbox)、[domain-model.md](domain-model.md#基準-render-の-pin)）。
+MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — この Generation を
+`resolveDerivationSource` で raw Batch まで遡り、その `recipe` と drawn pose
+（`preset_versions_json` の pose pin、無ければ `parameters_json.pose`）から推測します。
+どちらも特定できなければ 409（`cannot infer which pose to pin`）です。
+
+`idempotency_key` を省略するとサーバーが生成します。推測した `recipe`/`pose` が決まった
+あとは MCP `set_pose_reference`（[domain-model.md](domain-model.md#基準-render-の-pin)）と
+同じ経路・同じ 409 ルール（rating good 必須、patches なし、prompt 非上書き等）を通ります。
+`created_by` は `'gui'` 固定です。レスポンスは `set_pose_reference` と同じ形
+（`created` / `recipe` / `kind` / `name` / `reference` / `source` / `superseded`）で、
+新規作成は 201、idempotency replay は 200 です。
 
 ## Tags
 

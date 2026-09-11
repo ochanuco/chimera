@@ -383,7 +383,10 @@ dial word か、chimera が検証しない数値で、chimera が語彙を持た
 指します。Preset の版が patches の積み重ねを表すのに対し、pin は版ではなく名前
 `(recipe, 'pose', name)` に付きます — バージョンは差分の層、pin はその pose がどう見える
 べきかという基準そのものだからです。MCP `set_pose_reference` が書き、`plain_render` が
-その基準の seed で recipe の既定（patches なし）を再度描かせます。
+その基準の seed で recipe の既定（patches なし）を再度描かせます。GUI は Lightbox /
+Generation Detail の「基準にする」から同じ pin を書けます（`POST
+/api/v1/generations/{id}/pose-reference`）が、recipe/pose は指定せず、対象 Generation の
+resolved raw Batch から推測します（[api.md](api.md#pose-reference-pin)）。
 
 pin できる Generation には条件があります。
 

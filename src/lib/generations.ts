@@ -7,6 +7,7 @@ import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
+import { getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
 import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow, RequestStatus } from '../types';
@@ -104,17 +105,19 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const [context, batch, job, publications] = await Promise.all([
+  const [context, batch, job, publications, poseReference] = await Promise.all([
     buildContext(db, org, generation),
     db.prepare('SELECT * FROM batches WHERE id = ?').bind(generation.batch_id).first<BatchRow>(),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
     listPublicationsForGeneration(db, generation.id),
+    getPoseReferenceOfGeneration(db, generation.id),
   ]);
   const renderFacts = job ? await renderFactsForJob(db, job) : null;
 
   return {
     ...context,
     publications: publications.map(serializePublication),
+    pose_reference: poseReference,
     batch: batch
       ? {
           id: batch.id,
@@ -164,6 +167,8 @@ export interface GenerationListItem {
   published: boolean;
   /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (GenerationCardの進捗ピル)。無ければnull。 */
   finalize_request: GenerationFinalizeRequestBadge | null;
+  /** このGenerationが pose の基準 render として pin されているか (preset_references, 現行行のみ)。無ければnull。 */
+  reference: GenerationPoseReference | null;
 }
 
 export interface GenerationFinalizeRequestBadge {
@@ -332,6 +337,11 @@ export async function queryGenerations(
   } else if (query.published === 'false') {
     conditions.push('NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
   }
+  if (query.reference === 'true') {
+    conditions.push('EXISTS (SELECT 1 FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL)');
+  } else if (query.reference === 'false') {
+    conditions.push('NOT EXISTS (SELECT 1 FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL)');
+  }
   if (query.rating) {
     conditions.push('g.rating = ?');
     binds.push(query.rating);
@@ -406,7 +416,9 @@ export async function queryGenerations(
     .prepare(
       `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json,
          rg.short_id AS refines_generation_short_id,
-         EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published
+         EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published,
+         (SELECT pr.recipe FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_recipe,
+         (SELECT pr.name FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_pose
        FROM generations g
        LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
@@ -425,6 +437,8 @@ export async function queryGenerations(
         tag_names_json: string;
         refines_generation_short_id: string | null;
         is_published: number;
+        reference_recipe: string | null;
+        reference_pose: string | null;
       }
     >();
 
@@ -461,6 +475,7 @@ export async function queryGenerations(
       refines_generation_short_id: r.refines_generation_short_id,
       published: toBool(r.is_published),
       finalize_request: finalizeRequests.get(r.id) ?? null,
+      reference: r.reference_recipe && r.reference_pose ? { recipe: r.reference_recipe, pose: r.reference_pose } : null,
     };
   });
 

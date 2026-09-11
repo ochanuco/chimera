@@ -22,6 +22,8 @@ export interface GenerationCardData {
   published?: boolean;
   /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (docs/ui.md「Gallery」進捗ピル)。無い/未対応の一覧はundefined。 */
   finalize_request?: FinalizeRequestBadgeData | null;
+  /** このGenerationが pose の基準 render として pin されているか (docs/ui.md「Gallery」基準ピル)。無い/未対応の一覧はundefined。 */
+  reference?: { recipe: string; pose: string } | null;
 }
 
 const RATINGS = ['bad', 'neutral', 'good'] as const;
@@ -88,10 +90,19 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
             {g.finalize_request ? <FinalizeBadge r={g.finalize_request} /> : null}
           </div>
         ) : null}
-        {g.published ? (
-          <span class="card-published-pill">
-            <SendIcon /> 公開済み
-          </span>
+        {g.published || g.reference ? (
+          <div class="thumb-badges-bottom">
+            {g.published ? (
+              <span class="card-published-pill">
+                <SendIcon /> 公開済み
+              </span>
+            ) : null}
+            {g.reference ? (
+              <span class="card-reference-pill" title={`${g.reference.recipe} の ${g.reference.pose} の基準 render`}>
+                基準 {g.reference.pose}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </a>
       <div class="card-row">
