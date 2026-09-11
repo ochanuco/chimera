@@ -60,22 +60,6 @@ async function publishAndImport(recipe: string): Promise<string> {
   return recipeRef;
 }
 
-/**
- * Preset import only ever covers `kind = 'pose'` (lib/presets.ts importFromCatalog); costume/
- * expression presets, when they exist at all, are inserted directly. plain_render's payload
- * names `parameters.costume` from the catalog pose record, and createRequest's pinPresets
- * requires that name to resolve once the recipe has any Preset row — so the plain_render tests
- * need this row for pinning to succeed at all.
- */
-async function importCostumePreset(recipe: string, name = 'default'): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at)
-     VALUES (?, ?, 'costume', ?, 1, ?, 'active', 'import', NULL, NULL, 'system', ?)`,
-  )
-    .bind(crypto.randomUUID(), recipe, name, JSON.stringify({ recipe_pose: name }), new Date().toISOString())
-    .run();
-}
-
 async function publishAndImportTwoPoses(recipe: string): Promise<string> {
   const recipeRef = uniqueRecipeRef();
   await postJson(`/api/v1/catalogs/${recipeRef}`, twoPoseCatalog(recipe), 'PUT');
@@ -499,7 +483,6 @@ describe('MCP plain_render', () => {
   it('enqueues a generate request at the pinned seed with recipe defaults and no patches; replays on the default key', async () => {
     const recipe = uniqueRecipe();
     const recipeRef = await publishAndImport(recipe);
-    await importCostumePreset(recipe);
     const { generation } = await setupGeneration(recipe);
     await setRatingGood(generation.id);
     await pin(recipe, 'lounge', generation.id);
@@ -509,7 +492,7 @@ describe('MCP plain_render', () => {
     expect(call.data?.created).toBe(true);
     expect(call.data?.seed).toBe(123);
     expect(call.data?.payload.request.seeds).toEqual([123]);
-    expect(call.data?.payload.generation.parameters).toEqual({ pose: 'lounge', costume: 'default' });
+    expect(call.data?.payload.generation.parameters).toEqual({ pose: 'lounge' });
     expect(call.data?.payload.generation).not.toHaveProperty('patches');
     expect(call.data?.reference?.generation_id).toBe(generation.id);
     expect(call.data?.request.idempotency_key).toBe(`plain:${recipe}:lounge:123:abc1234`);
@@ -523,7 +506,6 @@ describe('MCP plain_render', () => {
   it('an explicit seed overrides the pin', async () => {
     const recipe = uniqueRecipe();
     const recipeRef = await publishAndImport(recipe);
-    await importCostumePreset(recipe);
     const { generation } = await setupGeneration(recipe);
     await setRatingGood(generation.id);
     await pin(recipe, 'lounge', generation.id);
@@ -546,7 +528,6 @@ describe('MCP plain_render', () => {
   it('bootstraps a pose with no pin when an explicit seed is given', async () => {
     const recipe = uniqueRecipe();
     const recipeRef = await publishAndImport(recipe);
-    await importCostumePreset(recipe);
 
     const call = await mcpToolCall<PlainRenderResult>('plain_render', { recipe, pose: 'lounge', recipe_ref: recipeRef, seed: 42 });
     expect(call.isError).toBe(false);
