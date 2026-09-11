@@ -14,6 +14,7 @@ export interface GalleryFilters {
   rating?: string;
   bookmark?: string;
   published?: string;
+  reference?: string;
 }
 
 /** Every currently-active query param (view/bad included), used as the base for the view/bad/load-more links. */
@@ -26,12 +27,13 @@ function activeParams(filters: GalleryFilters): URLSearchParams {
   if (filters.rating) params.set('rating', filters.rating);
   if (filters.bookmark) params.set('bookmark', filters.bookmark);
   if (filters.published) params.set('published', filters.published);
+  if (filters.reference) params.set('reference', filters.reference);
   return params;
 }
 
 /** Gallery live insertion (docs/ui.md「Gallery」) is active only when no ids / panel filter narrows the grid — `view`/`bad` don't disqualify it. */
 function galleryLiveEligible(filters: GalleryFilters): boolean {
-  return !filters.ids && !filters.tag && !filters.rating && !filters.bookmark && !filters.published;
+  return !filters.ids && !filters.tag && !filters.rating && !filters.bookmark && !filters.published && !filters.reference;
 }
 
 function badToggleHref(filters: GalleryFilters): string {
@@ -53,7 +55,7 @@ function FilterIcon() {
 }
 
 function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
-  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published);
+  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published || filters.reference);
   return (
     <div class="gallery-toolbar">
       <ViewSwitch basePath="/gallery" current={filters.view} params={activeParams(filters)} />
@@ -97,6 +99,10 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
           <label class="checkbox-field">
             <input type="checkbox" name="published" value="true" checked={filters.published === 'true'} />
             公開済みのみ
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" name="reference" value="true" checked={filters.reference === 'true'} />
+            基準のみ
           </label>
           <button type="submit">Search</button>
         </form>

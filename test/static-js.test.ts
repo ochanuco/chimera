@@ -12,4 +12,9 @@ describe('served app.js', () => {
     expect(appJs).toContain('initNavQueue');
     expect(appJs).toContain('/api/v1/requests/summary');
   });
+
+  it('wires up the pose reference pin button against the pose-reference endpoint', () => {
+    expect(appJs).toContain('initPoseReference');
+    expect(appJs).toContain('/pose-reference');
+  });
 });

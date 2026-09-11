@@ -99,8 +99,8 @@ repair_generation(generation_id, options?, idempotency_key)     create_request �
 masked_redraw_generation(generation_id, options, idempotency_key)  任意矩形の garment / local inpaint。source は不変
 get_request(id, include_prompts?)
 list_requests(status?, kind?, run_id?, include_prompts?)
-list_generations(character?, tag?, published?, rating?, bookmark?, from?, to?, limit?, offset?)   GET /api/v1/generations と同じフィルタ。published=true が納品済みの索引
-get_generation(generation_id, include_prompts?)   GET /api/v1/generations/{id} と同じ形 (publications 込み)
+list_generations(character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?)   GET /api/v1/generations と同じフィルタ。published=true が納品済みの索引、reference=true が pose 基準 render pin 済みの索引
+get_generation(generation_id, include_prompts?)   GET /api/v1/generations/{id} と同じ形 (publications / pose_reference 込み)
 record_publication(generation_id, url?, published_at?, idempotency_key?)   Generation の納品を1件記録
 list_batch(batch_id, include_prompts?)   jobs / generations (rating・tags・semantic・seed 込み) / references / relations / experiment_run
 get_generation_lineage(generation_id, depth?)   Batch 単位の祖先・子孫 (reference / relation 両方)、depth 既定 5・上限 10

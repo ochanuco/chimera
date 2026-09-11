@@ -220,6 +220,7 @@ export const mcpOutputSchemas = {
         bookmark: z.boolean(),
         tags: z.array(z.string()),
         published: z.boolean(),
+        reference: z.looseObject({ recipe: z.string(), pose: z.string() }).nullable().optional(),
         summary: z.string().nullable(),
         character: z.looseObject({ id: z.string(), name: z.string().nullable() }).nullable(),
         created_at: z.string(),
@@ -241,6 +242,7 @@ export const mcpOutputSchemas = {
     comfy_job: z.unknown().optional(),
     references: z.unknown().optional(),
     publications: z.array(publicationSchema).optional(),
+    pose_reference: z.unknown().optional(),
     original_filename: z.string().nullable().optional(),
   }),
 

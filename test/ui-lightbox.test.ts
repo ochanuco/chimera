@@ -86,6 +86,56 @@ describe('GET /g/:short_id?partial=lightbox', () => {
   });
 });
 
+describe('GET /g/:short_id?partial=lightbox: 基準 row (docs/domain-model.md「基準 render の pin」)', () => {
+  function uniqueRecipe(): string {
+    return `pose-ref-${crypto.randomUUID()}`;
+  }
+
+  function sampleCatalog(recipe: string) {
+    return {
+      schema_version: 1,
+      recipes: [
+        {
+          name: recipe,
+          poses: [{ name: 'lounge', prompt: 'reclining on a beanbag, warm light', costume: 'default' }],
+          costumes: [{ name: 'default', prompt: 'plain roomwear' }],
+          expressions: [{ name: 'smile', prompt: 'a gentle smile' }],
+        },
+      ],
+      patches: {},
+      git_commit: 'abc1234',
+      git_branch: 'main',
+      generated_at: '2026-09-08T00:00:00.000Z',
+    };
+  }
+
+  async function publishAndImport(recipe: string): Promise<void> {
+    const recipeRef = `test-${crypto.randomUUID()}`;
+    await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(recipe), 'PUT');
+    const res = await postJson<{ imported: unknown[] }>('/api/v1/presets/import', { recipe_ref: recipeRef });
+    expect(res.status).toBe(200);
+  }
+
+  it('shows the pin button before, and the 基準 pill (no button) after pinning', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+
+    const before = await (await req(`/g/${generation.short_id}?partial=lightbox`)).text();
+    expect(before).toContain('pose-reference-btn');
+    expect(before).not.toContain('card-reference-pill');
+
+    await postJson(`/api/v1/generations/${generation.id}/rating`, { rating: 'good' }, 'PUT');
+    const pin = await postJson(`/api/v1/generations/${generation.id}/pose-reference`, {});
+    expect(pin.status).toBe(201);
+
+    const after = await (await req(`/g/${generation.short_id}?partial=lightbox`)).text();
+    expect(after).toContain('card-reference-pill');
+    expect(after).toContain('基準 lounge');
+    expect(after).not.toContain('pose-reference-btn');
+  });
+});
+
 describe('GET /g/:short_id (full page)', () => {
   it('still renders the full Generation Detail page, unaffected by the Lightbox refactor', async () => {
     const { generation } = await createGeneration();

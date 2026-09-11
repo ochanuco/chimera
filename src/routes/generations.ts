@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema } from '../schemas/generations';
+import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPoseReferenceForGenerationSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
 import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
@@ -7,6 +7,7 @@ import { nowIso, getGenerationByIdOrShortId } from '../lib/db';
 import { uuidv7 } from '../lib/uuidv7';
 import { assignTag, removeTag } from '../lib/tags';
 import { createPublication, listPublicationsForGeneration, serializePublication } from '../lib/publications';
+import { setPoseReferenceForGeneration } from '../lib/preset-references';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeGenerationAsset } from '../lib/serialize';
@@ -159,6 +160,22 @@ generations.post('/:id/publications', async (c) => {
     idempotencyKey: body.idempotency_key,
   });
   return c.json(serializePublication(row), created ? 201 : 200);
+});
+
+// POST /api/v1/generations/{id}/pose-reference — GUI の「基準にする」(lightbox) が呼ぶ窓口
+// (docs/domain-model.md「基準 render の pin」)。recipe/pose は明示しない: MCP set_pose_reference
+// と違い呼び出し側はそれを知らないので、resolved raw Batch から推測する
+// (lib/preset-references.ts setPoseReferenceForGeneration)。created_by は 'gui' 固定。
+generations.post('/:id/pose-reference', async (c) => {
+  const body = setPoseReferenceForGenerationSchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const result = await setPoseReferenceForGeneration(db, {
+    generation_id: generation.id,
+    idempotency_key: body.idempotency_key ?? crypto.randomUUID(),
+    created_by: 'gui',
+  });
+  return c.json(result, result.created ? 201 : 200);
 });
 
 async function getGenerationAsset(

@@ -235,6 +235,7 @@ const generationLineageInputSchema = z.object({
 const listGenerationsInputSchema = z.object({
   tag: z.string().min(1).optional(),
   published: z.boolean().optional(),
+  reference: z.boolean().optional(),
   rating: z.enum(['bad', 'neutral', 'good']).optional(),
   bookmark: z.boolean().optional(),
   character: z.string().min(1).optional(),
@@ -776,7 +777,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         '(get_generation, get_generation_lineage, get_generation_image, finalize_generation, repair_generation, ' +
         "masked_redraw_generation, derive_request) assumes you already have one. Filters mirror the gallery's own " +
         'filters (character, tag, rating, bookmark, created_at range) and combine freely; published=true is the ' +
-        "delivered-look index — every look that was posted, each still carrying its look:<pose> tag. rating is " +
+        "delivered-look index — every look that was posted, each still carrying its look:<pose> tag; reference=true " +
+        "is the pose basis-render index — every Generation currently pinned via set_pose_reference. rating is " +
         "written by the human only, never by an agent — read it as the human's verdict on the image, not something " +
         'to set. Results are newest-first (created_at desc), paginated via limit/offset (limit caps at 200, ' +
         'defaults to 50). Pick a short_id from the results and follow up with get_generation / ' +
@@ -784,7 +786,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       inputSchema: listGenerationsInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ tag, published, rating, bookmark, character, from, to, limit, offset }) => {
+    async ({ tag, published, reference, rating, bookmark, character, from, to, limit, offset }) => {
       const query: Record<string, string | undefined> = {
         tag,
         rating,
@@ -792,6 +794,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         from,
         to,
         published: published === undefined ? undefined : published ? 'true' : 'false',
+        reference: reference === undefined ? undefined : reference ? 'true' : 'false',
         bookmark: bookmark === undefined ? undefined : bookmark ? 'true' : 'false',
         limit: limit === undefined ? undefined : String(limit),
         offset: offset === undefined ? undefined : String(offset),
@@ -804,6 +807,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           bookmark: item.bookmark,
           tags: item.tags,
           published: item.published,
+          reference: item.reference,
           summary: item.summary,
           character: item.character,
           created_at: item.created_at,

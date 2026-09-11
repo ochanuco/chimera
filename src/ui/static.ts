@@ -332,10 +332,20 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .card-finalize-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-.card-published-pill {
+/* 公開済み・基準ピルを横に並べる、下端寄せのコンテナ (thumb-badges-top の下端版)。 */
+.card .thumb-link .thumb-badges-bottom {
   position: absolute;
   bottom: 0.4rem;
   left: 0.4rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: calc(100% - 0.8rem);
+}
+
+.card-published-pill,
+.card-reference-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -345,7 +355,23 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-weight: 600;
   background: rgba(18, 18, 20, 0.86);
   border: 1px solid var(--border);
-  color: #4fd8a4;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-published-pill { color: #4fd8a4; }
+.card-reference-pill { color: #b39bf5; }
+
+.pose-reference-row { margin: 0.5rem 0; }
+.pose-reference-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
 }
 
 #thumb-preview {
@@ -1864,6 +1890,53 @@ export const appJs = `
       } catch (e) {
         trackError('publication.remove', e, { generation_id: generationId });
         alert('failed to remove publication: ' + e.message);
+      }
+    });
+  }
+
+  // --- Pose reference pin (docs/ui.md「Lightbox」「Generation Detail」の「基準」行) ---
+  function poseReferencePill(recipe, pose) {
+    var span = document.createElement('span');
+    span.className = 'card-reference-pill';
+    span.title = recipe + ' の ' + pose + ' の基準 render';
+    span.textContent = '基準 ' + pose;
+    return span;
+  }
+
+  // 「基準にする」を lightbox から押した場合、元のグリッドカード (.thumb-link[data-short-id])
+  // にも同じピルを反映する (upsertCardFinalizeBadge と同じ手)。
+  function upsertCardReferencePill(shortId, recipe, pose) {
+    var link = document.querySelector('.thumb-link[data-short-id="' + shortId + '"]');
+    if (!link) return;
+    var wrap = qs('.thumb-badges-bottom', link);
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'thumb-badges-bottom';
+      link.appendChild(wrap);
+    }
+    var existing = qs('.card-reference-pill', wrap);
+    if (existing) existing.remove();
+    wrap.appendChild(poseReferencePill(recipe, pose));
+  }
+
+  function initPoseReference() {
+    document.addEventListener('click', async function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.pose-reference-btn') : null;
+      if (!btn) return;
+      var generationId = btn.getAttribute('data-generation-id');
+      try {
+        var result = await api('/api/v1/generations/' + generationId + '/pose-reference', 'POST', {});
+        qsa('.pose-reference-row[data-generation-id="' + generationId + '"]').forEach(function (row) {
+          row.innerHTML = '';
+          row.appendChild(poseReferencePill(result.recipe, result.name));
+        });
+        if (result.reference && result.reference.short_id) {
+          upsertCardReferencePill(result.reference.short_id, result.recipe, result.name);
+        }
+        track('pose_reference.set', { generation_id: generationId });
+      } catch (e) {
+        trackError('pose_reference.set', e, { generation_id: generationId });
+        alert('failed to set pose reference: ' + e.message);
       }
     });
   }
@@ -3487,6 +3560,7 @@ export const appJs = `
     initPublicationAdd();
     initPublicationUrlSave();
     initPublicationRemove();
+    initPoseReference();
     initFinalize();
     initFinalizeAll();
     initFinalizeBackdropColor();
