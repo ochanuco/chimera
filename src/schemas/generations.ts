@@ -29,6 +29,11 @@ export const ratingUpdateSchema = z.object({
   rating: z.enum(['bad', 'neutral', 'good']).nullable(),
 });
 
+/** POST /api/v1/generations/{id}/pose-reference. idempotency_key is optional — the route mints one when omitted. */
+export const setPoseReferenceForGenerationSchema = z.object({
+  idempotency_key: z.string().min(1).optional(),
+});
+
 export const updateGenerationSchema = z
   .object({
     note: z.string().nullable().optional(),

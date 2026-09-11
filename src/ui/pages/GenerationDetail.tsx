@@ -6,6 +6,7 @@ import { FinalizeSection } from '../components/FinalizeSection';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 import { NoteSection } from '../components/NoteSection';
+import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
 import { PublicationSection, type PublicationData } from '../components/PublicationSection';
 import { RatingBookmark } from '../components/RatingBookmark';
@@ -45,6 +46,7 @@ export interface GenerationDetailData {
   references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   publications: PublicationData[];
+  pose_reference: PoseReferenceData | null;
   comfy_job: {
     id: string;
     seed: number | null;
@@ -346,6 +348,8 @@ export function GenerationDetailPage({
           </h1>
           {data.character ? <p>{data.character.name}</p> : null}
           <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
+
+          <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
 
           <PublicationSection generationId={data.id} publications={data.publications} />
 

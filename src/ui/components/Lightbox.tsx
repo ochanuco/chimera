@@ -2,6 +2,7 @@ import { CopyIdButton } from './CopyIdButton';
 import { FinalizeSection, type FinalizeRequestStatusLine } from './FinalizeSection';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import { NoteSection } from './NoteSection';
+import { PoseReferenceRow, type PoseReferenceData } from './PoseReferenceRow';
 import { PublicationSection, type PublicationData } from './PublicationSection';
 import { RatingBookmark } from './RatingBookmark';
 import { TagsEditor } from './TagsEditor';
@@ -28,6 +29,7 @@ export function LightboxPanel({
   refinesGenerationShortId,
   rating,
   bookmark,
+  poseReference,
   publications,
   tags,
   recipe,
@@ -42,6 +44,7 @@ export function LightboxPanel({
   refinesGenerationShortId: string | null;
   rating: 'bad' | 'neutral' | 'good' | null;
   bookmark: boolean;
+  poseReference: PoseReferenceData | null;
   publications: PublicationData[];
   tags: { id: string; name: string }[];
   recipe: string | null;
@@ -79,6 +82,8 @@ export function LightboxPanel({
       ) : null}
 
       <RatingBookmark id={generationId} rating={rating} bookmark={bookmark} size="lg" />
+
+      <PoseReferenceRow generationId={generationId} poseReference={poseReference} />
 
       <PublicationSection generationId={generationId} publications={publications} />
 

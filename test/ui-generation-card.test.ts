@@ -159,6 +159,54 @@ describe('GET /g/:short_id?partial=card (docs/ui.md「Gallery」live insertion)'
   });
 });
 
+describe('GenerationCard 基準 pill (docs/domain-model.md「基準 render の pin」)', () => {
+  function uniqueRecipe(): string {
+    return `pose-ref-${crypto.randomUUID()}`;
+  }
+
+  function sampleCatalog(recipe: string) {
+    return {
+      schema_version: 1,
+      recipes: [
+        {
+          name: recipe,
+          poses: [{ name: 'lounge', prompt: 'reclining on a beanbag, warm light', costume: 'default' }],
+          costumes: [{ name: 'default', prompt: 'plain roomwear' }],
+          expressions: [{ name: 'smile', prompt: 'a gentle smile' }],
+        },
+      ],
+      patches: {},
+      git_commit: 'abc1234',
+      git_branch: 'main',
+      generated_at: '2026-09-08T00:00:00.000Z',
+    };
+  }
+
+  async function publishAndImport(recipe: string): Promise<void> {
+    const recipeRef = `test-${crypto.randomUUID()}`;
+    await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(recipe), 'PUT');
+    const res = await postJson<{ imported: unknown[] }>('/api/v1/presets/import', { recipe_ref: recipeRef });
+    expect(res.status).toBe(200);
+  }
+
+  it('shows the pill only once the render is pinned as the pose basis render', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+
+    const before = cardHtml(await (await req('/gallery?limit=200')).text(), generation.short_id);
+    expect(before).not.toContain('card-reference-pill');
+
+    await postJson(`/api/v1/generations/${generation.id}/rating`, { rating: 'good' }, 'PUT');
+    const pin = await postJson(`/api/v1/generations/${generation.id}/pose-reference`, {});
+    expect(pin.status).toBe(201);
+
+    const after = cardHtml(await (await req('/gallery?limit=200')).text(), generation.short_id);
+    expect(after).toContain('card-reference-pill');
+    expect(after).toContain('基準 lounge');
+  });
+});
+
 describe('GenerationCard finalize badge (docs/ui.md「Gallery」進捗ピル)', () => {
   it('renders queued / running / done (→ result short_id) / failed as the request transitions', async () => {
     const { generation } = await createGeneration();
