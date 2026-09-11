@@ -289,6 +289,7 @@ export const mcpOutputSchemas = {
   list_presets: z.looseObject({ items: z.array(presetSummarySchema) }),
   get_preset: resolvedPresetSchema,
   promote_to_pose: resolvedPresetSchema,
+  promote_to_profile: resolvedPresetSchema,
 
   list_observations: z.looseObject({ items: z.array(observationSchema), total: z.number() }),
   get_observation: observationSchema,

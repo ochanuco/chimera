@@ -4,10 +4,10 @@
 // 置く。promote は resolveDerivationSource (lib/requests.ts) を要るため、この
 // ファイルから requests.ts への依存を作らないよう lib/promote.ts に分けている。
 
-import { nowIso } from './db';
+import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso } from './db';
 import { getCatalog } from './catalogs';
 import { badRequest, conflict, notFound } from './errors';
-import { presetBodySchema, type PresetBody } from '../schemas/presets';
+import { presetBodySchema, presetBodyFinalizeSchema, type PresetBody } from '../schemas/presets';
 import { uuidv7 } from './uuidv7';
 import type { JsonObject } from './overrides';
 import type { PresetKind, PresetRow, PresetSource, PresetStatus } from '../types';
@@ -359,6 +359,11 @@ export async function resolvePreset(db: D1Database, row: PresetRow): Promise<Res
       return { record: body, patches };
     }
 
+    // kind finalize: 全文上書きの leaf で、base への連鎖を持たない (schemas/presets.ts の presetBodyFinalizeSchema)。
+    if ('options' in body) {
+      return { record: body, patches: [] };
+    }
+
     const { base } = body;
     const baseRow = await getPresetRow(db, base.recipe, base.kind, base.name, base.version);
     if (!baseRow) {
@@ -382,4 +387,66 @@ export function extractPins(payload: unknown): { kind: string; name: string; ver
   if (!generation || typeof generation !== 'object') return undefined;
   const presets = (generation as Record<string, unknown>).presets;
   return Array.isArray(presets) ? (presets as { kind: string; name: string; version: number }[]) : undefined;
+}
+
+/**
+ * finalize payload の `profile` を `options` に展開する (docs/worker-protocol.md「finalize
+ * profile」)。明示された `options` の同名キー (explicit null を含む) が profile の値に勝つ。
+ * `profile` が無ければ payload をそのまま返す。未知の profile / generation は 404 相当の
+ * notFound を投げ、queued 行を作らせない — createRequest より前に呼ぶこと。
+ */
+export async function applyFinalizeProfile(db: D1Database, payload: JsonObject): Promise<JsonObject> {
+  const profile = payload.profile;
+  if (!isJsonObject(profile) || typeof profile.name !== 'string') return payload;
+
+  const generationId = payload.generation_id;
+  if (typeof generationId !== 'string') throw badRequest('profile requires a generation_id');
+
+  const generation = await getGenerationByIdOrShortId(db, generationId);
+  if (!generation) throw notFound('generation');
+  const batch = await getBatchByIdOrShortId(db, generation.batch_id);
+  if (!batch || !batch.recipe) throw notFound('finalize profile');
+
+  const version = typeof profile.version === 'number' ? profile.version : undefined;
+  const row = await getPresetRow(db, batch.recipe, 'finalize', profile.name, version);
+  if (!row) throw notFound('finalize profile');
+
+  const body = presetBodyFinalizeSchema.parse(JSON.parse(row.body_json));
+  const requestOptions = isJsonObject(payload.options) ? payload.options : {};
+
+  return {
+    ...payload,
+    options: { ...body.options, ...requestOptions },
+    profile: { name: profile.name, version: row.version },
+  };
+}
+
+/** A `finalize` Preset's body, with its options inlined for the FinalizeFields profile buttons. */
+export interface FinalizeProfileSummary {
+  name: string;
+  version: number;
+  options: JsonObject;
+}
+
+/**
+ * Latest active `finalize` Presets for `recipe` — what FinalizeFields offers as one-click profile
+ * buttons. One query (the same latest-per-name window as listPresets, body_json included) rather
+ * than listPresets + a getPresetRow per name, since a recipe can carry many profiles.
+ */
+export async function listFinalizeProfiles(db: D1Database, recipe: string): Promise<FinalizeProfileSummary[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM (
+         SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY version DESC) AS rn
+         FROM presets WHERE recipe = ? AND kind = 'finalize' AND status = 'active'
+       ) WHERE rn = 1
+       ORDER BY name`,
+    )
+    .bind(recipe)
+    .all<PresetRow>();
+
+  return (results ?? []).map((row) => {
+    const body = presetBodyFinalizeSchema.parse(JSON.parse(row.body_json));
+    return { name: row.name, version: row.version, options: body.options as JsonObject };
+  });
 }

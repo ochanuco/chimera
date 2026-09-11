@@ -165,7 +165,7 @@ describe('POST /api/v1/requests', () => {
     expect(badRegion.status).toBe(400);
   });
 
-  it('finalize: repair_lora accepts true, a number, and null; rejects a string', async () => {
+  it('finalize: repair_lora accepts true, a number, null, and a dial word; rejects a malformed string', async () => {
     const { generation } = await createGeneration();
 
     const workerDefault = await createFinalizeRequest(generation.id, {
@@ -185,8 +185,15 @@ describe('POST /api/v1/requests', () => {
     });
     expect(off.status).toBe(201);
 
-    const badType = await createFinalizeRequest(generation.id, {
+    // word: catalog `dials.finalize.repair_lora` 語彙 — chimera は型だけ見て通す、実在確認は worker。
+    const word = await createFinalizeRequest(generation.id, {
       payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'strong' } },
+    });
+    expect(word.status).toBe(201);
+    expect(word.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'strong' } });
+
+    const badType = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'Strong!' } },
     });
     expect(badType.status).toBe(400);
   });
@@ -219,7 +226,7 @@ describe('POST /api/v1/requests', () => {
     expect(badRegion.status).toBe(400);
   });
 
-  it('repair: lora accepts true, a number, and null; rejects a string', async () => {
+  it('repair: lora accepts true, a number, null, and a dial word; rejects a malformed string', async () => {
     const { generation } = await createGeneration();
 
     const workerDefault = await createRepairRequest(generation.id, {
@@ -239,8 +246,14 @@ describe('POST /api/v1/requests', () => {
     });
     expect(off.status).toBe(201);
 
-    const badType = await createRepairRequest(generation.id, {
+    const word = await createRepairRequest(generation.id, {
       payload: { generation_id: generation.id, options: { lora: 'strong' } },
+    });
+    expect(word.status).toBe(201);
+    expect(word.body.payload).toEqual({ generation_id: generation.id, options: { lora: 'strong' } });
+
+    const badType = await createRepairRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { lora: 'Strong!' } },
     });
     expect(badType.status).toBe(400);
   });

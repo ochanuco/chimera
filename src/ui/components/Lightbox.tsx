@@ -1,5 +1,6 @@
 import { CopyIdButton } from './CopyIdButton';
 import { FinalizeSection, type FinalizeRequestStatusLine } from './FinalizeSection';
+import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import { NoteSection } from './NoteSection';
 import { PublicationSection, type PublicationData } from './PublicationSection';
 import { RatingBookmark } from './RatingBookmark';
@@ -32,6 +33,8 @@ export function LightboxPanel({
   recipe,
   finalizeRequests,
   note,
+  finalizeDials,
+  finalizeProfiles,
 }: {
   generationId: string;
   shortId: string;
@@ -44,6 +47,8 @@ export function LightboxPanel({
   recipe: string | null;
   finalizeRequests: FinalizeRequestStatusLine[];
   note: string | null;
+  finalizeDials: FinalizeDials | null;
+  finalizeProfiles: FinalizeProfileOption[];
 }) {
   return (
     <div class="lightbox-panel-content" data-generation-id={generationId} data-short-id={shortId}>
@@ -79,7 +84,14 @@ export function LightboxPanel({
 
       <TagsEditor kind="generations" id={generationId} tags={tags} />
 
-      <FinalizeSection shortId={shortId} recipe={recipe} requests={finalizeRequests} open />
+      <FinalizeSection
+        shortId={shortId}
+        recipe={recipe}
+        requests={finalizeRequests}
+        open
+        dials={finalizeDials}
+        profiles={finalizeProfiles}
+      />
 
       <NoteSection kind="generations" id={generationId} note={note} open={false} />
     </div>

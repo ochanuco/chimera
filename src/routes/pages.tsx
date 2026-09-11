@@ -27,6 +27,10 @@ import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { renderFactsForJob } from '../lib/render-facts';
+import { defaultRecipeRef } from '../lib/requests';
+import { getCatalog, findFinalizeDials } from '../lib/catalogs';
+import { listFinalizeProfiles } from '../lib/presets';
+import type { FinalizeDials } from '../ui/finalize-options';
 import type { AppEnv, ComfyJobRow, ExperimentRunRow, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 import type { BatchRowData } from '../ui/components/BatchRow';
@@ -108,6 +112,14 @@ pages.get('/b/:shortId', async (c) => {
     return c.html(<NotFoundPage what="Batch" />, 404);
   }
   const data = (await res.json()) as BatchDetailData;
+
+  // dials / profile buttons (FinalizeFields) — same lookup as /g/:shortId (routes/images.tsx).
+  const recipe = data.recipe;
+  const [catalogDoc, finalizeProfiles] = await Promise.all([
+    recipe ? getCatalog(c.env.DB, defaultRecipeRef(c.env)) : Promise.resolve(null),
+    recipe ? listFinalizeProfiles(c.env.DB, recipe) : Promise.resolve([]),
+  ]);
+  const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
 
   const experimentRunBatchIds = data.experiment_run
     ? [
@@ -227,6 +239,8 @@ pages.get('/b/:shortId', async (c) => {
       diffParent={diffParent}
       finalizeSummary={finalizeSummary}
       finalizeRequests={finalizeRequests}
+      dials={finalizeDials}
+      profiles={finalizeProfiles}
     />,
   );
 });

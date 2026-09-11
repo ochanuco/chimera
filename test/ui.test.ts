@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
 import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph } from './helpers';
 
@@ -954,6 +954,133 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain('render.positive');
+  });
+});
+
+describe('Finalize profiles and word dials (GUI)', () => {
+  // claimRequest claims the oldest queued row of its kind regardless of test — other tests in
+  // this file post finalize requests without ever completing them, which would otherwise starve
+  // our claim() calls here (same reason test/finalize-profiles.test.ts resets this table).
+  beforeEach(async () => {
+    await env.DB.prepare('DELETE FROM requests').run();
+  });
+
+  function uniqueRecipe(): string {
+    return `finalize-gui-${crypto.randomUUID()}`;
+  }
+
+  async function publishDenoiseDials(recipe: string) {
+    await postJson(`/api/v1/catalogs/production`, {
+      schema_version: 1,
+      recipes: [
+        {
+          name: recipe,
+          poses: [],
+          dials: { finalize: { denoise: { tidy: 0.65, heavy: 0.8 } } },
+        },
+      ],
+      patches: {},
+    }, 'PUT');
+  }
+
+  async function setRatingGood(generationId: string): Promise<void> {
+    const res = await postJson(`/api/v1/generations/${generationId}/rating`, { rating: 'good' }, 'PUT');
+    expect(res.status).toBe(200);
+  }
+
+  interface RequestBody {
+    id: string;
+    status: string;
+    worker_id: string | null;
+  }
+
+  /**
+   * A raw (source) Generation plus a finalize request against it, claimed and marked done against
+   * a second (delivered) Generation — mirrors test/finalize-profiles.test.ts's createFinalizeResult.
+   */
+  async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
+    const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
+    const { batch: deliveredBatch, generation: delivered } = await createGeneration({ batchOverrides: { recipe } });
+
+    const finalizeReq = await postJson<RequestBody>('/api/v1/requests', {
+      kind: 'finalize',
+      payload: { generation_id: source.id, options },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(finalizeReq.status).toBe(201);
+
+    const claimRes = await postJson<RequestBody>('/api/v1/requests/claim', { worker_id: `worker-${crypto.randomUUID()}` }, 'POST');
+    expect(claimRes.status).toBe(200);
+
+    const done = await postJson(
+      `/api/v1/requests/${finalizeReq.body.id}`,
+      { status: 'done', worker_id: claimRes.body.worker_id, result: { batch_id: deliveredBatch.id, generation_ids: [delivered.id] } },
+      'PATCH',
+    );
+    expect(done.status).toBe(200);
+
+    return { source, delivered };
+  }
+
+  it('a recipe with no published catalog dials/profiles still renders the legacy keep_legwear checkbox', async () => {
+    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('<input type="checkbox" name="keep_legwear"/>');
+    expect(html).not.toContain('data-dial-key="denoise"');
+  });
+
+  it('a recipe with published catalog dials.finalize.denoise renders a denoise dial group with a button per word', async () => {
+    const recipe = uniqueRecipe();
+    await publishDenoiseDials(recipe);
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('data-dial-key="denoise"');
+    expect(html).toContain('data-dial-value="tidy"');
+    expect(html).toContain('data-dial-value="heavy"');
+    expect(html).not.toContain('<input type="checkbox" name="keep_legwear"/>');
+  });
+
+  it('a recipe with a promoted finalize Preset renders a profile button for it', async () => {
+    const recipe = uniqueRecipe();
+    const { delivered } = await createFinalizeResult(recipe, { denoise: 0.6 });
+    await setRatingGood(delivered.id);
+    const promoted = await postJson<{ name: string; version: number }>('/api/v1/presets/promote-profile', {
+      generation_id: delivered.id,
+      name: 'daily',
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(promoted.status).toBe(200);
+
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('data-profile-name="daily"');
+    expect(html).toContain('data-profile-version="1"');
+  });
+
+  it('shows the promote-profile form only for a rating=good finalize-kind Generation, not for a plain one', async () => {
+    const recipe = uniqueRecipe();
+    const { delivered } = await createFinalizeResult(recipe);
+    await setRatingGood(delivered.id);
+
+    const html = await (await req(`/g/${delivered.short_id}`)).text();
+    expect(html).toContain('<form class="promote-profile-form"');
+
+    const { generation: plain } = await createGeneration({ batchOverrides: { recipe } });
+    const plainHtml = await (await req(`/g/${plain.short_id}`)).text();
+    expect(plainHtml).not.toContain('<form class="promote-profile-form"');
+  });
+
+  it('/b/{short_id} also shows dial/profile markup inside finalize-all-form when the batch recipe has dials/profiles', async () => {
+    const recipe = uniqueRecipe();
+    await publishDenoiseDials(recipe);
+    const { batch } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/b/${batch.id}`)).text();
+    expect(html).toContain('class="finalize-all-form"');
+    expect(html).toContain('data-dial-key="denoise"');
+    expect(html).toContain('data-dial-value="tidy"');
   });
 });
 
