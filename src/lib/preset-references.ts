@@ -36,6 +36,25 @@ export function drawnPoseOf(batch: BatchRow): string | undefined {
   return typeof posePin?.name === 'string' ? posePin.name : typeof parameters.pose === 'string' ? parameters.pose : undefined;
 }
 
+export interface DrawnPoseView {
+  recipe: string;
+  pose: string;
+  /** The pose's current basis-render pin (same shape as get_catalog_pose's `reference`), or null when none is set. */
+  reference: PresetReferenceView | null;
+}
+
+/**
+ * The pose a Batch drew plus that pose's current pin, for get_generation / list_batch. null when the Batch
+ * names no recipe or pose (graph-mode, finalize / repair payloads). Distinct from `pose_reference`, which
+ * says whether a Generation is itself a pin.
+ */
+export async function drawnPoseView(db: D1Database, batch: BatchRow): Promise<DrawnPoseView | null> {
+  const pose = drawnPoseOf(batch);
+  if (!batch.recipe || !pose) return null;
+  const reference = await referenceView(db, await getCurrentReference(db, batch.recipe, 'pose', pose));
+  return { recipe: batch.recipe, pose, reference };
+}
+
 /** The current (not superseded) pin for one (recipe, kind, name), or null when none has ever been set. */
 export async function getCurrentReference(
   db: D1Database,

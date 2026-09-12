@@ -325,10 +325,27 @@ const getObservationInputSchema = z.object({ id: z.string().min(1) });
  */
 const recordObservationInputSchema = createObservationObjectSchema.omit({ observed_at: true }).superRefine(requirePoseOrComponent);
 
+/**
+ * Server-level guidance, returned in the initialize response. Tool descriptions alone leave the client to guess
+ * the order of operations; without this, a client that has only seen a rating=good Generation re-invents a pose
+ * that already exists in the catalog (stand + whole-prompt replace instead of the `bust` pose and its pin).
+ */
+const MCP_INSTRUCTIONS =
+  'chimera manages ComfyUI generations for comfyui-recipes. Order of operations:\n' +
+  '1. Start from list_catalog: it names every pose (and costume / expression) each recipe already has. Check it before ' +
+  'writing a prompt patch for a look — the pose you want may already exist by name.\n' +
+  '2. A named look is reproduced with plain_render(recipe, pose): it renders the recipe defaults at the seed of the ' +
+  "pose's pinned basis render (set_pose_reference). Seed exploration also goes through plain_render with an explicit seed.\n" +
+  "3. To derive from a look, start from the Generation in get_catalog_pose's `reference` (the current pin) and call " +
+  'derive_request from it. A rating=good Generation found via list_generations may predate the pin — prefer the pin. ' +
+  'get_generation / list_batch report which pose a Generation drew and that pose\'s current pin as batch.drawn_pose.\n' +
+  '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
+  'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.';
+
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
   const bucket = env.IMAGES;
-  const server = new McpServer({ name: 'chimera', version: '1.0.0' });
+  const server = new McpServer({ name: 'chimera', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
 
   /** hub 通知はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
   function notifyHubInBackground(...args: Parameters<typeof notifyHub>): void {
@@ -825,6 +842,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.get_generation,
       description:
         'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}. ' +
+        "batch.drawn_pose is {recipe, pose, reference}: the pose this Generation drew and that pose's current basis-render pin " +
+        '(same shape as get_catalog_pose reference, null if unpinned); null when the Batch names no pose. pose_reference, by ' +
+        'contrast, says whether this Generation is itself a pin. ' +
         'comfy_job.prompt_not_reusable is non-null for repair, masked_redraw and repair-carrying finalize outputs: their ' +
         'render_facts prompts were cut for a masked region (face, hair and hood tags dropped), so never pass them as a ' +
         'generate prompt — use derive_request from the Generation instead. ' +
@@ -847,7 +867,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.list_batch,
       description:
         'Get a Batch (by id or short_id) with its jobs, generations (rating/bookmark/tags/semantic_summary/semantic_attributes/seed), ' +
-        'references, relations (outgoing/incoming) and its ExperimentRun family, if any. ' +
+        'references, relations (outgoing/incoming) and its ExperimentRun family, if any. batch.drawn_pose is ' +
+        "{recipe, pose, reference}: the pose this Batch drew and that pose's current basis-render pin (null if unpinned). " +
         'Prompt bodies (batch prompt/negative_prompt, batch.parameters.prompt_patch, render_facts sampler prompts) are ' +
         'folded to a length marker by default; pass include_prompts: true only when you actually need the text.',
       inputSchema: z.object({ batch_id: z.string().min(1), include_prompts: z.boolean().default(false) }),

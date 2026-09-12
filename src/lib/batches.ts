@@ -7,6 +7,7 @@ import { toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl, serializeBatch } from './serialize';
 import { renderFactsForJob } from './render-facts';
 import { getExperimentRunFamily } from './experiments';
+import { drawnPoseView } from './preset-references';
 import type { BatchReferenceRow, BatchRelationRow, BatchRow, ComfyJobRow } from '../types';
 
 interface BatchDigestGenerationRow {
@@ -33,7 +34,7 @@ function parseSemanticAttributes(semanticJson: string | null): Record<string, un
 
 /** GET /api/v1/batches/{id} の subset — MCP `list_batch` が返す形。 */
 export async function getBatchDigest(db: D1Database, org: string, batch: BatchRow) {
-  const [jobsResult, generationsResult, referencesResult, outgoingResult, incomingResult, experimentRun] = await Promise.all([
+  const [jobsResult, generationsResult, referencesResult, outgoingResult, incomingResult, experimentRun, drawnPose] = await Promise.all([
     db.prepare('SELECT * FROM comfy_jobs WHERE batch_id = ? ORDER BY job_index ASC').bind(batch.id).all<ComfyJobRow>(),
     db
       .prepare(
@@ -62,6 +63,7 @@ export async function getBatchDigest(db: D1Database, org: string, batch: BatchRo
       .bind(batch.id)
       .all<BatchRelationRow>(),
     getExperimentRunFamily(db, batch.id),
+    drawnPoseView(db, batch),
   ]);
 
   const jobRows = jobsResult.results ?? [];
@@ -70,7 +72,7 @@ export async function getBatchDigest(db: D1Database, org: string, batch: BatchRo
   );
 
   return {
-    batch: serializeBatch(batch),
+    batch: { ...serializeBatch(batch), drawn_pose: drawnPose },
     jobs: jobRows.map((j) => ({
       id: j.id,
       comfy_prompt_id: j.comfy_prompt_id,
