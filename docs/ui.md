@@ -646,7 +646,10 @@ repair feetのどちらもチェックされていない間`disabled`で、ど�
 項目・同じ条件です。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
-`request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。Generation Detailと
+`request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。挿入先はフォームの下で
+Lightboxでは視界の外になりやすいため、ボタン自身も押下に応えます。送信中は`disabled`で
+`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`（Finalize all armsは`Queued N ✓`）を
+表示して元のラベルに戻り、失敗時はすぐ戻ります。Generation Detailと
 [Lightbox](#lightbox)のFinalizeフォームはどちらもこの仕組みです。この一覧には、このGenerationを
 対象とした最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
