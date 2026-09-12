@@ -905,7 +905,11 @@ MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ�
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
 MCP `get_catalog_pose` で1件だけ引きます。`get_catalog_pose` のレスポンスにも Preset と
-同じ形の `reference`（pin が無ければ `null`）が付きます。
+同じ形の `reference`（pin が無ければ `null`）が付きます。Agent はまず `list_catalog` で
+pose 名を確かめ、名前のある look は `plain_render` が pin の seed で再現し、派生はこの
+`reference` の Generation から `derive_request` を起こします。既存の Generation がどの pose を
+描いたかとその pin は `get_generation` / `list_batch` の `batch.drawn_pose`
+（[Generation Context](#generation-context)）で分かります。
 
 `dials` は `{ finalize?: {optionKey: {word: number}}, repair?: {...}, patches?: {...} }` の
 形で、finalize / repair の options にある dial-able キーごとの word → number です
@@ -1219,13 +1223,24 @@ BatchReferenceそのもの（`target_batch_id`
 ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 
 `GET /api/v1/generations/{id}` はこの内容に `batch`（`prompt` / `recipe` /
-`raw_instruction` 込み）と `comfy_job`（`graph` / `render_facts`）、
+`raw_instruction` / `preset_versions` / `drawn_pose` 込み）と `comfy_job`（`graph` / `render_facts`）、
 `original_filename`、`publications`（[Publication](#publication)の一覧、
 新しい順）、`pose_reference`（このGenerationが現行の pose 基準 render として pin
 されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
 [Pose Reference Pin](#pose-reference-pin)参照）を加えたフルの detail です。ロジックは
 `src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
 `get_generation` もここを呼ぶ同じ形を返します。
+
+`batch.drawn_pose` は `{ "recipe": "...", "pose": "...", "reference": {...} | null }` で、
+この Generation の Batch が描いた pose（`preset_versions` の pose pin、無ければ
+`parameters.pose`）と、その pose の現行の基準 render の pin（[Preset](#preset) の `reference`
+と同じ `{ generation_id, short_id, seed }`、pin が無ければ `null`）です。Batch が recipe か
+pose を持たなければ（graph-mode、finalize / repair の Batch）`drawn_pose` 自体が `null` です。
+`pose_reference` が「この Generation 自身が pin か」を答えるのに対し、`drawn_pose` は
+「同じ pose の基準はどこか」を答えます。MCP `list_batch` の `batch` にも同じ `drawn_pose` が
+付きます。Agent の手順は catalog（`list_catalog`）で pose 名を確かめ、名前のある look は
+`plain_render` で pin の seed から再現し、派生は pin の Generation から `derive_request` を
+起こす順です（[experiment-agent.md](experiment-agent.md)）。
 
 `comfy_job.prompt_not_reusable` は、render_facts の prompt を generate に流用してはいけない
 Generation で `{ "reason": ..., "message": ... }` になり、それ以外は `null` です。所属 Batch の
