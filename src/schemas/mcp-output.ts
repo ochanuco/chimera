@@ -82,6 +82,9 @@ const createdRequestSchema = z.looseObject({ created: z.boolean(), request: requ
 /** referenceView (lib/preset-references.ts) — the current basis-render pin for a (recipe, kind, name). */
 const presetReferenceSchema = z.looseObject({ generation_id: z.string(), short_id: z.string(), seed: z.number() });
 
+/** drawnPoseView (lib/preset-references.ts) — the pose a Batch drew and that pose's current pin. */
+const drawnPoseSchema = z.looseObject({ recipe: z.string(), pose: z.string(), reference: presetReferenceSchema.nullable() });
+
 /** summarizePreset (lib/presets.ts), plus attachReferences'/referenceView's `reference`. */
 const presetSummarySchema = z.looseObject({
   id: z.string(),
@@ -238,7 +241,7 @@ export const mcpOutputSchemas = {
     bookmark: z.boolean().optional(),
     tags: z.array(z.string()).optional(),
     semantic: z.unknown().optional(),
-    batch: z.unknown().optional(),
+    batch: z.looseObject({ drawn_pose: drawnPoseSchema.nullable().optional() }).nullable().optional(),
     comfy_job: z.unknown().optional(),
     references: z.unknown().optional(),
     publications: z.array(publicationSchema).optional(),
@@ -247,6 +250,7 @@ export const mcpOutputSchemas = {
   }),
 
   list_batch: z.looseObject({
+    batch: z.looseObject({ drawn_pose: drawnPoseSchema.nullable().optional() }).optional(),
     id: z.string().optional(),
     short_id: z.string().optional(),
     recipe: z.string().nullable().optional(),

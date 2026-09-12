@@ -228,13 +228,18 @@ describe('Run creation auto-provisions a requests row (worker-protocol.md)', () 
 
 describe('MCP server at /mcp', () => {
   it('initialize succeeds and tools/list returns every registered tool name', async () => {
-    const init = await mcpCall('initialize', {
+    const init = await mcpCall<{ instructions?: string }>('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
       clientInfo: { name: 'test', version: '1.0.0' },
     });
     expect(init.status).toBe(200);
     expect(init.body.result).toBeTruthy();
+    // Server-level guidance: catalog first, plain_render for a named look, derive from the pin, patch per part.
+    const instructions = init.body.result?.instructions ?? '';
+    for (const tool of ['list_catalog', 'plain_render', 'get_catalog_pose', 'derive_request', 'prompt.positive.<part>']) {
+      expect(instructions).toContain(tool);
+    }
 
     const list = await mcpCall<{ tools: { name: string }[] }>('tools/list', {});
     expect(list.status).toBe(200);

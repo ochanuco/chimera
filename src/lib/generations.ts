@@ -7,7 +7,7 @@ import { canonicalGenerationUrl, generationImageUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
-import { getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
+import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
 import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow, RequestStatus } from '../types';
@@ -112,7 +112,10 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
     listPublicationsForGeneration(db, generation.id),
     getPoseReferenceOfGeneration(db, generation.id),
   ]);
-  const renderFacts = job ? await renderFactsForJob(db, job) : null;
+  const [renderFacts, drawnPose] = await Promise.all([
+    job ? renderFactsForJob(db, job) : Promise.resolve(null),
+    batch ? drawnPoseView(db, batch) : Promise.resolve(null),
+  ]);
 
   return {
     ...context,
@@ -128,6 +131,8 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
           raw_instruction: batch.raw_instruction,
           git_commit: batch.git_commit,
           git_dirty: toBool(batch.git_dirty),
+          preset_versions: batch.preset_versions_json ? (JSON.parse(batch.preset_versions_json) as unknown) : null,
+          drawn_pose: drawnPose,
         }
       : null,
     comfy_job: job
