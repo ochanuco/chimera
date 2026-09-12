@@ -100,9 +100,9 @@ masked_redraw_generation(generation_id, options, idempotency_key)  任意矩形�
 get_request(id, include_prompts?)
 list_requests(status?, kind?, run_id?, include_prompts?)
 list_generations(character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?)   GET /api/v1/generations と同じフィルタ。published=true が納品済みの索引、reference=true が pose 基準 render pin 済みの索引
-get_generation(generation_id, include_prompts?)   GET /api/v1/generations/{id} と同じ形 (publications / pose_reference 込み)
+get_generation(generation_id, include_prompts?)   GET /api/v1/generations/{id} と同じ形 (publications / pose_reference / batch.drawn_pose 込み)
 record_publication(generation_id, url?, published_at?, idempotency_key?)   Generation の納品を1件記録
-list_batch(batch_id, include_prompts?)   jobs / generations (rating・tags・semantic・seed 込み) / references / relations / experiment_run
+list_batch(batch_id, include_prompts?)   batch (drawn_pose 込み) / jobs / generations (rating・tags・semantic・seed 込み) / references / relations / experiment_run
 get_generation_lineage(generation_id, depth?)   Batch 単位の祖先・子孫 (reference / relation 両方)、depth 既定 5・上限 10
 derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?)
 list_catalog(recipe_ref?)                公開済み recipe catalog の要約 (既定 "production")
@@ -113,6 +113,18 @@ promote_to_pose(generation_id, name, kind?, note?, idempotency_key)   rating goo
 set_pose_reference(recipe, pose, generation_id, idempotency_key)   基準 render を (recipe, pose) に pin する
 plain_render(recipe, pose, seed?, idempotency_key?, recipe_ref?)   pin (または明示 seed) で recipe 既定を再度描く
 ```
+
+MCP server は initialize 応答の `instructions` で手順の順序を伝えます（`src/mcp.ts` の
+`MCP_INSTRUCTIONS`）。起点は `list_catalog` で、recipe ごとの pose 名を先に確かめます。
+名前のある look は `plain_render(recipe, pose)` が pin の seed で再現し、seed 探索も
+`plain_render` に `seed` を渡して行います。派生は `get_catalog_pose` の `reference`
+（現行の pin）の Generation から `derive_request` を起こします。`list_generations` で見つけた
+rating good の Generation は pin より古い可能性があるので、pin を優先します。prompt の変更は
+`prompt.positive.<part>` 単位で書き、全文 replace は identity guard に落ちる原因になります。
+`get_generation` / `list_batch` の `batch.drawn_pose`（`{recipe, pose, reference}`）は、その
+Generation / Batch が描いた pose とその pose の現行の pin で、`reference` は
+`get_catalog_pose` と同じ形（pin が無ければ `null`）、Batch が pose を持たなければ
+`drawn_pose` 自体が `null` です。`pose_reference`（この Generation 自身が pin か）とは別物です。
 
 Run の代表 Generation を選ぶだけでなく、その Generation を見て次の一手を決める段になったら `get_generation` / `list_batch` / `get_generation_lineage` を使います。Experiment を経由しない単発の派生 (「この Generation のポーズを少し変えて3枚」) には `derive_request` を使い、`create_run` は Experiment のサイクルに乗せる場合に使い分けます。
 
