@@ -932,7 +932,9 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .finalize-form, .finalize-all-form { display: flex; flex-direction: column; gap: 0.7rem; }
 .finalize-form input[type="number"], .finalize-all-form input[type="number"] { width: 5rem; }
-.finalize-form button, .finalize-all-form button {
+/* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial / profile ボタンが
+   全部アクセント色で塗られて選択中が見えなくなる */
+.finalize-form button[type="submit"], .finalize-all-form button[type="submit"] {
   align-self: flex-start;
   background: var(--accent);
   color: #10131c;
@@ -940,7 +942,18 @@ details.section .section-body { margin-top: 0.6rem; }
   border-radius: 6px;
   padding: 0.35rem 0.9rem;
   cursor: pointer;
+  transition: filter 0.1s, transform 0.05s, background-color 0.15s;
 }
+.finalize-form button[type="submit"]:hover:not(:disabled),
+.finalize-all-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
+.finalize-form button[type="submit"]:active:not(:disabled),
+.finalize-all-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
+.finalize-form button[type="submit"]:focus-visible,
+.finalize-all-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.finalize-form button[type="submit"]:disabled,
+.finalize-all-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
+.finalize-form button[type="submit"].is-sent,
+.finalize-all-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
 .finalize-form select, .finalize-all-form select,
 .finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] {
   background: var(--bg);
@@ -1005,6 +1018,8 @@ details.section .section-body { margin-top: 0.6rem; }
   font-size: 0.8rem;
   cursor: pointer;
 }
+.dial-btn:hover:not(.dial-btn-active) { border-color: var(--accent); }
+.dial-btn:active { transform: scale(0.96); }
 .dial-btn-active { background: var(--accent); color: #10131c; border-color: var(--accent); }
 .promote-profile-form { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .promote-profile-status { font-size: 0.8rem; color: var(--text-dim); }
@@ -2238,6 +2253,32 @@ export const appJs = `
     return li;
   }
 
+  // 積んだ結果の queued 行はフォームの下に足されるので、Lightbox では視界の外に出やすい。
+  // 押したことをボタン自身で返す: 送信中は disabled、積めたら少しの間 Queued 表示。
+  function submitButtonFeedback(form) {
+    var button = qs('button[type="submit"]', form);
+    if (!button) return { sent: function () {}, failed: function () {} };
+    var label = button.getAttribute('data-label') || button.textContent;
+    button.setAttribute('data-label', label);
+    clearTimeout(button._sentTimer);
+    button.classList.remove('is-sent');
+    button.disabled = true;
+    button.textContent = 'Queueing…';
+    function restore() {
+      button.classList.remove('is-sent');
+      button.disabled = false;
+      button.textContent = label;
+    }
+    return {
+      sent: function (text) {
+        button.classList.add('is-sent');
+        button.textContent = text;
+        button._sentTimer = setTimeout(restore, 1500);
+      },
+      failed: restore,
+    };
+  }
+
   // Finalize submit は積んだ直後 (queued) の行をその場に足すだけで、以後の running/done は
   // registerRequestElement 経由の initRequestLive が反映する (location.reload はしない)。
   function initFinalize() {
@@ -2249,8 +2290,10 @@ export const appJs = `
       const options = finalizeOptionsFrom(form);
       if (!options) return;
       const profile = profileRefFrom(form);
+      const feedback = submitButtonFeedback(form);
       try {
         const request = await postFinalizeRequest(shortId, options, profile);
+        feedback.sent('Queued ✓');
         track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId, profile: profile }, options));
         const container = form.parentElement;
         if (container) {
@@ -2266,6 +2309,7 @@ export const appJs = `
         }
         upsertCardFinalizeBadge(shortId, request);
       } catch (e) {
+        feedback.failed();
         trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
         alert('finalize failed: ' + e.message);
       }
@@ -2283,11 +2327,13 @@ export const appJs = `
       const options = finalizeOptionsFrom(form);
       if (!options) return;
       const profile = profileRefFrom(form);
+      const feedback = submitButtonFeedback(form);
       try {
         const created = [];
         for (const shortId of ids) {
           created.push(await postFinalizeRequest(shortId, options, profile));
         }
+        feedback.sent('Queued ' + created.length + ' ✓');
         track('finalize.submit', Object.assign({ scope: 'all', count: ids.length, profile: profile }, options));
         const container = form.parentElement;
         if (container) {
@@ -2311,6 +2357,7 @@ export const appJs = `
           });
         }
       } catch (e) {
+        feedback.failed();
         trackError('finalize.submit', e, { scope: 'all', count: ids.length });
         alert('finalize failed: ' + e.message);
       }
