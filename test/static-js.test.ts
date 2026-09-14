@@ -17,4 +17,8 @@ describe('served app.js', () => {
     expect(appJs).toContain('initPoseReference');
     expect(appJs).toContain('/pose-reference');
   });
+
+  it('resolves a tri-state dial group\'s "on" mode to boolean true, not the word "on"', () => {
+    expect(appJs).toContain("if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;");
+  });
 });

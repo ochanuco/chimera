@@ -617,8 +617,8 @@ dial対応フォームは`仕上げ`グループの直前に`profile`の行を�
 ＋`custom`）になります。`custom`を押すと数値入力が現れ、どのwordボタンも押していない
 状態（`既定`）は空欄送信と同じ`null`です。`keep legwear` / `repair lora`は
 dial対応フォームに切り替わった時点で、catalogの語彙の有無にかかわらず常に
-`off` / `on` / `custom`の3択になります（`on`は真偽値`true`ではなくword文字列
-`"on"`を送ります。スキーマは両方を受け付けますが、GUIはwordの語彙に統一します）。
+`off` / `on` / `custom`の3択になります（`on`はworker既定の重みを表す真偽値
+`true`を送ります）。
 
 納品の見た目グループは`backdrop`のselect（`stripes`既定 / `transparent` /
 `color`）を持ち、`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
@@ -636,8 +636,8 @@ repair feetのどちらもチェックされていない間`disabled`で、ど�
 
 送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
 積まれるoptionsのkeyだけを`profile daily v2 · backdrop=stripes · denoise tidy (0.65)
-· keep_legwear on (0.62)`のように`·`区切りで表示します（backdropが不正な値の
-ときは`送信内容: —`）。プロファイルを指名していれば先頭に`profile <name> v<version>`
+· keep_legwear`のように`·`区切りで表示します（値が`true`のキーはキー名だけ。
+backdropが不正な値のときは`送信内容: —`）。プロファイルを指名していれば先頭に`profile <name> v<version>`
 を置きます。`backdrop`は常に送るキーなので必ず出し、`transparent`を選んで`null`を
 送る場合も`backdrop=transparent`と表示します。wordを送るキーは、そのrecipeの
 `dials.finalize`が対応するnumberを持っていれば`<word> (<number>)`と添えて表示します

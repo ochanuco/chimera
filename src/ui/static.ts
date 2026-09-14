@@ -1969,7 +1969,8 @@ export const appJs = `
       var raw = input ? input.value : '';
       return raw === '' ? null : Number(raw);
     }
-    return mode; // the word itself, e.g. 'tidy' or 'on'
+    if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;
+    return mode; // the word itself, e.g. 'tidy'
   }
 
   function setDialGroupValue(group, value) {
