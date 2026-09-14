@@ -70,6 +70,7 @@ export const finalizeOptionsSchema = z
     repair_pad: z.number().min(0.5).max(3).nullable().optional(),
     repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
     repair_lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
+    deliver_only: z.boolean().optional(),
   })
   .strict();
 

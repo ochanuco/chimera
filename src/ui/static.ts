@@ -1969,7 +1969,8 @@ export const appJs = `
       var raw = input ? input.value : '';
       return raw === '' ? null : Number(raw);
     }
-    return mode; // the word itself, e.g. 'tidy' or 'on'
+    if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;
+    return mode; // the word itself, e.g. 'tidy'
   }
 
   function setDialGroupValue(group, value) {
@@ -2049,6 +2050,7 @@ export const appJs = `
       var select = qs('select[name="' + key + '"]', form);
       if (select && typeof value === 'string') select.value = value;
     });
+    syncFinalizeDeliverOnly(form);
   }
 
   function initProfileButtons() {
@@ -2101,14 +2103,8 @@ export const appJs = `
     }
     var strokeLight = qs('select[name="stroke_light"]', form).value;
 
-    var denoiseFromDial = dialGroupValue(form, 'denoise');
-    var denoise;
-    if (denoiseFromDial === undefined) {
-      var denoiseRaw = qs('input[name="denoise"]', form).value;
-      denoise = denoiseRaw === '' ? null : Number(denoiseRaw);
-    } else {
-      denoise = denoiseFromDial;
-    }
+    var deliverOnlyBox = qs('input[name="deliver_only"]', form);
+    var deliverOnly = !!(deliverOnlyBox && deliverOnlyBox.checked);
 
     var keepLegwearFromDial = dialGroupValue(form, 'keep_legwear');
     var keepLegwear = keepLegwearFromDial === undefined
@@ -2119,10 +2115,24 @@ export const appJs = `
       repin: qs('input[name="repin"]', form).checked,
       recolor: recolor ? recolor.checked : false,
       keep_legwear: keepLegwear,
-      denoise: denoise,
       backdrop: backdrop,
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
+
+    if (deliverOnly) {
+      options.deliver_only = true;
+      return options;
+    }
+
+    var denoiseFromDial = dialGroupValue(form, 'denoise');
+    var denoise;
+    if (denoiseFromDial === undefined) {
+      var denoiseRaw = qs('input[name="denoise"]', form).value;
+      denoise = denoiseRaw === '' ? null : Number(denoiseRaw);
+    } else {
+      denoise = denoiseFromDial;
+    }
+    options.denoise = denoise;
 
     var repair = [];
     if (qs('input[name="repair_hands"]', form).checked) repair.push('hands');
@@ -2173,6 +2183,37 @@ export const appJs = `
       var disabled = !(hands.checked || feet.checked);
       qs('input[name="repair_pad"]', form).disabled = disabled;
       qs('input[name="repair_lora"]', form).disabled = disabled;
+    });
+  }
+
+  function syncFinalizeDeliverOnly(form) {
+    var box = qs('input[name="deliver_only"]', form);
+    var disabled = !!(box && box.checked);
+
+    var denoiseGroup = qs('[data-dial-key="denoise"]', form);
+    if (denoiseGroup) {
+      qsa('.dial-btn', denoiseGroup).forEach(function (b) { b.disabled = disabled; });
+      var denoiseCustom = qs('.dial-custom-input', denoiseGroup);
+      if (denoiseCustom && (disabled || !denoiseCustom.hidden)) denoiseCustom.disabled = disabled;
+    } else {
+      qs('input[name="denoise"]', form).disabled = disabled;
+    }
+
+    var hands = qs('input[name="repair_hands"]', form);
+    var feet = qs('input[name="repair_feet"]', form);
+    hands.disabled = disabled;
+    feet.disabled = disabled;
+    var repairDisabled = disabled || !(hands.checked || feet.checked);
+    qs('input[name="repair_pad"]', form).disabled = repairDisabled;
+    qs('input[name="repair_lora"]', form).disabled = repairDisabled;
+  }
+
+  function initFinalizeDeliverOnly() {
+    document.addEventListener('change', function (ev) {
+      var box = ev.target;
+      if (!(box instanceof HTMLInputElement) || box.name !== 'deliver_only') return;
+      var form = box.closest('.finalize-form, .finalize-all-form');
+      if (form) syncFinalizeDeliverOnly(form);
     });
   }
 
@@ -3612,6 +3653,7 @@ export const appJs = `
     initFinalizeAll();
     initFinalizeBackdropColor();
     initFinalizeRepairPad();
+    initFinalizeDeliverOnly();
     initFinalizePreview();
     initDialGroups();
     initProfileButtons();

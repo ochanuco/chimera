@@ -527,6 +527,14 @@ describe('Web GUI pages', () => {
     expect(batchHtml).not.toContain('name="recolor"');
   });
 
+  it('the Finalize forms offer a deliver_only checkbox on both pages', async () => {
+    const { generation, batch } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+      const html = await (await req(path)).text();
+      expect(html).toContain('name="deliver_only"');
+    }
+  });
+
   it('the Finalize forms offer backdrop and stroke light on both pages', async () => {
     const { generation, batch } = await createGeneration();
     for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
@@ -559,9 +567,9 @@ describe('Web GUI pages', () => {
   it('the Finalize forms show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
     const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
-    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(9);
+    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(10);
     const batchHtml = await (await req(`/b/${batch.id}`)).text();
-    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(9);
+    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(10);
   });
 
   it('the Finalize forms disable repair_pad/repair_lora until a repair region is checked', async () => {

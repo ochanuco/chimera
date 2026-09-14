@@ -146,6 +146,18 @@ export function FinalizeFields({
       <fieldset class="finalize-group">
         <legend>仕上げ</legend>
         <label>
+          <input type="checkbox" name="deliver_only" /> deliver only (no redraw)
+        </label>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="redraw を飛ばして pick の pixel をそのまま納品する（matte / repin / backdrop / stroke だけ）。denoise や repair 等とは併用不可"
+          data-help="redraw を飛ばして pick の pixel をそのまま納品する（matte / repin / backdrop / stroke だけ）。denoise や repair 等とは併用不可"
+        >
+          ?
+        </span>
+        <label>
           <input type="checkbox" name="repin" /> repin
         </label>
         <span class="finalize-help" tabindex={0} role="note" aria-label="ポーズのピン留めをやり直す" data-help="ポーズのピン留めをやり直す">
