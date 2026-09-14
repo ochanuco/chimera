@@ -448,6 +448,7 @@ worker は `failed` にします。`generation.identity_override` に理由の�
   repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
   repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値）
+  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / lora_strength / handdrawn / toe_guard / repair 系 / upscale との併用と layerdiffuse な Generation を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`

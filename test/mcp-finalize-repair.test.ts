@@ -43,6 +43,20 @@ describe('MCP finalize_generation', () => {
     expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id });
   });
 
+  it('stores options.deliver_only in the payload', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('finalize_generation', {
+      generation_id: generation.id,
+      options: { deliver_only: true },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { deliver_only: true },
+    });
+  });
+
   it('replays the same idempotency_key as created: false', async () => {
     const { generation } = await createGeneration();
     const key = crypto.randomUUID();

@@ -198,6 +198,21 @@ describe('POST /api/v1/requests', () => {
     expect(badType.status).toBe(400);
   });
 
+  it('finalize: deliver_only accepts a boolean, rejects a non-boolean', async () => {
+    const { generation } = await createGeneration();
+
+    const created = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { deliver_only: true } },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.payload).toEqual({ generation_id: generation.id, options: { deliver_only: true } });
+
+    const badType = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { deliver_only: 'yes' } },
+    });
+    expect(badType.status).toBe(400);
+  });
+
   it('repair: 201 create with parts/regions/denoise/seeds/pad, unknown option key is 400, bad region (x0 > x1) is 400', async () => {
     const { generation } = await createGeneration();
 
