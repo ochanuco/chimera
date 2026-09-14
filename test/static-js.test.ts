@@ -21,4 +21,18 @@ describe('served app.js', () => {
   it('resolves a tri-state dial group\'s "on" mode to boolean true, not the word "on"', () => {
     expect(appJs).toContain("if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;");
   });
+
+  it('finalizeOptionsFrom sends deliver_only:true and skips denoise/repair keys once it is checked', () => {
+    expect(appJs).toContain('options.deliver_only = true;');
+    expect(appJs).toContain("qs('input[name=\"deliver_only\"]', form)");
+    const deliverOnlyBranch = appJs.split('if (deliverOnly) {')[1]?.split('return options;\n    }')[0] ?? '';
+    expect(deliverOnlyBranch).not.toContain('options.denoise');
+    expect(deliverOnlyBranch).not.toContain('options.repair');
+  });
+
+  it('disables/re-enables the denoise and repair controls when deliver_only is toggled', () => {
+    expect(appJs).toContain('function syncFinalizeDeliverOnly(form)');
+    expect(appJs).toContain('function initFinalizeDeliverOnly()');
+    expect(appJs).toContain('syncFinalizeDeliverOnly(form);');
+  });
 });

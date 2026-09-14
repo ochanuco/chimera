@@ -627,9 +627,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.finalize_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
-        'Enqueue a finalize request (docs/worker-protocol.md "finalize"): one ComfyUI graph that redraws the pick ' +
-        'at delivery size, cuts a matte, and composites the backdrop and purple stroke; recorded as a refinement ' +
-        "Batch of the source Generation, with a rebuild Reference back to it. generation_id accepts a short_id. " +
+        'Enqueue a finalize request (docs/worker-protocol.md "finalize"): one ComfyUI graph that, unless ' +
+        'options.deliver_only is set, redraws the pick at delivery size, then cuts a matte and composites the ' +
+        'backdrop and purple stroke; recorded as a refinement Batch of the source Generation, with a rebuild ' +
+        "Reference back to it. generation_id accepts a short_id. " +
         'options is optional; every field defaults to the worker/recipe default when omitted: ' +
         'denoise (redraw strength; recipe default, e.g. 0.55 for an IL finalize, 0.75 for Anima alone), ' +
         'repin (accent-compression recolor pass), recolor (palette recolor, yukari recipe only), ' +
@@ -648,7 +649,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
         'repair_size (repair redraw longest side), ' +
-        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number). ' +
+        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number), ' +
+        'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
+        'only; use it when the render itself is the look, e.g. a yukari-anima sketch-LoRA render, where a redraw ' +
+        'would repaint surfaces such as tights. Cannot combine with denoise, size, route, finalizer, lora_strength, ' +
+        'sketch_redraw, handdrawn, toe_guard, repair, repair_regions, keep_regions or a truthy upscale, and rejects ' +
+        'a layerdiffuse base; repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
+        'deliver_size stay compatible). ' +
         'Every dial-able option (denoise, keep_legwear, toe_guard, lora_strength, repair_denoise, repair_lora) also accepts ' +
         'a word string instead of a number/true — the word vocabulary for this recipe is list_catalog\'s ' +
         'recipes[].dials.finalize (chimera only checks the type; the worker resolves the word). ' +

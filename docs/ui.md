@@ -598,6 +598,12 @@ GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / rep
 ホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけのCSS実装（JS不使用）で、
 `repair hands` / `repair feet`は1つのマーカーを共有します。
 
+`仕上げ`グループの先頭に`deliver only (no redraw)`のチェックボックスがあります
+（既定off、dial対応の有無に関わらず常に表示）。チェックすると`options`に
+`deliver_only: true`を積み、`denoise` / `repair` / `repair_pad` / `repair_lora`の
+キーは送りません。チェック中はdenoiseとrepair系のコントロールが`disabled`になり、
+外すとrepair hands / repair feetのチェック状態に応じた状態に戻ります。
+
 このBatchのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
 無いrecipeは今まで通りの数値入力・チェックボックスのままです（後方互換。
