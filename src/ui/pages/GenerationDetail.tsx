@@ -4,6 +4,7 @@ import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { FinalizeSection } from '../components/FinalizeSection';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
+import type { FinalizeDefaults } from '../../lib/catalogs';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 import { NoteSection } from '../components/NoteSection';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
@@ -177,6 +178,7 @@ export function GenerationDetailPage({
   imageMeta,
   finalizeRequests,
   finalizeDials,
+  finalizeDefaults = null,
   finalizeProfiles,
   canPromoteToProfile,
   producedByOptions,
@@ -204,6 +206,7 @@ export function GenerationDetailPage({
   /** 最新の finalize request 一覧 (最大5件、新しい順)。段階2の GUI はここに積むだけで進捗はここで見る。 */
   finalizeRequests: FinalizeRequestSummary[];
   finalizeDials: FinalizeDials | null;
+  finalizeDefaults?: FinalizeDefaults | null;
   finalizeProfiles: FinalizeProfileOption[];
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ finalize/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
@@ -361,6 +364,7 @@ export function GenerationDetailPage({
             recipe={data.batch?.recipe ?? null}
             requests={finalizeRequests}
             dials={finalizeDials}
+            defaults={finalizeDefaults}
             profiles={finalizeProfiles}
             canPromoteToProfile={canPromoteToProfile}
           />

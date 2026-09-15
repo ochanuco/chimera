@@ -1,4 +1,5 @@
 import { dialWordsFor, finalizeTakesRecolor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
+import type { FinalizeDefaults } from '../../lib/catalogs';
 
 /** A word-dial control: 既定 (default) + one button per catalog word + custom, or a plain number input when the catalog has no words for `fieldKey`. */
 function DialField({
@@ -64,11 +65,11 @@ function TriStateField({ fieldKey, label }: { fieldKey: string; label: string })
 }
 
 /** `keep legwear`: a plain checkbox when no dials/profiles are in play for this recipe, else always off/on/custom (dials/profiles don't gate the tri-state shape — see module doc). */
-function KeepLegwearField({ dialsEnabled }: { dialsEnabled: boolean }) {
+function KeepLegwearField({ dialsEnabled, defaults }: { dialsEnabled: boolean; defaults: FinalizeDefaults | null }) {
   if (!dialsEnabled) {
     return (
       <label>
-        <input type="checkbox" name="keep_legwear" /> keep legwear
+        <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> keep legwear
       </label>
     );
   }
@@ -110,11 +111,13 @@ export function FinalizeFields({
   recipe,
   submitLabel,
   dials = null,
+  defaults = null,
   profiles = [],
 }: {
   recipe: string | null;
   submitLabel: string;
   dials?: FinalizeDials | null;
+  defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
@@ -146,7 +149,7 @@ export function FinalizeFields({
       <fieldset class="finalize-group">
         <legend>仕上げ</legend>
         <label>
-          <input type="checkbox" name="deliver_only" /> deliver only (no redraw)
+          <input type="checkbox" name="deliver_only" checked={defaults?.deliver_only === true} /> deliver only (no redraw)
         </label>
         <span
           class="finalize-help"
@@ -158,7 +161,7 @@ export function FinalizeFields({
           ?
         </span>
         <label>
-          <input type="checkbox" name="repin" /> repin
+          <input type="checkbox" name="repin" checked={defaults?.repin === true} /> repin
         </label>
         <span class="finalize-help" tabindex={0} role="note" aria-label="ポーズのピン留めをやり直す" data-help="ポーズのピン留めをやり直す">
           ?
@@ -166,7 +169,7 @@ export function FinalizeFields({
         {finalizeTakesRecolor(recipe) ? (
           <>
             <label>
-              <input type="checkbox" name="recolor" /> recolor
+              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> recolor
             </label>
             <span
               class="finalize-help"
@@ -179,7 +182,7 @@ export function FinalizeFields({
             </span>
           </>
         ) : null}
-        <KeepLegwearField dialsEnabled={dialsEnabled} />
+        <KeepLegwearField dialsEnabled={dialsEnabled} defaults={defaults} />
         <span class="finalize-help" tabindex={0} role="note" aria-label="脚衣を残す（強度 0.62）" data-help="脚衣を残す（強度 0.62）">
           ?
         </span>

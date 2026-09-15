@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createGeneration, getJson, mcpToolCall, postJson, req } from './helpers';
 import { listFinalizeProfiles } from '../src/lib/presets';
-import { getCatalog, findFinalizeDials } from '../src/lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
 
 function uniqueRecipe(): string {
@@ -26,6 +26,20 @@ function catalogWithDials(recipe: string) {
             keep_legwear: { on: 0.62 },
           },
         },
+      },
+    ],
+    patches: {},
+  };
+}
+
+function catalogWithFinalizeDefaults(recipe: string, defaults: unknown) {
+  return {
+    schema_version: 1,
+    recipes: [
+      {
+        name: recipe,
+        poses: [{ name: 'lounge', prompt: 'reclining on a beanbag' }],
+        ...(defaults === undefined ? {} : { finalize: { defaults } }),
       },
     ],
     patches: {},
@@ -415,6 +429,31 @@ describe('lib helpers for the UI (listFinalizeProfiles / findFinalizeDials)', ()
     expect(found).not.toBeNull();
     expect(findFinalizeDials(found!.doc, recipe)).toEqual({ denoise: { tidy: 0.65, heavy: 0.8 }, keep_legwear: { on: 0.62 } });
     expect(findFinalizeDials(found!.doc, 'nonexistent-recipe')).toBeNull();
+  });
+
+  it('findFinalizeDefaults extracts recipes[].finalize.defaults; null when finalize is absent or defaults is not an object', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const recipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithFinalizeDefaults(recipe, { deliver_only: true, repin: false }), 'PUT');
+
+    const found = await getCatalog(env.DB, recipeRef);
+    expect(found).not.toBeNull();
+    expect(findFinalizeDefaults(found!.doc, recipe)).toEqual({ deliver_only: true, repin: false });
+    expect(findFinalizeDefaults(found!.doc, 'nonexistent-recipe')).toBeNull();
+
+    // Older catalogs never publish a `finalize` key at all — must resolve to null, not throw.
+    const noFinalizeRef = uniqueRecipeRef();
+    const noFinalizeRecipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${noFinalizeRef}`, catalogWithFinalizeDefaults(noFinalizeRecipe, undefined), 'PUT');
+    const foundNoFinalize = await getCatalog(env.DB, noFinalizeRef);
+    expect(findFinalizeDefaults(foundNoFinalize!.doc, noFinalizeRecipe)).toBeNull();
+
+    // A malformed `finalize.defaults` (not a plain object) is treated as absent, not thrown.
+    const malformedRef = uniqueRecipeRef();
+    const malformedRecipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${malformedRef}`, catalogWithFinalizeDefaults(malformedRecipe, 'not-an-object'), 'PUT');
+    const foundMalformed = await getCatalog(env.DB, malformedRef);
+    expect(findFinalizeDefaults(foundMalformed!.doc, malformedRecipe)).toBeNull();
   });
 });
 

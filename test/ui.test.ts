@@ -991,6 +991,20 @@ describe('Finalize profiles and word dials (GUI)', () => {
     }, 'PUT');
   }
 
+  async function publishFinalizeDefaults(recipe: string, defaults: Record<string, unknown>) {
+    await postJson(`/api/v1/catalogs/production`, {
+      schema_version: 1,
+      recipes: [
+        {
+          name: recipe,
+          poses: [],
+          finalize: { defaults },
+        },
+      ],
+      patches: {},
+    }, 'PUT');
+  }
+
   async function setRatingGood(generationId: string): Promise<void> {
     const res = await postJson(`/api/v1/generations/${generationId}/rating`, { rating: 'good' }, 'PUT');
     expect(res.status).toBe(200);
@@ -1036,6 +1050,22 @@ describe('Finalize profiles and word dials (GUI)', () => {
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('<input type="checkbox" name="keep_legwear"/>');
     expect(html).not.toContain('data-dial-key="denoise"');
+  });
+
+  it('a recipe with no published catalog finalize.defaults leaves deliver_only unchecked', async () => {
+    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).not.toMatch(/name="deliver_only"[^>]*checked/);
+  });
+
+  it('a recipe with published catalog finalize.defaults presets deliver_only checked, repin left unchecked', async () => {
+    const recipe = uniqueRecipe();
+    await publishFinalizeDefaults(recipe, { deliver_only: true, repin: false });
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/name="deliver_only"[^>]*checked/);
+    expect(html).not.toMatch(/name="repin"[^>]*checked/);
   });
 
   it('a recipe with published catalog dials.finalize.denoise renders a denoise dial group with a button per word', async () => {

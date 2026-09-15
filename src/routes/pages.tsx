@@ -28,7 +28,7 @@ import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { renderFactsForJob } from '../lib/render-facts';
 import { defaultRecipeRef } from '../lib/requests';
-import { getCatalog, findFinalizeDials } from '../lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
 import type { FinalizeDials } from '../ui/finalize-options';
 import type { AppEnv, ComfyJobRow, ExperimentRunRow, GenerationRow } from '../types';
@@ -122,6 +122,7 @@ pages.get('/b/:shortId', async (c) => {
     recipe ? listFinalizeProfiles(c.env.DB, recipe) : Promise.resolve([]),
   ]);
   const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
+  const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
 
   const experimentRunBatchIds = data.experiment_run
     ? [
@@ -242,6 +243,7 @@ pages.get('/b/:shortId', async (c) => {
       finalizeSummary={finalizeSummary}
       finalizeRequests={finalizeRequests}
       dials={finalizeDials}
+      defaults={finalizeDefaults}
       profiles={finalizeProfiles}
     />,
   );

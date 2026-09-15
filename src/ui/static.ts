@@ -2209,6 +2209,7 @@ export const appJs = `
   }
 
   function initFinalizeDeliverOnly() {
+    qsa('.finalize-form, .finalize-all-form').forEach(syncFinalizeDeliverOnly);
     document.addEventListener('change', function (ev) {
       var box = ev.target;
       if (!(box instanceof HTMLInputElement) || box.name !== 'deliver_only') return;
@@ -3542,6 +3543,7 @@ export const appJs = `
         if (token !== lightboxLoadToken) return;
         lightboxPanel.innerHTML = html;
         qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
+        qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeDeliverOnly);
         updateCompareBar();
       })
       .catch(function (e) {
