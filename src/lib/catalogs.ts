@@ -122,6 +122,17 @@ export function findFinalizeDials(doc: RecipeCatalogDoc, recipeName: string): Re
   return finalize && typeof finalize === 'object' && !Array.isArray(finalize) ? (finalize as Record<string, Record<string, number>>) : null;
 }
 
+export type FinalizeDefaults = Record<string, unknown>;
+
+/** `recipes[].finalize.defaults` for one recipe name — the booleans FinalizeFields presets its checkboxes from. null when the catalog, recipe, or its finalize.defaults are absent. */
+export function findFinalizeDefaults(doc: RecipeCatalogDoc, recipeName: string): FinalizeDefaults | null {
+  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
+  if (!recipe) return null;
+  const finalize = (recipe as { finalize?: { defaults?: unknown } }).finalize;
+  const defaults = finalize?.defaults;
+  return defaults && typeof defaults === 'object' && !Array.isArray(defaults) ? (defaults as FinalizeDefaults) : null;
+}
+
 /** Looks up a single pose record (full body, prompts included) by recipe name + pose name. Either miss returns null. */
 export function findCatalogPose(doc: RecipeCatalogDoc, recipeName: string, poseName: string): unknown | null {
   const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);

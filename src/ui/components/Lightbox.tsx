@@ -1,6 +1,7 @@
 import { CopyIdButton } from './CopyIdButton';
 import { FinalizeSection, type FinalizeRequestStatusLine } from './FinalizeSection';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
+import type { FinalizeDefaults } from '../../lib/catalogs';
 import { NoteSection } from './NoteSection';
 import { PoseReferenceRow, type PoseReferenceData } from './PoseReferenceRow';
 import { PublicationSection, type PublicationData } from './PublicationSection';
@@ -36,6 +37,7 @@ export function LightboxPanel({
   finalizeRequests,
   note,
   finalizeDials,
+  finalizeDefaults = null,
   finalizeProfiles,
 }: {
   generationId: string;
@@ -51,6 +53,7 @@ export function LightboxPanel({
   finalizeRequests: FinalizeRequestStatusLine[];
   note: string | null;
   finalizeDials: FinalizeDials | null;
+  finalizeDefaults?: FinalizeDefaults | null;
   finalizeProfiles: FinalizeProfileOption[];
 }) {
   return (
@@ -95,6 +98,7 @@ export function LightboxPanel({
         requests={finalizeRequests}
         open
         dials={finalizeDials}
+        defaults={finalizeDefaults}
         profiles={finalizeProfiles}
       />
 
