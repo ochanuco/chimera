@@ -134,6 +134,16 @@ export function FinalizeFields({
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
 
+  const strokeLightDirections = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+  const strokeLightDefault =
+    typeof defaults?.stroke_light === 'string' && strokeLightDirections.includes(defaults.stroke_light)
+      ? defaults.stroke_light
+      : 'none';
+  const backdropDefault =
+    defaults?.backdrop === 'stripes' || defaults?.backdrop === 'transparent' || defaults?.backdrop === 'color'
+      ? defaults.backdrop
+      : 'stripes';
+
   return (
     <>
       {profiles.length > 0 ? (
@@ -227,11 +237,15 @@ export function FinalizeFields({
         <label>
           背景（backdrop）{' '}
           <select name="backdrop">
-            <option value="stripes" selected>
+            <option value="stripes" selected={backdropDefault === 'stripes'}>
               stripes（斜めストライプ）
             </option>
-            <option value="transparent">transparent（透過 PNG）</option>
-            <option value="color">color（単色 #RRGGBB）</option>
+            <option value="transparent" selected={backdropDefault === 'transparent'}>
+              transparent（透過 PNG）
+            </option>
+            <option value="color" selected={backdropDefault === 'color'}>
+              color（単色 #RRGGBB）
+            </option>
           </select>
           <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
         </label>
@@ -247,17 +261,33 @@ export function FinalizeFields({
         <label>
           縁の影の向き（stroke light）{' '}
           <select name="stroke_light">
-            <option value="none" selected>
+            <option value="none" selected={strokeLightDefault === 'none'}>
               none（一定の太さ）
             </option>
-            <option value="n">↓</option>
-            <option value="ne">↙</option>
-            <option value="e">←</option>
-            <option value="se">↖</option>
-            <option value="s">↑</option>
-            <option value="sw">↗</option>
-            <option value="w">→</option>
-            <option value="nw">↘</option>
+            <option value="n" selected={strokeLightDefault === 'n'}>
+              ↓
+            </option>
+            <option value="ne" selected={strokeLightDefault === 'ne'}>
+              ↙
+            </option>
+            <option value="e" selected={strokeLightDefault === 'e'}>
+              ←
+            </option>
+            <option value="se" selected={strokeLightDefault === 'se'}>
+              ↖
+            </option>
+            <option value="s" selected={strokeLightDefault === 's'}>
+              ↑
+            </option>
+            <option value="sw" selected={strokeLightDefault === 'sw'}>
+              ↗
+            </option>
+            <option value="w" selected={strokeLightDefault === 'w'}>
+              →
+            </option>
+            <option value="nw" selected={strokeLightDefault === 'nw'}>
+              ↘
+            </option>
           </select>
         </label>
         <span
