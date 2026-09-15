@@ -1,5 +1,6 @@
 import { FinalizeFields } from './FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
+import type { FinalizeDefaults } from '../../lib/catalogs';
 
 export interface FinalizeRequestStatusLine {
   id: string;
@@ -23,6 +24,7 @@ export function FinalizeSection({
   open = true,
   showCreatedAt = true,
   dials = null,
+  defaults = null,
   profiles = [],
   canPromoteToProfile = false,
 }: {
@@ -32,6 +34,7 @@ export function FinalizeSection({
   open?: boolean;
   showCreatedAt?: boolean;
   dials?: FinalizeDials | null;
+  defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
   canPromoteToProfile?: boolean;
 }) {
@@ -40,7 +43,7 @@ export function FinalizeSection({
       <summary>Finalize</summary>
       <div class="section-body">
         <form class="finalize-form" data-generation-short-id={shortId} autocomplete="off" data-dials={JSON.stringify(dials ?? {})}>
-          <FinalizeFields recipe={recipe} submitLabel="Finalize" dials={dials} profiles={profiles} />
+          <FinalizeFields recipe={recipe} submitLabel="Finalize" dials={dials} defaults={defaults} profiles={profiles} />
         </form>
         {canPromoteToProfile ? (
           <form class="promote-profile-form" data-generation-id={shortId} autocomplete="off">

@@ -15,7 +15,7 @@ import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { queryGenerations } from '../lib/generations';
 import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
-import { getCatalog, findFinalizeDials } from '../lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
 import { findFinalizeRequestForBatch } from '../lib/promote';
 import type { FinalizeDials } from '../ui/finalize-options';
@@ -158,6 +158,7 @@ images.get('/:shortId', async (c) => {
     recipe ? listFinalizeProfiles(db, recipe) : Promise.resolve([]),
   ]);
   const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
+  const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
 
   // Lightbox panel fragment (Gallery / Bookmarks / Batch Detail): same components as the full
   // page below, minus the family-card / mini-map / workflow sections it doesn't need.
@@ -178,6 +179,7 @@ images.get('/:shortId', async (c) => {
         finalizeRequests={finalizeRequests}
         note={data.note}
         finalizeDials={finalizeDials}
+        finalizeDefaults={finalizeDefaults}
         finalizeProfiles={finalizeProfiles}
       />,
     );
@@ -307,6 +309,7 @@ images.get('/:shortId', async (c) => {
       imageMeta={imageMeta}
       finalizeRequests={finalizeRequests}
       finalizeDials={finalizeDials}
+      finalizeDefaults={finalizeDefaults}
       finalizeProfiles={finalizeProfiles}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}

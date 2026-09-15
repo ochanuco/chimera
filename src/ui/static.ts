@@ -2199,6 +2199,16 @@ export const appJs = `
       qs('input[name="denoise"]', form).disabled = disabled;
     }
 
+    var keepLegwearGroup = qs('[data-dial-key="keep_legwear"]', form);
+    if (keepLegwearGroup) {
+      qsa('.dial-btn', keepLegwearGroup).forEach(function (b) { b.disabled = disabled; });
+      var keepLegwearCustom = qs('.dial-custom-input', keepLegwearGroup);
+      if (keepLegwearCustom && (disabled || !keepLegwearCustom.hidden)) keepLegwearCustom.disabled = disabled;
+    } else {
+      var keepLegwearBox = qs('input[name="keep_legwear"]', form);
+      if (keepLegwearBox) keepLegwearBox.disabled = disabled;
+    }
+
     var hands = qs('input[name="repair_hands"]', form);
     var feet = qs('input[name="repair_feet"]', form);
     hands.disabled = disabled;
@@ -2209,6 +2219,7 @@ export const appJs = `
   }
 
   function initFinalizeDeliverOnly() {
+    qsa('.finalize-form, .finalize-all-form').forEach(syncFinalizeDeliverOnly);
     document.addEventListener('change', function (ev) {
       var box = ev.target;
       if (!(box instanceof HTMLInputElement) || box.name !== 'deliver_only') return;
@@ -3542,6 +3553,7 @@ export const appJs = `
         if (token !== lightboxLoadToken) return;
         lightboxPanel.innerHTML = html;
         qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
+        qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeDeliverOnly);
         updateCompareBar();
       })
       .catch(function (e) {
