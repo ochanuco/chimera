@@ -4,6 +4,7 @@ import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData, type RelKind } from '../components/FamilyCard';
 import { FinalizeFields } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
+import type { FinalizeDefaults } from '../../lib/catalogs';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 import { PromptChips } from '../components/PromptChips';
 
@@ -77,6 +78,7 @@ export function BatchDetailPage({
   finalizeSummary,
   finalizeRequests,
   dials = null,
+  defaults = null,
   profiles = [],
 }: {
   path: string;
@@ -95,6 +97,7 @@ export function BatchDetailPage({
   /** 集計行の内訳（段階3のWebSocket progress/statusが更新する個別行）。 */
   finalizeRequests: FinalizeRequestStatus[];
   dials?: FinalizeDials | null;
+  defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
 }) {
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
@@ -284,7 +287,7 @@ export function BatchDetailPage({
                 autocomplete="off"
                 data-dials={JSON.stringify(dials ?? {})}
               >
-                <FinalizeFields recipe={batch.recipe} submitLabel="Finalize all arms" dials={dials} profiles={profiles} />
+                <FinalizeFields recipe={batch.recipe} submitLabel="Finalize all arms" dials={dials} defaults={defaults} profiles={profiles} />
               </form>
               <p class="finalize-summary">
                 finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}

@@ -1,4 +1,5 @@
 import { dialWordsFor, finalizeTakesRecolor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
+import type { FinalizeDefaults } from '../../lib/catalogs';
 
 /** A word-dial control: 既定 (default) + one button per catalog word + custom, or a plain number input when the catalog has no words for `fieldKey`. */
 function DialField({
@@ -64,15 +65,15 @@ function TriStateField({ fieldKey, label }: { fieldKey: string; label: string })
 }
 
 /** `keep legwear`: a plain checkbox when no dials/profiles are in play for this recipe, else always off/on/custom (dials/profiles don't gate the tri-state shape — see module doc). */
-function KeepLegwearField({ dialsEnabled }: { dialsEnabled: boolean }) {
+function KeepLegwearField({ dialsEnabled, defaults }: { dialsEnabled: boolean; defaults: FinalizeDefaults | null }) {
   if (!dialsEnabled) {
     return (
       <label>
-        <input type="checkbox" name="keep_legwear" /> keep legwear
+        <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す（keep legwear）
       </label>
     );
   }
-  return <TriStateField fieldKey="keep_legwear" label="keep legwear" />;
+  return <TriStateField fieldKey="keep_legwear" label="脚衣を残す（keep legwear）" />;
 }
 
 /** `repair lora`: a plain number input when no dials/profiles are in play, else always off/on/custom. */
@@ -80,11 +81,12 @@ function RepairLoraField({ dialsEnabled }: { dialsEnabled: boolean }) {
   if (!dialsEnabled) {
     return (
       <label>
-        repair lora <input type="number" name="repair_lora" step="0.05" placeholder="off" disabled />
+        部位 LoRA の強さ（repair lora）{' '}
+        <input type="number" name="repair_lora" step="0.05" placeholder="off" disabled />
       </label>
     );
   }
-  return <TriStateField fieldKey="repair_lora" label="repair lora" />;
+  return <TriStateField fieldKey="repair_lora" label="部位 LoRA の強さ（repair lora）" />;
 }
 
 /** `denoise`: a plain number input, or a word segmented-button group when the catalog has words for this recipe. */
@@ -93,11 +95,22 @@ function DenoiseField({ dials }: { dials: FinalizeDials | null }) {
   if (!words) {
     return (
       <label>
-        denoise <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
+        描き直しの強さ（denoise）{' '}
+        <input type="number" name="denoise" step="0.01" min="0" max="1" placeholder="recipe default" />
       </label>
     );
   }
-  return <DialField fieldKey="denoise" words={words} step="0.01" min="0" max="1" label="denoise" placeholder="recipe default" />;
+  return (
+    <DialField
+      fieldKey="denoise"
+      words={words}
+      step="0.01"
+      min="0"
+      max="1"
+      label="描き直しの強さ（denoise）"
+      placeholder="recipe default"
+    />
+  );
 }
 
 /**
@@ -110,11 +123,13 @@ export function FinalizeFields({
   recipe,
   submitLabel,
   dials = null,
+  defaults = null,
   profiles = [],
 }: {
   recipe: string | null;
   submitLabel: string;
   dials?: FinalizeDials | null;
+  defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
@@ -144,43 +159,55 @@ export function FinalizeFields({
       ) : null}
 
       <fieldset class="finalize-group">
-        <legend>仕上げ</legend>
+        <legend>描き直し</legend>
         <label>
-          <input type="checkbox" name="deliver_only" /> deliver only (no redraw)
+          <input type="checkbox" name="deliver_only" checked={defaults?.deliver_only === true} /> 描き直さない（素の絵をそのまま切り抜いて納品）
         </label>
         <span
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="redraw を飛ばして pick の pixel をそのまま納品する（matte / repin / backdrop / stroke だけ）。denoise や repair 等とは併用不可"
-          data-help="redraw を飛ばして pick の pixel をそのまま納品する（matte / repin / backdrop / stroke だけ）。denoise や repair 等とは併用不可"
+          aria-label="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣・部分描き直しは OFF のときだけ効く"
+          data-help="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣・部分描き直しは OFF のときだけ効く"
         >
           ?
         </span>
         <label>
-          <input type="checkbox" name="repin" /> repin
+          <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する（repin）
         </label>
-        <span class="finalize-help" tabindex={0} role="note" aria-label="ポーズのピン留めをやり直す" data-help="ポーズのピン留めをやり直す">
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="アクセント色の彩度を基準絵の帯域へ圧縮する後処理。膝枕パレット向けで、紫が灰色に寄るので Anima の素では OFF"
+          data-help="アクセント色の彩度を基準絵の帯域へ圧縮する後処理。膝枕パレット向けで、紫が灰色に寄るので Anima の素では OFF"
+        >
           ?
         </span>
         {finalizeTakesRecolor(recipe) ? (
           <>
             <label>
-              <input type="checkbox" name="recolor" /> recolor
+              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
             </label>
             <span
               class="finalize-help"
               tabindex={0}
               role="note"
-              aria-label="yukari のパレットに揃える。recipe が yukari の Batch でだけ出る"
-              data-help="yukari のパレットに揃える。recipe が yukari の Batch でだけ出る"
+              aria-label="yukari のパレットに塗り直す（膝枕パレット断定用）。recipe が yukari の Batch でだけ出る"
+              data-help="yukari のパレットに塗り直す（膝枕パレット断定用）。recipe が yukari の Batch でだけ出る"
             >
               ?
             </span>
           </>
         ) : null}
-        <KeepLegwearField dialsEnabled={dialsEnabled} />
-        <span class="finalize-help" tabindex={0} role="note" aria-label="脚衣を残す（強度 0.62）" data-help="脚衣を残す（強度 0.62）">
+        <KeepLegwearField dialsEnabled={dialsEnabled} defaults={defaults} />
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="描き直しで脚衣が消えないよう押さえる（強度 0.62）。描き直さない時は効かない"
+          data-help="描き直しで脚衣が消えないよう押さえる（強度 0.62）。描き直さない時は効かない"
+        >
           ?
         </span>
         <DenoiseField dials={dials} />
@@ -188,8 +215,8 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="空欄なら recipe の既定値。0〜1 の範囲"
-          data-help="空欄なら recipe の既定値。0〜1 の範囲"
+          aria-label="描き直しでどれだけ元絵から離れるか。空欄なら recipe の既定値、0〜1。描き直さない時は効かない"
+          data-help="描き直しでどれだけ元絵から離れるか。空欄なら recipe の既定値、0〜1。描き直さない時は効かない"
         >
           ?
         </span>
@@ -198,13 +225,13 @@ export function FinalizeFields({
       <fieldset class="finalize-group">
         <legend>納品の見た目</legend>
         <label>
-          backdrop{' '}
+          背景（backdrop）{' '}
           <select name="backdrop">
             <option value="stripes" selected>
-              stripes
+              stripes（斜めストライプ）
             </option>
-            <option value="transparent">transparent</option>
-            <option value="color">color</option>
+            <option value="transparent">transparent（透過 PNG）</option>
+            <option value="color">color（単色 #RRGGBB）</option>
           </select>
           <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
         </label>
@@ -212,16 +239,16 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="背景。stripes が既定、transparent は背景なし、color は #RRGGBB を指定する"
-          data-help="背景。stripes が既定、transparent は背景なし、color は #RRGGBB を指定する"
+          aria-label="切り抜いた人物の後ろ。stripes が既定、transparent は背景なしの透過 PNG、color は指定色で塗る"
+          data-help="切り抜いた人物の後ろ。stripes が既定、transparent は背景なしの透過 PNG、color は指定色で塗る"
         >
           ?
         </span>
         <label>
-          stroke light（影の向き）{' '}
+          縁の影の向き（stroke light）{' '}
           <select name="stroke_light">
             <option value="none" selected>
-              none
+              none（一定の太さ）
             </option>
             <option value="n">↓</option>
             <option value="ne">↙</option>
@@ -245,12 +272,12 @@ export function FinalizeFields({
       </fieldset>
 
       <fieldset class="finalize-group">
-        <legend>部分描き直し</legend>
+        <legend>部分描き直し（描き直す時だけ）</legend>
         <label>
-          <input type="checkbox" name="repair_hands" /> repair hands
+          <input type="checkbox" name="repair_hands" /> 手を描き直す（repair hands）
         </label>
         <label>
-          <input type="checkbox" name="repair_feet" /> repair feet
+          <input type="checkbox" name="repair_feet" /> 足を描き直す（repair feet）
         </label>
         <span
           class="finalize-help"
@@ -262,7 +289,8 @@ export function FinalizeFields({
           ?
         </span>
         <label>
-          repair pad <input type="number" name="repair_pad" step="0.1" min="0.5" max="3" placeholder="1.0" disabled />
+          マスクの余白（repair pad）{' '}
+          <input type="number" name="repair_pad" step="0.1" min="0.5" max="3" placeholder="1.0" disabled />
         </label>
         <span
           class="finalize-help"
