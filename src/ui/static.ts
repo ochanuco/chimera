@@ -2199,6 +2199,16 @@ export const appJs = `
       qs('input[name="denoise"]', form).disabled = disabled;
     }
 
+    var keepLegwearGroup = qs('[data-dial-key="keep_legwear"]', form);
+    if (keepLegwearGroup) {
+      qsa('.dial-btn', keepLegwearGroup).forEach(function (b) { b.disabled = disabled; });
+      var keepLegwearCustom = qs('.dial-custom-input', keepLegwearGroup);
+      if (keepLegwearCustom && (disabled || !keepLegwearCustom.hidden)) keepLegwearCustom.disabled = disabled;
+    } else {
+      var keepLegwearBox = qs('input[name="keep_legwear"]', form);
+      if (keepLegwearBox) keepLegwearBox.disabled = disabled;
+    }
+
     var hands = qs('input[name="repair_hands"]', form);
     var feet = qs('input[name="repair_feet"]', form);
     hands.disabled = disabled;

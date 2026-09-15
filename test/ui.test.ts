@@ -557,9 +557,9 @@ describe('Web GUI pages', () => {
     const { generation, batch } = await createGeneration();
     for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
       const html = await (await req(path)).text();
-      expect(html).toContain('<legend>仕上げ</legend>');
+      expect(html).toContain('<legend>描き直し</legend>');
       expect(html).toContain('<legend>納品の見た目</legend>');
-      expect(html).toContain('<legend>部分描き直し</legend>');
+      expect(html).toContain('<legend>部分描き直し（描き直す時だけ）</legend>');
       expect((html.match(/class="finalize-group"/g) ?? []).length).toBe(3);
     }
   });
