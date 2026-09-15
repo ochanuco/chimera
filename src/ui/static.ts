@@ -2157,17 +2157,23 @@ export const appJs = `
 
   // The color input stays disabled while hidden so the browser's pattern check
   // cannot block submit on a control it has no way to show.
+  function syncFinalizeBackdropColor(form) {
+    var select = qs('select[name="backdrop"]', form);
+    var color = qs('input[name="backdrop_color"]', form);
+    var on = select.value === 'color';
+    color.hidden = !on;
+    color.disabled = !on;
+  }
+
   function initFinalizeBackdropColor() {
+    qsa('.finalize-form, .finalize-all-form').forEach(syncFinalizeBackdropColor);
     document.addEventListener('change', function (ev) {
       var select = ev.target;
       if (!(select instanceof HTMLSelectElement) || select.name !== 'backdrop') return;
       var form = select.closest('.finalize-form, .finalize-all-form');
       if (!form) return;
-      var color = qs('input[name="backdrop_color"]', form);
-      var on = select.value === 'color';
-      color.hidden = !on;
-      color.disabled = !on;
-      if (on) color.focus();
+      syncFinalizeBackdropColor(form);
+      if (select.value === 'color') qs('input[name="backdrop_color"]', form).focus();
     });
   }
 
@@ -3554,6 +3560,7 @@ export const appJs = `
         lightboxPanel.innerHTML = html;
         qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
         qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeDeliverOnly);
+        qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeBackdropColor);
         updateCompareBar();
       })
       .catch(function (e) {

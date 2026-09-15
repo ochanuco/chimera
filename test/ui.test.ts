@@ -1068,6 +1068,24 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).not.toMatch(/name="repin"[^>]*checked/);
   });
 
+  it('a recipe with published catalog finalize.defaults presets the stroke_light select', async () => {
+    const recipe = uniqueRecipe();
+    await publishFinalizeDefaults(recipe, { stroke_light: 'n' });
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<option value="n"[^>]*selected/);
+    expect(html).not.toMatch(/<option value="none"[^>]*selected/);
+  });
+
+  it('a recipe with no published catalog finalize.defaults keeps the stroke_light and backdrop selects on their defaults', async () => {
+    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<option value="none"[^>]*selected/);
+    expect(html).toMatch(/<option value="stripes"[^>]*selected/);
+  });
+
   it('a recipe with published catalog dials.finalize.denoise renders a denoise dial group with a button per word', async () => {
     const recipe = uniqueRecipe();
     await publishDenoiseDials(recipe);
