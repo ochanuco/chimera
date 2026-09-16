@@ -28,7 +28,7 @@ import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { renderFactsForJob } from '../lib/render-facts';
 import { defaultRecipeRef } from '../lib/requests';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults, type FinalizeDefaults } from '../lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
 import type { FinalizeDials } from '../ui/finalize-options';
 import type { AppEnv, ComfyJobRow, ExperimentRunRow, GenerationRow } from '../types';
@@ -123,6 +123,10 @@ pages.get('/b/:shortId', async (c) => {
   ]);
   const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
   const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
+  // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
+  const finalizeBackdrops = catalogDoc ? findBackdrops(catalogDoc.doc).map(({ name, label }) => ({ name, label })) : [];
+  const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
+  const finalizeCatalogVersion = catalogDoc?.row.updated_at ?? null;
 
   const experimentRunBatchIds = data.experiment_run
     ? [
@@ -245,6 +249,9 @@ pages.get('/b/:shortId', async (c) => {
       dials={finalizeDials}
       defaults={finalizeDefaults}
       profiles={finalizeProfiles}
+      backdrops={finalizeBackdrops}
+      recipeRef={finalizeRecipeRef}
+      catalogVersion={finalizeCatalogVersion}
     />,
   );
 });

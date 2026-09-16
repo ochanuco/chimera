@@ -291,6 +291,8 @@ export const mcpOutputSchemas = {
     patches: z.unknown().optional(),
     git_commit: z.string().nullable().optional(),
     git_branch: z.string().nullable().optional(),
+    // name + label only — the base64 thumbnail never leaves the REST single-catalog fetch.
+    backdrops: z.array(z.looseObject({ name: z.string(), label: z.string() })).optional(),
   }),
 
   // catalog の pose record は comfyui-recipes 側の形。chimera は中身を定義しない。

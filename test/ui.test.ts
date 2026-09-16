@@ -540,7 +540,9 @@ describe('Web GUI pages', () => {
     for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
       const html = await (await req(path)).text();
       expect(html).toContain('name="backdrop"');
-      expect(html).toContain('<option value="stripes" selected');
+      expect(html).toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
+      expect(html).toContain('data-backdrop-value="transparent"');
+      expect(html).toContain('data-backdrop-value="color"');
       expect(html).toContain('name="backdrop_color"');
       expect(html).toContain('name="stroke_light"');
       expect(html).toContain('<option value="nw"');
@@ -1078,12 +1080,12 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).not.toMatch(/<option value="none"[^>]*selected/);
   });
 
-  it('a recipe with no published catalog finalize.defaults keeps the stroke_light and backdrop selects on their defaults', async () => {
+  it('a recipe with no published catalog finalize.defaults keeps the stroke_light select and backdrop picker on their defaults', async () => {
     const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toMatch(/<option value="none"[^>]*selected/);
-    expect(html).toMatch(/<option value="stripes"[^>]*selected/);
+    expect(html).toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
   });
 
   it('a recipe with published catalog dials.finalize.denoise renders a denoise dial group with a button per word', async () => {
@@ -1096,6 +1098,66 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).toContain('data-dial-value="tidy"');
     expect(html).toContain('data-dial-value="heavy"');
     expect(html).not.toContain('<input type="checkbox" name="keep_legwear"/>');
+  });
+
+  it('a recipe with published catalog backdrops renders a thumbnail card per pattern, with a cache-busting version query', async () => {
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      {
+        schema_version: 1,
+        recipes: [{ name: recipe, poses: [] }],
+        patches: {},
+        backdrops: [
+          { name: 'stripes', label: '斜めストライプ', thumbnail: 'data:image/png;base64,aGVsbG8=' },
+          { name: 'dots', label: '水玉', thumbnail: 'data:image/png;base64,aGVsbG8=' },
+        ],
+      },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('data-backdrop-value="stripes"');
+    expect(html).toContain('data-backdrop-value="dots"');
+    expect(html).toMatch(/<img class="backdrop-thumb" src="\/api\/v1\/catalogs\/production\/backdrops\/stripes\.png\?v=[^"]+"/);
+    expect(html).toMatch(/<img class="backdrop-thumb" src="\/api\/v1\/catalogs\/production\/backdrops\/dots\.png\?v=[^"]+"/);
+  });
+
+  it('a recipe with no published catalog backdrops falls back to a single unillustrated stripes card', async () => {
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      { schema_version: 1, recipes: [{ name: recipe, poses: [] }], patches: {} },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('data-backdrop-value="stripes"');
+    expect(html).not.toContain('class="backdrop-thumb"');
+  });
+
+  it('presets the checked backdrop radio from finalize.defaults.backdrop when it names a published pattern', async () => {
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      {
+        schema_version: 1,
+        recipes: [{ name: recipe, poses: [], finalize: { defaults: { backdrop: 'dots' } } }],
+        patches: {},
+        backdrops: [
+          { name: 'stripes', label: '斜めストライプ', thumbnail: 'data:image/png;base64,aGVsbG8=' },
+          { name: 'dots', label: '水玉', thumbnail: 'data:image/png;base64,aGVsbG8=' },
+        ],
+      },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<input type="radio" name="backdrop" value="dots" checked/);
+    expect(html).not.toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
   });
 
   it('a recipe with a promoted finalize Preset renders a profile button for it', async () => {
