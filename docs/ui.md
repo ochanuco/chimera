@@ -626,8 +626,14 @@ dial対応フォームに切り替わった時点で、catalogの語彙の有無
 `off` / `on` / `custom`の3択になります（`on`はworker既定の重みを表す真偽値
 `true`を送ります）。
 
-納品の見た目グループは`backdrop`のselect（`stripes`既定 / `transparent` /
-`color`）を持ち、`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
+納品の見た目グループは`backdrop`のサムネイルピッカー（ラジオボタン）を持ちます。
+カタログの`backdrops`（[api.md](api.md#recipe-catalog)、名前・ラベル・サムネイルの
+配列）を1枚ずつカードで並べ、末尾に固定の`transparent`（透過PNG）と`color`（単色）の
+2枚を置きます。サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png`
+（`?v=`にcatalogのupdated_atを付けたキャッシュバスター付きURL）から都度取得し、
+カタログに`backdrops`が無い（旧worker）場合はサムネイル無しの`stripes`カード1枚だけに
+フォールバックします。既定の選択はcatalogの`finalize.defaults.backdrop`（無ければ
+先頭のパターン）に従います。`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
 現れます（空か形式違いなら送信せずalertします）。続けて`stroke light（影の向き）`の
 select（`none`既定と8方位）を持ちます。選択肢は矢印だけを出し、矢印は影が伸びる
 向きです。`→`なら影は右で、紫縁もその側が太くなります。送る値そのもの（`n`..`nw`）は

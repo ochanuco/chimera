@@ -651,7 +651,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'backdrop — an explicit true overrides the recipe\'s defaulted backdrop; for a layerdiffuse Generation ' +
         'the default route is already a transparent sticker — white band and purple stroke, alpha 0 outside — ' +
         'unless backdrop, keep_scene or transparent: false is given), ' +
-        'backdrop (backdrop, e.g. "stripes" or a #RRGGBB color; recipe default above, or null for none), ' +
+        'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
+        'or a #RRGGBB color; recipe default above, or null for none), ' +
         'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
         'lora_strength (finalize LoRA strength, 0-2), deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
         'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw; recipe default above, or null for a uniform stroke), ' +
@@ -1010,7 +1011,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for finalize/repair ' +
         'dial-able options, keyed by the option name — the word vocabulary finalize_generation/repair_generation accept ' +
-        'in place of a number), and git info. No prompt bodies — use get_catalog_pose for a single pose\'s full record.',
+        'in place of a number), the top-level `backdrops` name/label list (finalize_generation\'s backdrop pattern ' +
+        'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
+        'single pose\'s full record.',
       inputSchema: listCatalogInputSchema,
       annotations: { readOnlyHint: true },
     },

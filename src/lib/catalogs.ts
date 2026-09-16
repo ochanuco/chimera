@@ -104,13 +104,53 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     if ('dials' in r) summary.dials = r.dials;
     return summary;
   });
+  const backdrops = findBackdrops(doc);
   return {
     recipes,
     patches: doc.patches,
     git_commit: doc.git_commit ?? null,
     git_branch: doc.git_branch ?? null,
     generated_at: doc.generated_at ?? null,
+    // name + label only — thumbnail の base64 は summary から常に落とす (PUT 応答 / GET 一覧 / MCP list_catalog 共通)。
+    ...(backdrops.length > 0 ? { backdrops: backdrops.map(({ name, label }) => ({ name, label })) } : {}),
   };
+}
+
+export interface CatalogBackdrop {
+  name: string;
+  label: string;
+  thumbnail: string;
+}
+
+/** Top-level `backdrops` (comfyui-recipes の斜めストライプ等のパターン一覧、サムネイル付き)。キーが無い旧カタログでは空配列。 */
+export function findBackdrops(doc: RecipeCatalogDoc): CatalogBackdrop[] {
+  const raw = (doc as { backdrops?: unknown }).backdrops;
+  if (!Array.isArray(raw)) return [];
+  const result: CatalogBackdrop[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const { name, label, thumbnail } = item as Record<string, unknown>;
+    if (typeof name === 'string' && typeof label === 'string' && typeof thumbnail === 'string') {
+      result.push({ name, label, thumbnail });
+    }
+  }
+  return result;
+}
+
+/** Decodes `name`'s `data:image/png;base64,...` thumbnail to raw PNG bytes. null when `name` isn't published or the data URI is malformed — the route's caller turns that into a 404. */
+export function decodeBackdropThumbnail(doc: RecipeCatalogDoc, name: string): Uint8Array | null {
+  const backdrop = findBackdrops(doc).find((b) => b.name === name);
+  if (!backdrop) return null;
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(backdrop.thumbnail);
+  if (!match) return null;
+  try {
+    const binary = atob(match[1]!);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
 }
 
 /** `recipes[].dials.finalize` for one recipe name — the word -> number map FinalizeFields renders as buttons. null when the catalog, recipe, or its dials.finalize are absent. */

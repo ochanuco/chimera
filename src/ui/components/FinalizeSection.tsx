@@ -1,4 +1,4 @@
-import { FinalizeFields } from './FinalizeFields';
+import { FinalizeFields, type BackdropOption } from './FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 
@@ -26,6 +26,9 @@ export function FinalizeSection({
   dials = null,
   defaults = null,
   profiles = [],
+  backdrops = [],
+  recipeRef = null,
+  catalogVersion = null,
   canPromoteToProfile = false,
 }: {
   shortId: string;
@@ -36,6 +39,9 @@ export function FinalizeSection({
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
+  backdrops?: BackdropOption[];
+  recipeRef?: string | null;
+  catalogVersion?: string | null;
   canPromoteToProfile?: boolean;
 }) {
   return (
@@ -43,7 +49,16 @@ export function FinalizeSection({
       <summary>Finalize</summary>
       <div class="section-body">
         <form class="finalize-form" data-generation-short-id={shortId} autocomplete="off" data-dials={JSON.stringify(dials ?? {})}>
-          <FinalizeFields recipe={recipe} submitLabel="Finalize" dials={dials} defaults={defaults} profiles={profiles} />
+          <FinalizeFields
+            recipe={recipe}
+            submitLabel="Finalize"
+            dials={dials}
+            defaults={defaults}
+            profiles={profiles}
+            backdrops={backdrops}
+            recipeRef={recipeRef}
+            catalogVersion={catalogVersion}
+          />
         </form>
         {canPromoteToProfile ? (
           <form class="promote-profile-form" data-generation-id={shortId} autocomplete="off">
