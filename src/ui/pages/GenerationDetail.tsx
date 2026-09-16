@@ -3,6 +3,7 @@ import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { FinalizeSection } from '../components/FinalizeSection';
+import type { BackdropOption } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
@@ -180,6 +181,9 @@ export function GenerationDetailPage({
   finalizeDials,
   finalizeDefaults = null,
   finalizeProfiles,
+  finalizeBackdrops = [],
+  finalizeRecipeRef = null,
+  finalizeCatalogVersion = null,
   canPromoteToProfile,
   producedByOptions,
 }: {
@@ -208,6 +212,9 @@ export function GenerationDetailPage({
   finalizeDials: FinalizeDials | null;
   finalizeDefaults?: FinalizeDefaults | null;
   finalizeProfiles: FinalizeProfileOption[];
+  finalizeBackdrops?: BackdropOption[];
+  finalizeRecipeRef?: string | null;
+  finalizeCatalogVersion?: string | null;
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ finalize/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
@@ -366,6 +373,9 @@ export function GenerationDetailPage({
             dials={finalizeDials}
             defaults={finalizeDefaults}
             profiles={finalizeProfiles}
+            backdrops={finalizeBackdrops}
+            recipeRef={finalizeRecipeRef}
+            catalogVersion={finalizeCatalogVersion}
             canPromoteToProfile={canPromoteToProfile}
           />
 

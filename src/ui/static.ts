@@ -1007,6 +1007,26 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
+.backdrop-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.backdrop-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  width: 4.2rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+}
+.backdrop-option:hover { border-color: var(--accent); }
+.backdrop-option:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.backdrop-option input[type="radio"] { margin: 0; }
+.backdrop-option-plain { width: auto; padding: 0.3rem 0.6rem; flex-direction: row; }
+.backdrop-thumb { width: 60px; height: 96px; object-fit: cover; border-radius: 4px; }
+.backdrop-option-label { font-size: 0.7rem; color: var(--text-dim); line-height: 1.2; }
+
 .dial-group, .profile-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
 .dial-btn {
@@ -2029,10 +2049,38 @@ export const appJs = `
     });
   }
 
+  // options.backdrop is null (transparent), a #RRGGBB color, or a pattern name — never the
+  // literal 'transparent'/'color' mode strings a radio value can be (finalizeOptionsFrom's
+  // own output, mirrored here so a profile's saved backdrop re-selects the right card).
+  function applyBackdropToForm(form, value) {
+    var mode;
+    if (value === null || value === undefined) {
+      mode = 'transparent';
+    } else if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
+      mode = 'color';
+      var color = qs('input[name="backdrop_color"]', form);
+      if (color) color.value = value;
+    } else if (typeof value === 'string') {
+      mode = value;
+    } else {
+      return;
+    }
+    var matched = false;
+    qsa('input[name="backdrop"]', form).forEach(function (r) {
+      r.checked = r.value === mode;
+      if (r.checked) matched = true;
+    });
+    if (matched) syncFinalizeBackdropColor(form);
+  }
+
   // --- Finalize profile buttons ---
   function applyProfileOptionsToForm(form, options) {
     Object.keys(options).forEach(function (key) {
       var value = options[key];
+      if (key === 'backdrop') {
+        applyBackdropToForm(form, value);
+        return;
+      }
       var group = qs('[data-dial-key="' + key + '"]', form);
       if (group) {
         setDialGroupValue(group, value);
@@ -2092,7 +2140,8 @@ export const appJs = `
   // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
   function finalizeOptionsFrom(form, quiet) {
     var recolor = qs('input[name="recolor"]', form);
-    var backdropMode = qs('select[name="backdrop"]', form).value;
+    var backdropChecked = qs('input[name="backdrop"]:checked', form);
+    var backdropMode = backdropChecked ? backdropChecked.value : 'stripes';
     var backdrop = backdropMode === 'transparent' ? null : backdropMode;
     if (backdropMode === 'color') {
       backdrop = qs('input[name="backdrop_color"]', form).value.trim();
@@ -2158,9 +2207,9 @@ export const appJs = `
   // The color input stays disabled while hidden so the browser's pattern check
   // cannot block submit on a control it has no way to show.
   function syncFinalizeBackdropColor(form) {
-    var select = qs('select[name="backdrop"]', form);
+    var checked = qs('input[name="backdrop"]:checked', form);
     var color = qs('input[name="backdrop_color"]', form);
-    var on = select.value === 'color';
+    var on = !!checked && checked.value === 'color';
     color.hidden = !on;
     color.disabled = !on;
   }
@@ -2168,12 +2217,12 @@ export const appJs = `
   function initFinalizeBackdropColor() {
     qsa('.finalize-form, .finalize-all-form').forEach(syncFinalizeBackdropColor);
     document.addEventListener('change', function (ev) {
-      var select = ev.target;
-      if (!(select instanceof HTMLSelectElement) || select.name !== 'backdrop') return;
-      var form = select.closest('.finalize-form, .finalize-all-form');
+      var radio = ev.target;
+      if (!(radio instanceof HTMLInputElement) || radio.type !== 'radio' || radio.name !== 'backdrop') return;
+      var form = radio.closest('.finalize-form, .finalize-all-form');
       if (!form) return;
       syncFinalizeBackdropColor(form);
-      if (select.value === 'color') qs('input[name="backdrop_color"]', form).focus();
+      if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
     });
   }
 

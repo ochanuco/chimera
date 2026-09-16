@@ -917,6 +917,25 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 検証せず、GUI がボタンに出す表示にだけ使います。worker へは number に解決せず word を
 そのまま渡し、word の実在確認と number への解決は worker の責務です。
 
+`backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail }]`
+（`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。finalize の
+`backdrop` optionが取れるパターン名の一覧で、GUIのFinalizeフォームはこれをサムネイル
+ピッカーとして描画します。このキーが無い（旧workerが公開したカタログ）場合、GUIは
+サムネイル無しの`stripes`カード1枚にフォールバックします。`PUT`のレスポンス・
+`GET /api/v1/catalogs`の一覧・MCP `list_catalog`は`backdrops`をname/labelだけの
+配列に要約し（thumbnail は含めない。キーが無いカタログでは`backdrops`自体を省略）、
+`GET /api/v1/catalogs/{recipe_ref}`だけがthumbnail込みの全体を返します：
+
+``` text
+GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png
+```
+
+`name`はcatalogの`backdrops[].name`。thumbnailを`image/png`でデコードして返します
+（catalog / nameのどちらかが無ければ404）。URLはcatalogが変わらない限り同じ画像を
+指すので`Cache-Control: public, max-age=31536000, immutable`で返します。GUIは
+`?v=<catalogのupdated_at>`をクエリに付けて参照し、republishのたびにこのURLを変えて
+古いキャッシュを踏ませません。
+
 ## WebSocket
 
 段階3の push / 進捗中継（WorkerHub、Durable Object）。契約の正本は

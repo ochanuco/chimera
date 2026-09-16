@@ -1,6 +1,17 @@
 import { dialWordsFor, finalizeTakesRecolor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 
+export interface BackdropOption {
+  name: string;
+  label: string;
+}
+
+/** `GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png?v=<catalogVersion>` — a stable URL per (recipe, name), busted only when the catalog is republished. */
+function backdropThumbnailUrl(recipeRef: string, catalogVersion: string | null, name: string): string {
+  const q = catalogVersion ? `?v=${encodeURIComponent(catalogVersion)}` : '';
+  return `/api/v1/catalogs/${encodeURIComponent(recipeRef)}/backdrops/${encodeURIComponent(name)}.png${q}`;
+}
+
 /** A word-dial control: 既定 (default) + one button per catalog word + custom, or a plain number input when the catalog has no words for `fieldKey`. */
 function DialField({
   fieldKey,
@@ -125,12 +136,21 @@ export function FinalizeFields({
   dials = null,
   defaults = null,
   profiles = [],
+  backdrops = [],
+  recipeRef = null,
+  catalogVersion = null,
 }: {
   recipe: string | null;
   submitLabel: string;
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
+  /** Catalog top-level `backdrops` (name/label only, no thumbnail bytes — those are fetched via backdropThumbnailUrl). Empty for a catalog published before this key existed, or with no catalog at all. */
+  backdrops?: BackdropOption[];
+  /** recipe_ref the thumbnail route serves under (defaultRecipeRef(env)); null when there's no catalog to serve from. */
+  recipeRef?: string | null;
+  /** The published catalog's updated_at — cache-busts the otherwise-immutable thumbnail URL. */
+  catalogVersion?: string | null;
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
 
@@ -139,10 +159,15 @@ export function FinalizeFields({
     typeof defaults?.stroke_light === 'string' && strokeLightDirections.includes(defaults.stroke_light)
       ? defaults.stroke_light
       : 'none';
+
+  // Pattern choices: the catalog's backdrops when it published any, else the pre-thumbnail
+  // fallback of a single unillustrated "stripes" card (fallback behaviour required for a
+  // catalog from a worker that predates this key).
+  const patternChoices = backdrops.length > 0 ? backdrops : [{ name: 'stripes', label: 'stripes（斜めストライプ）' }];
+  const backdropChoiceNames = [...patternChoices.map((b) => b.name), 'transparent', 'color'];
+  const rawBackdropDefault = typeof defaults?.backdrop === 'string' ? defaults.backdrop : null;
   const backdropDefault =
-    defaults?.backdrop === 'stripes' || defaults?.backdrop === 'transparent' || defaults?.backdrop === 'color'
-      ? defaults.backdrop
-      : 'stripes';
+    rawBackdropDefault && backdropChoiceNames.includes(rawBackdropDefault) ? rawBackdropDefault : patternChoices[0]!.name;
 
   return (
     <>
@@ -234,21 +259,34 @@ export function FinalizeFields({
 
       <fieldset class="finalize-group">
         <legend>納品の見た目</legend>
-        <label>
-          背景（backdrop）{' '}
-          <select name="backdrop">
-            <option value="stripes" selected={backdropDefault === 'stripes'}>
-              stripes（斜めストライプ）
-            </option>
-            <option value="transparent" selected={backdropDefault === 'transparent'}>
-              transparent（透過 PNG）
-            </option>
-            <option value="color" selected={backdropDefault === 'color'}>
-              color（単色 #RRGGBB）
-            </option>
-          </select>
-          <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
-        </label>
+        <div class="backdrop-picker" data-backdrop-group>
+          <span class="dial-label">背景（backdrop）</span>
+          {patternChoices.map((bd) => (
+            <label class="backdrop-option" data-backdrop-value={bd.name}>
+              <input type="radio" name="backdrop" value={bd.name} checked={backdropDefault === bd.name} />
+              {backdrops.length > 0 && recipeRef ? (
+                <img
+                  class="backdrop-thumb"
+                  src={backdropThumbnailUrl(recipeRef, catalogVersion, bd.name)}
+                  alt={bd.label}
+                  width="60"
+                  height="96"
+                  loading="lazy"
+                />
+              ) : null}
+              <span class="backdrop-option-label">{bd.label}</span>
+            </label>
+          ))}
+          <label class="backdrop-option backdrop-option-plain" data-backdrop-value="transparent">
+            <input type="radio" name="backdrop" value="transparent" checked={backdropDefault === 'transparent'} />
+            <span class="backdrop-option-label">transparent（透過 PNG）</span>
+          </label>
+          <label class="backdrop-option backdrop-option-plain" data-backdrop-value="color">
+            <input type="radio" name="backdrop" value="color" checked={backdropDefault === 'color'} />
+            <span class="backdrop-option-label">color（単色 #RRGGBB）</span>
+          </label>
+        </div>
+        <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
         <span
           class="finalize-help"
           tabindex={0}

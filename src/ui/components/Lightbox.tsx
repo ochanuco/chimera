@@ -1,5 +1,6 @@
 import { CopyIdButton } from './CopyIdButton';
 import { FinalizeSection, type FinalizeRequestStatusLine } from './FinalizeSection';
+import type { BackdropOption } from './FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 import { NoteSection } from './NoteSection';
@@ -39,6 +40,9 @@ export function LightboxPanel({
   finalizeDials,
   finalizeDefaults = null,
   finalizeProfiles,
+  finalizeBackdrops = [],
+  finalizeRecipeRef = null,
+  finalizeCatalogVersion = null,
 }: {
   generationId: string;
   shortId: string;
@@ -55,6 +59,9 @@ export function LightboxPanel({
   finalizeDials: FinalizeDials | null;
   finalizeDefaults?: FinalizeDefaults | null;
   finalizeProfiles: FinalizeProfileOption[];
+  finalizeBackdrops?: BackdropOption[];
+  finalizeRecipeRef?: string | null;
+  finalizeCatalogVersion?: string | null;
 }) {
   return (
     <div class="lightbox-panel-content" data-generation-id={generationId} data-short-id={shortId}>
@@ -100,6 +107,9 @@ export function LightboxPanel({
         dials={finalizeDials}
         defaults={finalizeDefaults}
         profiles={finalizeProfiles}
+        backdrops={finalizeBackdrops}
+        recipeRef={finalizeRecipeRef}
+        catalogVersion={finalizeCatalogVersion}
       />
 
       <NoteSection kind="generations" id={generationId} note={note} open={false} />

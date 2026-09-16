@@ -474,8 +474,8 @@ catalog が `recipes[].dials.finalize` として公開するもので、chimera 
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
 `backdrop` / `stroke_light` に加えて、repair のチェックボックスを使った場合は
-`repair` / `repair_pad` / `repair_lora` を持ち、他は省略します。`backdrop` は select の
-`stripes`（既定）→ `"stripes"`、`transparent` → `null`、`color` → 入力した
+`repair` / `repair_pad` / `repair_lora` を持ち、他は省略します。`backdrop` は選んだカードの
+模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
 `#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は recipe `yukari` の Batch でだけ選べ、
 `yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定）です。「repair hands」「repair feet」はどちらも既定オフで、

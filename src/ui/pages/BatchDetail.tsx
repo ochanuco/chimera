@@ -2,7 +2,7 @@ import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { FamilyStrip, type FamilyCardData, type RelKind } from '../components/FamilyCard';
-import { FinalizeFields } from '../components/FinalizeFields';
+import { FinalizeFields, type BackdropOption } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
@@ -80,6 +80,9 @@ export function BatchDetailPage({
   dials = null,
   defaults = null,
   profiles = [],
+  backdrops = [],
+  recipeRef = null,
+  catalogVersion = null,
 }: {
   path: string;
   batch: BatchDetailData;
@@ -99,6 +102,9 @@ export function BatchDetailPage({
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
+  backdrops?: BackdropOption[];
+  recipeRef?: string | null;
+  catalogVersion?: string | null;
 }) {
   const storyIds = Array.from(new Set(batch.story_relations.map((r) => r.story_id)));
   const storyParents = batch.story_relations.filter((r) => r.target_batch_id === batch.id);
@@ -287,7 +293,16 @@ export function BatchDetailPage({
                 autocomplete="off"
                 data-dials={JSON.stringify(dials ?? {})}
               >
-                <FinalizeFields recipe={batch.recipe} submitLabel="Finalize all arms" dials={dials} defaults={defaults} profiles={profiles} />
+                <FinalizeFields
+                  recipe={batch.recipe}
+                  submitLabel="Finalize all arms"
+                  dials={dials}
+                  defaults={defaults}
+                  profiles={profiles}
+                  backdrops={backdrops}
+                  recipeRef={recipeRef}
+                  catalogVersion={catalogVersion}
+                />
               </form>
               <p class="finalize-summary">
                 finalize: {finalizeSummary.queued} queued · {finalizeSummary.running} running · {finalizeSummary.done} done ·{' '}

@@ -15,7 +15,7 @@ import { notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { queryGenerations } from '../lib/generations';
 import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults, type FinalizeDefaults } from '../lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
 import { findFinalizeRequestForBatch } from '../lib/promote';
 import type { FinalizeDials } from '../ui/finalize-options';
@@ -159,6 +159,10 @@ images.get('/:shortId', async (c) => {
   ]);
   const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
   const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
+  // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
+  const finalizeBackdrops = catalogDoc ? findBackdrops(catalogDoc.doc).map(({ name, label }) => ({ name, label })) : [];
+  const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
+  const finalizeCatalogVersion = catalogDoc?.row.updated_at ?? null;
 
   // Lightbox panel fragment (Gallery / Bookmarks / Batch Detail): same components as the full
   // page below, minus the family-card / mini-map / workflow sections it doesn't need.
@@ -181,6 +185,9 @@ images.get('/:shortId', async (c) => {
         finalizeDials={finalizeDials}
         finalizeDefaults={finalizeDefaults}
         finalizeProfiles={finalizeProfiles}
+        finalizeBackdrops={finalizeBackdrops}
+        finalizeRecipeRef={finalizeRecipeRef}
+        finalizeCatalogVersion={finalizeCatalogVersion}
       />,
     );
   }
@@ -311,6 +318,9 @@ images.get('/:shortId', async (c) => {
       finalizeDials={finalizeDials}
       finalizeDefaults={finalizeDefaults}
       finalizeProfiles={finalizeProfiles}
+      finalizeBackdrops={finalizeBackdrops}
+      finalizeRecipeRef={finalizeRecipeRef}
+      finalizeCatalogVersion={finalizeCatalogVersion}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
     />,

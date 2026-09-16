@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { getJson, mcpToolCall, postJson } from './helpers';
+import { getJson, mcpToolCall, postJson, req } from './helpers';
 
 function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
+}
+
+// 1x1 PNG, same fixture used across the backdrop thumbnail tests below.
+const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function catalogWithBackdrops() {
+  return {
+    schema_version: 1,
+    recipes: [{ name: 'yukari', poses: [] }],
+    patches: {},
+    backdrops: [
+      { name: 'stripes', label: '斜めストライプ', thumbnail: `data:image/png;base64,${TINY_PNG_BASE64}` },
+      { name: 'dots', label: '水玉', thumbnail: `data:image/png;base64,${TINY_PNG_BASE64}` },
+    ],
+  };
 }
 
 function sampleCatalog(overrides: Record<string, unknown> = {}) {
@@ -233,5 +248,100 @@ describe('MCP list_catalog / get_catalog_pose', () => {
 
     const tool = await mcpToolCall('get_catalog_pose', { recipe: 'yukari', pose: 'nonexistent', recipe_ref: recipeRef });
     expect(tool.isError).toBe(true);
+  });
+});
+
+describe('Recipe Catalog backdrops', () => {
+  it('PUT summary lists backdrops as name/label only, no thumbnail bytes', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const res = await postJson<{ backdrops?: { name: string; label: string }[] }>(
+      `/api/v1/catalogs/${recipeRef}`,
+      catalogWithBackdrops(),
+      'PUT',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.backdrops).toEqual([
+      { name: 'stripes', label: '斜めストライプ' },
+      { name: 'dots', label: '水玉' },
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain(TINY_PNG_BASE64);
+  });
+
+  it('omits backdrops from the summary entirely for a catalog published before the key existed', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const res = await postJson<{ backdrops?: unknown }>(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(), 'PUT');
+    expect(res.status).toBe(200);
+    expect(res.body.backdrops).toBeUndefined();
+  });
+
+  it('GET list also summarizes backdrops as name/label only', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBackdrops(), 'PUT');
+
+    const list = await getJson<{ items: { recipe_ref: string; backdrops?: { name: string; label: string }[] }[] }>(
+      '/api/v1/catalogs',
+    );
+    const item = list.body.items.find((i) => i.recipe_ref === recipeRef);
+    expect(item?.backdrops).toEqual([
+      { name: 'stripes', label: '斜めストライプ' },
+      { name: 'dots', label: '水玉' },
+    ]);
+  });
+
+  it('GET by recipe_ref keeps the full backdrops doc, thumbnail included', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBackdrops(), 'PUT');
+
+    const got = await getJson<{ backdrops: { name: string; label: string; thumbnail: string }[] }>(
+      `/api/v1/catalogs/${recipeRef}`,
+    );
+    expect(got.body.backdrops[0]?.thumbnail).toBe(`data:image/png;base64,${TINY_PNG_BASE64}`);
+  });
+
+  it('list_catalog strips backdrop thumbnails to name/label', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBackdrops(), 'PUT');
+
+    const tool = await mcpToolCall<{ backdrops?: { name: string; label: string }[] }>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.backdrops).toEqual([
+      { name: 'stripes', label: '斜めストライプ' },
+      { name: 'dots', label: '水玉' },
+    ]);
+    expect(JSON.stringify(tool.data)).not.toContain(TINY_PNG_BASE64);
+  });
+
+  it('GET /catalogs/{recipe_ref}/backdrops/{name}.png serves the decoded PNG with a long cache header', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBackdrops(), 'PUT');
+
+    const res = await req(`/api/v1/catalogs/${recipeRef}/backdrops/stripes.png`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/png');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const expected = new Uint8Array(Buffer.from(TINY_PNG_BASE64, 'base64'));
+    expect(bytes).toEqual(expected);
+  });
+
+  it('backdrop thumbnail route 404s for an unknown backdrop name', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBackdrops(), 'PUT');
+
+    const res = await req(`/api/v1/catalogs/${recipeRef}/backdrops/does-not-exist.png`);
+    expect(res.status).toBe(404);
+  });
+
+  it('backdrop thumbnail route 404s for a catalog with no backdrops key', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(), 'PUT');
+
+    const res = await req(`/api/v1/catalogs/${recipeRef}/backdrops/stripes.png`);
+    expect(res.status).toBe(404);
+  });
+
+  it('backdrop thumbnail route 404s for an unpublished recipe_ref', async () => {
+    const res = await req(`/api/v1/catalogs/${uniqueRecipeRef()}/backdrops/stripes.png`);
+    expect(res.status).toBe(404);
   });
 });
