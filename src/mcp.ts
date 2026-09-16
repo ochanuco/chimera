@@ -631,28 +631,39 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'options.deliver_only is set, redraws the pick at delivery size, then cuts a matte and composites the ' +
         'backdrop and purple stroke; recorded as a refinement Batch of the source Generation, with a rebuild ' +
         "Reference back to it. generation_id accepts a short_id. " +
-        'options is optional; every field defaults to the worker/recipe default when omitted: ' +
+        'options is optional; an omitted field resolves to the base recipe\'s published finalize default — ' +
+        'list_catalog\'s recipes[].finalize.defaults is where these are published, the same values the WebUI ' +
+        'form presets from, so look them up per-recipe rather than hardcoding. Two fields default across every ' +
+        'recipe: stroke_light to "n" (light from above, shadow below) and backdrop to "stripes". For a ' +
+        'yukari-anima base only, deliver_only also defaults to true and repin to false, unless a redraw-shaping ' +
+        'option (denoise, size, route, finalizer, lora_strength, sketch_redraw, handdrawn, toe_guard, repair, ' +
+        'repair_regions, keep_regions or upscale) is given, which turns the redraw back on. An explicit null ' +
+        'keeps its own distinct meaning rather than falling back to a default: stroke_light: null means a ' +
+        'uniform stroke with no directional shading, backdrop: null means no backdrop (transparent). Other ' +
+        'fields: ' +
         'denoise (redraw strength; recipe default, e.g. 0.55 for an IL finalize, 0.75 for Anima alone), ' +
         'repin (accent-compression recolor pass), recolor (palette recolor, yukari recipe only), ' +
         'keep_legwear (keep tights/legwear — true for the worker default weight 0.62, or a number), ' +
         'route ("latent" or "pixel", worker default), size (redraw longest side, worker default), ' +
         'handdrawn (handdrawn-look pass), skin (skin pass), ' +
         'toe_guard (toe-repair guard — true for the worker default weight, or a number), ' +
-        'keep_scene (keep background/scene), transparent (cut alpha instead of an opaque backdrop, worker default; ' +
-        'for a layerdiffuse Generation the default is a transparent sticker — white band and purple stroke, alpha 0 ' +
-        'outside — and only backdrop, keep_scene or transparent: false take the opaque banded route), ' +
-        'backdrop (backdrop, e.g. "stripes" or a #RRGGBB color), ' +
+        'keep_scene (keep background/scene), transparent (force alpha-cut delivery instead of an opaque ' +
+        'backdrop — an explicit true overrides the recipe\'s defaulted backdrop; for a layerdiffuse Generation ' +
+        'the default route is already a transparent sticker — white band and purple stroke, alpha 0 outside — ' +
+        'unless backdrop, keep_scene or transparent: false is given), ' +
+        'backdrop (backdrop, e.g. "stripes" or a #RRGGBB color; recipe default above, or null for none), ' +
         'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
         'lora_strength (finalize LoRA strength, 0-2), deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
-        'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw), ' +
+        'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw; recipe default above, or null for a uniform stroke), ' +
         "repair (array of \"hands\"/\"feet\" to also mask-redraw in this same request), " +
         'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
         'repair_size (repair redraw longest side), ' +
         'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
-        'only; use it when the render itself is the look, e.g. a yukari-anima sketch-LoRA render, where a redraw ' +
-        'would repaint surfaces such as tights. Cannot combine with denoise, size, route, finalizer, lora_strength, ' +
+        'only; defaults to true for a yukari-anima base as noted above, so it need not be set by hand there; for ' +
+        'other bases pass it explicitly when the render itself is the look, i.e. a redraw would repaint surfaces ' +
+        'such as tights. Cannot combine with denoise, size, route, finalizer, lora_strength, ' +
         'sketch_redraw, handdrawn, toe_guard, repair, repair_regions, keep_regions or a truthy upscale, and rejects ' +
         'a layerdiffuse base; repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
         'deliver_size stay compatible). ' +
