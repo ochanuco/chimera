@@ -1007,25 +1007,37 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
-.backdrop-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.backdrop-picker {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: 0.4rem;
+}
+.backdrop-picker > .dial-label { grid-column: 1 / -1; }
 .backdrop-option {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  width: 4.2rem;
-  padding: 0.3rem;
+  gap: 0.25rem;
+  padding: 0.25rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   text-align: center;
 }
+.backdrop-option input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
 .backdrop-option:hover { border-color: var(--accent); }
-.backdrop-option:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
-.backdrop-option input[type="radio"] { margin: 0; }
-.backdrop-option-plain { width: auto; padding: 0.3rem 0.6rem; flex-direction: row; }
-.backdrop-thumb { width: 60px; height: 96px; object-fit: cover; border-radius: 4px; }
-.backdrop-option-label { font-size: 0.7rem; color: var(--text-dim); line-height: 1.2; }
+.backdrop-option:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.backdrop-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.backdrop-option:has(input:checked) .backdrop-option-label { color: var(--text); }
+.backdrop-option-plain { grid-column: span 2; align-self: start; justify-content: center; padding: 0.45rem 0.25rem; }
+.backdrop-option-plain[data-backdrop-value="transparent"] { grid-column: 1 / span 2; }
+.backdrop-thumb { display: block; width: 100%; height: auto; aspect-ratio: 5 / 8; object-fit: cover; border-radius: 4px; }
+.backdrop-option-label { font-size: 0.7rem; color: var(--text-dim); line-height: 1.25; }
 
 .dial-group, .profile-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
