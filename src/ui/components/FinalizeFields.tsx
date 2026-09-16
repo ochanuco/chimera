@@ -163,7 +163,7 @@ export function FinalizeFields({
   // Pattern choices: the catalog's backdrops when it published any, else the pre-thumbnail
   // fallback of a single unillustrated "stripes" card (fallback behaviour required for a
   // catalog from a worker that predates this key).
-  const patternChoices = backdrops.length > 0 ? backdrops : [{ name: 'stripes', label: 'stripes（斜めストライプ）' }];
+  const patternChoices = backdrops.length > 0 ? backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
   const backdropChoiceNames = [...patternChoices.map((b) => b.name), 'transparent', 'color'];
   const rawBackdropDefault = typeof defaults?.backdrop === 'string' ? defaults.backdrop : null;
   const backdropDefault =
@@ -279,11 +279,11 @@ export function FinalizeFields({
           ))}
           <label class="backdrop-option backdrop-option-plain" data-backdrop-value="transparent">
             <input type="radio" name="backdrop" value="transparent" checked={backdropDefault === 'transparent'} />
-            <span class="backdrop-option-label">transparent（透過 PNG）</span>
+            <span class="backdrop-option-label">透過 PNG</span>
           </label>
           <label class="backdrop-option backdrop-option-plain" data-backdrop-value="color">
             <input type="radio" name="backdrop" value="color" checked={backdropDefault === 'color'} />
-            <span class="backdrop-option-label">color（単色 #RRGGBB）</span>
+            <span class="backdrop-option-label">単色</span>
           </label>
         </div>
         <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
@@ -291,8 +291,8 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="切り抜いた人物の後ろ。stripes が既定、transparent は背景なしの透過 PNG、color は指定色で塗る"
-          data-help="切り抜いた人物の後ろ。stripes が既定、transparent は背景なしの透過 PNG、color は指定色で塗る"
+          aria-label="切り抜いた人物の後ろに敷く模様。透過 PNG は背景なし、単色は指定色で塗る"
+          data-help="切り抜いた人物の後ろに敷く模様。透過 PNG は背景なし、単色は指定色で塗る"
         >
           ?
         </span>
