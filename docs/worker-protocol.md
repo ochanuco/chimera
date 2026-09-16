@@ -454,6 +454,17 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
 の語彙は単体の repair request（後述）と揃えてあります。
 
+`stroke_light` と `backdrop` は、省略すると worker が base recipe の `FINALIZE_DEFAULTS`
+から解決します（`stroke_light` は `"n"` ＝上からの光源・下に影、`backdrop` は
+`"stripes"`）。`yukari-anima` の recipe に限り `deliver_only` も既定で `true`、`repin` も
+既定で `false` になりますが、denoise / size / route / finalizer / lora_strength /
+sketch_redraw / handdrawn / toe_guard / repair / repair_regions / keep_regions / upscale
+のいずれか（redraw の絵柄を変える option）を指定するとこの既定は外れ、通常どおり
+redraw します。明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
+`stroke_light: null` は方向性のない均一な紫縁、`backdrop: null` は背景なし（透過）を
+指します。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
+chimera の WebUI フォームのプリセットもここから取っています。
+
 `denoise` / `keep_legwear` / `toe_guard` / `lora_strength` / `repair_denoise` /
 `repair_lora` は、number / null / （`keep_legwear` 等は加えて `true`）に加えて、
 `^[a-z][a-z0-9-]*$` にマッチする word 文字列も受け取ります。word の語彙は recipe ごとに
