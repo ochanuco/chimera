@@ -636,8 +636,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'form presets from, so look them up per-recipe rather than hardcoding. Two fields default across every ' +
         'recipe: stroke_light to "n" (light from above, shadow below) and backdrop to "stripes". For a ' +
         'yukari-anima base only, deliver_only also defaults to true and repin to false, unless a redraw-shaping ' +
-        'option (denoise, size, route, finalizer, lora_strength, sketch_redraw, handdrawn, toe_guard, repair, ' +
-        'repair_regions, keep_regions or upscale) is given, which turns the redraw back on. An explicit null ' +
+        'option (denoise, size, route, finalizer, lora_strength, sketch_redraw, handdrawn, toe_guard, ' +
+        'keep_regions or upscale) is given, which turns the redraw back on; repair and repair_regions do not ' +
+        '(they combine with deliver_only instead, see below). An explicit null ' +
         'keeps its own distinct meaning rather than falling back to a default: stroke_light: null means a ' +
         'uniform stroke with no directional shading, backdrop: null means no backdrop (transparent). Other ' +
         'fields: ' +
@@ -660,12 +661,18 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
         'repair_size (repair redraw longest side), ' +
-        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number), ' +
+        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number; ' +
+        'ignored for yukari-anima sources), ' +
+        'repair_seeds (only meaningful alongside deliver_only plus repair and/or repair_regions: how many delivery ' +
+        'candidates to produce, one per seed, 1-8, worker default 4), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
         'only; defaults to true for a yukari-anima base as noted above, so it need not be set by hand there; for ' +
         'other bases pass it explicitly when the render itself is the look, i.e. a redraw would repaint surfaces ' +
-        'such as tights. Cannot combine with denoise, size, route, finalizer, lora_strength, ' +
-        'sketch_redraw, handdrawn, toe_guard, repair, repair_regions, keep_regions or a truthy upscale, and rejects ' +
+        'such as tights. Combined with repair and/or repair_regions, it instead produces one delivery candidate per ' +
+        'seed — a masked reroll of the region(s) on the source\'s own model, then the no-redraw delivery tail — ' +
+        'recorded as a kind="repair" batch holding a raw and a delivered Generation per seed (repair_seeds controls ' +
+        'how many). Still cannot combine with denoise, size, route, finalizer, lora_strength, ' +
+        'sketch_redraw, handdrawn, toe_guard, keep_regions or a truthy upscale, and rejects ' +
         'a layerdiffuse base; repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
         'deliver_size stay compatible). ' +
         'Every dial-able option (denoise, keep_legwear, toe_guard, lora_strength, repair_denoise, repair_lora) also accepts ' +

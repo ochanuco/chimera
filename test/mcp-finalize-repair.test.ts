@@ -57,6 +57,30 @@ describe('MCP finalize_generation', () => {
     });
   });
 
+  it('stores options.deliver_only combined with repair and repair_seeds in the payload', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('finalize_generation', {
+      generation_id: generation.id,
+      options: { deliver_only: true, repair: ['feet'], repair_seeds: 6 },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { deliver_only: true, repair: ['feet'], repair_seeds: 6 },
+    });
+  });
+
+  it('rejects a repair_seeds outside 1..8', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('finalize_generation', {
+      generation_id: generation.id,
+      options: { deliver_only: true, repair: ['feet'], repair_seeds: 9 },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(true);
+  });
+
   it('replays the same idempotency_key as created: false', async () => {
     const { generation } = await createGeneration();
     const key = crypto.randomUUID();

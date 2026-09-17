@@ -600,9 +600,12 @@ GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / rep
 
 `仕上げ`グループの先頭に`deliver only (no redraw)`のチェックボックスがあります
 （既定off、dial対応の有無に関わらず常に表示）。チェックすると`options`に
-`deliver_only: true`を積み、`denoise` / `repair` / `repair_pad` / `repair_lora`の
-キーは送りません。チェック中はdenoiseとrepair系のコントロールが`disabled`になり、
-外すとrepair hands / repair feetのチェック状態に応じた状態に戻ります。
+`deliver_only: true`を積み、`denoise` / `repair_lora`のキーは送りません
+（`keep_legwear`も一緒に`disabled`になります）。`repair hands` / `repair feet` /
+`repair pad`とregion描画（後述）はdeliver only中も使えます — チェックした部位・
+描いた範囲があれば`repair` / `repair_regions`は変わらず積み、加えて候補数を指定する
+`repair_seeds`（既定`disabled`、部位チェックか範囲のどちらかがある間だけ有効）を積みます。
+外すとdenoise / keep_legwearが元の状態に戻り、`repair_seeds`は送らなくなります。
 
 このBatchのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
@@ -644,7 +647,22 @@ GUIだけ入れ替えると同じ値が画面とAPIで別物になるため対�
 off。1つ以上チェックすると`repair`配列を積みます）と、`repair pad`の数値入力
 （空欄が省略=worker既定を意味する）を持ちます。`repair pad`はrepair hands /
 repair feetのどちらもチェックされていない間`disabled`で、どちらかをチェックすると
-有効になります。
+有効になります。`repair lora`はdeliver only中は常に`disabled`（yukari-anima では
+worker が無視する）、それ以外はrepair hands / repair feetのどちらかが必要です。
+
+Generation Detail / Lightbox（画像1枚に対して1つのFinalizeフォームが並ぶページ）は
+これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます
+（Batch Detailの「Finalize all arms」は対象のGenerationが1枚に決まらないため、この
+操作自体を持ちません）。画像の親要素に`repair-region-overlay`をJSでサイズ・位置とも
+`<img>`に一致させて重ね、ポインタイベント（マウス/タッチ共通）でのドラッグ1回が矩形1つ
+（`repair-region-rect`、右上に消去ボタン）になり、複数指定できます。矩形は表示中の画像
+サイズに対する分数`[x0, y0, x1, y1]`（0〜4桁に丸め、0..1にクランプ）としてfinalize
+formの状態に保持され、フォーム上の「範囲をすべて消す」ボタン（`data-repair-region-clear`）
+で一括削除できます。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
+範囲、どちらか片方だけでも送信可）。描き直し（redraw）・deliver onlyどちらのモードでも、
+範囲が1つ以上あれば`repair_regions`を積み、`repair`は空配列にします（描いた範囲が部位の自動検出を置き換える。検出の円を矩形に足すとマスクが部位の外まで広がるため）。`repair pad` / `repair lora`のdisabledは
+これまで通り部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`
+（deliver only中のみ）は部位チェックか範囲、どちらか一方でもあれば有効になります。
 
 送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
 積まれるoptionsのkeyだけを`profile daily v2 · backdrop=stripes · denoise tidy (0.65)
