@@ -2424,6 +2424,9 @@ export const appJs = `
     var regions = regionsFor(form);
     var repairActive = repair.length > 0 || regions.length > 0;
 
+    // Drawn rectangles replace detection: DWPose circles added on top of a rectangle widen the mask
+    // past the part and the reroll's palette seams show along the circle.
+    if (regions.length > 0) repair = [];
     if (repairActive) {
       options.repair = repair;
       if (regions.length > 0) options.repair_regions = regions;

@@ -660,7 +660,7 @@ Generation Detail / Lightbox（画像1枚に対して1つのFinalizeフォーム
 formの状態に保持され、フォーム上の「範囲をすべて消す」ボタン（`data-repair-region-clear`）
 で一括削除できます。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
 範囲、どちらか片方だけでも送信可）。描き直し（redraw）・deliver onlyどちらのモードでも、
-範囲が1つ以上あれば`repair_regions`を積みます。`repair pad` / `repair lora`のdisabledは
+範囲が1つ以上あれば`repair_regions`を積み、`repair`は空配列にします（描いた範囲が部位の自動検出を置き換える。検出の円を矩形に足すとマスクが部位の外まで広がるため）。`repair pad` / `repair lora`のdisabledは
 これまで通り部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`
 （deliver only中のみ）は部位チェックか範囲、どちらか一方でもあれば有効になります。
 

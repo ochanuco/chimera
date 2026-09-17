@@ -47,6 +47,7 @@ describe('served app.js', () => {
     // gates options.repair/options.repair_regions; nothing checked and no regions sends neither.
     expect(appJs).toContain('var repairActive = repair.length > 0 || regions.length > 0;');
     expect(appJs).toContain('if (repairActive) {\n      options.repair = repair;\n      if (regions.length > 0) options.repair_regions = regions;\n    }');
+    expect(appJs).toContain('if (regions.length > 0) repair = [];');
     // repair_pad stays gated on a checked part specifically (not merely a drawn region), matching
     // the single-part repair endpoint's existing contract.
     expect(appJs).toContain("if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);");
