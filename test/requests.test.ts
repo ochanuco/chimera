@@ -198,6 +198,31 @@ describe('POST /api/v1/requests', () => {
     expect(badType.status).toBe(400);
   });
 
+  it('finalize: repair_seeds accepts an int in 1..8, rejects out-of-range and non-int', async () => {
+    const { generation } = await createGeneration();
+
+    const created = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 6 } },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 6 } });
+
+    const tooLow = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 0 } },
+    });
+    expect(tooLow.status).toBe(400);
+
+    const tooHigh = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 9 } },
+    });
+    expect(tooHigh.status).toBe(400);
+
+    const notInt = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 2.5 } },
+    });
+    expect(notInt.status).toBe(400);
+  });
+
   it('finalize: deliver_only accepts a boolean, rejects a non-boolean', async () => {
     const { generation } = await createGeneration();
 

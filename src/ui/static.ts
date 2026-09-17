@@ -878,7 +878,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .workflow-pass-head { font-weight: 600; }
 .workflow-line { color: var(--text-dim); font-size: 0.85rem; }
 
-.gen-detail-hero { text-align: center; margin-bottom: 1rem; }
+.gen-detail-hero { text-align: center; margin-bottom: 1rem; position: relative; }
 .gen-detail-hero img { max-width: 100%; max-height: 70vh; border-radius: 10px; border: 1px solid var(--border); background: var(--checker); }
 .image-meta { margin-top: 0.4rem; font-size: 0.78rem; color: var(--text-dim); text-align: center; }
 
@@ -1006,6 +1006,45 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-help:hover::after, .finalize-help:focus::after { display: block; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
+
+/* repair region drawing: a dependency-free rectangle-drag overlay sized/positioned in JS to
+   exactly match the rendered <img> box (gen-detail-hero / lightbox-image-area), so its
+   percentage-based rects line up regardless of zoom or object-fit scaling. */
+.repair-region-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
+.repair-region-clear {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.repair-region-clear:hover { color: var(--text); border-color: var(--accent); }
+.repair-region-overlay { position: absolute; touch-action: none; cursor: crosshair; z-index: 1; }
+.repair-region-rect {
+  position: absolute;
+  border: 1.5px solid var(--accent);
+  background: rgba(124, 156, 245, 0.18);
+  box-sizing: border-box;
+}
+.repair-region-rect-drawing { border-style: dashed; background: rgba(124, 156, 245, 0.1); }
+.repair-region-remove {
+  position: absolute;
+  top: -0.6rem;
+  right: -0.6rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+.repair-region-remove:hover { border-color: var(--bad); color: var(--bad); }
 
 .backdrop-picker {
   flex-basis: 100%;
@@ -1334,6 +1373,9 @@ body.lightbox-open { overflow: hidden; }
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  /* above .repair-region-overlay, which sits right on top of the image itself and would
+     otherwise out-stack these (DOM order: prev, img, overlay, next) over the edges it overlaps */
+  z-index: 2;
 }
 .lightbox-nav[hidden] { display: none; }
 .lightbox-prev { left: 0.75rem; }
@@ -2147,6 +2189,199 @@ export const appJs = `
     return version === undefined ? { name: nameInput.value } : { name: nameInput.value, version: version };
   }
 
+  // --- Finalize repair regions: drag rectangles over the Generation's own image ---
+  // Only .finalize-form (Generation Detail / Lightbox, rendered with FinalizeFields
+  // regionDrawing) gets a region overlay -- .finalize-all-form (Batch Detail) has no single
+  // image to draw on and is left untouched. State lives in a WeakMap keyed by the form itself
+  // (not by any input) since a set of rectangles has no single DOM home; finalizeOptionsFrom
+  // reads it back via regionsFor(form).
+  var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
+
+  function regionsFor(form) {
+    var state = repairRegionState.get(form);
+    return state ? state.regions : [];
+  }
+
+  // Generation Detail renders one hero <img>; the Lightbox panel's <img> is the long-lived
+  // client-built element (lightboxImage, declared below) whose src is swapped per open.
+  function findFinalizeRegionImage(form) {
+    if (form.closest('.lightbox-panel-content')) return lightboxImage || null;
+    return qs('.gen-detail-hero img');
+  }
+
+  function syncRepairRegionOverlayGeometry(state) {
+    state.overlay.style.left = state.img.offsetLeft + 'px';
+    state.overlay.style.top = state.img.offsetTop + 'px';
+    state.overlay.style.width = state.img.offsetWidth + 'px';
+    state.overlay.style.height = state.img.offsetHeight + 'px';
+  }
+
+  function repairRegionCount(form) {
+    return qs('[data-repair-region-count]', form);
+  }
+
+  // Repair pad/lora/seeds enablement depends on both the checkboxes and the drawn regions, so
+  // any region change re-runs the same sync that deliver_only/repair_hands/repair_feet changes do.
+  function onRepairRegionsChanged(form) {
+    var countEl = repairRegionCount(form);
+    if (countEl) {
+      var n = regionsFor(form).length;
+      countEl.textContent = n > 0 ? '指定範囲: ' + n : '';
+    }
+    syncFinalizeDeliverOnly(form);
+    renderFinalizePreview(form);
+  }
+
+  function addRepairRegionRect(state, form, x0, y0, x1, y1) {
+    state.regions.push([x0, y0, x1, y1]);
+    var rect = document.createElement('div');
+    rect.className = 'repair-region-rect';
+    rect.style.left = x0 * 100 + '%';
+    rect.style.top = y0 * 100 + '%';
+    rect.style.width = (x1 - x0) * 100 + '%';
+    rect.style.height = (y1 - y0) * 100 + '%';
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'repair-region-remove';
+    remove.setAttribute('aria-label', '範囲を消す');
+    remove.textContent = '×';
+    rect.appendChild(remove);
+    state.overlay.appendChild(rect);
+    remove.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    remove.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var idx = qsa('.repair-region-rect', state.overlay).indexOf(rect);
+      if (idx === -1) return;
+      state.regions.splice(idx, 1);
+      rect.remove();
+      onRepairRegionsChanged(form);
+    });
+    onRepairRegionsChanged(form);
+  }
+
+  // Fractions are relative to the overlay's own box, which syncRepairRegionOverlayGeometry keeps
+  // pinned to the rendered <img> box -- so the fraction is invariant to zoom/object-fit scaling,
+  // matching the [x0,y0,x1,y1] convention repair/masked_redraw already use server-side.
+  function attachRepairRegionDrawing(state, form) {
+    var overlay = state.overlay;
+    var drawing = null;
+
+    function localPoint(ev) {
+      var rect = overlay.getBoundingClientRect();
+      var x = Math.min(Math.max(ev.clientX - rect.left, 0), rect.width);
+      var y = Math.min(Math.max(ev.clientY - rect.top, 0), rect.height);
+      return { x: x, y: y, width: rect.width, height: rect.height };
+    }
+
+    function paintDrawingRect(x, y) {
+      var left = Math.min(drawing.startX, x);
+      var top = Math.min(drawing.startY, y);
+      drawing.el.style.left = left + 'px';
+      drawing.el.style.top = top + 'px';
+      drawing.el.style.width = Math.abs(x - drawing.startX) + 'px';
+      drawing.el.style.height = Math.abs(y - drawing.startY) + 'px';
+      drawing.lastX = x;
+      drawing.lastY = y;
+    }
+
+    overlay.addEventListener('pointerdown', function (ev) {
+      if (ev.target !== overlay) return; // an existing rect or its remove button, not the backdrop
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      ev.preventDefault();
+      var p = localPoint(ev);
+      var el = document.createElement('div');
+      el.className = 'repair-region-rect repair-region-rect-drawing';
+      overlay.appendChild(el);
+      drawing = { startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, el: el };
+      paintDrawingRect(p.x, p.y);
+      try { overlay.setPointerCapture(ev.pointerId); } catch (e) {}
+    });
+
+    overlay.addEventListener('pointermove', function (ev) {
+      if (!drawing) return;
+      var p = localPoint(ev);
+      paintDrawingRect(p.x, p.y);
+    });
+
+    function finishDrawing(ev) {
+      if (!drawing) return;
+      var el = drawing.el;
+      var rect = overlay.getBoundingClientRect();
+      var x0 = Math.min(drawing.startX, drawing.lastX);
+      var y0 = Math.min(drawing.startY, drawing.lastY);
+      var x1 = Math.max(drawing.startX, drawing.lastX);
+      var y1 = Math.max(drawing.startY, drawing.lastY);
+      el.remove();
+      drawing = null;
+      if (ev) { try { overlay.releasePointerCapture(ev.pointerId); } catch (e) {} }
+      if (x1 - x0 < 4 || y1 - y0 < 4 || rect.width <= 0 || rect.height <= 0) return; // a stray click/tap, not a drag
+      var x0f = Math.round((x0 / rect.width) * 10000) / 10000;
+      var y0f = Math.round((y0 / rect.height) * 10000) / 10000;
+      var x1f = Math.round((x1 / rect.width) * 10000) / 10000;
+      var y1f = Math.round((y1 / rect.height) * 10000) / 10000;
+      if (x1f <= x0f || y1f <= y0f) return;
+      addRepairRegionRect(state, form, x0f, y0f, x1f, y1f);
+    }
+
+    overlay.addEventListener('pointerup', finishDrawing);
+    overlay.addEventListener('pointercancel', function () {
+      if (drawing) { drawing.el.remove(); drawing = null; }
+    });
+
+    state.clear = function () {
+      qsa('.repair-region-rect', overlay).forEach(function (el) { el.remove(); });
+      state.regions.length = 0;
+      onRepairRegionsChanged(form);
+    };
+  }
+
+  // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass)
+  // or on a freshly-inserted one (Lightbox's per-open fragment swap replaces the <form> node).
+  function ensureRepairRegionOverlay(form) {
+    if (!qs('[data-repair-region-tools]', form)) return null; // FinalizeFields rendered without regionDrawing
+    var img = findFinalizeRegionImage(form);
+    var existing = repairRegionState.get(form);
+    if (existing && existing.img === img && existing.overlay.isConnected) return existing;
+    if (!img) {
+      if (existing) existing.overlay.remove();
+      repairRegionState.delete(form);
+      return null;
+    }
+
+    var parent = img.parentElement;
+    var stale = qs('.repair-region-overlay', parent);
+    if (stale) stale.remove();
+
+    var overlay = document.createElement('div');
+    overlay.className = 'repair-region-overlay';
+    parent.insertBefore(overlay, img.nextSibling);
+
+    var state = { img: img, overlay: overlay, regions: [] };
+    syncRepairRegionOverlayGeometry(state);
+    attachRepairRegionDrawing(state, form);
+    repairRegionState.set(form, state);
+
+    var resync = function () { syncRepairRegionOverlayGeometry(state); };
+    img.addEventListener('load', resync);
+    window.addEventListener('resize', resync);
+    if (window.ResizeObserver) new ResizeObserver(resync).observe(img);
+
+    onRepairRegionsChanged(form);
+    return state;
+  }
+
+  function initFinalizeRepairRegions() {
+    qsa('.finalize-form').forEach(ensureRepairRegionOverlay);
+    document.addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('[data-repair-region-clear]') : null;
+      if (!btn) return;
+      var form = btn.closest('.finalize-form');
+      if (!form) return;
+      var state = repairRegionState.get(form);
+      if (state && state.clear) state.clear();
+    });
+  }
+
   // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
   // Returns null when the form cannot be turned into options. In quiet mode (used by the
   // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
@@ -2180,8 +2415,31 @@ export const appJs = `
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
 
+    // repair (hands/feet + drawn regions) rides along in both deliver_only and redraw mode; only
+    // denoise/repair_lora/repair_seeds differ by mode below. A checked part with zero regions is
+    // fine (the worker auto-detects); nothing checked and no regions omits every repair* key.
+    var repair = [];
+    if (qs('input[name="repair_hands"]', form).checked) repair.push('hands');
+    if (qs('input[name="repair_feet"]', form).checked) repair.push('feet');
+    var regions = regionsFor(form);
+    var repairActive = repair.length > 0 || regions.length > 0;
+
+    // Drawn rectangles replace detection: DWPose circles added on top of a rectangle widen the mask
+    // past the part and the reroll's palette seams show along the circle.
+    if (regions.length > 0) repair = [];
+    if (repairActive) {
+      options.repair = repair;
+      if (regions.length > 0) options.repair_regions = regions;
+    }
+    var repairPadRaw = qs('input[name="repair_pad"]', form).value;
+    if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
+
     if (deliverOnly) {
       options.deliver_only = true;
+      if (repairActive) {
+        var repairSeedsRaw = qs('input[name="repair_seeds"]', form).value;
+        if (repairSeedsRaw !== '') options.repair_seeds = Number(repairSeedsRaw);
+      }
       return options;
     }
 
@@ -2194,14 +2452,6 @@ export const appJs = `
       denoise = denoiseFromDial;
     }
     options.denoise = denoise;
-
-    var repair = [];
-    if (qs('input[name="repair_hands"]', form).checked) repair.push('hands');
-    if (qs('input[name="repair_feet"]', form).checked) repair.push('feet');
-    if (repair.length > 0) options.repair = repair;
-
-    var repairPadRaw = qs('input[name="repair_pad"]', form).value;
-    if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
 
     var repairLoraFromDial = dialGroupValue(form, 'repair_lora');
     var repairLora;
@@ -2238,51 +2488,68 @@ export const appJs = `
     });
   }
 
-  // repair_pad/repair_lora only mean anything alongside a repair region, so the worker never sees them stray in.
+  // repair_hands/repair_feet stay usable in deliver_only mode (a masked-reroll delivery batch),
+  // so only denoise/keep_legwear/repair_lora are gated purely by deliver_only; repair_pad and the
+  // new repair_seeds are gated by whether a part is checked or a region is drawn (repairActive),
+  // with repair_seeds additionally requiring deliver_only (it's meaningless in redraw mode).
+  // initFinalizeRepairPad and initFinalizeDeliverOnly both funnel into this single sync so the
+  // three triggers (deliver_only change, repair_hands/feet change, region drawn/removed) agree.
+  function syncFinalizeDeliverOnly(form) {
+    var box = qs('input[name="deliver_only"]', form);
+    var deliverOnly = !!(box && box.checked);
+
+    var denoiseGroup = qs('[data-dial-key="denoise"]', form);
+    if (denoiseGroup) {
+      qsa('.dial-btn', denoiseGroup).forEach(function (b) { b.disabled = deliverOnly; });
+      var denoiseCustom = qs('.dial-custom-input', denoiseGroup);
+      if (denoiseCustom && (deliverOnly || !denoiseCustom.hidden)) denoiseCustom.disabled = deliverOnly;
+    } else {
+      qs('input[name="denoise"]', form).disabled = deliverOnly;
+    }
+
+    var keepLegwearGroup = qs('[data-dial-key="keep_legwear"]', form);
+    if (keepLegwearGroup) {
+      qsa('.dial-btn', keepLegwearGroup).forEach(function (b) { b.disabled = deliverOnly; });
+      var keepLegwearCustom = qs('.dial-custom-input', keepLegwearGroup);
+      if (keepLegwearCustom && (deliverOnly || !keepLegwearCustom.hidden)) keepLegwearCustom.disabled = deliverOnly;
+    } else {
+      var keepLegwearBox = qs('input[name="keep_legwear"]', form);
+      if (keepLegwearBox) keepLegwearBox.disabled = deliverOnly;
+    }
+
+    // repair_pad/repair_lora mirror finalizeOptionsFrom's own gate (a checked part specifically,
+    // matching the single-part repair endpoint's contract); repair_seeds mirrors its broader gate
+    // (a checked part OR a drawn region — regions alone are enough to send repair_regions).
+    var hands = qs('input[name="repair_hands"]', form);
+    var feet = qs('input[name="repair_feet"]', form);
+    var repairPartChecked = !!((hands && hands.checked) || (feet && feet.checked));
+    var repairActive = repairPartChecked || regionsFor(form).length > 0;
+
+    var pad = qs('input[name="repair_pad"]', form);
+    if (pad) pad.disabled = !repairPartChecked;
+
+    var loraDisabled = deliverOnly || !repairPartChecked;
+    var loraGroup = qs('[data-dial-key="repair_lora"]', form);
+    if (loraGroup) {
+      qsa('.dial-btn', loraGroup).forEach(function (b) { b.disabled = loraDisabled; });
+      var loraCustom = qs('.dial-custom-input', loraGroup);
+      if (loraCustom && (loraDisabled || !loraCustom.hidden)) loraCustom.disabled = loraDisabled;
+    } else {
+      var loraInput = qs('input[name="repair_lora"]', form);
+      if (loraInput) loraInput.disabled = loraDisabled;
+    }
+
+    var seeds = qs('input[name="repair_seeds"]', form);
+    if (seeds) seeds.disabled = !(deliverOnly && repairActive);
+  }
+
   function initFinalizeRepairPad() {
     document.addEventListener('change', function (ev) {
       var box = ev.target;
       if (!(box instanceof HTMLInputElement) || (box.name !== 'repair_hands' && box.name !== 'repair_feet')) return;
       var form = box.closest('.finalize-form, .finalize-all-form');
-      if (!form) return;
-      var hands = qs('input[name="repair_hands"]', form);
-      var feet = qs('input[name="repair_feet"]', form);
-      var disabled = !(hands.checked || feet.checked);
-      qs('input[name="repair_pad"]', form).disabled = disabled;
-      qs('input[name="repair_lora"]', form).disabled = disabled;
+      if (form) syncFinalizeDeliverOnly(form);
     });
-  }
-
-  function syncFinalizeDeliverOnly(form) {
-    var box = qs('input[name="deliver_only"]', form);
-    var disabled = !!(box && box.checked);
-
-    var denoiseGroup = qs('[data-dial-key="denoise"]', form);
-    if (denoiseGroup) {
-      qsa('.dial-btn', denoiseGroup).forEach(function (b) { b.disabled = disabled; });
-      var denoiseCustom = qs('.dial-custom-input', denoiseGroup);
-      if (denoiseCustom && (disabled || !denoiseCustom.hidden)) denoiseCustom.disabled = disabled;
-    } else {
-      qs('input[name="denoise"]', form).disabled = disabled;
-    }
-
-    var keepLegwearGroup = qs('[data-dial-key="keep_legwear"]', form);
-    if (keepLegwearGroup) {
-      qsa('.dial-btn', keepLegwearGroup).forEach(function (b) { b.disabled = disabled; });
-      var keepLegwearCustom = qs('.dial-custom-input', keepLegwearGroup);
-      if (keepLegwearCustom && (disabled || !keepLegwearCustom.hidden)) keepLegwearCustom.disabled = disabled;
-    } else {
-      var keepLegwearBox = qs('input[name="keep_legwear"]', form);
-      if (keepLegwearBox) keepLegwearBox.disabled = disabled;
-    }
-
-    var hands = qs('input[name="repair_hands"]', form);
-    var feet = qs('input[name="repair_feet"]', form);
-    hands.disabled = disabled;
-    feet.disabled = disabled;
-    var repairDisabled = disabled || !(hands.checked || feet.checked);
-    qs('input[name="repair_pad"]', form).disabled = repairDisabled;
-    qs('input[name="repair_lora"]', form).disabled = repairDisabled;
   }
 
   function initFinalizeDeliverOnly() {
@@ -3620,6 +3887,7 @@ export const appJs = `
         if (token !== lightboxLoadToken) return;
         lightboxPanel.innerHTML = html;
         qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
+        qsa('.finalize-form', lightboxPanel).forEach(ensureRepairRegionOverlay);
         qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeDeliverOnly);
         qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeBackdropColor);
         updateCompareBar();
@@ -3732,6 +4000,7 @@ export const appJs = `
     initFinalize();
     initFinalizeAll();
     initFinalizeBackdropColor();
+    initFinalizeRepairRegions();
     initFinalizeRepairPad();
     initFinalizeDeliverOnly();
     initFinalizePreview();

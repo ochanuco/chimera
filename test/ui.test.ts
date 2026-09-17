@@ -561,7 +561,7 @@ describe('Web GUI pages', () => {
       const html = await (await req(path)).text();
       expect(html).toContain('<legend>描き直し</legend>');
       expect(html).toContain('<legend>納品の見た目</legend>');
-      expect(html).toContain('<legend>部分描き直し（描き直す時だけ）</legend>');
+      expect(html).toContain('<legend>部分描き直し</legend>');
       expect((html.match(/class="finalize-group"/g) ?? []).length).toBe(3);
     }
   });
@@ -569,9 +569,9 @@ describe('Web GUI pages', () => {
   it('the Finalize forms show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
     const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
-    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(10);
+    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(11);
     const batchHtml = await (await req(`/b/${batch.id}`)).text();
-    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(10);
+    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(11);
   });
 
   it('the Finalize forms disable repair_pad/repair_lora until a repair region is checked', async () => {
@@ -581,6 +581,24 @@ describe('Web GUI pages', () => {
       expect(html).toMatch(/<input type="number" name="repair_pad"[^>]*disabled/);
       expect(html).toMatch(/<input type="number" name="repair_lora"[^>]*disabled/);
     }
+  });
+
+  it('the Finalize forms render a disabled repair_seeds number input (1..8, default 4)', async () => {
+    const { generation, batch } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+      const html = await (await req(path)).text();
+      expect(html).toMatch(/<input type="number" name="repair_seeds"[^>]*min="1"[^>]*max="8"[^>]*placeholder="4"[^>]*disabled/);
+    }
+  });
+
+  it('only the Generation Detail / Lightbox Finalize form offers repair region drawing tools, not Finalize all arms', async () => {
+    const { generation, batch } = await createGeneration();
+    const genHtml = await (await req(`/g/${generation.short_id}`)).text();
+    expect(genHtml).toContain('data-repair-region-tools');
+    expect(genHtml).toContain('data-repair-region-clear');
+
+    const batchHtml = await (await req(`/b/${batch.id}`)).text();
+    expect(batchHtml).not.toContain('data-repair-region-tools');
   });
 
   it('the Finalize forms offer all 8 stroke light directions', async () => {
