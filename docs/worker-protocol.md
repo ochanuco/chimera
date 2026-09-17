@@ -447,8 +447,9 @@ worker は `failed` にします。`generation.identity_override` に理由の�
   repair_denoise      null | number (0, 1] | word  `--repair-denoise 0.6`
   repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
-  repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値）
-  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / lora_strength / handdrawn / toe_guard / repair 系 / upscale との併用と layerdiffuse な Generation を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可）
+  repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。yukari-anima な Generation では worker が無視する）
+  repair_seeds        null | integer (1-8)      `--repair-seeds N`（`deliver_only` と `repair` / `repair_regions` を組み合わせた時だけ効く。seed ごとに1候補を作る数、worker 既定 4）
+  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / lora_strength / handdrawn / toe_guard / upscale との併用と layerdiffuse な Generation を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Batch として記録する（raw + delivered を seed ごとに1組）。`repair_lora` は yukari-anima な Generation では無視される）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
@@ -458,9 +459,10 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 から解決します（`stroke_light` は `"n"` ＝上からの光源・下に影、`backdrop` は
 `"stripes"`）。`yukari-anima` の recipe に限り `deliver_only` も既定で `true`、`repin` も
 既定で `false` になりますが、denoise / size / route / finalizer / lora_strength /
-sketch_redraw / handdrawn / toe_guard / repair / repair_regions / keep_regions / upscale
-のいずれか（redraw の絵柄を変える option）を指定するとこの既定は外れ、通常どおり
-redraw します。明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
+sketch_redraw / handdrawn / toe_guard / keep_regions / upscale のいずれか（redraw の
+絵柄を変える option）を指定するとこの既定は外れ、通常どおり redraw します。`repair` /
+`repair_regions` はこの既定を外さず、`deliver_only` のまま masked reroll の候補を作る
+側に扱われます。明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
 `stroke_light: null` は方向性のない均一な紫縁、`backdrop: null` は背景なし（透過）を
 指します。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
 chimera の WebUI フォームのプリセットもここから取っています。
@@ -473,14 +475,17 @@ catalog が `recipes[].dials.finalize` として公開するもので、chimera 
 `failed`）。`profile` は [finalize profile](#finalize-profile) を参照してください。
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
-`backdrop` / `stroke_light` に加えて、repair のチェックボックスを使った場合は
-`repair` / `repair_pad` / `repair_lora` を持ち、他は省略します。`backdrop` は選んだカードの
+`backdrop` / `stroke_light` に加えて、repair のチェックボックスか描画した範囲を使った場合は
+`repair` / `repair_regions` / `repair_pad` / `repair_lora` を、`deliver_only` チェック中に
+それらを使った場合はさらに `repair_seeds` を持ち、他は省略します。`backdrop` は選んだカードの
 模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
 `#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は recipe `yukari` の Batch でだけ選べ、
 `yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
-`null`（recipe 既定）です。「repair hands」「repair feet」はどちらも既定オフで、
-チェックした分だけ `repair` に積みます。`repair pad` / `repair lora` の入力欄は空が既定で、
-空のまま積めば省略（worker 既定）です。
+`null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、
+チェックした分だけ `repair` に積みます。Generation Detail / Lightbox は画像上にドラッグした矩形を
+`repair_regions`（表示中の画像に対する分数 `[x0,y0,x1,y1]`）として持ち、部位チェックが無くても
+範囲だけで積めます。`repair pad` / `repair lora`（`repair lora` は `deliver_only` 中は常に送らない）
+/ `repair seeds`（`deliver_only` 中のみ）の入力欄は空が既定で、空のまま積めば省略（worker 既定）です。
 
 #### finalize profile
 

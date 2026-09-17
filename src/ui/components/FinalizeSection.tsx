@@ -58,6 +58,7 @@ export function FinalizeSection({
             backdrops={backdrops}
             recipeRef={recipeRef}
             catalogVersion={catalogVersion}
+            regionDrawing
           />
         </form>
         {canPromoteToProfile ? (

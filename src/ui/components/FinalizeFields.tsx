@@ -139,6 +139,7 @@ export function FinalizeFields({
   backdrops = [],
   recipeRef = null,
   catalogVersion = null,
+  regionDrawing = false,
 }: {
   recipe: string | null;
   submitLabel: string;
@@ -151,6 +152,8 @@ export function FinalizeFields({
   recipeRef?: string | null;
   /** The published catalog's updated_at — cache-busts the otherwise-immutable thumbnail URL. */
   catalogVersion?: string | null;
+  /** True only where this form sits beside a single Generation's image (Generation Detail / Lightbox) — the batch "finalize all arms" form has no single image to draw regions on. */
+  regionDrawing?: boolean;
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
 
@@ -202,8 +205,8 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣・部分描き直しは OFF のときだけ効く"
-          data-help="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣・部分描き直しは OFF のときだけ効く"
+          aria-label="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣は OFF のときだけ効く。部分描き直しは ON/OFF どちらでも使え、ON では候補数（repair seeds）分の納品候補を作る"
+          data-help="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣は OFF のときだけ効く。部分描き直しは ON/OFF どちらでも使え、ON では候補数（repair seeds）分の納品候補を作る"
         >
           ?
         </span>
@@ -340,7 +343,7 @@ export function FinalizeFields({
       </fieldset>
 
       <fieldset class="finalize-group">
-        <legend>部分描き直し（描き直す時だけ）</legend>
+        <legend>部分描き直し</legend>
         <label>
           <input type="checkbox" name="repair_hands" /> 手を描き直す（repair hands）
         </label>
@@ -351,11 +354,20 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="その部位だけマスクして描き直す。この finalize request に相乗りする"
-          data-help="その部位だけマスクして描き直す。この finalize request に相乗りする"
+          aria-label="その部位だけマスクして描き直す。この finalize request に相乗りする。描き直さない（deliver only）でも使え、その場合は候補数分の納品候補を作る"
+          data-help="その部位だけマスクして描き直す。この finalize request に相乗りする。描き直さない（deliver only）でも使え、その場合は候補数分の納品候補を作る"
         >
           ?
         </span>
+        {regionDrawing ? (
+          <div class="repair-region-tools" data-repair-region-tools>
+            <span class="repair-region-hint">画像をドラッグして描き直す範囲を指定（複数可）</span>
+            <span class="repair-region-count" data-repair-region-count></span>
+            <button type="button" class="repair-region-clear" data-repair-region-clear>
+              範囲をすべて消す
+            </button>
+          </div>
+        ) : null}
         <label>
           マスクの余白（repair pad）{' '}
           <input type="number" name="repair_pad" step="0.1" min="0.5" max="3" placeholder="1.0" disabled />
@@ -374,8 +386,21 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要"
-          data-help="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要"
+          aria-label="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要。描き直さない（deliver only）中は常に off（yukari-anima では worker が無視する）"
+          data-help="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要。描き直さない（deliver only）中は常に off（yukari-anima では worker が無視する）"
+        >
+          ?
+        </span>
+        <label>
+          候補数（repair seeds）{' '}
+          <input type="number" name="repair_seeds" step="1" min="1" max="8" placeholder="4" disabled />
+        </label>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="描き直さない（deliver only）で部分描き直しと組み合わせた時だけ効く。seed ごとに1候補、1〜8、空欄なら worker 既定 4"
+          data-help="描き直さない（deliver only）で部分描き直しと組み合わせた時だけ効く。seed ごとに1候補、1〜8、空欄なら worker 既定 4"
         >
           ?
         </span>
