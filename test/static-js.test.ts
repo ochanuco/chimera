@@ -22,17 +22,38 @@ describe('served app.js', () => {
     expect(appJs).toContain("if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;");
   });
 
-  it('finalizeOptionsFrom sends deliver_only:true and skips denoise/repair keys once it is checked', () => {
+  it('finalizeOptionsFrom sends deliver_only:true, keeps repair/repair_regions shared but skips denoise/repair_lora, and only sends repair_seeds once it is checked', () => {
     expect(appJs).toContain('options.deliver_only = true;');
     expect(appJs).toContain("qs('input[name=\"deliver_only\"]', form)");
+    // repair / repair_regions / repair_pad are assigned before the deliverOnly branch, so both
+    // modes get them; only denoise and repair_lora (redraw-only) and repair_seeds (deliver_only-only)
+    // differ by mode.
+    expect(appJs).toContain('options.repair = repair;');
+    expect(appJs).toContain('options.repair_regions = regions;');
     const deliverOnlyBranch = appJs.split('if (deliverOnly) {')[1]?.split('return options;\n    }')[0] ?? '';
     expect(deliverOnlyBranch).not.toContain('options.denoise');
-    expect(deliverOnlyBranch).not.toContain('options.repair');
+    expect(deliverOnlyBranch).not.toContain('options.repair_lora');
+    expect(deliverOnlyBranch).toContain('options.repair_seeds');
   });
 
   it('disables/re-enables the denoise and repair controls when deliver_only is toggled', () => {
     expect(appJs).toContain('function syncFinalizeDeliverOnly(form)');
     expect(appJs).toContain('function initFinalizeDeliverOnly()');
     expect(appJs).toContain('syncFinalizeDeliverOnly(form);');
+  });
+
+  it('finalizeOptionsFrom gates every repair* key on a checked part or a drawn region, not on deliver_only', () => {
+    // repairActive (the deliver_only+feet+regions case: repair non-empty or regions non-empty)
+    // gates options.repair/options.repair_regions; nothing checked and no regions sends neither.
+    expect(appJs).toContain('var repairActive = repair.length > 0 || regions.length > 0;');
+    expect(appJs).toContain('if (repairActive) {\n      options.repair = repair;\n      if (regions.length > 0) options.repair_regions = regions;\n    }');
+    // repair_pad stays gated on a checked part specifically (not merely a drawn region), matching
+    // the single-part repair endpoint's existing contract.
+    expect(appJs).toContain("if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);");
+  });
+
+  it('finalizeOptionsFrom reads repair regions from the per-form region-drawing state', () => {
+    expect(appJs).toContain('function regionsFor(form)');
+    expect(appJs).toContain('var regions = regionsFor(form);');
   });
 });
