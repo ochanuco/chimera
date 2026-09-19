@@ -596,6 +596,8 @@ describe('Web GUI pages', () => {
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('data-repair-region-tools');
     expect(genHtml).toContain('data-repair-region-clear');
+    // Drawing is opt-in so a plain click / right-click on the image isn't captured by the overlay.
+    expect(genHtml).toMatch(/data-repair-region-toggle[^>]*aria-pressed="false"/);
 
     const batchHtml = await (await req(`/b/${batch.id}`)).text();
     expect(batchHtml).not.toContain('data-repair-region-tools');
