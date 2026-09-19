@@ -782,6 +782,10 @@ describe('Web GUI pages', () => {
     // Compare images opt into the shared hover preview via .thumb-link / .thumb-fg.
     expect(body).toContain('class="thumb-link"');
     expect(body).toContain('class="thumb-fg"');
+    // Each column carries the shared rating + bookmark row, so rating works in place.
+    expect(body).toContain(`class="rating-group" data-generation-id="${g1.id}"`);
+    expect(body).toContain(`class="rating-group" data-generation-id="${g2.id}"`);
+    expect(body).toContain(`class="bookmark-btn" data-kind="generations" data-id="${g1.id}"`);
   });
 
   it('GET /compare shows a semantic diff table with per-row highlighting for differing values', async () => {

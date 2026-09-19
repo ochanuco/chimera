@@ -503,9 +503,11 @@ pages.get('/compare', async (c) => {
   );
 
   const items: CompareItem[] = rows.map(({ row, characterName }) => ({
+    id: row.id,
     short_id: row.short_id,
     image_url: generationImageUrl(origin, row.short_id),
     rating: row.rating,
+    bookmark: row.bookmark === 1,
     character_name: characterName,
     batch_short_id: batchShortIds.get(row.batch_id) ?? null,
     seed: row.seed,
