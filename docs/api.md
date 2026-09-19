@@ -226,6 +226,11 @@ sampler ごとの prompt・latent だけ）。
 がfactsがまだ無い（または古い）行は最初の読み取り時（Generation detail /
 Batch detail / Experiment run のいずれか）に抽出してその場で書き戻します。
 
+original が保持期間を過ぎて purge / 再圧縮の対象になった Generation は、original の
+PNG が持つ `prompt` text chunk から `comfy_job.graph` を救出済みなので
+（[domain-model.md](domain-model.md#original-の再圧縮)）、その original が既に消えて
+いても（PNG が WebP に変わっていても）`comfy_job.graph` はそのまま読めます。
+
 `render_facts` は以下の箇所に現れます:
 
 -   `GET /api/v1/generations/{id}` の `comfy_job.render_facts`（同じレスポンスの
@@ -1131,6 +1136,10 @@ null）なら、replay は original を R2 へ書き戻しません — purge �
 }
 ```
 
+ingest 時点では常に `original.png` です。再圧縮ジョブが後から `original.webp` に
+差し替えることがありますが（[domain-model.md](domain-model.md#original-の再圧縮)）、それは
+この ingest レスポンスには現れません。
+
 ## Generation Assets
 
 線画・マスク・分解レイヤー・PSD 等のレイヤーアセットを Generation
@@ -1331,7 +1340,10 @@ pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null
 
 `thumbnail_url` は `GET /g/{short_id}/preview`（長辺1024px以下のWebP。初回リクエスト時に
 元画像から生成しR2へ保存する）、`image_url` は `GET /g/{short_id}/image`（元画像そのもの）
-です。サムネイル用途は必ず前者を使います。
+です。サムネイル用途は必ず前者を使います。保持期間（30日）を過ぎた古い Generation では
+再圧縮ジョブ（[domain-model.md](domain-model.md#original-の再圧縮)）が原本を lossless
+WebP に変換していることがあり、その場合 `image_url` は `Content-Type: image/webp` を
+返します。画素は元の PNG と同一です。
 
 `original_purged_at` は original の保持期間ジョブがその original を削除した時刻
 （[domain-model.md](domain-model.md#original-の保持)）。null なら未削除で、`image_url`

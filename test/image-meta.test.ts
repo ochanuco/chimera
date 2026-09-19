@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { formatBytes, getImageMeta } from '../src/lib/image-meta';
+import { extractPngTextChunk, formatBytes, getImageMeta, pngHasTransparency } from '../src/lib/image-meta';
+import { itxtChunkData, makePngWithChunks, textChunkData } from './helpers';
 
 /** Minimal PNG: signature + IHDR chunk header carrying width/height. CRC is not validated by our parser. */
 function makePng(width: number, height: number): Uint8Array {
@@ -43,6 +44,71 @@ describe('getImageMeta', () => {
   it('returns null for a missing object', async () => {
     const meta = await getImageMeta(env.IMAGES, `image-meta-test/does-not-exist-${crypto.randomUUID()}.png`);
     expect(meta).toBeNull();
+  });
+});
+
+describe('pngHasTransparency', () => {
+  it('is true for an RGBA (color type 6) PNG', async () => {
+    const bytes = await makePngWithChunks(4, 4, { colorType: 6 });
+    expect(pngHasTransparency(bytes)).toBe(true);
+  });
+
+  it('is false for an RGB (color type 2) PNG without a tRNS chunk', async () => {
+    const bytes = await makePngWithChunks(4, 4, { colorType: 2 });
+    expect(pngHasTransparency(bytes)).toBe(false);
+  });
+
+  it('is true for an RGB PNG carrying a tRNS chunk', async () => {
+    const bytes = await makePngWithChunks(4, 4, {
+      colorType: 2,
+      extraChunks: [{ type: 'tRNS', data: new Uint8Array([0, 0, 0, 0, 0, 0]) }],
+    });
+    expect(pngHasTransparency(bytes)).toBe(true);
+  });
+
+  it('is null for non-PNG bytes', () => {
+    expect(pngHasTransparency(new Uint8Array([1, 2, 3, 4]))).toBeNull();
+  });
+
+  it('is null for a truncated PNG missing IHDR', () => {
+    const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(pngHasTransparency(signature)).toBeNull();
+  });
+});
+
+describe('extractPngTextChunk', () => {
+  it('reads a tEXt chunk by keyword', async () => {
+    const bytes = await makePngWithChunks(4, 4, {
+      extraChunks: [{ type: 'tEXt', data: textChunkData('prompt', '{"1":{}}') }],
+    });
+    expect(extractPngTextChunk(bytes, 'prompt')).toBe('{"1":{}}');
+  });
+
+  it('reads an uncompressed iTXt chunk by keyword', async () => {
+    const bytes = await makePngWithChunks(4, 4, {
+      extraChunks: [{ type: 'iTXt', data: itxtChunkData('prompt', '{"1":{}}') }],
+    });
+    expect(extractPngTextChunk(bytes, 'prompt')).toBe('{"1":{}}');
+  });
+
+  it('ignores a compressed iTXt chunk', async () => {
+    const bytes = await makePngWithChunks(4, 4, {
+      extraChunks: [{ type: 'iTXt', data: itxtChunkData('prompt', 'ignored', true) }],
+    });
+    expect(extractPngTextChunk(bytes, 'prompt')).toBeNull();
+  });
+
+  it('returns null when the keyword is absent', async () => {
+    const bytes = await makePngWithChunks(4, 4, {
+      extraChunks: [{ type: 'tEXt', data: textChunkData('other', 'value') }],
+    });
+    expect(extractPngTextChunk(bytes, 'prompt')).toBeNull();
+  });
+
+  it('returns null for non-PNG or truncated input', () => {
+    expect(extractPngTextChunk(new Uint8Array([1, 2, 3]), 'prompt')).toBeNull();
+    const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(extractPngTextChunk(signature, 'prompt')).toBeNull();
   });
 });
 

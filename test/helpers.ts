@@ -121,17 +121,17 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-function crc32(buf: Uint8Array): number {
+export function crc32(buf: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of buf) crc = (CRC_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function u32be(n: number): Uint8Array {
+export function u32be(n: number): Uint8Array {
   return new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
 }
 
-function pngChunk(type: string, data: Uint8Array): Uint8Array {
+export function pngChunk(type: string, data: Uint8Array): Uint8Array {
   const typeBytes = new TextEncoder().encode(type);
   const body = new Uint8Array(typeBytes.length + data.length);
   body.set(typeBytes, 0);
@@ -143,7 +143,7 @@ function pngChunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-async function zlibDeflate(data: Uint8Array): Promise<Uint8Array> {
+export async function zlibDeflate(data: Uint8Array): Promise<Uint8Array> {
   const cs = new CompressionStream('deflate');
   const writer = cs.writable.getWriter();
   void writer.write(data);
@@ -198,6 +198,90 @@ export async function makeSolidPng(width: number, height: number, rgb: [number, 
     out.set(part, offset);
     offset += part.length;
   }
+  return out;
+}
+
+export interface PngChunkSpec {
+  type: string;
+  data: Uint8Array;
+}
+
+/**
+ * General-purpose PNG builder for cases makeSolidPng can't cover: an explicit color type
+ * (2 = RGB, 6 = RGBA, for pngHasTransparency), extra chunks spliced in before IDAT (for
+ * extractPngTextChunk / graph-rescue fixtures), and a per-pixel color function (for content
+ * that actually compresses differently under PNG vs. lossless WebP, unlike a solid fill).
+ */
+export async function makePngWithChunks(
+  width: number,
+  height: number,
+  options: {
+    colorType?: 2 | 6;
+    pixel?: (x: number, y: number) => [number, number, number];
+    extraChunks?: PngChunkSpec[];
+  } = {},
+): Promise<Uint8Array> {
+  const colorType = options.colorType ?? 2;
+  const channels = colorType === 6 ? 4 : 3;
+  const pixel = options.pixel ?? (() => [0, 0, 0] as [number, number, number]);
+  const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  const ihdrData = new Uint8Array(13);
+  new DataView(ihdrData.buffer).setUint32(0, width);
+  new DataView(ihdrData.buffer).setUint32(4, height);
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = colorType;
+  const ihdr = pngChunk('IHDR', ihdrData);
+
+  const rowBytes = 1 + width * channels;
+  const raw = new Uint8Array(rowBytes * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * rowBytes; // raw[rowStart] stays 0: filter type "none"
+    for (let x = 0; x < width; x++) {
+      const px = rowStart + 1 + x * channels;
+      raw.set(pixel(x, y), px);
+      if (channels === 4) raw[px + 3] = 255;
+    }
+  }
+  const idat = pngChunk('IDAT', await zlibDeflate(raw));
+  const iend = pngChunk('IEND', new Uint8Array(0));
+  const extraChunks = (options.extraChunks ?? []).map((c) => pngChunk(c.type, c.data));
+
+  const parts = [signature, ihdr, ...extraChunks, idat, iend];
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+/** `keyword\0text`, the body of a tEXt chunk (Latin-1). */
+export function textChunkData(keyword: string, text: string): Uint8Array {
+  const kw = new TextEncoder().encode(keyword);
+  const txt = new TextEncoder().encode(text);
+  const out = new Uint8Array(kw.length + 1 + txt.length);
+  out.set(kw, 0);
+  out.set(txt, kw.length + 1);
+  return out;
+}
+
+/** `keyword\0 compressionFlag compressionMethod languageTag\0 translatedKeyword\0 text`, the body of an iTXt chunk (UTF-8 text). */
+export function itxtChunkData(keyword: string, text: string, compressed = false): Uint8Array {
+  const kw = new TextEncoder().encode(keyword);
+  const txt = new TextEncoder().encode(text);
+  const out = new Uint8Array(kw.length + 5 + txt.length);
+  let offset = 0;
+  out.set(kw, offset);
+  offset += kw.length;
+  offset += 1; // keyword NUL terminator (byte already 0)
+  out[offset] = compressed ? 1 : 0; // compression flag
+  offset += 2; // + compression method (byte already 0)
+  offset += 1; // empty language tag NUL terminator
+  offset += 1; // empty translated keyword NUL terminator
+  out.set(txt, offset);
   return out;
 }
 
