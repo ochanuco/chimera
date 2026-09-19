@@ -14,7 +14,9 @@
   ],
   // requests 行の recipe_ref 既定。comfyui-recipes 側の box は production ブランチだけを受ける。
   "vars": {
-    "REQUESTS_DEFAULT_RECIPE_REF": "production"
+    "REQUESTS_DEFAULT_RECIPE_REF": "production",
+    // 保持する original の lossless WebP 再圧縮 (src/lib/original-recompress.ts)。
+    "ORIGINAL_RECOMPRESS": "on"
   },
   "observability": {
     "enabled": true

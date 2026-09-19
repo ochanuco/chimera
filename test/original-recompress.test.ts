@@ -80,9 +80,9 @@ describe('recompressRetainedOriginals', () => {
   it('does nothing when ORIGINAL_RECOMPRESS is not set', async () => {
     const { generation } = await createGeneration();
     await putOriginal(generation.id, await makeOpaquePng(256));
-    await ageGeneration(generation.id, 31);
+    await ageKeptGeneration(generation.id, 31);
 
-    const result = await recompressRetainedOriginals(env, NOW, 10);
+    const result = await recompressRetainedOriginals({ ...env, ORIGINAL_RECOMPRESS: undefined }, NOW, 10);
     expect(result).toEqual({ converted: 0, kept: 0 });
     expect(await env.IMAGES.head(originalKey(generation.id))).not.toBeNull();
     expect((await generationRow(generation.id)).original_recompress_checked_at).toBeNull();
