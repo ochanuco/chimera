@@ -3,7 +3,7 @@
 // どちらも GET /api/v1/generations{,/id} と同じ形を返す。
 
 import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool } from './db';
-import { canonicalGenerationUrl, generationImageUrl } from './serialize';
+import { canonicalGenerationUrl, generationImageUrl, generationPreviewUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
@@ -466,7 +466,7 @@ export async function queryGenerations(
       short_id: r.short_id,
       canonical_url: canonicalGenerationUrl(org, r.short_id),
       image_url: generationImageUrl(org, r.short_id),
-      thumbnail_url: generationImageUrl(org, r.short_id),
+      thumbnail_url: generationPreviewUrl(org, r.short_id),
       rating: r.rating,
       bookmark: toBool(r.bookmark),
       summary: r.summary,

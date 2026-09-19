@@ -20,7 +20,7 @@ import { resolveBatchRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
 import {
-  generationImageUrl,
+  generationPreviewUrl,
   serializeExperiment,
   serializeExperimentPromotion,
   serializeExperimentRun,
@@ -147,7 +147,7 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
         ? {
             id: batch.id,
             short_id: batch.short_id,
-            thumbnail_url: thumbShortId ? generationImageUrl(org, thumbShortId) : null,
+            thumbnail_url: thumbShortId ? generationPreviewUrl(org, thumbShortId) : null,
           }
         : null,
       generation: generation ? serializeGenerationLight(generation, org) : null,

@@ -112,7 +112,7 @@ export function BatchDetailPage({
 
   const batchThumb = (batchId: string): string | null => {
     const genShortId = batchThumbnails.get(batchId);
-    return genShortId ? `/g/${genShortId}/image` : null;
+    return genShortId ? `/g/${genShortId}/preview` : null;
   };
 
   const parentCards: FamilyCardData[] = [
@@ -122,7 +122,7 @@ export function BatchDetailPage({
         kind: 'reference',
         href: link.href,
         shortId: link.label,
-        imageUrl: `/g/${link.label}/image`,
+        imageUrl: `/g/${link.label}/preview`,
         detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
       };
     }),

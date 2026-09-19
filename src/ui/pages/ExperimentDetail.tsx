@@ -610,7 +610,7 @@ export function ExperimentDetailPage({
           <td>
             {experiment.base_generation_short_id ? (
               <a class="exp-base-generation" href={`/g/${experiment.base_generation_short_id}`}>
-                <img src={`/g/${experiment.base_generation_short_id}/image`} alt="" class="exp-base-generation-thumb" />
+                <img src={`/g/${experiment.base_generation_short_id}/preview`} alt="" class="exp-base-generation-thumb" />
                 {experiment.base_generation_short_id}
               </a>
             ) : (

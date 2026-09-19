@@ -1318,6 +1318,10 @@ pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null
 [Pose Reference Pin](#pose-reference-pin)参照）、`finalize_request`
 等の軽量情報を返します。
 
+`thumbnail_url` は `GET /g/{short_id}/preview`（長辺1024px以下のWebP。初回リクエスト時に
+元画像から生成しR2へ保存する）、`image_url` は `GET /g/{short_id}/image`（元画像そのもの）
+です。サムネイル用途は必ず前者を使います。
+
 `finalize_request` は、この Generation を対象にした最新の finalize / repair /
 masked_redraw [Request](#request)（`payload.generation_id` がこの Generation の UUID /
 short_id のどちらかと一致する行のうち、最新の1件）です。無ければ `null`。

@@ -140,10 +140,15 @@ refinement Batch / rebuild Reference を作ります。
 
 ``` text
 generations/{generation_id}/original.png
+generations/{generation_id}/preview.webp
 ```
 
 ComfyUI の filename は object key に利用せず、DB 上の metadata
 として保存します。
+
+`preview.webp`（長辺1024px以下）は `GET /g/{short_id}/preview` への初回リクエスト時に
+`original.png` から生成・保存されるサムネイルで、正本ではありません。GUI/API の
+サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
 ## Ingest Flow
 
