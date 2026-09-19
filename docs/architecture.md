@@ -150,6 +150,12 @@ ComfyUI の filename は object key に利用せず、DB 上の metadata
 `original.png` から生成・保存されるサムネイルで、正本ではありません。GUI/API の
 サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
+`original.png` だけは、保持期間ジョブ（`src/lib/original-purge.ts`、cron trigger
+`*/30 * * * *`、`scheduled` ハンドラ）が古い低価値 Generation について削除します。
+1回あたりの処理件数は `ORIGINAL_PURGE_BATCH_SIZE`（省略時8）— Generation 1件あたり
+最悪 ~5 subrequest かかるため、50 subrequest 予算のプランではこの既定値に収めています。
+`preview.webp` と D1 行は残ります（`docs/domain-model.md`「original の保持」）。
+
 ## Ingest Flow
 
 ``` text

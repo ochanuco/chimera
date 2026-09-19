@@ -58,7 +58,16 @@ export function serializeBatch(row: BatchRow) {
 
 export type GenerationLightSource = Pick<
   GenerationRow,
-  'id' | 'short_id' | 'rating' | 'bookmark' | 'character_id' | 'created_at' | 'image_width' | 'image_height' | 'image_size'
+  | 'id'
+  | 'short_id'
+  | 'rating'
+  | 'bookmark'
+  | 'character_id'
+  | 'created_at'
+  | 'image_width'
+  | 'image_height'
+  | 'image_size'
+  | 'original_purged_at'
 >;
 
 /** Lightweight Generation representation embedded in Batch/Story responses. */
@@ -76,6 +85,7 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     image_width: row.image_width,
     image_height: row.image_height,
     image_size: row.image_size,
+    original_purged_at: row.original_purged_at,
   };
 }
 

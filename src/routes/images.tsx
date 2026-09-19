@@ -11,7 +11,7 @@ import {
 } from '../lib/db';
 import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
-import { notFound } from '../lib/errors';
+import { gone, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
@@ -41,6 +41,8 @@ async function resolveImageMeta(bucket: R2Bucket, generation: GenerationRow): Pr
   if (generation.image_size !== null) {
     return { width: generation.image_width, height: generation.image_height, size: generation.image_size };
   }
+  // original が purge 済みなら R2 には無いので、無駄な GET を打たずに諦める。
+  if (generation.original_purged_at) return null;
   return getImageMeta(bucket, generation.r2_object_key);
 }
 
@@ -189,6 +191,7 @@ images.get('/:shortId', async (c) => {
         finalizeBackdrops={finalizeBackdrops}
         finalizeRecipeRef={finalizeRecipeRef}
         finalizeCatalogVersion={finalizeCatalogVersion}
+        purged={Boolean(data.original_purged_at)}
       />,
     );
   }
@@ -341,6 +344,7 @@ images.get('/:shortId/image', async (c) => {
   const shortId = c.req.param('shortId');
   const generation = await getGenerationByIdOrShortId(db, shortId);
   if (!generation) throw notFound('generation');
+  if (generation.original_purged_at) throw gone('original_purged', 'the original image was purged; see /preview instead');
 
   const object = await c.env.IMAGES.get(generation.r2_object_key);
   if (!object) throw notFound('image');

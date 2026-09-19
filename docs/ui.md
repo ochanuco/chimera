@@ -422,6 +422,8 @@ abc123                      xyz987
 ゆかり                      ゆかり
 ```
 
+originalがpurge済みのGenerationは、そのカラムだけ画像に`GET /g/{short_id}/preview`を表示します。
+
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全
 Generationのattributesキーの和集合。列は各Generationです。
@@ -485,6 +487,13 @@ Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求
 [ IMAGE ] | good  🔖
 [ IMAGE ] | #pose-good #outfit-good
 ```
+
+originalが保持期間ジョブでpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
+Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
+`原寸は破棄済み（preview のみ）`と添えます。Finalizeセクションはフォームを出さず、代わりに
+「原寸は破棄済みのため finalize / repair / masked redraw は積めません。」という一文だけを表示します
+（進捗履歴のrequest一覧は表示したままです）。Lightboxパネルも同じ扱いです
+（`原寸は破棄済み（preview のみ）`をmeta行の下に、Finalizeセクションは同じ一文に差し替え）。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、

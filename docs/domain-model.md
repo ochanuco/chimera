@@ -707,10 +707,47 @@ summary_status
 summary_model
 summary_updated_at
 created_at
+original_purged_at
 ```
 
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
-status 等で扱います。
+status 等で扱います。ただし original 画像（`r2_object_key` の R2 オブジェクト）だけは、
+下記の保持期間ジョブが削除することがあります。行そのものは残るので、この削除は
+「Generation の物理削除」には当たりません。
+
+### original の保持
+
+古い低価値の Generation について、original.png だけを定期ジョブ (`src/lib/original-purge.ts`、
+30分ごとの scheduled 実行) が削除し、行と `preview.webp`（1024px WebP、
+[architecture.md](architecture.md)「R2」節参照）は残します。`original_purged_at` が非 NULL
+ならその Generation の original はもう存在しません。
+
+対象は次をすべて満たす Generation です。
+
+```text
+original_purged_at IS NULL
+rating が NULL または 'bad'
+bookmark = 0
+created_at が現在時刻から30日以上前
+```
+
+ただし次のいずれかに該当する Generation は対象から外れます（original がまだ
+用済みでない理由）。
+
+```text
+Publication を持つ
+preset_reference の pin (generation_id または source_generation_id) である
+Preset の source_generation_id である
+Experiment の base_generation_id である
+他 Batch の BatchReference の source_generation_id である（参照材料として使われている）
+他 Batch の refines_generation_id である（finalize/repair/masked_redraw の仕上げ元）
+進行中 (queued/running) の finalize/repair/masked_redraw request の対象である
+```
+
+original が purge された Generation は、`GET /g/{short_id}/image` が 410
+(`original_purged`) を返し、finalize/repair/masked_redraw の起票は 409
+(`original_purged`) で拒否されます（[api.md](api.md)、[worker-protocol.md](worker-protocol.md)）。
+GUI は preview を代わりに表示します（[ui.md](ui.md)）。
 
 ## Publication
 

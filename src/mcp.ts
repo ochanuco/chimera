@@ -66,7 +66,7 @@ import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import { foldBatchDigestPrompts, foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
-import { MAX_TRANSFORM_INPUT_BYTES } from './lib/generation-preview';
+import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
 import type { Bindings } from './types';
 
 /**
@@ -473,13 +473,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Fetch a Generation image by short_id (or id). Returns it downscaled and re-encoded as JPEG — the MCP ' +
         "client caps a whole response at 1MB, which a full-size PNG blows past once base64-encoded — so it's for " +
         'judging composition, not pixel-level inspection. width (256-1024, default 768) trades detail for a ' +
-        'smaller reply. Images too large to inline return the canonical URL instead.',
+        'smaller reply. Images too large to inline return the canonical URL instead. A Generation whose original ' +
+        'was purged by the retention job is served from its 1024px preview instead.',
       inputSchema: z.object({ short_id: z.string().min(1), width: z.number().optional() }),
       annotations: { readOnlyHint: true },
     },
     async ({ short_id, width }) => {
       const generation = await resolveGenerationOr404(db, short_id);
-      const head = await bucket.head(generation.r2_object_key);
+      const sourceKey = generation.original_purged_at ? generationPreviewR2Key(generation.id) : generation.r2_object_key;
+      const head = await bucket.head(sourceKey);
       if (!head) throw notFound('image');
 
       const canonicalUrl = canonicalGenerationUrl(origin, generation.short_id);
@@ -498,7 +500,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         return pointer(`image is ${head.size} bytes, over the ${MAX_TRANSFORM_INPUT_BYTES} byte transform input limit.`);
       }
 
-      const object = await bucket.get(generation.r2_object_key);
+      const object = await bucket.get(sourceKey);
       if (!object) throw notFound('image');
 
       // transform 用と、失敗時のフォールバック用に body を分ける。成功すれば

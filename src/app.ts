@@ -68,7 +68,7 @@ app.route('/', pages);
 
 app.onError((err, c) => {
   if (err instanceof ApiError) {
-    return c.json(err.toJSON(), err.status as 400 | 404 | 409);
+    return c.json(err.toJSON(), err.status as 400 | 404 | 409 | 410);
   }
   if (err instanceof ZodError) {
     const message = err.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');

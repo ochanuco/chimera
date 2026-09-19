@@ -99,7 +99,10 @@ jobs.post('/:jobId/generations', async (c) => {
 
   // Replay path for a prior ingest that inserted the row but failed before the
   // R2 PUT completed: the row already fixes the object key, so re-upload there.
-  const ensureObject = async (g: Pick<GenerationRow, 'r2_object_key'>) => {
+  // A Generation whose original was since purged must stay purged — a replay is not
+  // a reason to bring the object back.
+  const ensureObject = async (g: Pick<GenerationRow, 'r2_object_key' | 'original_purged_at'>) => {
+    if (g.original_purged_at) return;
     const head = await c.env.IMAGES.head(g.r2_object_key);
     if (!head) {
       await c.env.IMAGES.put(g.r2_object_key, imageBuffer, { httpMetadata: { contentType } });

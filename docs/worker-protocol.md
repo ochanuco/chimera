@@ -1055,3 +1055,8 @@ chimera が patch を検証するのにこれが要ります。
   昇格 PR の merge でしか動かないブランチです。
 - Service Token の期限切れは claim / heartbeat の 403 として現れます。worker は
   ログに出して poll を続け、chimera 側は何もしません。
+- `finalize` / `repair` / `masked_redraw` は `payload.generation_id` が指す Generation
+  自身の画像を読みます（この節「payload」参照）。その original が保持期間ジョブで
+  purge 済み（`original_purged_at` 非 null、`docs/domain-model.md`「original の保持」）なら
+  読めないので、chimera は request の作成自体を 409（`original_purged`）で拒否し、queued
+  行は作られません。`generate` request（derive_request 含む）はこの制限を受けません。

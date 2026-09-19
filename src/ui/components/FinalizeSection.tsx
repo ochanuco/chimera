@@ -30,6 +30,7 @@ export function FinalizeSection({
   recipeRef = null,
   catalogVersion = null,
   canPromoteToProfile = false,
+  purged = false,
 }: {
   shortId: string;
   recipe: string | null;
@@ -43,24 +44,30 @@ export function FinalizeSection({
   recipeRef?: string | null;
   catalogVersion?: string | null;
   canPromoteToProfile?: boolean;
+  /** original 破棄済み (docs/domain-model.md「original の保持」): finalize/repair/masked_redraw は元画像を読めないので積めない。 */
+  purged?: boolean;
 }) {
   return (
     <details class="section" open={open}>
       <summary>Finalize</summary>
       <div class="section-body">
-        <form class="finalize-form" data-generation-short-id={shortId} autocomplete="off" data-dials={JSON.stringify(dials ?? {})}>
-          <FinalizeFields
-            recipe={recipe}
-            submitLabel="Finalize"
-            dials={dials}
-            defaults={defaults}
-            profiles={profiles}
-            backdrops={backdrops}
-            recipeRef={recipeRef}
-            catalogVersion={catalogVersion}
-            regionDrawing
-          />
-        </form>
+        {purged ? (
+          <p class="image-meta">原寸は破棄済みのため finalize / repair / masked redraw は積めません。</p>
+        ) : (
+          <form class="finalize-form" data-generation-short-id={shortId} autocomplete="off" data-dials={JSON.stringify(dials ?? {})}>
+            <FinalizeFields
+              recipe={recipe}
+              submitLabel="Finalize"
+              dials={dials}
+              defaults={defaults}
+              profiles={profiles}
+              backdrops={backdrops}
+              recipeRef={recipeRef}
+              catalogVersion={catalogVersion}
+              regionDrawing
+            />
+          </form>
+        )}
         {canPromoteToProfile ? (
           <form class="promote-profile-form" data-generation-id={shortId} autocomplete="off">
             <input type="text" name="name" placeholder="profile 名" required />
