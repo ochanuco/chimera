@@ -14,6 +14,8 @@ export interface Bindings {
   POSTHOG_HOST?: string;
   /** original 保持ジョブの1回あたり処理件数 (src/lib/original-purge.ts)。省略時 8。 */
   ORIGINAL_PURGE_BATCH_SIZE?: string;
+  /** 'on' で original 再圧縮ジョブ (src/lib/original-recompress.ts) を有効化。wrangler.jsonc には無く、省略時は無効。 */
+  ORIGINAL_RECOMPRESS?: string;
 }
 
 export type AppEnv = { Bindings: Bindings };
@@ -162,6 +164,8 @@ export interface GenerationRow {
   created_at: string;
   /** original.png が保持期間ジョブで削除された時刻 (migrations/0023, src/lib/original-purge.ts)。null なら未削除。 */
   original_purged_at: string | null;
+  /** 再圧縮ジョブが original を評価した時刻 (migrations/0024, src/lib/original-recompress.ts)。null なら未評価。lossless WebP に変換済みかは r2_object_key の拡張子で分かる。 */
+  original_recompress_checked_at: string | null;
 }
 
 export interface GenerationAssetRow {

@@ -4,17 +4,42 @@
 
 import type { Bindings, GenerationRow } from '../types';
 import { ensureGenerationPreview } from './generation-preview';
+import { rescueGraphFromOriginal } from './graph-rescue';
 
 export const ORIGINAL_RETENTION_DAYS = 30;
 
-/** env var 未設定時の1回あたり処理件数。 */
+/** env var 未設定時の1回あたり処理件数。original-recompress.ts もこの解決を共有する。 */
 const DEFAULT_BATCH_SIZE = 100;
 
-function resolveBatchSize(env: Bindings): number {
+export function resolveBatchSize(env: Bindings): number {
   const raw = env.ORIGINAL_PURGE_BATCH_SIZE;
   if (!raw) return DEFAULT_BATCH_SIZE;
   const parsed = parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BATCH_SIZE;
+}
+
+/**
+ * `generations g` が purge 対象になる条件 (保持期間と purge 済みかどうかを除く)。
+ * original-recompress.ts はこの否定を使い、purge の順番待ちをしている original を再圧縮しない。
+ */
+export const PURGE_ELIGIBLE_SQL = `(g.rating IS NULL OR g.rating = 'bad')
+    AND g.bookmark = 0
+    AND NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM preset_references pr WHERE pr.generation_id = g.id OR pr.source_generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM presets p WHERE p.source_generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM experiments e WHERE e.base_generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM batch_references br WHERE br.source_generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM batches b WHERE b.refines_generation_id = g.id)
+    AND NOT EXISTS (
+      SELECT 1 FROM requests r
+      WHERE r.kind IN ('finalize', 'repair', 'masked_redraw')
+        AND r.status NOT IN ('done', 'failed', 'cancelled')
+        AND json_extract(r.payload_json, '$.generation_id') IN (g.id, g.short_id)
+    )`;
+
+/** A purge candidate row, plus whether its Job's graph is still unrescued (see findPurgeCandidates). */
+interface PurgeCandidate extends GenerationRow {
+  job_graph_is_null: 0 | 1;
 }
 
 /**
@@ -25,32 +50,23 @@ function resolveBatchSize(env: Bindings): number {
  * finalize/repair/masked_redraw request。最後の request 判定は
  * src/lib/requests.ts の generation_id フィルタ (id / short_id どちらでも一致) と
  * 同じ idiom。
+ *
+ * comfy_jobs を join して `job_graph_is_null` も返す。graph が既にあるのが普通なので、
+ * これで purgeOldOriginals は救出用の original 読み込みを本当に必要な行だけに絞れる。
  */
-async function findPurgeCandidates(db: D1Database, cutoff: string, limit: number): Promise<GenerationRow[]> {
+async function findPurgeCandidates(db: D1Database, cutoff: string, limit: number): Promise<PurgeCandidate[]> {
   const { results } = await db
     .prepare(
-      `SELECT g.* FROM generations g
+      `SELECT g.*, (j.graph IS NULL) AS job_graph_is_null FROM generations g
+       JOIN comfy_jobs j ON j.id = g.comfy_job_id
        WHERE g.original_purged_at IS NULL
-         AND (g.rating IS NULL OR g.rating = 'bad')
-         AND g.bookmark = 0
          AND g.created_at < ?
-         AND NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)
-         AND NOT EXISTS (SELECT 1 FROM preset_references pr WHERE pr.generation_id = g.id OR pr.source_generation_id = g.id)
-         AND NOT EXISTS (SELECT 1 FROM presets p WHERE p.source_generation_id = g.id)
-         AND NOT EXISTS (SELECT 1 FROM experiments e WHERE e.base_generation_id = g.id)
-         AND NOT EXISTS (SELECT 1 FROM batch_references br WHERE br.source_generation_id = g.id)
-         AND NOT EXISTS (SELECT 1 FROM batches b WHERE b.refines_generation_id = g.id)
-         AND NOT EXISTS (
-           SELECT 1 FROM requests r
-           WHERE r.kind IN ('finalize', 'repair', 'masked_redraw')
-             AND r.status NOT IN ('done', 'failed', 'cancelled')
-             AND json_extract(r.payload_json, '$.generation_id') IN (g.id, g.short_id)
-         )
+         AND ${PURGE_ELIGIBLE_SQL}
        ORDER BY g.created_at ASC
        LIMIT ?`,
     )
     .bind(cutoff, limit)
-    .all<GenerationRow>();
+    .all<PurgeCandidate>();
   return results ?? [];
 }
 
@@ -61,9 +77,12 @@ export interface PurgeOldOriginalsResult {
 
 /**
  * 1回分の purge を実行する。Generation ごとに最悪 ~5 subrequest
- * (preview 確認の R2 get、無ければ transform 用の get + put、original の delete、
- * 無ければ head) かかるので、既定のバッチサイズは Workers Paid の 1000 subrequest 予算に
- * 余裕を持って収まる値にしてある。env.ORIGINAL_PURGE_BATCH_SIZE で上書きできる。
+ * (preview 確認の R2 get、無ければ transform 用の get + put、graph 未救出なら救出用の
+ * original get、original の delete、無ければ head) かかる。scheduled ハンドラは同じ
+ * invocation でこの直後に original-recompress.ts の再圧縮 (Generation ごと最悪 ~6
+ * subrequest) も走らせるため、既定値は purge ≤100×5=500 + recompress ≤60×6=360
+ * (original-recompress.ts の RECOMPRESS_BATCH_CAP) で Workers Paid の 1000 subrequest
+ * 予算に収まるよう選んである。env.ORIGINAL_PURGE_BATCH_SIZE で上書きできる。
  */
 export async function purgeOldOriginals(env: Bindings, now: string, limit?: number): Promise<PurgeOldOriginalsResult> {
   const db = env.DB;
@@ -88,6 +107,15 @@ export async function purgeOldOriginals(env: Bindings, now: string, limit?: numb
         skipped += 1;
       }
       continue;
+    }
+
+    // グラフの救出は original を消す前の最後の機会: job_graph_is_null は join 済みなので、
+    // 普段 (graph が既にある) は original を余分に読まずに済む。
+    if (generation.job_graph_is_null) {
+      const original = await env.IMAGES.get(generation.r2_object_key);
+      if (original) {
+        await rescueGraphFromOriginal(env, generation, new Uint8Array(await original.arrayBuffer()));
+      }
     }
 
     // R2 の delete を先にする: 途中で落ちても次回は「original は既に無く preview は
