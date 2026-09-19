@@ -1,5 +1,6 @@
 import { Layout } from '../layout';
 import { CopyIdButton } from '../components/CopyIdButton';
+import { RatingBookmark } from '../components/RatingBookmark';
 import { consensusSegments, matchMask, tokenize, type DiffSeg } from '../diff';
 import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFactColumn, type RenderFacts } from '../../lib/render-facts';
 
@@ -22,9 +23,11 @@ export interface CompareSemantic {
 }
 
 export interface CompareItem {
+  id: string;
   short_id: string;
   image_url: string;
   rating: 'bad' | 'neutral' | 'good' | null;
+  bookmark: boolean;
   character_name: string | null;
   batch_short_id: string | null;
   seed: number | null;
@@ -288,7 +291,7 @@ export function ComparePage({
                   {item.short_id}
                 </a>
                 <CopyIdButton value={item.short_id} />
-                <div class="compare-meta">{item.rating ?? NO_VALUE}</div>
+                <RatingBookmark id={item.id} rating={item.rating} bookmark={item.bookmark} />
                 <div class="compare-meta">{item.character_name ?? NO_VALUE}</div>
               </div>
             ))}
