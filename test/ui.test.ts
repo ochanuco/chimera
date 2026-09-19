@@ -596,6 +596,8 @@ describe('Web GUI pages', () => {
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('data-repair-region-tools');
     expect(genHtml).toContain('data-repair-region-clear');
+    // Drawing is opt-in so a plain click / right-click on the image isn't captured by the overlay.
+    expect(genHtml).toMatch(/data-repair-region-toggle[^>]*aria-pressed="false"/);
 
     const batchHtml = await (await req(`/b/${batch.id}`)).text();
     expect(batchHtml).not.toContain('data-repair-region-tools');
@@ -844,6 +846,25 @@ describe('Web GUI pages', () => {
     expect(poseCells[0]).not.toContain('sitting');
     expect(poseCells[1]).toContain('sitting');
     expect(poseCells[1]).not.toContain('standing');
+  });
+
+  it('GET /compare renders an attribute array of objects (e.g. patches) as JSON items, not [object Object]', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+    const semantic = (patches: unknown[]) => ({ schema_version: 1, summary: 's', core: {}, strengths: [], defects: [], attributes: { patches } });
+    await postJson(
+      `/api/v1/generations/${g1.id}/semantic`,
+      semantic([{ target: 'prompt.positive.mouth', op: 'append', value: 'open mouth' }]),
+      'PUT',
+    );
+    await postJson(`/api/v1/generations/${g2.id}/semantic`, semantic([]), 'PUT');
+
+    const body = await (await req(`/compare?ids=${g1.short_id},${g2.short_id}`)).text();
+    const row = body.match(/<tr><td>patches<\/td>(.*?)<\/tr>/s);
+    expect(row).not.toBeNull();
+    expect(row![1]).not.toContain('[object Object]');
+    expect(row![1]).toContain('prompt.positive.mouth');
+    expect(row![1]).toContain('open mouth');
   });
 
   it('GET /compare shows a 3-way consensus diff table: shared parts plain, majority-shared parts partial, lane-unique parts uniq', async () => {

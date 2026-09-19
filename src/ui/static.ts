@@ -1021,7 +1021,21 @@ details.section .section-body { margin-top: 0.6rem; }
   cursor: pointer;
 }
 .repair-region-clear:hover { color: var(--text); border-color: var(--accent); }
+.repair-region-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.repair-region-toggle[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: rgba(124, 156, 245, 0.18); }
 .repair-region-overlay { position: absolute; touch-action: none; cursor: crosshair; z-index: 1; }
+/* Drawing off: clicks, right-click and touch scrolling fall through to the image; drawn rects
+   stay visible and their remove buttons stay clickable. */
+.repair-region-overlay:not(.repair-region-drawing-on) { pointer-events: none; touch-action: auto; cursor: auto; }
+.repair-region-overlay:not(.repair-region-drawing-on) .repair-region-remove { pointer-events: auto; }
 .repair-region-rect {
   position: absolute;
   border: 1.5px solid var(--accent);
@@ -2220,6 +2234,19 @@ export const appJs = `
     return qs('[data-repair-region-count]', form);
   }
 
+  function repairRegionDrawingOn(form) {
+    var toggle = qs('[data-repair-region-toggle]', form);
+    return !!toggle && toggle.getAttribute('aria-pressed') === 'true';
+  }
+
+  function applyRepairRegionDrawingMode(form) {
+    var on = repairRegionDrawingOn(form);
+    var toggle = qs('[data-repair-region-toggle]', form);
+    if (toggle) toggle.textContent = on ? '範囲指定 ON' : '範囲指定 OFF';
+    var state = repairRegionState.get(form);
+    if (state) state.overlay.classList.toggle('repair-region-drawing-on', on);
+  }
+
   // Repair pad/lora/seeds enablement depends on both the checkboxes and the drawn regions, so
   // any region change re-runs the same sync that deliver_only/repair_hands/repair_feet changes do.
   function onRepairRegionsChanged(form) {
@@ -2285,6 +2312,7 @@ export const appJs = `
     }
 
     overlay.addEventListener('pointerdown', function (ev) {
+      if (!repairRegionDrawingOn(form)) return;
       if (ev.target !== overlay) return; // an existing rect or its remove button, not the backdrop
       if (ev.pointerType === 'mouse' && ev.button !== 0) return;
       ev.preventDefault();
@@ -2360,6 +2388,7 @@ export const appJs = `
     syncRepairRegionOverlayGeometry(state);
     attachRepairRegionDrawing(state, form);
     repairRegionState.set(form, state);
+    applyRepairRegionDrawingMode(form);
 
     var resync = function () { syncRepairRegionOverlayGeometry(state); };
     img.addEventListener('load', resync);
@@ -2372,6 +2401,14 @@ export const appJs = `
 
   function initFinalizeRepairRegions() {
     qsa('.finalize-form').forEach(ensureRepairRegionOverlay);
+    document.addEventListener('click', function (ev) {
+      var toggle = ev.target.closest ? ev.target.closest('[data-repair-region-toggle]') : null;
+      if (!toggle) return;
+      var form = toggle.closest('.finalize-form');
+      if (!form) return;
+      toggle.setAttribute('aria-pressed', repairRegionDrawingOn(form) ? 'false' : 'true');
+      applyRepairRegionDrawingMode(form);
+    });
     document.addEventListener('click', function (ev) {
       var btn = ev.target.closest ? ev.target.closest('[data-repair-region-clear]') : null;
       if (!btn) return;
