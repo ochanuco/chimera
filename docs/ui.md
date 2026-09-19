@@ -412,13 +412,14 @@ Finalizeセクションと同じ仕組み、後述）。
 
 2〜9枚を想定します（10件以上の選択は先頭9件のみ表示し警告を出す）。
 
-Generationごとに縦カラムで並べ、上から画像・short_idリンク・rating・character名を表示します。
+Generationごとに縦カラムで並べ、上から画像・short_idリンク・rating/bookmark行・character名を表示します。
+rating/bookmark行はGeneration Detailと同じ部品で、比較しながらその場でratingとbookmarkを変更できます。
 
 ``` text
-[IMAGE]        [IMAGE]
-abc123         xyz987
-good           neutral
-ゆかり         ゆかり
+[IMAGE]                     [IMAGE]
+abc123                      xyz987
+[bad][neutral][good*] 🔖    [bad][neutral*][good] 🔖
+ゆかり                      ゆかり
 ```
 
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
@@ -471,7 +472,7 @@ positive/negativeプロンプト、値の表現はsemantic行と同じコンセ�
 存在するpass indexごとに `render.positive (pass 2)` / `render.negative (pass 2)`
 のように追加します（全カラムが値なしの行は表示しません）。
 
-Compareは比較表示のみで、ComfyUIへの生成要求も指示テキストの生成も行いません。
+Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求も指示テキストの生成も行いません。
 
 ## Generation Detail
 
