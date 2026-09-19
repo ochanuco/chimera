@@ -655,11 +655,11 @@ Generation Detail / Lightbox（画像1枚に対して1つのFinalizeフォーム
 これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます
 （Batch Detailの「Finalize all arms」は対象のGenerationが1枚に決まらないため、この
 操作自体を持ちません）。画像の親要素に`repair-region-overlay`をJSでサイズ・位置とも
-`<img>`に一致させて重ね、ポインタイベント（マウス/タッチ共通）でのドラッグ1回が矩形1つ
+`<img>`に一致させて重ね、フォーム上の「範囲指定」トグル（`data-repair-region-toggle`、既定OFF）をONにしている間だけ、ポインタイベント（マウス/タッチ共通）でのドラッグ1回が矩形1つ
 （`repair-region-rect`、右上に消去ボタン）になり、複数指定できます。矩形は表示中の画像
 サイズに対する分数`[x0, y0, x1, y1]`（0〜4桁に丸め、0..1にクランプ）としてfinalize
 formの状態に保持され、フォーム上の「範囲をすべて消す」ボタン（`data-repair-region-clear`）
-で一括削除できます。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
+で一括削除できます。OFFの間はoverlayが`pointer-events: none`になり、画像のクリック・右クリック・タッチスクロールは画像側に届きます。描いた矩形はOFFにしても残り（送信にも積まれる）、消去ボタンもそのまま押せます。Lightboxでは開くたびにフォームが作り直されるため、毎回OFFから始まります。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
 範囲、どちらか片方だけでも送信可）。描き直し（redraw）・deliver onlyどちらのモードでも、
 範囲が1つ以上あれば`repair_regions`を積み、`repair`は空配列にします（描いた範囲が部位の自動検出を置き換える。検出の円を矩形に足すとマスクが部位の外まで広がるため）。`repair pad` / `repair lora`のdisabledは
 これまで通り部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`

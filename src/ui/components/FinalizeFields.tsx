@@ -361,6 +361,9 @@ export function FinalizeFields({
         </span>
         {regionDrawing ? (
           <div class="repair-region-tools" data-repair-region-tools>
+            <button type="button" class="repair-region-toggle" data-repair-region-toggle aria-pressed="false">
+              範囲指定 OFF
+            </button>
             <span class="repair-region-hint">画像をドラッグして描き直す範囲を指定（複数可）</span>
             <span class="repair-region-count" data-repair-region-count></span>
             <button type="button" class="repair-region-clear" data-repair-region-clear>
