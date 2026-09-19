@@ -377,7 +377,7 @@ ExperimentRun（`parent_run_id` / `run_index`）から読み取り時に導出�
 1行ずつとして、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの一列で
 並べます。現在地（このBatch自身）は角括弧付きで強調しリンクなし、それ以外はBatch Detailへのリンクです。要素
 が2件未満の行は表示せず、全行が該当する場合はMapセクション自体を表示しません。Generation Detailの
-Mapと仕様は共通です。
+Mapは同じ行構成を、BatchではなくGenerationの並びとして表示します。
 
 Promptセクションはprompt / negative_promptをカンマ区切りのトークンチップで表示します（重み記法
 `(foo:1.3)` `((foo))` `[foo]`、`<lora:name:0.8>`、`BREAK`をそれぞれ解釈し、weight!=1のトークンには
@@ -536,10 +536,12 @@ Experimentの他Run、親・子を除く）だけを表示します（バッジ 
 Mapセクションは「Map」の直下、親の直前に表示する系譜ミニマップです。画像なし・short_idのみで、このGenerationが
 属するBatchのBatchReference系譜（行ラベル `References`。材料の祖先と子孫の有向到達集合をBatch単位に集約）、
 BatchRelation連結成分（行ラベル `Retries`、無向）、そのBatchが属するStoryごとの全Batch（行ラベルはStory名）を、
-いずれもcreated_at昇順の1行ずつとして、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの
-一列で並べます。現在地（このGenerationが属するBatch）は角括弧付きで強調しリンクなし、それ以外はBatch
-Detailへのリンクです。要素が2件未満の行（関連Batchなしの行）は表示せず、全行が該当する場合はMapセクション
-自体を表示しません。
+いずれもcreated_at昇順の1行ずつとして、`g_abc -- g_def -- [g_ghi] -- g_jkl`のように`--`区切りの
+一列で並べます。Generation Detailから辿る間はGeneration Detailに留まれるよう、各BatchはそのBatchの代表
+Generation（FamilyCardのサムネイルと同じ選定）のshort_idで表示し、そのGeneration Detailへリンクします。
+現在地はこのGeneration自身で、角括弧付きで強調しリンクなしです。Generationをまだ持たないBatchだけは
+Batchのshort_idで表示し、Batch Detailへリンクします。要素が2件未満の行（関連Batchなしの行）は表示せず、
+全行が該当する場合はMapセクション自体を表示しません。
 
 Workflowセクションは、以前の Prompt / Seed / Render facts
 の3セクションを統合したもので、「Story」の直後にあります。このGenerationの

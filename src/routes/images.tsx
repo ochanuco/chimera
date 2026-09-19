@@ -260,19 +260,27 @@ images.get('/:shortId', async (c) => {
     ownBatchId ? getRelationChainBatches(db, ownBatchId) : Promise.resolve([]),
     Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(db, sid))),
   ]);
+  // The map stays on Generation pages: each Batch is stood in for by its representative
+  // Generation, and the owning Batch by this Generation itself. A Batch with no Generations
+  // yet has nothing to show at /g/, so it keeps its Batch link.
+  const mapThumbnails = await resolveBatchThumbnails(
+    db,
+    [referenceLineageBatches, relationChainBatches, ...storyChainBatchesList].flat().map((b) => b.id),
+  );
+  const generationMapItem = (b: { id: string; short_id: string }) => {
+    if (b.id === ownBatchId) return { short_id: data.short_id, href: `/g/${data.short_id}`, is_current: true };
+    const representative = mapThumbnails.get(b.id);
+    return representative
+      ? { short_id: representative, href: `/g/${representative}`, is_current: false }
+      : { short_id: b.short_id, href: `/b/${b.short_id}`, is_current: false };
+  };
   const miniMapRows: MiniMapRow[] = ownBatchId
     ? [
-        {
-          label: 'References',
-          items: referenceLineageBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),
-        },
-        {
-          label: 'Retries',
-          items: relationChainBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),
-        },
+        { label: 'References', items: referenceLineageBatches.map(generationMapItem) },
+        { label: 'Retries', items: relationChainBatches.map(generationMapItem) },
         ...miniMapStoryIds.map((sid, i) => ({
           label: storyLinks.find((s) => s.story_id === sid)?.story_name ?? sid,
-          items: storyChainBatchesList[i]!.map((b) => ({ short_id: b.short_id, is_current: b.id === ownBatchId })),
+          items: storyChainBatchesList[i]!.map(generationMapItem),
         })),
       ]
     : [];
