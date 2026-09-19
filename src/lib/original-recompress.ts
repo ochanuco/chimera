@@ -36,8 +36,8 @@ async function findRecompressCandidates(db: D1Database, cutoff: string, limit: n
 }
 
 /**
- * 1回分の再圧縮を実行する。env.ORIGINAL_RECOMPRESS が 'on' でなければ (wrangler.jsonc には
- * 無く、既定は無効) クエリすら投げず {converted: 0, kept: 0} を返す。
+ * 1回分の再圧縮を実行する。env.ORIGINAL_RECOMPRESS が 'on' でなければ (本番は
+ * wrangler.jsonc で 'on'、未設定なら無効) クエリすら投げず {converted: 0, kept: 0} を返す。
  */
 export async function recompressRetainedOriginals(
   env: Bindings,
