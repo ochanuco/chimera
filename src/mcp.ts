@@ -66,6 +66,7 @@ import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import { foldBatchDigestPrompts, foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
+import { MAX_TRANSFORM_INPUT_BYTES } from './lib/generation-preview';
 import type { Bindings } from './types';
 
 /**
@@ -75,9 +76,6 @@ import type { Bindings } from './types';
  * 700 KiB に切り詰める。
  */
 const MAX_RETURNED_IMAGE_BYTES = 700 * 1024;
-
-/** Images binding の `.input()` はここを超えると ImagesError を投げるので、その前に text で断る。 */
-const MAX_TRANSFORM_INPUT_BYTES = 20 * 1024 * 1024;
 
 const DEFAULT_IMAGE_WIDTH = 768;
 const MIN_IMAGE_WIDTH = 256;

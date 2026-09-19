@@ -314,7 +314,7 @@ rating / bookmark / タグ追加・削除 / note保存 / 公開の追加・URL�
 Detailの2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
 
 -   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
-    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/image`で、
+    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
     10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
 -   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
 -   `Compare (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
