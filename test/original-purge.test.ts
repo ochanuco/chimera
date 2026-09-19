@@ -1,6 +1,16 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createGeneration, getJson, ingestGeneration, makeSolidPng, mcpToolCall, postJson, req } from './helpers';
+import {
+  createGeneration,
+  getJson,
+  ingestGeneration,
+  makePngWithChunks,
+  makeSolidPng,
+  mcpToolCall,
+  postJson,
+  req,
+  textChunkData,
+} from './helpers';
 import { purgeOldOriginals } from '../src/lib/original-purge';
 import { generationPreviewR2Key } from '../src/lib/generation-preview';
 
@@ -254,6 +264,28 @@ describe('purgeOldOriginals', () => {
 
     await expect(purgeOldOriginals(env, NOW, 10)).resolves.toEqual({ purged: 1, skipped: 0 });
     expect(await originalPurgedAt(generation.id)).toBe(NOW);
+  });
+
+  it('rescues the graph from the PNG prompt chunk before deleting the original', async () => {
+    const graph = { '1': { class_type: 'KSampler', inputs: { seed: 7 } } };
+    const { generation, job } = await createGeneration();
+    const bytes = await makePngWithChunks(64, 64, {
+      colorType: 2,
+      extraChunks: [{ type: 'tEXt', data: textChunkData('prompt', JSON.stringify(graph)) }],
+    });
+    await env.IMAGES.put(originalKey(generation.id), bytes);
+    await ageGeneration(generation.id, 31);
+
+    const result = await purgeOldOriginals(env, NOW, 10);
+    expect(result).toEqual({ purged: 1, skipped: 0 });
+    expect(await env.IMAGES.head(originalKey(generation.id))).toBeNull();
+
+    const jobRow = await env.DB
+      .prepare('SELECT graph, render_facts_json FROM comfy_jobs WHERE id = ?')
+      .bind(job.id)
+      .first<{ graph: string | null; render_facts_json: string | null }>();
+    expect(JSON.parse(jobRow!.graph!)).toEqual(graph);
+    expect(jobRow!.render_facts_json).not.toBeNull();
   });
 });
 

@@ -708,6 +708,7 @@ summary_model
 summary_updated_at
 created_at
 original_purged_at
+original_recompress_checked_at
 ```
 
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
@@ -748,6 +749,24 @@ original が purge された Generation は、`GET /g/{short_id}/image` が 410
 (`original_purged`) を返し、finalize/repair/masked_redraw の起票は 409
 (`original_purged`) で拒否されます（[api.md](api.md)、[worker-protocol.md](worker-protocol.md)）。
 GUI は preview を代わりに表示します（[ui.md](ui.md)）。
+
+### original の再圧縮
+
+保持期間（30日）を過ぎても original を持ち続ける Generation（= 上記の purge 対象から
+外れたもの）は、purge の直後に別の定期ジョブ (`src/lib/original-recompress.ts`) が
+original.png を lossless WebP（`generations/{id}/original.webp`）へ再圧縮します。lossless
+なので不透明な画像は画素同一のまま約32%小さくなり、`r2_object_key` と `image_size` を
+新しいオブジェクトに合わせて更新します。透過を持つ PNG（IHDR の colour type が
+グレー+alpha / RGBA、または `tRNS` チャンクを持つもの）は変換しません。alpha=0 の下に
+ある RGB 値は lossless 再エンコードでも保存されず、ComfyUI の LoadImage ノードは alpha
+を捨ててその RGB を読むためです。評価済みかどうかは `original_recompress_checked_at`
+（非 NULL なら変換済み・変換不要のいずれか）で管理し、一度評価した Generation を毎回
+スキャンし直しません。
+
+original.png が消える（purge でも再圧縮でも）前には、その PNG が持つ ComfyUI の
+`prompt` text chunk（生成グラフ全体）を `comfy_jobs.graph` へ救出します。対象の Job が
+既に `graph` を持っていれば何もせず、`graph` が NULL で `prompt` chunk が読めた場合だけ
+`graph` と `render_facts_json` を書き込みます。
 
 ## Publication
 
