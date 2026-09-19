@@ -12,7 +12,7 @@ import {
 } from '../lib/db';
 import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
-import { generationImageUrl } from '../lib/serialize';
+import { generationImageUrl, generationPreviewUrl } from '../lib/serialize';
 import { listBookmarkedExperiments } from '../lib/ui-queries';
 import { GalleryPage, GalleryCards, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
 import type { GalleryView } from '../ui/components/ViewSwitch';
@@ -343,18 +343,21 @@ pages.get('/experiments/:id/ab', async (c) => {
   let totalSeeds = 0;
 
   if (baselineRun && armRun) {
-    const seedRows = 'SELECT id, seed FROM generations WHERE batch_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
+    const seedRows =
+      'SELECT id, seed, original_purged_at FROM generations WHERE batch_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
     const [baselineGens, armGens, judgedSeeds] = await Promise.all([
-      db.prepare(seedRows).bind(baselineRun.batch_id).all<{ id: string; seed: number }>(),
-      db.prepare(seedRows).bind(armRun.batch_id).all<{ id: string; seed: number }>(),
+      db.prepare(seedRows).bind(baselineRun.batch_id).all<{ id: string; seed: number; original_purged_at: string | null }>(),
+      db.prepare(seedRows).bind(armRun.batch_id).all<{ id: string; seed: number; original_purged_at: string | null }>(),
       judgedSeedsForPair(db, baselineRun.id, armRun.id),
     ]);
 
     // multi-output job の複数枚は先頭の1枚 (created_at, id 昇順) だけを A/B の対象にする。
-    const firstBySeed = (rows: { id: string; seed: number }[]): Map<number, string> => {
-      const map = new Map<number, string>();
+    const firstBySeed = (
+      rows: { id: string; seed: number; original_purged_at: string | null }[],
+    ): Map<number, { id: string; purged: boolean }> => {
+      const map = new Map<number, { id: string; purged: boolean }>();
       for (const row of rows) {
-        if (!map.has(row.seed)) map.set(row.seed, row.id);
+        if (!map.has(row.seed)) map.set(row.seed, { id: row.id, purged: row.original_purged_at !== null });
       }
       return map;
     };
@@ -368,19 +371,22 @@ pages.get('/experiments/:id/ab', async (c) => {
     totalSeeds = commonSeeds.length;
     judgedCount = judgedSeeds.size;
 
+    const imageUrlFor = (gen: { id: string; purged: boolean }) =>
+      gen.purged ? generationPreviewUrl(origin, gen.id) : generationImageUrl(origin, gen.id);
+
     pairs = commonSeeds
       .filter((seed) => !judgedSeeds.has(seed))
       .map((seed) => {
-        const baselineGenId = baselineBySeed.get(seed)!;
-        const armGenId = armBySeed.get(seed)!;
+        const baselineGen = baselineBySeed.get(seed)!;
+        const armGen = armBySeed.get(seed)!;
         // 表示の左右はブラウザに judgment を推測させないよう毎回サーバー側で決める。
         const baselineOnLeft = Math.random() < 0.5;
-        const leftId = baselineOnLeft ? baselineGenId : armGenId;
-        const rightId = baselineOnLeft ? armGenId : baselineGenId;
+        const leftGen = baselineOnLeft ? baselineGen : armGen;
+        const rightGen = baselineOnLeft ? armGen : baselineGen;
         return {
           seed,
-          left: { id: leftId, image_url: generationImageUrl(origin, leftId) },
-          right: { id: rightId, image_url: generationImageUrl(origin, rightId) },
+          left: { id: leftGen.id, image_url: imageUrlFor(leftGen) },
+          right: { id: rightGen.id, image_url: imageUrlFor(rightGen) },
         };
       });
   }
@@ -510,7 +516,7 @@ pages.get('/compare', async (c) => {
   const items: CompareItem[] = rows.map(({ row, characterName }) => ({
     id: row.id,
     short_id: row.short_id,
-    image_url: generationImageUrl(origin, row.short_id),
+    image_url: row.original_purged_at ? generationPreviewUrl(origin, row.short_id) : generationImageUrl(origin, row.short_id),
     rating: row.rating,
     bookmark: row.bookmark === 1,
     character_name: characterName,

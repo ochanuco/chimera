@@ -19,6 +19,11 @@
   "observability": {
     "enabled": true
   },
+  // original 保持ジョブ (src/lib/original-purge.ts)。30分ごとに古い低価値 Generation の
+  // original.png を削除する。
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

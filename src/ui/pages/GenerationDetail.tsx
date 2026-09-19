@@ -22,6 +22,8 @@ export interface GenerationDetailData {
   short_id: string;
   canonical_url: string;
   image: { url: string };
+  /** original.png が保持ジョブで削除された時刻。null なら未削除 (migrations/0023)。 */
+  original_purged_at: string | null;
   character: { id: string; name: string } | null;
   created_at: string;
   rating: 'bad' | 'neutral' | 'good' | null;
@@ -345,9 +347,10 @@ export function GenerationDetailPage({
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
-            <img src={data.image.url} alt={data.short_id} />
+            <img src={data.original_purged_at ? `/g/${data.short_id}/preview` : data.image.url} alt={data.short_id} />
           </div>
           {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
+          {data.original_purged_at ? <p class="image-meta">原寸は破棄済み（preview のみ）</p> : null}
         </div>
         <div class="detail-right">
           <h1>
@@ -377,6 +380,7 @@ export function GenerationDetailPage({
             recipeRef={finalizeRecipeRef}
             catalogVersion={finalizeCatalogVersion}
             canPromoteToProfile={canPromoteToProfile}
+            purged={Boolean(data.original_purged_at)}
           />
 
           {producedByOptions ? (

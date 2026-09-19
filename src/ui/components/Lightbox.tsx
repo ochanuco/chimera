@@ -43,6 +43,7 @@ export function LightboxPanel({
   finalizeBackdrops = [],
   finalizeRecipeRef = null,
   finalizeCatalogVersion = null,
+  purged = false,
 }: {
   generationId: string;
   shortId: string;
@@ -62,6 +63,8 @@ export function LightboxPanel({
   finalizeBackdrops?: BackdropOption[];
   finalizeRecipeRef?: string | null;
   finalizeCatalogVersion?: string | null;
+  /** original 破棄済み (docs/domain-model.md「original の保持」)。FinalizeSection のフォーム抑制に渡す。 */
+  purged?: boolean;
 }) {
   return (
     <div class="lightbox-panel-content" data-generation-id={generationId} data-short-id={shortId}>
@@ -82,6 +85,8 @@ export function LightboxPanel({
         {imageMetaText ? <span class="image-meta lightbox-image-meta">{imageMetaText}</span> : null}
         <a href={`/g/${shortId}`}>詳細ページ ↗</a>
       </p>
+
+      {purged ? <p class="image-meta">原寸は破棄済み（preview のみ）</p> : null}
 
       {refinesGenerationShortId ? (
         <p class="lightbox-from-row">
@@ -110,6 +115,7 @@ export function LightboxPanel({
         backdrops={finalizeBackdrops}
         recipeRef={finalizeRecipeRef}
         catalogVersion={finalizeCatalogVersion}
+        purged={purged}
       />
 
       <NoteSection kind="generations" id={generationId} note={note} open={false} />

@@ -24,3 +24,8 @@ export function badRequest(message: string): ApiError {
 export function conflict(message: string): ApiError {
   return new ApiError(409, 'conflict', message);
 }
+
+/** 410: the resource existed but a part of it was deliberately discarded (e.g. a purged original). `code` names which part. */
+export function gone(code: string, message: string): ApiError {
+  return new ApiError(410, code, message);
+}

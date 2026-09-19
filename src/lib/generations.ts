@@ -71,6 +71,7 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
     short_id: generation.short_id,
     canonical_url: canonicalGenerationUrl(org, generation.short_id),
     image: { url: generationImageUrl(org, generation.short_id) },
+    original_purged_at: generation.original_purged_at,
     character: character ? { id: character.id, name: character.name } : null,
     created_at: generation.created_at,
     rating: generation.rating,
@@ -166,6 +167,7 @@ export interface GenerationListItem {
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
+  original_purged_at: string | null;
   /** short_id of the raw Generation this item's Batch refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
   refines_generation_short_id: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
@@ -477,6 +479,7 @@ export async function queryGenerations(
       image_width: r.image_width,
       image_height: r.image_height,
       image_size: r.image_size,
+      original_purged_at: r.original_purged_at,
       refines_generation_short_id: r.refines_generation_short_id,
       published: toBool(r.is_published),
       finalize_request: finalizeRequests.get(r.id) ?? null,
