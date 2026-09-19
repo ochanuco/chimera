@@ -58,10 +58,15 @@ function joinList(values: string[] | undefined): string | null {
   return values.join(', ');
 }
 
+/** One list item as text: object items (e.g. a `patches` entry) as JSON, since String() would yield "[object Object]". */
+function itemText(item: unknown): string {
+  return item !== null && typeof item === 'object' ? JSON.stringify(item) : String(item);
+}
+
 /** Normalizes an arbitrary attribute value to a display string, or null if it carries no value. */
 function attributeText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) return joinList(value.map(String));
+  if (Array.isArray(value)) return joinList(value.map(itemText));
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
@@ -72,7 +77,7 @@ type SemanticRaw = { kind: 'text'; raw: string } | { kind: 'list'; raw: string[]
 function attributeRaw(value: unknown): SemanticRaw {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) {
-    const list = value.map(String);
+    const list = value.map(itemText);
     return list.length === 0 ? null : { kind: 'list', raw: list };
   }
   if (typeof value === 'object') return { kind: 'text', raw: JSON.stringify(value) };
