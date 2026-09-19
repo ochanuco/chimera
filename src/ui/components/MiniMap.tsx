@@ -1,6 +1,6 @@
 export interface MiniMapRow {
   label: string;
-  items: { short_id: string; is_current: boolean }[];
+  items: { short_id: string; href: string; is_current: boolean }[];
 }
 
 /** A row with fewer than 2 items carries no lineage information. */
@@ -15,7 +15,9 @@ export function hasMiniMapContent(rows: MiniMapRow[]): boolean {
 
 /**
  * One-line, image-free lineage strip per relation chain / Story: `b_abc -- b_def -- [b_ghi] -- b_jkl`,
- * current position bracketed and unlinked. Deliberately lighter than FamilyStrip (no thumbnails) --
+ * current position bracketed and unlinked. Items are whatever the host page is about (Batches on
+ * Batch Detail, Generations on Generation Detail), so following the map never switches page kind.
+ * Deliberately lighter than FamilyStrip (no thumbnails) --
  * this is for skimming "where am I in the lineage", not for material/detail lookup.
  */
 export function MiniMap({ rows }: { rows: MiniMapRow[] }) {
@@ -31,7 +33,7 @@ export function MiniMap({ rows }: { rows: MiniMapRow[] }) {
                 {item.is_current ? (
                   <span class="mini-map-current">[{item.short_id}]</span>
                 ) : (
-                  <a class="mini-map-item" href={`/b/${item.short_id}`}>
+                  <a class="mini-map-item" href={item.href}>
                     {item.short_id}
                   </a>
                 )}
