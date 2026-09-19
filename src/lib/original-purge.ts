@@ -8,7 +8,7 @@ import { ensureGenerationPreview } from './generation-preview';
 export const ORIGINAL_RETENTION_DAYS = 30;
 
 /** env var 未設定時の1回あたり処理件数。 */
-const DEFAULT_BATCH_SIZE = 8;
+const DEFAULT_BATCH_SIZE = 100;
 
 function resolveBatchSize(env: Bindings): number {
   const raw = env.ORIGINAL_PURGE_BATCH_SIZE;
@@ -62,8 +62,8 @@ export interface PurgeOldOriginalsResult {
 /**
  * 1回分の purge を実行する。Generation ごとに最悪 ~5 subrequest
  * (preview 確認の R2 get、無ければ transform 用の get + put、original の delete、
- * 無ければ head) かかるので、既定のバッチサイズは 50 subrequest 予算に収まる値にしてある。
- * より大きい予算のプランでは env.ORIGINAL_PURGE_BATCH_SIZE を上げること。
+ * 無ければ head) かかるので、既定のバッチサイズは Workers Paid の 1000 subrequest 予算に
+ * 余裕を持って収まる値にしてある。env.ORIGINAL_PURGE_BATCH_SIZE で上書きできる。
  */
 export async function purgeOldOriginals(env: Bindings, now: string, limit?: number): Promise<PurgeOldOriginalsResult> {
   const db = env.DB;
