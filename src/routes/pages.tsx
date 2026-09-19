@@ -219,18 +219,23 @@ pages.get('/b/:shortId', async (c) => {
   }));
 
   // 系譜ミニマップ: 自Batchの参照系譜・再試行連結成分と、自Batchが属する各Storyの全Batch。
+  const batchMapItem = (b: { id: string; short_id: string }) => ({
+    short_id: b.short_id,
+    href: `/b/${b.short_id}`,
+    is_current: b.id === data.id,
+  });
   const miniMapRows: MiniMapRow[] = [
     {
       label: 'References',
-      items: referenceLineageBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),
+      items: referenceLineageBatches.map(batchMapItem),
     },
     {
       label: 'Retries',
-      items: relationChainBatches.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),
+      items: relationChainBatches.map(batchMapItem),
     },
     ...miniMapStoryIds.map((sid, i) => ({
       label: storyNames[sid] ?? sid,
-      items: storyChainBatchesList[i]!.map((b) => ({ short_id: b.short_id, is_current: b.id === data.id })),
+      items: storyChainBatchesList[i]!.map(batchMapItem),
     })),
   ];
 
