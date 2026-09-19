@@ -1413,8 +1413,8 @@ describe('Family panel: Experiment badge cards (ExperimentRun-derived, not a sto
 });
 
 describe('系譜ミニマップ (MiniMap)', () => {
-  it('GET /g/{short_id} for the middle Batch of a 3-Batch retry chain lists all three short_ids in order, current bracketed and unlinked', async () => {
-    const { batch: batchA } = await createGeneration();
+  it('GET /g/{short_id} for the middle Batch of a 3-Batch retry chain lists each Batch as its representative Generation, current bracketed and unlinked', async () => {
+    const { generation: genA, batch: batchA } = await createGeneration();
     const { generation: genB, batch: batchB } = await createGeneration({
       batchOverrides: { refinement: { source_batch_id: batchA.id, actor: 'human', reason: 'retry' } },
     });
@@ -1429,24 +1429,25 @@ describe('系譜ミニマップ (MiniMap)', () => {
     expect(html).toContain('class="mini-map"');
     const chainStart = html.indexOf('mini-map-chain');
     expect(chainStart).toBeGreaterThan(-1);
-    const idxA = html.indexOf(batchA.short_id, chainStart);
-    const idxB = html.indexOf(`[${batchB.short_id}]`, chainStart);
+    const idxA = html.indexOf(genA.short_id, chainStart);
+    const idxB = html.indexOf(`[${genB.short_id}]`, chainStart);
     const idxC = html.indexOf(batchC.body.short_id, chainStart);
     expect(idxA).toBeGreaterThan(-1);
     expect(idxB).toBeGreaterThan(idxA);
     expect(idxC).toBeGreaterThan(idxB);
 
-    // Current (owning) Batch is bracket-highlighted and not a link; the others are.
-    expect(html).toContain(`href="/b/${batchA.short_id}"`);
-    expect(html).toContain(`href="/b/${batchC.body.short_id}"`);
-    expect(html).not.toContain(`href="/b/${batchB.short_id}"`);
+    const chain = html.slice(chainStart, html.indexOf('</div>', chainStart));
+    expect(chain).toContain(`href="/g/${genA.short_id}"`);
+    expect(chain).not.toContain(`href="/g/${genB.short_id}"`);
+    // batchC has no Generation yet, so it keeps its Batch link.
+    expect(chain).toContain(`href="/b/${batchC.body.short_id}"`);
   });
 
   it('GET /g/{short_id} shows a References row spanning material ancestors and descendants', async () => {
     // Reference lineage A -> B -> C (B uses A's Generation as material, C uses B's).
-    const { generation: genA, batch: batchA } = await createGeneration();
+    const { generation: genA } = await createGeneration();
     const { generation: genB, batch: batchB } = await createGeneration();
-    const { batch: batchC } = await createGeneration();
+    const { generation: genC, batch: batchC } = await createGeneration();
     await postJson(`/api/v1/batches/${batchB.id}/references`, { source_generation_id: genA.id });
     await postJson(`/api/v1/batches/${batchC.id}/references`, { source_generation_id: genB.id });
 
@@ -1456,12 +1457,15 @@ describe('系譜ミニマップ (MiniMap)', () => {
 
     expect(html).toContain('>References<');
     const chainStart = html.indexOf('mini-map-chain');
-    const idxA = html.indexOf(batchA.short_id, chainStart);
-    const idxB = html.indexOf(`[${batchB.short_id}]`, chainStart);
-    const idxC = html.indexOf(batchC.short_id, chainStart);
+    const idxA = html.indexOf(genA.short_id, chainStart);
+    const idxB = html.indexOf(`[${genB.short_id}]`, chainStart);
+    const idxC = html.indexOf(genC.short_id, chainStart);
     expect(idxA).toBeGreaterThan(-1);
     expect(idxB).toBeGreaterThan(idxA);
     expect(idxC).toBeGreaterThan(idxB);
+
+    const chain = html.slice(chainStart, html.indexOf('</div>', chainStart));
+    expect(chain).not.toContain('href="/b/');
   });
 
   it('GET /g/{short_id} shows no Map section for a Batch with no relation and no Story', async () => {
