@@ -589,7 +589,7 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容)
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&batch_id=&pending=true&limit=&offset=
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
@@ -609,6 +609,13 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) 
 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。
+
+`kind = finalize` / `repair` / `masked_redraw` の作成は、`payload.generation_id` が指す
+Generation の original が purge 済み（`original_purged_at` 非 null）なら 409
+（`code: "original_purged"`）で拒否します。worker はその Generation 自身の画像を読むため
+（[worker-protocol.md](worker-protocol.md)）、original が無いと実行できません。既存の
+idempotency_key での再送（新規作成ではない）はこのチェックの対象外です。`generate` /
+derive request は対象外です。
 
 ### Summary
 
@@ -1109,6 +1116,10 @@ metadata 例:
 
 Management API がR2へ保存し、D1へGenerationを登録します。
 
+同じ `(comfy_job_id, comfy_output_index)` への再送（既存行の replay）は既存行を200で返します。
+その Generation の original が保持期間ジョブで既に purge 済み（`original_purged_at` 非
+null）なら、replay は original を R2 へ書き戻しません — purge 済みのまま200を返します。
+
 レスポンス例:
 
 ``` json
@@ -1317,6 +1328,16 @@ masked_redraw で仕上げた元の raw Generation の short_id、raw なら nul
 pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
 [Pose Reference Pin](#pose-reference-pin)参照）、`finalize_request`
 等の軽量情報を返します。
+
+`thumbnail_url` は `GET /g/{short_id}/preview`（長辺1024px以下のWebP。初回リクエスト時に
+元画像から生成しR2へ保存する）、`image_url` は `GET /g/{short_id}/image`（元画像そのもの）
+です。サムネイル用途は必ず前者を使います。
+
+`original_purged_at` は original の保持期間ジョブがその original を削除した時刻
+（[domain-model.md](domain-model.md#original-の保持)）。null なら未削除で、`image_url`
+がそのまま使えます。非 null な Generation を `image_url` で読むと 410 です — `thumbnail_url`
+（preview）を使ってください。この欄は `image_url` を返すすべての Generation
+表現（Generation Search / Context / Batch/Story 埋め込み / MCP の対応する出力）に付きます。
 
 `finalize_request` は、この Generation を対象にした最新の finalize / repair /
 masked_redraw [Request](#request)（`payload.generation_id` がこの Generation の UUID /

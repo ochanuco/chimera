@@ -91,7 +91,7 @@ describe('Web GUI pages', () => {
     const { generation } = await createGeneration();
     const res = await req('/gallery?limit=200');
     const html = await res.text();
-    expect(html).toContain(`https://chimera.test/g/${generation.short_id}/image`);
+    expect(html).toContain(`https://chimera.test/g/${generation.short_id}/preview`);
     expect(html).not.toContain('http://localhost');
   });
 
@@ -1263,7 +1263,7 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
 
     expect(html).toContain('class="family-strip"');
     // 親: the owning Batch's own reference material, rendered as a Generation thumbnail card.
-    expect(html).toContain(`src="/g/${material.short_id}/image"`);
+    expect(html).toContain(`src="/g/${material.short_id}/preview"`);
     expect(html).toContain(`href="/g/${material.short_id}"`);
     // 子: the Batch that used this Generation as material, rendered as a Batch card.
     expect(html).toContain(`href="/b/${consumer.body.short_id}"`);
@@ -1310,7 +1310,7 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     const html = await res.text();
 
     expect(html).toContain(`href="/b/${parentBatch.short_id}"`);
-    expect(html).toContain(`src="/g/${firstGen.short_id}/image"`);
+    expect(html).toContain(`src="/g/${firstGen.short_id}/preview"`);
     expect(html).toContain('rel-badge rel-refinement');
   });
 
@@ -1654,7 +1654,7 @@ describe('Experiments pages', () => {
 
     const res = await req(`/experiments/${experiment.id}`);
     const html = await res.text();
-    expect(html).toContain(`https://chimera.test/g/${generation.short_id}/image`);
+    expect(html).toContain(`https://chimera.test/g/${generation.short_id}/preview`);
     expect(html).toContain(`/b/${batch.short_id}`);
     expect(html).toContain('sock cuff is distinct');
     expect(html).toContain('stabilize');

@@ -314,7 +314,7 @@ rating / bookmark / タグ追加・削除 / note保存 / 公開の追加・URL�
 Detailの2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
 
 -   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
-    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/image`で、
+    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
     10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
 -   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
 -   `Compare (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
@@ -422,6 +422,8 @@ abc123                      xyz987
 ゆかり                      ゆかり
 ```
 
+originalがpurge済みのGenerationは、そのカラムだけ画像に`GET /g/{short_id}/preview`を表示します。
+
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全
 Generationのattributesキーの和集合。列は各Generationです。
@@ -485,6 +487,13 @@ Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求
 [ IMAGE ] | good  🔖
 [ IMAGE ] | #pose-good #outfit-good
 ```
+
+originalが保持期間ジョブでpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
+Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
+`原寸は破棄済み（preview のみ）`と添えます。Finalizeセクションはfinalizeフォームを出さず、代わりに
+「原寸は破棄済みのため finalize / repair / masked redraw は積めません。」という一文を表示します
+（profile登録フォームと進捗履歴のrequest一覧は表示したままです）。Lightboxパネルも同じ扱いです
+（`原寸は破棄済み（preview のみ）`をmeta行の下に、Finalizeセクションは同じ一文に差し替え）。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、

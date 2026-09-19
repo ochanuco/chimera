@@ -12,6 +12,8 @@ export interface Bindings {
   POSTHOG_KEY?: string;
   /** PostHog の api_host。省略時 https://us.i.posthog.com */
   POSTHOG_HOST?: string;
+  /** original 保持ジョブの1回あたり処理件数 (src/lib/original-purge.ts)。省略時 8。 */
+  ORIGINAL_PURGE_BATCH_SIZE?: string;
 }
 
 export type AppEnv = { Bindings: Bindings };
@@ -158,6 +160,8 @@ export interface GenerationRow {
   summary_model: string | null;
   summary_updated_at: string | null;
   created_at: string;
+  /** original.png が保持期間ジョブで削除された時刻 (migrations/0023, src/lib/original-purge.ts)。null なら未削除。 */
+  original_purged_at: string | null;
 }
 
 export interface GenerationAssetRow {
