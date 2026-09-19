@@ -155,8 +155,8 @@ original から生成・保存されるサムネイルで、正本ではあり�
 `*/30 * * * *`、`scheduled` ハンドラ）が古い低価値 Generation について削除します。
 1回あたりの処理件数は `ORIGINAL_PURGE_BATCH_SIZE`（省略時100）。`scheduled` ハンドラは
 同じ invocation でこの purge の直後に再圧縮ジョブ（`src/lib/original-recompress.ts`、
-`ORIGINAL_RECOMPRESS` var が `'on'` のときだけ有効。wrangler.jsonc には無く省略時は
-無効）も走らせ、保持期間を過ぎても残っている original を不透明な PNG に限って lossless
+`ORIGINAL_RECOMPRESS` var が `'on'` のときだけ有効。本番は wrangler.jsonc で `on`、
+省略時は無効）も走らせ、保持期間を過ぎても残っている original を不透明な PNG に限って lossless
 WebP（`original.webp`）へ変換します。Generation 1件あたり purge は最悪 ~5、再圧縮は
 最悪 ~6 subrequest かかるため、両方のバッチサイズは Workers Paid の1000 subrequest
 予算に収まる値にしています。`preview.webp` と D1 行は残ります（`docs/domain-model.md`
