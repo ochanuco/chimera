@@ -46,6 +46,7 @@ const generationLightSchema = z.looseObject({
   created_at: z.string(),
   image_width: z.number().nullable(),
   image_height: z.number().nullable(),
+  original_purged_at: z.string().nullable().optional(),
 });
 
 /** decorateRuns (lib/experiments.ts) — Run に batch / generation / render_facts を足したもの。 */
@@ -229,6 +230,7 @@ export const mcpOutputSchemas = {
         created_at: z.string(),
         batch_id: z.string().nullable(),
         canonical_url: z.string(),
+        original_purged_at: z.string().nullable().optional(),
       }),
     ),
     total: z.number(),
@@ -240,6 +242,7 @@ export const mcpOutputSchemas = {
     rating: z.string().nullable().optional(),
     bookmark: z.boolean().optional(),
     tags: z.array(z.string()).optional(),
+    original_purged_at: z.string().nullable().optional(),
     semantic: z.unknown().optional(),
     batch: z.looseObject({ drawn_pose: drawnPoseSchema.nullable().optional() }).nullable().optional(),
     comfy_job: z.unknown().optional(),

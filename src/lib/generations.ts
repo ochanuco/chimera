@@ -3,7 +3,7 @@
 // どちらも GET /api/v1/generations{,/id} と同じ形を返す。
 
 import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool } from './db';
-import { canonicalGenerationUrl, generationImageUrl } from './serialize';
+import { canonicalGenerationUrl, generationImageUrl, generationPreviewUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
 import { renderFactsForJob } from './render-facts';
@@ -71,6 +71,7 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
     short_id: generation.short_id,
     canonical_url: canonicalGenerationUrl(org, generation.short_id),
     image: { url: generationImageUrl(org, generation.short_id) },
+    original_purged_at: generation.original_purged_at,
     character: character ? { id: character.id, name: character.name } : null,
     created_at: generation.created_at,
     rating: generation.rating,
@@ -166,6 +167,7 @@ export interface GenerationListItem {
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
+  original_purged_at: string | null;
   /** short_id of the raw Generation this item's Batch refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
   refines_generation_short_id: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
@@ -466,7 +468,7 @@ export async function queryGenerations(
       short_id: r.short_id,
       canonical_url: canonicalGenerationUrl(org, r.short_id),
       image_url: generationImageUrl(org, r.short_id),
-      thumbnail_url: generationImageUrl(org, r.short_id),
+      thumbnail_url: generationPreviewUrl(org, r.short_id),
       rating: r.rating,
       bookmark: toBool(r.bookmark),
       summary: r.summary,
@@ -477,6 +479,7 @@ export async function queryGenerations(
       image_width: r.image_width,
       image_height: r.image_height,
       image_size: r.image_size,
+      original_purged_at: r.original_purged_at,
       refines_generation_short_id: r.refines_generation_short_id,
       published: toBool(r.is_published),
       finalize_request: finalizeRequests.get(r.id) ?? null,

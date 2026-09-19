@@ -17,7 +17,7 @@ import {
   touchExperiment,
 } from './db';
 import { parseJsonObject, type JsonObject } from './overrides';
-import { badRequest, conflict, notFound } from './errors';
+import { ApiError, badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
 import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
 import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
@@ -306,6 +306,27 @@ export async function createRequest(
     .bind(input.idempotency_key)
     .first<RequestRow>();
   if (existing) return replayOrConflict(existing, input.kind, payloadHash);
+
+  // finalize/repair/masked_redraw の worker は payload.generation_id を GET
+  // /api/v1/generations/{id}/context で解決してその Generation 自身の画像を読む
+  // (docs/worker-protocol.md — 「元画像を読みます」節、derive_request の
+  // resolveDerivationSource のような別 Generation への遡りはしない)。original が
+  // purge 済みならその読み出しが失敗するので、ここで止める。idempotency 再送
+  // (上の early return) はここを通らないので、purge より前に作られた行の再送は
+  // 妨げない。
+  if (input.kind === 'finalize' || input.kind === 'repair' || input.kind === 'masked_redraw') {
+    const generationId = (payload as { generation_id?: unknown }).generation_id;
+    if (typeof generationId === 'string') {
+      const generation = await getGenerationByIdOrShortId(db, generationId);
+      if (generation?.original_purged_at) {
+        throw new ApiError(
+          409,
+          'original_purged',
+          `generation '${generation.short_id}' had its original image purged, so it can no longer be finalized, repaired or redrawn`,
+        );
+      }
+    }
+  }
 
   let runId: string | null = null;
   if (runValidation && input.kind === 'generate') {

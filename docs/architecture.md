@@ -140,10 +140,21 @@ refinement Batch / rebuild Reference を作ります。
 
 ``` text
 generations/{generation_id}/original.png
+generations/{generation_id}/preview.webp
 ```
 
 ComfyUI の filename は object key に利用せず、DB 上の metadata
 として保存します。
+
+`preview.webp`（長辺1024px以下）は `GET /g/{short_id}/preview` への初回リクエスト時に
+`original.png` から生成・保存されるサムネイルで、正本ではありません。GUI/API の
+サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
+
+`original.png` だけは、保持期間ジョブ（`src/lib/original-purge.ts`、cron trigger
+`*/30 * * * *`、`scheduled` ハンドラ）が古い低価値 Generation について削除します。
+1回あたりの処理件数は `ORIGINAL_PURGE_BATCH_SIZE`（省略時100）— Generation 1件あたり
+最悪 ~5 subrequest かかるため、Workers Paid の1000 subrequest 予算に収まる値にしています。
+`preview.webp` と D1 行は残ります（`docs/domain-model.md`「original の保持」）。
 
 ## Ingest Flow
 

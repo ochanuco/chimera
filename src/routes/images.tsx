@@ -11,8 +11,9 @@ import {
 } from '../lib/db';
 import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
-import { notFound } from '../lib/errors';
+import { gone, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
+import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
 import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
@@ -40,6 +41,8 @@ async function resolveImageMeta(bucket: R2Bucket, generation: GenerationRow): Pr
   if (generation.image_size !== null) {
     return { width: generation.image_width, height: generation.image_height, size: generation.image_size };
   }
+  // original が purge 済みなら R2 には無いので、無駄な GET を打たずに諦める。
+  if (generation.original_purged_at) return null;
   return getImageMeta(bucket, generation.r2_object_key);
 }
 
@@ -188,6 +191,7 @@ images.get('/:shortId', async (c) => {
         finalizeBackdrops={finalizeBackdrops}
         finalizeRecipeRef={finalizeRecipeRef}
         finalizeCatalogVersion={finalizeCatalogVersion}
+        purged={Boolean(data.original_purged_at)}
       />,
     );
   }
@@ -340,6 +344,7 @@ images.get('/:shortId/image', async (c) => {
   const shortId = c.req.param('shortId');
   const generation = await getGenerationByIdOrShortId(db, shortId);
   if (!generation) throw notFound('generation');
+  if (generation.original_purged_at) throw gone('original_purged', 'the original image was purged; see /preview instead');
 
   const object = await c.env.IMAGES.get(generation.r2_object_key);
   if (!object) throw notFound('image');
@@ -348,6 +353,27 @@ images.get('/:shortId/image', async (c) => {
     headers: {
       'Content-Type': object.httpMetadata?.contentType ?? 'image/png',
       'Cache-Control': 'private, max-age=3600',
+    },
+  });
+});
+
+// GET /g/{short_id}/preview — thumbnail-sized WebP, created from the original on first
+// request and stored for next time (src/lib/generation-preview.ts). Falls back to the
+// original bytes when a preview can't be created; that response is cached far more briefly
+// since it isn't the stable, final asset.
+images.get('/:shortId/preview', async (c) => {
+  const db = c.env.DB;
+  const shortId = c.req.param('shortId');
+  const generation = await getGenerationByIdOrShortId(db, shortId);
+  if (!generation) throw notFound('generation');
+
+  const preview = await loadOrCreateGenerationPreview(c.env, generation);
+  if (!preview) throw notFound('image');
+
+  return new Response(preview.body, {
+    headers: {
+      'Content-Type': preview.contentType,
+      'Cache-Control': preview.stored ? 'private, max-age=31536000, immutable' : 'private, max-age=300',
     },
   });
 });

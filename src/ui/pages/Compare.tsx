@@ -25,6 +25,7 @@ export interface CompareSemantic {
 export interface CompareItem {
   id: string;
   short_id: string;
+  /** original が purge 済みなら呼び出し側 (pages.tsx) が preview URL に差し替え済み。 */
   image_url: string;
   rating: 'bad' | 'neutral' | 'good' | null;
   bookmark: boolean;

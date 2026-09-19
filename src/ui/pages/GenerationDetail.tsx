@@ -22,6 +22,8 @@ export interface GenerationDetailData {
   short_id: string;
   canonical_url: string;
   image: { url: string };
+  /** original.png が保持ジョブで削除された時刻。null なら未削除 (migrations/0023)。 */
+  original_purged_at: string | null;
   character: { id: string; name: string } | null;
   created_at: string;
   rating: 'bad' | 'neutral' | 'good' | null;
@@ -228,7 +230,7 @@ export function GenerationDetailPage({
         kind: 'reference',
         href: link.href,
         shortId: link.label,
-        imageUrl: `/g/${link.label}/image`,
+        imageUrl: `/g/${link.label}/preview`,
         detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
       };
     }),
@@ -239,7 +241,7 @@ export function GenerationDetailPage({
         kind: 'refinement',
         href: link.href,
         shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
         caption: 'via batch',
         detail: `reason: ${r.reason ?? '-'}`,
       };
@@ -253,7 +255,7 @@ export function GenerationDetailPage({
           kind: 'story',
           href: link.href,
           shortId: link.label,
-          imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+          imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
           caption: 'via batch',
           detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
         };
@@ -265,7 +267,7 @@ export function GenerationDetailPage({
         kind: 'experiment',
         href: link.href,
         shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
         caption: 'via batch',
         detail: `run #${p.run_index} → run #${experimentRun!.run.run_index}`,
       };
@@ -280,7 +282,7 @@ export function GenerationDetailPage({
         kind: 'reference',
         href: link.href,
         shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
         detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
       };
     }),
@@ -291,7 +293,7 @@ export function GenerationDetailPage({
         kind: 'refinement',
         href: link.href,
         shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
         caption: 'via batch',
         detail: `reason: ${r.reason ?? '-'}`,
       };
@@ -305,7 +307,7 @@ export function GenerationDetailPage({
           kind: 'story',
           href: link.href,
           shortId: link.label,
-          imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+          imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
           caption: 'via batch',
           detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
         };
@@ -317,7 +319,7 @@ export function GenerationDetailPage({
         kind: 'experiment',
         href: link.href,
         shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
         caption: 'via batch',
         detail: `run #${experimentRun!.run.run_index} → run #${ch.run_index}`,
       };
@@ -334,7 +336,7 @@ export function GenerationDetailPage({
       kind: 'experiment',
       href: link.href,
       shortId: link.label,
-      imageUrl: genShortId ? `/g/${genShortId}/image` : null,
+      imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
       caption: 'via batch',
       detail: `run #${s.run_index} of ${experimentRun!.experiment.short_id}`,
     };
@@ -345,9 +347,10 @@ export function GenerationDetailPage({
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
-            <img src={data.image.url} alt={data.short_id} />
+            <img src={data.original_purged_at ? `/g/${data.short_id}/preview` : data.image.url} alt={data.short_id} />
           </div>
           {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
+          {data.original_purged_at ? <p class="image-meta">原寸は破棄済み（preview のみ）</p> : null}
         </div>
         <div class="detail-right">
           <h1>
@@ -377,6 +380,7 @@ export function GenerationDetailPage({
             recipeRef={finalizeRecipeRef}
             catalogVersion={finalizeCatalogVersion}
             canPromoteToProfile={canPromoteToProfile}
+            purged={Boolean(data.original_purged_at)}
           />
 
           {producedByOptions ? (

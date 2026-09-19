@@ -27,6 +27,11 @@ export function generationImageUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}/image`;
 }
 
+/** Downscaled WebP preview (long edge <=1024px), created on first request. Every thumbnail-sized use points here; `image_url` stays the original. */
+export function generationPreviewUrl(origin: string, shortId: string): string {
+  return `${origin}/g/${shortId}/preview`;
+}
+
 export function serializeBatch(row: BatchRow) {
   return {
     id: row.id,
@@ -53,7 +58,16 @@ export function serializeBatch(row: BatchRow) {
 
 export type GenerationLightSource = Pick<
   GenerationRow,
-  'id' | 'short_id' | 'rating' | 'bookmark' | 'character_id' | 'created_at' | 'image_width' | 'image_height' | 'image_size'
+  | 'id'
+  | 'short_id'
+  | 'rating'
+  | 'bookmark'
+  | 'character_id'
+  | 'created_at'
+  | 'image_width'
+  | 'image_height'
+  | 'image_size'
+  | 'original_purged_at'
 >;
 
 /** Lightweight Generation representation embedded in Batch/Story responses. */
@@ -63,7 +77,7 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     short_id: row.short_id,
     canonical_url: canonicalGenerationUrl(origin, row.short_id),
     image_url: generationImageUrl(origin, row.short_id),
-    thumbnail_url: generationImageUrl(origin, row.short_id),
+    thumbnail_url: generationPreviewUrl(origin, row.short_id),
     rating: row.rating,
     bookmark: toBool(row.bookmark),
     character_id: row.character_id,
@@ -71,6 +85,7 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     image_width: row.image_width,
     image_height: row.image_height,
     image_size: row.image_size,
+    original_purged_at: row.original_purged_at,
   };
 }
 

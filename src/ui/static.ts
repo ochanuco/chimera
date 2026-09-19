@@ -3276,7 +3276,7 @@ export const appJs = `
     thumb.className = 'nav-queue-row-thumb';
     if (group.batch && group.batch.thumbnail_generation_short_id) {
       var img = document.createElement('img');
-      img.src = '/g/' + encodeURIComponent(group.batch.thumbnail_generation_short_id) + '/image';
+      img.src = '/g/' + encodeURIComponent(group.batch.thumbnail_generation_short_id) + '/preview';
       img.loading = 'lazy';
       img.alt = '';
       thumb.appendChild(img);
@@ -3440,7 +3440,7 @@ export const appJs = `
       chip.title = compareRef(entry) + ' を比較から外す';
       chip.setAttribute('aria-label', chip.title);
       var img = document.createElement('img');
-      img.src = '/g/' + encodeURIComponent(compareRef(entry)) + '/image';
+      img.src = '/g/' + encodeURIComponent(compareRef(entry)) + '/preview';
       img.alt = '';
       var x = document.createElement('span');
       x.className = 'compare-chip-x';
