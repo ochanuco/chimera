@@ -182,7 +182,6 @@ images.get('/:shortId', async (c) => {
         poseReference={data.pose_reference}
         publications={data.publications}
         tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
-        recipe={data.batch?.recipe ?? null}
         finalizeRequests={finalizeRequests}
         note={data.note}
         finalizeDials={finalizeDials}

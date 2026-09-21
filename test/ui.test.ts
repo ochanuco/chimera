@@ -515,16 +515,16 @@ describe('Web GUI pages', () => {
     expect(html).toContain('finalize: 1 queued · 0 running · 0 done · 0 failed');
   });
 
-  it('the Finalize forms omit the recolor checkbox for a yukari-sketch batch', async () => {
-    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari-sketch' } });
+  it('the Finalize forms offer the recolor checkbox regardless of recipe', async () => {
+    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari-il' } });
 
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('name="repin"');
-    expect(genHtml).not.toContain('name="recolor"');
+    expect(genHtml).toContain('name="recolor"');
 
     const batchHtml = await (await req(`/b/${batch.id}`)).text();
     expect(batchHtml).toContain('name="repin"');
-    expect(batchHtml).not.toContain('name="recolor"');
+    expect(batchHtml).toContain('name="recolor"');
   });
 
   it('the Finalize forms offer a deliver_only checkbox on both pages', async () => {
@@ -547,12 +547,6 @@ describe('Web GUI pages', () => {
       expect(html).toContain('name="stroke_light"');
       expect(html).toContain('<option value="nw"');
     }
-  });
-
-  it('the Finalize forms keep the recolor checkbox for a yukari batch', async () => {
-    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
-    expect(await (await req(`/g/${generation.short_id}`)).text()).toContain('name="recolor"');
-    expect(await (await req(`/b/${batch.id}`)).text()).toContain('name="recolor"');
   });
 
   it('the Finalize forms group controls into three fieldsets', async () => {

@@ -371,7 +371,6 @@ export function GenerationDetailPage({
 
           <FinalizeSection
             shortId={data.short_id}
-            recipe={data.batch?.recipe ?? null}
             requests={finalizeRequests}
             dials={finalizeDials}
             defaults={finalizeDefaults}
