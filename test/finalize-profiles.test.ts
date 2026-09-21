@@ -4,6 +4,7 @@ import { createGeneration, getJson, mcpToolCall, postJson, req } from './helpers
 import { listFinalizeProfiles } from '../src/lib/presets';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
+import { finalizeOptionsSchema } from '../src/schemas/requests';
 
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
@@ -129,8 +130,17 @@ describe('catalog dials passthrough', () => {
   });
 });
 
+describe('finalizeOptionsSchema', () => {
+  it('rejects handdrawn / toe_guard / lora_strength (dropped alongside the yukari-anima -> yukari rename)', () => {
+    for (const key of ['handdrawn', 'toe_guard', 'lora_strength']) {
+      const result = finalizeOptionsSchema.safeParse({ [key]: true });
+      expect(result.success).toBe(false);
+    }
+  });
+});
+
 describe('finalize/repair/masked_redraw options accept dial words', () => {
-  it('finalize: denoise / keep_legwear / toe_guard / lora_strength / repair_denoise accept a word; reject a malformed string', async () => {
+  it('finalize: denoise / keep_legwear / repair_denoise accept a word; reject a malformed string', async () => {
     const { generation } = await createGeneration();
 
     const ok = await postJson('/api/v1/requests', {
@@ -140,8 +150,6 @@ describe('finalize/repair/masked_redraw options accept dial words', () => {
         options: {
           denoise: 'tidy',
           keep_legwear: 'on',
-          toe_guard: 'heavy',
-          lora_strength: 'strong',
           repair: ['hands'],
           repair_denoise: 'soft',
         },

@@ -659,8 +659,9 @@ GUIだけ入れ替えると同じ値が画面とAPIで別物になるため対�
 off。1つ以上チェックすると`repair`配列を積みます）と、`repair pad`の数値入力
 （空欄が省略=worker既定を意味する）を持ちます。`repair pad`はrepair hands /
 repair feetのどちらもチェックされていない間`disabled`で、どちらかをチェックすると
-有効になります。`repair lora`はdeliver only中は常に`disabled`（yukari-anima では
-worker が無視する）、それ以外はrepair hands / repair feetのどちらかが必要です。
+有効になります。`repair lora`はdeliver only中は常に`disabled`（Anima＝recipe yukariの絵を
+deliver onlyで使うときはworkerがここを無視するため、GUIはrecipeを問わず一律disabledにする）、
+それ以外はrepair hands / repair feetのどちらかが必要です。
 
 Generation Detail / Lightbox（画像1枚に対して1つのFinalizeフォームが並ぶページ）は
 これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます
