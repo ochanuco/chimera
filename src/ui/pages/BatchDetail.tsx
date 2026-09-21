@@ -294,7 +294,6 @@ export function BatchDetailPage({
                 data-dials={JSON.stringify(dials ?? {})}
               >
                 <FinalizeFields
-                  recipe={batch.recipe}
                   submitLabel="Finalize all arms"
                   dials={dials}
                   defaults={defaults}

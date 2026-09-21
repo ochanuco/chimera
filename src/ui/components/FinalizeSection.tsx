@@ -19,7 +19,6 @@ export interface FinalizeRequestStatusLine {
  */
 export function FinalizeSection({
   shortId,
-  recipe,
   requests,
   open = true,
   showCreatedAt = true,
@@ -33,7 +32,6 @@ export function FinalizeSection({
   purged = false,
 }: {
   shortId: string;
-  recipe: string | null;
   requests: FinalizeRequestStatusLine[];
   open?: boolean;
   showCreatedAt?: boolean;
@@ -56,7 +54,6 @@ export function FinalizeSection({
         ) : (
           <form class="finalize-form" data-generation-short-id={shortId} autocomplete="off" data-dials={JSON.stringify(dials ?? {})}>
             <FinalizeFields
-              recipe={recipe}
               submitLabel="Finalize"
               dials={dials}
               defaults={defaults}
