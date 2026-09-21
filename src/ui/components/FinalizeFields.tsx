@@ -1,4 +1,4 @@
-import { dialWordsFor, finalizeTakesRecolor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
+import { dialWordsFor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 
 export interface BackdropOption {
@@ -131,7 +131,6 @@ function DenoiseField({ dials }: { dials: FinalizeDials | null }) {
  * the recipe has neither dials nor profiles, every field renders exactly as it always has.
  */
 export function FinalizeFields({
-  recipe,
   submitLabel,
   dials = null,
   defaults = null,
@@ -141,7 +140,6 @@ export function FinalizeFields({
   catalogVersion = null,
   regionDrawing = false,
 }: {
-  recipe: string | null;
   submitLabel: string;
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
@@ -205,8 +203,8 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣は OFF のときだけ効く。部分描き直しは ON/OFF どちらでも使え、ON では候補数（repair seeds）分の納品候補を作る"
-          data-help="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。yukari-anima は手描き線が素に入っているのでこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。denoise・脚衣は OFF のときだけ効く。部分描き直しは ON/OFF どちらでも使え、ON では候補数（repair seeds）分の納品候補を作る"
+          aria-label="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。全 recipe でこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。描き直しができるのは Anima（recipe yukari）で描いた絵だけで、それ以外の絵は OFF にすると worker が拒否する。denoise・脚衣は OFF のときだけ効く。部分描き直しは ON/OFF どちらでも使え、ON では候補数（repair seeds）分の納品候補を作る"
+          data-help="ON: 素のピクセルをそのまま、切り抜き・白枠紫枠・背景・影の向きだけ付けて納品する。全 recipe でこれが既定。OFF: IL（hassaku）で 2560 に描き直してから納品する。描き直しができるのは Anima（recipe yukari）で描いた絵だけで、それ以外の絵は OFF にすると worker が拒否する。denoise・脚衣は OFF のときだけ効く。部分描き直しは ON/OFF どちらでも使え、ON では候補数（repair seeds）分の納品候補を作る"
         >
           ?
         </span>
@@ -222,22 +220,18 @@ export function FinalizeFields({
         >
           ?
         </span>
-        {finalizeTakesRecolor(recipe) ? (
-          <>
-            <label>
-              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
-            </label>
-            <span
-              class="finalize-help"
-              tabindex={0}
-              role="note"
-              aria-label="yukari のパレットに塗り直す（膝枕パレット断定用）。recipe が yukari の Batch でだけ出る"
-              data-help="yukari のパレットに塗り直す（膝枕パレット断定用）。recipe が yukari の Batch でだけ出る"
-            >
-              ?
-            </span>
-          </>
-        ) : null}
+        <label>
+          <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
+        </label>
+        <span
+          class="finalize-help"
+          tabindex={0}
+          role="note"
+          aria-label="yukari のパレットに塗り直す（膝枕パレット断定用）"
+          data-help="yukari のパレットに塗り直す（膝枕パレット断定用）"
+        >
+          ?
+        </span>
         <KeepLegwearField dialsEnabled={dialsEnabled} defaults={defaults} />
         <span
           class="finalize-help"
@@ -389,8 +383,8 @@ export function FinalizeFields({
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要。描き直さない（deliver only）中は常に off（yukari-anima では worker が無視する）"
-          data-help="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要。描き直さない（deliver only）中は常に off（yukari-anima では worker が無視する）"
+          aria-label="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要。描き直さない（deliver only）で Anima（recipe yukari）由来の絵に使うときは worker が無視する（描き直しと組み合わせるとき、または Anima 以外の絵を deliver only するときは効く）"
+          data-help="描き直した部位の part LoRA 強度。空欄なら off。repair hands か repair feet のどちらかが必要。描き直さない（deliver only）で Anima（recipe yukari）由来の絵に使うときは worker が無視する（描き直しと組み合わせるとき、または Anima 以外の絵を deliver only するときは効く）"
         >
           ?
         </span>

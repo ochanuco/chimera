@@ -373,15 +373,6 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 キーも封筒を素通しします。MCP `derive_request` は `identity_override` 引数をこのキーに
 写し、派生元の値は引き継ぎません。
 
-#### 背景と描き足された小物の除去
-
-背景や、モデルが勝手に描き足す家具などを消したいときは `generation.parameters.layerdiffuse: true`
-を使います（recipe `yukari` / `yukari-sketch`。`yukari-anima` は拒否します）。背景は透明になり、
-人物に触れていない物（椅子・紙ナプキンなど）は消えます。pose の上で人物が触れている小物
-（テーブル・カップなど）は残ります。negative prompt に furniture / chair / indoors などを入れても
-描き足しは消えません。layerdiffuse の Generation を finalize すると、既定で透過ステッカーになります
-（「finalize」の `transparent`）。
-
 ### finalize
 
 ``` json
@@ -398,14 +389,11 @@ worker は `failed` にします。`generation.identity_override` に理由の�
       "route": null,
       "finalizer": null,
       "size": null,
-      "handdrawn": false,
       "skin": false,
-      "toe_guard": null,
       "keep_scene": false,
       "transparent": null,
       "backdrop": null,
       "upscale": null,
-      "lora_strength": null,
       "deliver_size": null,
       "stroke_light": null,
       "repair": null,
@@ -423,23 +411,24 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 `GET /api/v1/generations/{id}/context` で解決します。`options` は `comfy-recipes finalize`
 の引数に 1 対 1 で写します。
 
+redraw が効くのは Anima（recipe `yukari`）で描いた絵だけです。それ以外の recipe の絵は
+`deliver_only: true` でのみ finalize でき、それ以外の指定では worker が拒否します。
+LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも finalize できません。
+
   options             型                        CLI
   ------------------- ------------------------- ------------------------------
-  denoise             null | number | word      `--denoise 0.55`（null は recipe 既定。IL 併用 0.55、Anima 単体 0.75 など recipe が持つ）
+  denoise             null | number | word      `--denoise 0.4`（null は recipe 既定 0.4。Anima の絵の redraw にだけ効く）
   repin               bool                      `--repin`
   recolor             bool                      `--recolor`
   keep_legwear        null | true | number | word  `--keep-legwear`（true は既定 0.62、number はその値）
   route               null | "latent" | "pixel" `--latent-route` / `--pixel-route`（null は recipe 既定）
   finalizer           null | string             `--finalizer MODEL`
   size                null | integer            `--size LONGEST`
-  handdrawn           bool                      `--handdrawn`
   skin                bool                      `--skin`
-  toe_guard           null | true | number | word  `--toe-guard [WEIGHT]`
   keep_scene          bool                      `--keep-scene`
-  transparent         null | bool               `--opaque` が false（null は recipe 既定。layerdiffuse の Generation では白帯と紫縁の外側が alpha 0 の透過ステッカーが既定で、`backdrop` / `keep_scene` / false を指定したときだけ帯付き不透明）
+  transparent         null | bool               `--opaque` が false（null は recipe 既定）
   backdrop            null | string             `--backdrop #RRGGBB`
   upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
-  lora_strength       null | number | word      `--lora-strength 0..2`
   deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
   stroke_light        null | "n".."nw"          `--stroke-light DIR`（8 方位、紫縁を光源側で細く影側で太く）
   repair              null | array\<"hands" \| "feet"\>  `--repair hands,feet`（同じ finalize request に相乗りする repair。null / 省略 / 空配列は off）
@@ -447,9 +436,9 @@ worker は `failed` にします。`generation.identity_override` に理由の�
   repair_denoise      null | number (0, 1] | word  `--repair-denoise 0.6`
   repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
-  repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。yukari-anima な Generation では worker が無視する）
+  repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。Anima の絵を deliver_only で使うときは worker が無視する。redraw と組み合わせるときは効く）
   repair_seeds        null | integer (1-8)      `--repair-seeds N`（`deliver_only` と `repair` / `repair_regions` を組み合わせた時だけ効く。seed ごとに1候補を作る数、worker 既定 4）
-  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / lora_strength / handdrawn / toe_guard / upscale との併用と layerdiffuse な Generation を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Batch として記録する（raw + delivered を seed ごとに1組）。`repair_lora` は yukari-anima な Generation では無視される）
+  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / keep_regions / upscale との併用を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Batch として記録する（raw + delivered を seed ごとに1組）。Anima 以外の絵は `deliver_only` でしか finalize できない）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
@@ -457,17 +446,17 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 
 `stroke_light` と `backdrop` は、省略すると worker が base recipe の `FINALIZE_DEFAULTS`
 から解決します（`stroke_light` は `"n"` ＝上からの光源・下に影、`backdrop` は
-`"stripes"`）。`yukari-anima` の recipe に限り `deliver_only` も既定で `true`、`repin` も
-既定で `false` になりますが、denoise / size / route / finalizer / lora_strength /
-sketch_redraw / handdrawn / toe_guard / keep_regions / upscale のいずれか（redraw の
-絵柄を変える option）を指定するとこの既定は外れ、通常どおり redraw します。`repair` /
+`"dots"`）。`deliver_only` と `repin` も既定で `true` です。denoise / size / route /
+finalizer / keep_regions / upscale のいずれか（redraw の絵柄を変える option）を指定すると
+`deliver_only` の既定は外れ、通常どおり
+redraw します（ただし redraw が効くのは Anima の絵だけです）。`repair` /
 `repair_regions` はこの既定を外さず、`deliver_only` のまま masked reroll の候補を作る
 側に扱われます。明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
 `stroke_light: null` は方向性のない均一な紫縁、`backdrop: null` は背景なし（透過）を
 指します。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
 chimera の WebUI フォームのプリセットもここから取っています。
 
-`denoise` / `keep_legwear` / `toe_guard` / `lora_strength` / `repair_denoise` /
+`denoise` / `keep_legwear` / `repair_denoise` /
 `repair_lora` は、number / null / （`keep_legwear` 等は加えて `true`）に加えて、
 `^[a-z][a-z0-9-]*$` にマッチする word 文字列も受け取ります。word の語彙は recipe ごとに
 catalog が `recipes[].dials.finalize` として公開するもので、chimera はそれを表示にだけ
@@ -479,8 +468,8 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 `repair` / `repair_regions` / `repair_pad` / `repair_lora` を、`deliver_only` チェック中に
 それらを使った場合はさらに `repair_seeds` を持ち、他は省略します。`backdrop` は選んだカードの
 模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
-`#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は recipe `yukari` の Batch でだけ選べ、
-`yukari-sketch` では常に false です（worker はそこで recolor を拒否します）。`denoise` の入力欄は空が既定で、空のまま積めば
+`#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は
+recipe を問わず選べます。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、
 チェックした分だけ `repair` に積みます。Generation Detail / Lightbox は画像上にドラッグした矩形を
 `repair_regions`（表示中の画像に対する分数 `[x0,y0,x1,y1]`）として持ち、部位チェックが無くても
@@ -619,9 +608,10 @@ worker の永続化は次の形を必須とします。
    入れたり、source の画像を差し替えたりしてはいけない。
 
 これは chimera 内に ComfyUI graph を複製する契約ではなく、comfyui-recipes 側の
-inpaint/masked-img2img adapter に渡す narrow boundary です。recipe `yukari-sketch` を使う
-場合も、finalize 後の確定サイズを source として扱い、手描き線・simple/grey background を
-維持するかは worker/recipe の責務です。chimera は新しい画像生成や rating を行いません。
+inpaint/masked-img2img adapter に渡す narrow boundary です。worker は source Generation
+自身が持つ graph（`comfy_job.graph`、無ければ画像から再構成）をそのまま使って redraw する
+ため、手描き線や背景をどう維持するかは source を描いた recipe の責務です。chimera は新しい
+画像生成や rating を行いません。
 
 ## idempotency と再実行の再開
 

@@ -148,16 +148,6 @@ function promptPartGuidance(identityOverrideField: string): string {
   );
 }
 
-// negative で furniture などを禁止しても描き足しは消えず、layerdiffuse だけが効いた (2026-09-10 の本番実験)。
-function backgroundRemovalGuidance(layerdiffuseField: string): string {
-  return (
-    `To remove the background or furniture the model adds on its own, set ${layerdiffuseField} (recipes yukari and ` +
-    'yukari-sketch; yukari-anima rejects it): the background comes out transparent and objects not touching the figure ' +
-    'disappear, while props the pose touches (a table, a cup) stay. Banning them in the negative prompt does not remove ' +
-    'them. A finalize of a layerdiffuse Generation defaults to a transparent sticker. '
-  );
-}
-
 const createRunInputSchema = createExperimentRunSchema
   .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
   .extend({ experiment_id: z.string().min(1) });
@@ -601,10 +591,6 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
-        backgroundRemovalGuidance(
-          'generation.parameters.layerdiffuse: true in a kind "generate" payload (to redo an existing Generation that way, ' +
-            'use derive_request with parameters: {layerdiffuse: true})',
-        ) +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -631,51 +617,49 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'options.deliver_only is set, redraws the pick at delivery size, then cuts a matte and composites the ' +
         'backdrop and purple stroke; recorded as a refinement Batch of the source Generation, with a rebuild ' +
         "Reference back to it. generation_id accepts a short_id. " +
+        'The redraw only works on a picture drawn with Anima (recipe yukari); a picture from any other recipe ' +
+        'can only be finalized with deliver_only: true (deliver without redraw) — without it the worker fails the ' +
+        'request. A LayerDiffuse-derived picture cannot be finalized at all, deliver_only included. ' +
         'options is optional; an omitted field resolves to the base recipe\'s published finalize default — ' +
         'list_catalog\'s recipes[].finalize.defaults is where these are published, the same values the WebUI ' +
         'form presets from, so look them up per-recipe rather than hardcoding. Two fields default across every ' +
-        'recipe: stroke_light to "n" (light from above, shadow below) and backdrop to "stripes". For a ' +
-        'yukari-anima base only, deliver_only also defaults to true and repin to false, unless a redraw-shaping ' +
-        'option (denoise, size, route, finalizer, lora_strength, sketch_redraw, handdrawn, toe_guard, ' +
-        'keep_regions or upscale) is given, which turns the redraw back on; repair and repair_regions do not ' +
-        '(they combine with deliver_only instead, see below). An explicit null ' +
+        'recipe: stroke_light to "n" (light from above, shadow below) and backdrop to "dots". repin and ' +
+        'deliver_only also default to true; a redraw-shaping option (denoise, size, route, finalizer, ' +
+        'keep_regions or upscale) turns deliver_only off and the redraw back on, while repair and ' +
+        'repair_regions do not (they combine with deliver_only instead, see below). An explicit null ' +
         'keeps its own distinct meaning rather than falling back to a default: stroke_light: null means a ' +
         'uniform stroke with no directional shading, backdrop: null means no backdrop (transparent). Other ' +
         'fields: ' +
-        'denoise (redraw strength; recipe default, e.g. 0.55 for an IL finalize, 0.75 for Anima alone), ' +
-        'repin (accent-compression recolor pass), recolor (palette recolor, yukari recipe only), ' +
+        'denoise (redraw strength; recipe default 0.4), ' +
+        'repin (accent-compression recolor pass), recolor (palette recolor, accepted for any source), ' +
         'keep_legwear (keep tights/legwear — true for the worker default weight 0.62, or a number), ' +
         'route ("latent" or "pixel", worker default), size (redraw longest side, worker default), ' +
-        'handdrawn (handdrawn-look pass), skin (skin pass), ' +
-        'toe_guard (toe-repair guard — true for the worker default weight, or a number), ' +
+        'skin (skin pass), ' +
         'keep_scene (keep background/scene), transparent (force alpha-cut delivery instead of an opaque ' +
-        'backdrop — an explicit true overrides the recipe\'s defaulted backdrop; for a layerdiffuse Generation ' +
-        'the default route is already a transparent sticker — white band and purple stroke, alpha 0 outside — ' +
-        'unless backdrop, keep_scene or transparent: false is given), ' +
+        'backdrop — an explicit true overrides the recipe\'s defaulted backdrop), ' +
         'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
         'or a #RRGGBB color; recipe default above, or null for none), ' +
         'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
-        'lora_strength (finalize LoRA strength, 0-2), deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
+        'deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
         'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw; recipe default above, or null for a uniform stroke), ' +
         "repair (array of \"hands\"/\"feet\" to also mask-redraw in this same request), " +
         'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
         'repair_size (repair redraw longest side), ' +
-        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number; ' +
-        'ignored for yukari-anima sources), ' +
+        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number), ' +
         'repair_seeds (only meaningful alongside deliver_only plus repair and/or repair_regions: how many delivery ' +
         'candidates to produce, one per seed, 1-8, worker default 4), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
-        'only; defaults to true for a yukari-anima base as noted above, so it need not be set by hand there; for ' +
-        'other bases pass it explicitly when the render itself is the look, i.e. a redraw would repaint surfaces ' +
-        'such as tights. Combined with repair and/or repair_regions, it instead produces one delivery candidate per ' +
+        'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +
+        'drawn with Anima can only be finalized this way — pass it explicitly there. For an Anima source, pass it ' +
+        'explicitly when the render itself is the look, i.e. a redraw would repaint surfaces such as tights. ' +
+        'Combined with repair and/or repair_regions, it instead produces one delivery candidate per ' +
         'seed — a masked reroll of the region(s) on the source\'s own model, then the no-redraw delivery tail — ' +
         'recorded as a kind="repair" batch holding a raw and a delivered Generation per seed (repair_seeds controls ' +
-        'how many). Still cannot combine with denoise, size, route, finalizer, lora_strength, ' +
-        'sketch_redraw, handdrawn, toe_guard, keep_regions or a truthy upscale, and rejects ' +
-        'a layerdiffuse base; repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
+        'how many). Still cannot combine with denoise, size, route, finalizer, keep_regions or a truthy upscale; ' +
+        'repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
         'deliver_size stay compatible). ' +
-        'Every dial-able option (denoise, keep_legwear, toe_guard, lora_strength, repair_denoise, repair_lora) also accepts ' +
+        'Every dial-able option (denoise, keep_legwear, repair_denoise, repair_lora) also accepts ' +
         'a word string instead of a number/true — the word vocabulary for this recipe is list_catalog\'s ' +
         'recipes[].dials.finalize (chimera only checks the type; the worker resolves the word). ' +
         'profile {name, version?} resolves a finalize Preset (list_presets kind="finalize") for the source ' +
@@ -944,7 +928,6 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
         'when it differs from the source). ' +
         promptPartGuidance('identity_override (written to generation.identity_override; not carried from the parent)') +
-        backgroundRemovalGuidance('parameters: {layerdiffuse: true}') +
         'Pass a stable idempotency_key — the same key replays the original request ' +
         '(created: false) instead of creating a duplicate.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },

@@ -34,7 +34,6 @@ export function LightboxPanel({
   poseReference,
   publications,
   tags,
-  recipe,
   finalizeRequests,
   note,
   finalizeDials,
@@ -54,7 +53,6 @@ export function LightboxPanel({
   poseReference: PoseReferenceData | null;
   publications: PublicationData[];
   tags: { id: string; name: string }[];
-  recipe: string | null;
   finalizeRequests: FinalizeRequestStatusLine[];
   note: string | null;
   finalizeDials: FinalizeDials | null;
@@ -106,7 +104,6 @@ export function LightboxPanel({
 
       <FinalizeSection
         shortId={shortId}
-        recipe={recipe}
         requests={finalizeRequests}
         open
         dials={finalizeDials}
