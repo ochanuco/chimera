@@ -228,6 +228,10 @@ export async function pinPresets(db: D1Database, payload: JsonObject): Promise<J
     if (pinnedKinds.has(kind)) continue;
     const name = parameters[kind];
     if (typeof name !== 'string' || name === '') continue;
+    // import が作るのは pose だけで costume / expression は名前の配列でしか publish されない
+    // （docs/domain-model.md「Preset」）。行が一つも無い kind は worker 側の上書きに任せて
+    // 素通しにし、行のある kind で名前が無いときだけ 400 にする。
+    if (!(await recipeHasPresetsOfKind(db, recipe, kind))) continue;
     const row = await getPresetRow(db, recipe, kind, name);
     if (!row) throw badRequest(`preset not found: ${recipe}/${kind}/${name}`);
     pins.push({ kind, name, version: row.version });
@@ -303,6 +307,12 @@ export async function listPresetVersions(
 /** Whether `recipe` has any Preset row at all, regardless of kind/status. */
 export async function recipeHasPresets(db: D1Database, recipe: string): Promise<boolean> {
   const row = await db.prepare('SELECT 1 FROM presets WHERE recipe = ? LIMIT 1').bind(recipe).first();
+  return row !== null;
+}
+
+/** Whether `recipe` has any Preset row of `kind`, regardless of status. */
+export async function recipeHasPresetsOfKind(db: D1Database, recipe: string, kind: PresetKind): Promise<boolean> {
+  const row = await db.prepare('SELECT 1 FROM presets WHERE recipe = ? AND kind = ? LIMIT 1').bind(recipe, kind).first();
   return row !== null;
 }
 
