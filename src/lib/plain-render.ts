@@ -25,9 +25,8 @@ export interface PlainRenderRequestBuild {
 /**
  * seed defaults to the pose's current basis-render pin; pass `seed` explicitly to bootstrap a
  * pose that has no pin yet. 409s when neither is available. `parameters` names only the pose:
- * the recipe applies the pose's default costume itself, and naming it here would make
- * createRequest's pinPresets demand a costume Preset, which import never creates
- * (docs/domain-model.md「Preset」body の形). The pose has to exist as a Preset, not in the
+ * a plain render is the recipe's defaults, so the recipe applies the pose's default costume
+ * itself. The pose has to exist as a Preset, not in the
  * catalog: a promoted pose (promote_to_pose) lives only in presets, and the worker resolves it
  * through the pin. The catalog is consulted only for the git_commit in the default key.
  */
