@@ -69,7 +69,7 @@ async function publishAndImportTwoPoses(recipe: string): Promise<void> {
 interface RequestBody {
   id: string;
   status: string;
-  payload: { generation?: { presets?: unknown } } & Record<string, unknown>;
+  payload: { generation?: { presets?: unknown; parameters?: unknown } } & Record<string, unknown>;
   idempotency_key: string;
   worker_id: string | null;
 }
@@ -250,6 +250,43 @@ describe('preset pin (createRequest / generate)', () => {
       created_by: 'brain',
     });
     expect(res.status).toBe(400);
+  });
+
+  it('passes parameters.costume / expression through unpinned when the recipe has no preset rows of that kind (import creates pose only)', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+
+    const res = await createGenerateRequest(recipe, {
+      payload: {
+        schema_version: 1,
+        request: { instruction: 'test', count: 1 },
+        generation: { recipe, parameters: { pose: 'lounge', costume: 'suspender', expression: 'smile' } },
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.payload.generation?.presets).toEqual([{ kind: 'pose', name: 'lounge', version: 1 }]);
+    expect(res.body.payload.generation?.parameters).toEqual({ pose: 'lounge', costume: 'suspender', expression: 'smile' });
+  });
+
+  it('400s an unknown costume name once the recipe has any costume preset row', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+    await env.DB.prepare(
+      `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at)
+       VALUES (?, ?, 'costume', 'default', 1, ?, 'active', 'import', NULL, NULL, 'system', ?)`,
+    )
+      .bind(crypto.randomUUID(), recipe, JSON.stringify({ recipe_costume: 'default' }), new Date().toISOString())
+      .run();
+
+    const res = await createGenerateRequest(recipe, {
+      payload: {
+        schema_version: 1,
+        request: { instruction: 'test', count: 1 },
+        generation: { recipe, parameters: { pose: 'lounge', costume: 'suspender' } },
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain(`preset not found: ${recipe}/costume/suspender`);
   });
 
   it('does not pin a graph-mode payload', async () => {

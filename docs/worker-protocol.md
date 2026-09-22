@@ -288,8 +288,12 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
     されないまま通ります。
 -   名前が presets に無ければ 400（`preset not found: {recipe}/{kind}/{name}`）です。
 -   ただしその `recipe` の preset が presets に1件も無ければ、何も pin せずに通します。
-    段階 A の import をまだ流していない recipe で generate が止まらないようにするためで、
-    1件でも入っていれば上の 400 が効きます。
+    段階 A の import をまだ流していない recipe で generate が止まらないようにするためです。
+-   その `recipe` にその kind の行が1件も無ければ、その kind は pin せずに通します。
+    import が作るのは pose だけで、costume / expression は catalog に名前の配列でしか
+    載らないので（[domain-model.md](domain-model.md#preset)）、`parameters.costume` /
+    `parameters.expression` の上書きは pin されずに worker へそのまま渡ります。行が
+    1件でもある kind で名前が無いときだけ上の 400 が効きます。
 -   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
     pin の対象外です。
 
