@@ -40,9 +40,11 @@ Story の続きなのかを体系的に追跡しにくい問題があります�
     は実行と記録を担当する。
 5.  ComfyUI workflow の構築・実行は comfyui-recipes（worker）に残し、chimera
     自身は ComfyUI へ到達しない。GUI が積んでよいのは semantic 判断を伴わない
-    再実行（finalize / repair）だけで、GUI が触るのは自分の D1 の requests 行のみ。
-    任意領域の garment inpaint は MCP `masked_redraw_generation` から積み、source
-    Generation を変更せず refinement / rebuild lineage を残す。
+    再実行（finalize / repair）と、pin の再描画（絵柄チェック: pin 済み pose を
+    pin の seed・recipe 既定のまま plain render する）だけで、GUI が触るのは
+    自分の D1 の requests 行のみ。任意領域の garment inpaint は MCP
+    `masked_redraw_generation` から積み、source Generation を変更せず
+    refinement / rebuild lineage を残す。
 6.  canonical Generation URL を、人間・Claude・Discord・CLI
     の共通参照とする。
 7.  削除よりラベリングを優先し、生成履歴を破壊しない。

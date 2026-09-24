@@ -734,11 +734,21 @@ worker は requests だけを見ます。
   requests 行を積む（1 Generation 1 行）。repair に「all arms」相当は無い（Generation 単位
   でしか積めない）。
 - 進捗の step 表示は段階 3。
+- 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`
+  の `STYLE_CHECK_POSES`) の pin を、今のカタログ既定でもう一度描く。`POST
+  /api/v1/style-check/{recipe}` が pin を持つ pose ごとに `buildPlainRenderRequest`（MCP
+  `plain_render` と同じ組み立て — pin の seed・recipe 既定のまま patches なし）で
+  `kind = generate` を積む（`created_by = gui`）。GUI は prompt を一切書かない。pin が無い
+  pose は skip され、応答にその旨が残る。idempotency key は `plain_render` と同じ
+  `plain:<recipe>:<pose>:<seed>:<git_commit>` なので、同じ catalog commit への連打は
+  積み直さず既存行を返す。
 
 不変条件の文言は次の通り改めます。
 
-> GUI が積んでよいのは semantic 判断を伴わない再実行（finalize / repair）だけ。GUI が触る
-> のは自分の D1 の requests 行のみで、ComfyUI へは到達しない。
+> GUI が積んでよいのは semantic 判断を伴わない再実行（finalize / repair）と、pin の再描画
+> （絵柄チェック: pin 済み pose を pin の seed・recipe 既定のまま plain render する。GUI は
+> prompt を書かない）だけ。GUI が触るのは自分の D1 の requests 行のみで、ComfyUI へは
+> 到達しない。
 
 Compare が比較表示のみである点は変わりません。
 

@@ -1561,6 +1561,33 @@ MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — こ�
 （`created` / `recipe` / `kind` / `name` / `reference` / `source` / `superseded`）で、
 新規作成は 201、idempotency replay は 200 です。
 
+## 絵柄チェック
+
+``` text
+POST /api/v1/style-check/{recipe}
+```
+
+`/check`（[ui.md](ui.md#絵柄チェック)）の「今の既定で描く」ボタンが呼ぶ窓口です。body
+はありません。`recipe` の代表ポーズ一覧（`src/lib/style-check.ts` の `STYLE_CHECK_POSES`、
+今は `yukari` のみ）を pin を持つものだけ対象に、MCP `plain_render` と同じ組み立て
+（`buildPlainRenderRequest` → `createRequest`）で `kind = generate` の request を積みます。
+`created_by` は `'gui'` 固定、idempotency key は `plain_render` と同じ既定キー
+`plain:<recipe>:<pose>:<seed>:<git_commit>` なので、同じカタログ commit への連打は
+積み直さず既存行を返します。
+
+``` json
+{
+  "results": [
+    { "framing": "bust", "pose": "bust", "skipped": null, "created": true, "request_id": "...", "status": "queued" },
+    { "framing": "upper", "pose": "brush", "skipped": "no_pin", "created": null, "request_id": null, "status": null }
+  ]
+}
+```
+
+pin が無いポーズは `skipped: "no_pin"` で、request は積まれません。`recipe` に代表ポーズの
+定義が無ければ `results` は空配列です。常に 200 を返します（行ごとの skip/replay は
+エラーではありません）。
+
 ## Tags
 
 対象別endpointを使用します。
