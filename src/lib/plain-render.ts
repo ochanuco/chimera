@@ -22,6 +22,11 @@ export interface PlainRenderRequestBuild {
   reference: PresetReferenceView | null;
 }
 
+/** Default idempotency key for a plain render: replays at the same (recipe, pose, seed, catalog commit). Shared with lib/style-check.ts, which looks a request up by this same key without enqueuing. */
+export function plainRenderIdempotencyKey(recipe: string, pose: string, seed: number, gitCommit: string | null): string {
+  return `plain:${recipe}:${pose}:${seed}:${gitCommit ?? 'unknown'}`;
+}
+
 /**
  * seed defaults to the pose's current basis-render pin; pass `seed` explicitly to bootstrap a
  * pose that has no pin yet. 409s when neither is available. `parameters` names only the pose:
@@ -51,7 +56,7 @@ export async function buildPlainRenderRequest(db: D1Database, input: PlainRender
     semantic: { summary: `plain render of ${input.recipe} ${input.pose}: recipe defaults, no patches, seed ${seed}` },
   };
 
-  const idempotencyKey = input.idempotency_key ?? `plain:${input.recipe}:${input.pose}:${seed}:${found.row.git_commit ?? 'unknown'}`;
+  const idempotencyKey = input.idempotency_key ?? plainRenderIdempotencyKey(input.recipe, input.pose, seed, found.row.git_commit);
 
   return { payload, seed, idempotency_key: idempotencyKey, reference };
 }

@@ -26,9 +26,11 @@ import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
+import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
 import { queryGenerations } from '../lib/generations';
 import { renderFactsForJob } from '../lib/render-facts';
 import { defaultRecipeRef } from '../lib/requests';
+import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
 import type { FinalizeDials } from '../ui/finalize-options';
@@ -429,6 +431,51 @@ pages.get('/bookmarks', async (c) => {
       view={view}
     />,
   );
+});
+
+/** result_json.generation_ids[0] の解決結果を絵柄チェックの GenerationCardData に写す。result_json の形が壊れていても行は落とさず null (「まだ描いていない」と区別するのは呼び出し側)。 */
+function resolveDoneGenerationId(request: { status: string; result_json: string | null }): string | null {
+  if (request.status !== 'done' || !request.result_json) return null;
+  try {
+    const parsed = JSON.parse(request.result_json) as { generation_ids?: string[] };
+    return parsed.generation_ids?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+pages.get('/check', async (c) => {
+  const recipe = STYLE_CHECK_RECIPE;
+  const recipeRef = defaultRecipeRef(c.env);
+  const catalog = await getCatalog(c.env.DB, recipeRef);
+  const gitCommit = catalog?.row.git_commit ?? null;
+
+  const rows = await loadStyleCheckRows(c.env.DB, recipe, gitCommit);
+
+  const pinGenerationIds = rows.map((r) => r.pin?.generation_id).filter((id): id is string => Boolean(id));
+  const resultGenerationIds = rows.map((r) => (r.request ? resolveDoneGenerationId(r.request) : null)).filter((id): id is string => Boolean(id));
+  const cardIds = Array.from(new Set([...pinGenerationIds, ...resultGenerationIds]));
+
+  const origin = new URL(c.req.url).origin;
+  const cardData = cardIds.length > 0 ? await queryGenerations(c.env.DB, { ids: cardIds.join(',') }, origin) : { items: [] };
+  const cardById = new Map(cardData.items.map((item) => [item.id, item]));
+
+  const viewRows: StyleCheckRowView[] = rows.map((row) => {
+    const pinCard = row.pin ? cardById.get(row.pin.generation_id) ?? null : null;
+    let request: StyleCheckRowView['request'] = null;
+    if (row.request) {
+      const resultId = resolveDoneGenerationId(row.request);
+      request = {
+        id: row.request.id,
+        status: row.request.status,
+        error: row.request.error,
+        resultCard: resultId ? cardById.get(resultId) ?? null : null,
+      };
+    }
+    return { framing: row.framing, pose: row.pose, pin: pinCard, request };
+  });
+
+  return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} rows={viewRows} />);
 });
 
 /** Parses a Generation's semantic_json into CompareSemantic; NULL or unparseable JSON is treated as "not analyzed". */

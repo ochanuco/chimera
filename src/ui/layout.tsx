@@ -16,7 +16,8 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
   // keeps Gallery marked current rather than leaving nav without an active item.
   const galleryActive = path === '/gallery' || path === '/compare';
   const bookmarksActive = path === '/bookmarks';
-  const moreActive = isActiveSection(path, '/batches') || isActiveSection(path, '/b') || isActiveSection(path, '/experiments');
+  const moreActive =
+    isActiveSection(path, '/batches') || isActiveSection(path, '/b') || isActiveSection(path, '/experiments') || path === '/check';
 
   return (
     <html lang="ja">
@@ -43,6 +44,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
             <div class="nav-more-panel">
               <a href="/batches">Batches</a>
               <a href="/experiments">Experiments</a>
+              <a href="/check">絵柄チェック</a>
             </div>
           </details>
           <details class="nav-queue" id="nav-queue">
