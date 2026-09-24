@@ -1114,6 +1114,23 @@ details.section .section-body { margin-top: 0.6rem; }
 .request-status-cancelled { color: var(--text-dim); }
 .request-progress { color: var(--text-dim); margin-left: 0.4rem; font-variant-numeric: tabular-nums; }
 
+.style-check-render-btn {
+  background: var(--accent);
+  color: #10131c;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.style-check-render-btn:disabled { opacity: 0.6; cursor: default; }
+.style-check-row { margin: 1.5rem 0; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.style-check-row-title { margin-bottom: 0.6rem; }
+.style-check-row-pose { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
+.style-check-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 260px)); gap: 1rem; }
+.style-check-cell h3 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
+.style-check-cell .card { max-width: 260px; }
+
 .batch-row {
   display: flex;
   gap: 1rem;
@@ -2665,6 +2682,44 @@ export const appJs = `
     });
   }
 
+  // --- 絵柄チェック (/check, docs/ui.md「絵柄チェック」): ボタン押下で代表ポーズ全件の
+  // plain render を積み、返ってきた request id をその場の右セルに挿すだけ (reload しない)。
+  // 以後の running/done は registerRequestElement 経由の initRequestLive が反映する
+  // (requestLiveApplyStatus はこの下で定義されるが、関数宣言は巻き上がるのでここから呼べる)。
+  function initStyleCheck() {
+    document.addEventListener('click', async function (ev) {
+      var button = ev.target.closest('[data-style-check-render]');
+      if (!button) return;
+      ev.preventDefault();
+      var recipe = button.getAttribute('data-recipe');
+      var label = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Queueing…';
+      try {
+        var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
+        (result.results || []).forEach(function (item) {
+          if (item.skipped || (!item.created && item.status === 'done')) return;
+          var slot = document.querySelector('[data-style-check-slot="' + item.pose + '"]');
+          if (!slot) return;
+          while (slot.firstChild) slot.removeChild(slot.firstChild);
+          var ul = document.createElement('ul');
+          ul.className = 'request-status-list';
+          var li = requestStatusRow({ id: item.request_id, status: item.status }, false);
+          ul.appendChild(li);
+          slot.appendChild(ul);
+          registerRequestElement(li);
+        });
+        track('style_check.render', { recipe: recipe });
+      } catch (e) {
+        trackError('style_check.render', e, { recipe: recipe });
+        alert('style check render failed: ' + e.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    });
+  }
+
   // --- Viewer WebSocket (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws への
   // 接続を1本だけ共有する。requestLive (status/progress) と gallery live insertion
   // (generation) はどちらもこの上に message type ごとのハンドラを登録するだけで、ソケットの
@@ -3629,6 +3684,7 @@ export const appJs = `
     initDialGroups();
     initProfileButtons();
     initPromoteToProfile();
+    initStyleCheck();
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
