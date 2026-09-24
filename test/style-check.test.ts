@@ -17,7 +17,7 @@ function sampleCatalog(gitCommit: string) {
         name: RECIPE,
         poses: [
           { name: 'bust', prompt: 'bust up, looking at camera' },
-          { name: 'brush', prompt: 'brushing hair, upper body' },
+          { name: 'coffee', prompt: 'holding cup, cowboy shot' },
         ],
         costumes: [{ name: 'default', prompt: 'plain roomwear' }],
       },
@@ -116,10 +116,10 @@ describe('POST /api/v1/style-check/:recipe', () => {
 
     const res = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
     expect(res.status).toBe(200);
-    const brush = res.body.results.find((r) => r.pose === 'brush');
-    expect(brush).toBeTruthy();
-    expect(brush!.skipped).toBe('no_pin');
-    expect(brush!.request_id).toBeNull();
+    const coffee = res.body.results.find((r) => r.pose === 'coffee');
+    expect(coffee).toBeTruthy();
+    expect(coffee!.skipped).toBe('no_pin');
+    expect(coffee!.request_id).toBeNull();
   });
 });
 
@@ -138,7 +138,7 @@ describe('GET /check', () => {
     const beforeBody = await before.text();
     expect(beforeBody).toContain(bust.shortId);
     expect(beforeBody).toContain('まだ描いていない');
-    expect(beforeBody).toContain('pin 無し'); // brush has no pin
+    expect(beforeBody).toContain('pin 無し'); // coffee has no pin
 
     const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
     const bustResult = render.body.results.find((r) => r.pose === 'bust');
