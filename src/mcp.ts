@@ -642,6 +642,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
         'deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
         'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw; recipe default above, or null for a uniform stroke), ' +
+        'keep_regions ([x0,y0,x1,y1] fraction rectangles the redraw keeps close to the source picture, through a ' +
+        'feathered mask; omit for none — null is rejected; being redraw-shaping, it turns deliver_only off), ' +
+        'keep_strength (how much the redraw still touches a keep_regions rectangle, above 0 and below 1, worker ' +
+        'default 0.25; only meaningful with keep_regions; omit rather than null), ' +
         "repair (array of \"hands\"/\"feet\" to also mask-redraw in this same request), " +
         'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
         'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
