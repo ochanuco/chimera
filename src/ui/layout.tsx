@@ -12,7 +12,9 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
   path = '',
   children,
 }) => {
-  const galleryActive = path === '/gallery';
+  // /compare is entered from the Gallery grid (Compare entry, docs/ui.md「Navigation」), so it
+  // keeps Gallery marked current rather than leaving nav without an active item.
+  const galleryActive = path === '/gallery' || path === '/compare';
   const bookmarksActive = path === '/bookmarks';
   const moreActive = isActiveSection(path, '/batches') || isActiveSection(path, '/b') || isActiveSection(path, '/experiments');
 

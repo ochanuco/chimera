@@ -1547,8 +1547,8 @@ DELETE /api/v1/publications/{id}                      204
 POST /api/v1/generations/{id}/pose-reference   {idempotency_key?}
 ```
 
-GUI の Lightbox / Generation Detail の「基準にする」ボタンが呼ぶ窓口です
-（[ui.md](ui.md#lightbox)、[domain-model.md](domain-model.md#基準-render-の-pin)）。
+GUI の Generation Detail の「基準にする」ボタンが呼ぶ窓口です
+（[ui.md](ui.md#generation-detail)、[domain-model.md](domain-model.md#基準-render-の-pin)）。
 MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — この Generation を
 `resolveDerivationSource` で raw Batch まで遡り、その `recipe` と drawn pose
 （`preset_versions_json` の pose pin、無ければ `parameters_json.pose`）から推測します。

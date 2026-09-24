@@ -13,9 +13,9 @@ export interface FinalizeRequestStatusLine {
 }
 
 /**
- * `Finalize` section shared by Generation Detail's full page and the Lightbox panel
- * (docs/ui.md「Generation Detail」「Finalize」節). `showCreatedAt` controls whether each request
- * row includes `· created_at` (Generation Detail does, Batch Detail's summarized list doesn't).
+ * `Finalize` section used by Generation Detail's full page (docs/ui.md「Generation Detail」
+ * 「Finalize」節). `showCreatedAt` controls whether each request row includes `· created_at`
+ * (Generation Detail does, Batch Detail's summarized list doesn't).
  */
 export function FinalizeSection({
   shortId,

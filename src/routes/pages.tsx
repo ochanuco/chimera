@@ -26,6 +26,7 @@ import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
+import { queryGenerations } from '../lib/generations';
 import { renderFactsForJob } from '../lib/render-facts';
 import { defaultRecipeRef } from '../lib/requests';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
@@ -477,25 +478,22 @@ pages.get('/compare', async (c) => {
   const missingIds: string[] = [];
   const origin = new URL(c.req.url).origin;
 
-  const rows: { row: GenerationRow; characterName: string | null }[] = [];
+  const rows: GenerationRow[] = [];
   for (const id of idsToUse) {
     const row = await getGenerationByIdOrShortId(c.env.DB, id);
     if (!row) {
       missingIds.push(id);
       continue;
     }
-    const character = row.character_id
-      ? await c.env.DB.prepare('SELECT name FROM characters WHERE id = ?').bind(row.character_id).first<{ name: string }>()
-      : null;
-    rows.push({ row, characterName: character?.name ?? null });
+    rows.push(row);
   }
 
   const batchShortIds = await resolveBatchShortIds(
     c.env.DB,
-    rows.map(({ row }) => row.batch_id),
+    rows.map((row) => row.batch_id),
   );
 
-  const jobIds = Array.from(new Set(rows.map(({ row }) => row.comfy_job_id)));
+  const jobIds = Array.from(new Set(rows.map((row) => row.comfy_job_id)));
   const jobsById = new Map<string, ComfyJobRow>();
   if (jobIds.length > 0) {
     const placeholders = jobIds.map(() => '?').join(', ');
@@ -506,26 +504,31 @@ pages.get('/compare', async (c) => {
   }
   const renderFactsByGenerationId = new Map(
     await Promise.all(
-      rows.map(async ({ row }) => {
+      rows.map(async (row) => {
         const job = jobsById.get(row.comfy_job_id);
         return [row.id, job ? await renderFactsForJob(c.env.DB, job) : null] as const;
       }),
     ),
   );
 
-  const items: CompareItem[] = rows.map(({ row, characterName }) => ({
-    id: row.id,
-    short_id: row.short_id,
-    image_url: row.original_purged_at ? generationPreviewUrl(origin, row.short_id) : generationImageUrl(origin, row.short_id),
-    rating: row.rating,
-    bookmark: row.bookmark === 1,
-    character_name: characterName,
-    batch_short_id: batchShortIds.get(row.batch_id) ?? null,
-    seed: row.seed,
-    created_at: row.created_at,
-    semantic: parseCompareSemantic(row),
-    render_facts: renderFactsByGenerationId.get(row.id) ?? null,
-  }));
+  // Card-facing fields (thumbnail, from-badge, 公開済み / 基準 pills, finalize progress…) come
+  // from the same queryGenerations the Gallery/Bookmarks list API builds them from, so Compare's
+  // cards never drift from those grids (docs/ui.md「Compare」).
+  const cardData = rows.length > 0 ? await queryGenerations(c.env.DB, { ids: rows.map((row) => row.id).join(',') }, origin) : { items: [] };
+  const cardByGenerationId = new Map(cardData.items.map((item) => [item.id, item]));
+
+  const items: CompareItem[] = rows.map((row) => {
+    const card = cardByGenerationId.get(row.id);
+    if (!card) throw new Error(`generation ${row.id} missing from its own queryGenerations lookup`);
+    return {
+      ...card,
+      batch_short_id: batchShortIds.get(row.batch_id) ?? null,
+      seed: row.seed,
+      created_at: row.created_at,
+      semantic: parseCompareSemantic(row),
+      render_facts: renderFactsByGenerationId.get(row.id) ?? null,
+    };
+  });
 
   return c.html(<ComparePage path={c.req.path} items={items} missingIds={missingIds} warning={warning} />);
 });
