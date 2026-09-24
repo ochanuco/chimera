@@ -47,7 +47,7 @@ function parseGalleryView(raw: string | undefined, defaultView: GalleryView): Ga
 pages.get('/gallery', async (c) => {
   const q = c.req.query();
 
-  const view = parseGalleryView(q.view, 'raw');
+  const view = parseGalleryView(q.view, 'all');
   const bad = q.bad === '1';
   const ids = q.ids?.trim() || undefined;
 

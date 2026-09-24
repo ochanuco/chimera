@@ -2976,7 +2976,7 @@ export const appJs = `
   function handleGenerationMessage(msg) {
     var grid = galleryLiveGrid();
     if (!grid) return;
-    var view = grid.getAttribute('data-gallery-view') || 'raw';
+    var view = grid.getAttribute('data-gallery-view') || 'all';
     if (!galleryLiveAcceptsView(view, msg.refines_generation_short_id)) return;
     if (grid.querySelector('.thumb-link[data-short-id="' + msg.short_id + '"]')) return; // already on the grid
     if (galleryPendingQueued(msg.short_id)) return;
@@ -3209,6 +3209,30 @@ export const appJs = `
 
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') fetchNavQueueSummary();
+    });
+  }
+
+  // --- Popover <details> (.nav-more / .nav-queue / .filter-panel) close on outside click / Escape ---
+  // Opening one closes the others without extra logic: this listener runs before the summary
+  // click's own toggle, so the popover being opened is still closed here and is skipped.
+  function popoverDetailsEls() {
+    return qsa('details.nav-more, details.nav-queue, details.filter-panel');
+  }
+
+  function initPopoverClose() {
+    document.addEventListener('click', function (ev) {
+      // The queue panel is rebuilt on every summary push; a click on a node removed mid-click is not "outside".
+      if (!ev.target.isConnected) return;
+      popoverDetailsEls().forEach(function (d) {
+        if (d.open && !d.contains(ev.target)) d.open = false;
+      });
+    });
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape') return;
+      popoverDetailsEls().forEach(function (d) {
+        if (d.open) d.open = false;
+      });
     });
   }
 
@@ -3611,6 +3635,7 @@ export const appJs = `
     initGalleryPending();
     initRequestLive();
     initNavQueue();
+    initPopoverClose();
     initCompareBar();
     initCopyIdButtons();
     initCompareCols();
