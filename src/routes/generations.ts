@@ -162,7 +162,7 @@ generations.post('/:id/publications', async (c) => {
   return c.json(serializePublication(row), created ? 201 : 200);
 });
 
-// POST /api/v1/generations/{id}/pose-reference — GUI の「基準にする」(lightbox) が呼ぶ窓口
+// POST /api/v1/generations/{id}/pose-reference — GUI の「基準にする」(Generation Detail) が呼ぶ窓口
 // (docs/domain-model.md「基準 render の pin」)。recipe/pose は明示しない: MCP set_pose_reference
 // と違い呼び出し側はそれを知らないので、resolved raw Batch から推測する
 // (lib/preset-references.ts setPoseReferenceForGeneration)。created_by は 'gui' 固定。

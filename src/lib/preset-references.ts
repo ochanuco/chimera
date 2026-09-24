@@ -279,7 +279,7 @@ export interface SetPoseReferenceForGenerationInput {
 
 /**
  * GUI 版 set_pose_reference (docs/domain-model.md「基準 render の pin」): 呼び出し側は
- * recipe/pose を知らない（lightbox は Generation しか持たない）ので、resolveDerivationSource
+ * recipe/pose を知らない（Generation Detail は Generation しか持たない）ので、resolveDerivationSource
  * で遡った raw Batch から推測してから setPoseReference に委譲する。setPoseReference は
  * 内部でもう一度同じ解決をやり直すが、409 の理由付けを1箇所（そちら）にまとめるための
  * 重複であり、ここでは「どのpose/recipeを狙うか」の決定だけを行う。

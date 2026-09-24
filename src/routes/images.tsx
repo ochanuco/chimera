@@ -27,7 +27,6 @@ import {
   type ExperimentRunFamily,
   type ProducedByOptions,
 } from '../ui/pages/GenerationDetail';
-import { LightboxPanel } from '../ui/components/Lightbox';
 import { GenerationCard } from '../ui/components/GenerationCard';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { getImageMeta, formatImageMetaText, type ImageMeta } from '../lib/image-meta';
@@ -98,16 +97,6 @@ function wantsJson(c: Context): boolean {
   return accept.includes('application/json') && !accept.includes('text/html');
 }
 
-/** short_id of the raw Generation `batchId`'s Batch refines (GenerationCard/Lightbox "from" badge), or null for a raw Batch. */
-async function resolveRefinesGenerationShortId(c: Context, db: D1Database, batchId: string): Promise<string | null> {
-  const batchRes = await internalApiRequest(c, `/api/v1/batches/${batchId}`);
-  if (!batchRes.ok) return null;
-  const batchData = (await batchRes.json()) as { refines_generation_id: string | null };
-  if (!batchData.refines_generation_id) return null;
-  const shortIds = await resolveGenerationShortIds(db, [batchData.refines_generation_id]);
-  return shortIds.get(batchData.refines_generation_id) ?? null;
-}
-
 // GET /g/{short_id} — canonical human-facing Generation page (SSR HTML).
 // Callers that explicitly ask for JSON (Accept: application/json, or
 // ?format=json) get a small pointer payload to the machine-readable API
@@ -153,8 +142,7 @@ images.get('/:shortId', async (c) => {
   // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
   const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
 
-  // dials / profile buttons (FinalizeFields): both the lightbox and the full page need these,
-  // neither needs more than one catalog + preset lookup for it.
+  // dials / profile buttons (FinalizeFields): needs no more than one catalog + preset lookup.
   const recipe = data.batch?.recipe ?? null;
   const [catalogDoc, finalizeProfiles] = await Promise.all([
     recipe ? getCatalog(db, defaultRecipeRef(c.env)) : Promise.resolve(null),
@@ -167,36 +155,8 @@ images.get('/:shortId', async (c) => {
   const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
   const finalizeCatalogVersion = catalogDoc?.row.updated_at ?? null;
 
-  // Lightbox panel fragment (Gallery / Bookmarks / Batch Detail): same components as the full
-  // page below, minus the family-card / mini-map / workflow sections it doesn't need.
-  if (c.req.query('partial') === 'lightbox') {
-    const refinesGenerationShortId = data.batch ? await resolveRefinesGenerationShortId(c, db, data.batch.id) : null;
-    return c.html(
-      <LightboxPanel
-        generationId={data.id}
-        shortId={data.short_id}
-        imageMetaText={formatImageMetaText(imageMeta)}
-        refinesGenerationShortId={refinesGenerationShortId}
-        rating={data.rating}
-        bookmark={data.bookmark}
-        poseReference={data.pose_reference}
-        publications={data.publications}
-        tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
-        finalizeRequests={finalizeRequests}
-        note={data.note}
-        finalizeDials={finalizeDials}
-        finalizeDefaults={finalizeDefaults}
-        finalizeProfiles={finalizeProfiles}
-        finalizeBackdrops={finalizeBackdrops}
-        finalizeRecipeRef={finalizeRecipeRef}
-        finalizeCatalogVersion={finalizeCatalogVersion}
-        purged={Boolean(data.original_purged_at)}
-      />,
-    );
-  }
-
   // promote-profile の表示条件: rating good で、かつこの Generation が finalize request の
-  // 納品物であること。full page のみで引く追加クエリなので lightbox / card / json には出さない。
+  // 納品物であること。full page のみで引く追加クエリなので card / json には出さない。
   const canPromoteToProfile =
     data.rating === 'good' && data.batch !== null && (await findFinalizeRequestForBatch(db, data.batch.id)) !== null;
 

@@ -1,4 +1,4 @@
-/** `Note` section shared by Generation Detail's full page (open) and the Lightbox panel (collapsed). */
+/** `Note` section used by Generation Detail's full page (open by default). */
 export function NoteSection({ kind, id, note, open = true }: { kind: string; id: string; note: string | null; open?: boolean }) {
   return (
     <details class="section" open={open}>

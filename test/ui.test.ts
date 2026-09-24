@@ -34,6 +34,15 @@ describe('Web GUI pages', () => {
     expect(body).toContain('posthog.capture');
   });
 
+  it('GET /assets/app.js has no lightbox code left (dropped in favor of plain navigation to Generation Detail)', async () => {
+    const res = await req('/assets/app.js');
+    const body = await res.text();
+    expect(body).not.toContain('initLightbox');
+    expect(body).not.toContain('showLightbox');
+    expect(body).not.toContain('lightbox');
+    expect(body).not.toContain('#g=');
+  });
+
   it('GET /assets/telemetry.js is a no-op when POSTHOG_KEY is unset', async () => {
     const res = await req('/assets/telemetry.js');
     expect(res.status).toBe(200);
@@ -306,7 +315,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain(`${png.byteLength} B`);
   });
 
-  it('GET /gallery card omits resolution/file size; the lightbox fragment shows them', async () => {
+  it('GET /gallery card omits resolution/file size; Generation Detail shows them', async () => {
     const png = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
       0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
@@ -331,12 +340,20 @@ describe('Web GUI pages', () => {
     expect(html).not.toContain('768×768');
     expect(html).not.toContain(`${png.byteLength} B`);
 
-    const lightbox = await req(`/g/${ingest.body.short_id}?partial=lightbox`);
-    expect(lightbox.status).toBe(200);
-    const lightboxHtml = await lightbox.text();
-    expect(lightboxHtml).not.toContain('<html');
-    expect(lightboxHtml).toContain('768×768');
-    expect(lightboxHtml).toContain(`${png.byteLength} B`);
+    const detail = await req(`/g/${ingest.body.short_id}`);
+    expect(detail.status).toBe(200);
+    const detailHtml = await detail.text();
+    expect(detailHtml).toContain('768×768');
+    expect(detailHtml).toContain(`${png.byteLength} B`);
+  });
+
+  it('GET /g/:short_id?partial=lightbox no longer returns a fragment -- the lightbox was dropped, so it renders the normal full page', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/g/${generation.short_id}?partial=lightbox`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<html');
+    expect(html).toContain('Finalize');
   });
 
   it('GET /gallery default view hides bad-rated and finalize-output generations', async () => {
@@ -585,7 +602,7 @@ describe('Web GUI pages', () => {
     }
   });
 
-  it('only the Generation Detail / Lightbox Finalize form offers repair region drawing tools, not Finalize all arms', async () => {
+  it('only the Generation Detail Finalize form offers repair region drawing tools, not Finalize all arms', async () => {
     const { generation, batch } = await createGeneration();
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('data-repair-region-tools');
@@ -767,7 +784,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain(consumer.body.short_id);
   });
 
-  it('GET /compare?ids=a,b renders both generations', async () => {
+  it('GET /compare?ids=a,b renders both generations as the same GenerationCard Gallery uses', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
     const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
@@ -775,13 +792,30 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     expect(body).toContain(g1.short_id);
     expect(body).toContain(g2.short_id);
-    // Compare images opt into the shared hover preview via .thumb-link / .thumb-fg.
-    expect(body).toContain('class="thumb-link"');
+    // Each column is a plain link to Generation Detail, like the Gallery grid.
+    expect(body).toContain(`class="thumb-link" href="/g/${g1.short_id}"`);
+    expect(body).toContain(`class="thumb-link" href="/g/${g2.short_id}"`);
     expect(body).toContain('class="thumb-fg"');
     // Each column carries the shared rating + bookmark row, so rating works in place.
     expect(body).toContain(`class="rating-group" data-generation-id="${g1.id}"`);
     expect(body).toContain(`class="rating-group" data-generation-id="${g2.id}"`);
-    expect(body).toContain(`class="bookmark-btn" data-kind="generations" data-id="${g1.id}"`);
+    expect(body).toContain(`class="bookmark-btn card-bookmark-btn" data-kind="generations" data-id="${g1.id}"`);
+  });
+
+  it('GET /compare?ids=a,b shows the same badges Gallery would (from-badge, 公開済み)', async () => {
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: refinedGen } = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+    await postJson(`/api/v1/generations/${refinedGen.id}/publications`, {});
+
+    const res = await req(`/compare?ids=${sourceGen.short_id},${refinedGen.short_id}`);
+    const body = await res.text();
+    expect(body).toContain(`from <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
+    expect(body).toContain('公開済み');
   });
 
   it('GET /compare shows a semantic diff table with per-row highlighting for differing values', async () => {
@@ -1331,6 +1365,12 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
 
   it('GET /gallery marks the Gallery nav link aria-current="page"', async () => {
     const res = await req('/gallery');
+    const html = await res.text();
+    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
+  });
+
+  it('GET /compare also marks the Gallery nav link aria-current="page" (compare is entered from the grid)', async () => {
+    const res = await req('/compare?ids=');
     const html = await res.text();
     expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
   });
