@@ -784,7 +784,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain(consumer.body.short_id);
   });
 
-  it('GET /compare?ids=a,b renders both generations', async () => {
+  it('GET /compare?ids=a,b renders both generations as the same GenerationCard Gallery uses', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
     const res = await req(`/compare?ids=${g1.short_id},${g2.short_id}`);
@@ -792,13 +792,30 @@ describe('Web GUI pages', () => {
     const body = await res.text();
     expect(body).toContain(g1.short_id);
     expect(body).toContain(g2.short_id);
-    // Compare images opt into the shared hover preview via .thumb-link / .thumb-fg.
-    expect(body).toContain('class="thumb-link"');
+    // Each column is a plain link to Generation Detail, like the Gallery grid.
+    expect(body).toContain(`class="thumb-link" href="/g/${g1.short_id}"`);
+    expect(body).toContain(`class="thumb-link" href="/g/${g2.short_id}"`);
     expect(body).toContain('class="thumb-fg"');
     // Each column carries the shared rating + bookmark row, so rating works in place.
     expect(body).toContain(`class="rating-group" data-generation-id="${g1.id}"`);
     expect(body).toContain(`class="rating-group" data-generation-id="${g2.id}"`);
-    expect(body).toContain(`class="bookmark-btn" data-kind="generations" data-id="${g1.id}"`);
+    expect(body).toContain(`class="bookmark-btn card-bookmark-btn" data-kind="generations" data-id="${g1.id}"`);
+  });
+
+  it('GET /compare?ids=a,b shows the same badges Gallery would (from-badge, 公開済み)', async () => {
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: refinedGen } = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+    await postJson(`/api/v1/generations/${refinedGen.id}/publications`, {});
+
+    const res = await req(`/compare?ids=${sourceGen.short_id},${refinedGen.short_id}`);
+    const body = await res.text();
+    expect(body).toContain(`from <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
+    expect(body).toContain('公開済み');
   });
 
   it('GET /compare shows a semantic diff table with per-row highlighting for differing values', async () => {
@@ -1348,6 +1365,12 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
 
   it('GET /gallery marks the Gallery nav link aria-current="page"', async () => {
     const res = await req('/gallery');
+    const html = await res.text();
+    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
+  });
+
+  it('GET /compare also marks the Gallery nav link aria-current="page" (compare is entered from the grid)', async () => {
+    const res = await req('/compare?ids=');
     const html = await res.text();
     expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
   });

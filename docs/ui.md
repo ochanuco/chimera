@@ -35,8 +35,8 @@ More（Batches / Experiments）
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
 var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
 `/b/{short_id}` `/experiments` 配下（`/experiments/{short_id}` `/experiments/{short_id}/ab`
-含む）では`More`のsummaryがアクティブになります。`/g/{short_id}` `/compare`はどの項目もアクティブに
-なりません。
+含む）では`More`のsummaryがアクティブになります。`/compare`はグリッドから入る導線なので
+Galleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
 幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
 summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
@@ -345,17 +345,10 @@ Finalizeセクションと同じ仕組み、後述）。
 
 2〜9枚を想定します（10件以上の選択は先頭9件のみ表示し警告を出す）。
 
-Generationごとに縦カラムで並べ、上から画像・short_idリンク・rating/bookmark行・character名を表示します。
-rating/bookmark行はGeneration Detailと同じ部品で、比較しながらその場でratingとbookmarkを変更できます。
-
-``` text
-[IMAGE]                     [IMAGE]
-abc123                      xyz987
-[bad][neutral][good*] 🔖    [bad][neutral*][good] 🔖
-ゆかり                      ゆかり
-```
-
-originalがpurge済みのGenerationは、そのカラムだけ画像に`GET /g/{short_id}/preview`を表示します。
+Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[GenerationCard](#gallery)です
+（サムネイル・from-badge / 進捗ピル / 公開済み / 基準の各バッジ・rating/bookmark行、クリックで
+`/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
+purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
 
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全

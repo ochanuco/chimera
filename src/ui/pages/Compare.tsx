@@ -1,6 +1,5 @@
 import { Layout } from '../layout';
-import { CopyIdButton } from '../components/CopyIdButton';
-import { RatingBookmark } from '../components/RatingBookmark';
+import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { consensusSegments, matchMask, tokenize, type DiffSeg } from '../diff';
 import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFactColumn, type RenderFacts } from '../../lib/render-facts';
 
@@ -22,14 +21,12 @@ export interface CompareSemantic {
   attributes: Record<string, unknown>;
 }
 
-export interface CompareItem {
-  id: string;
-  short_id: string;
-  /** original が purge 済みなら呼び出し側 (pages.tsx) が preview URL に差し替え済み。 */
-  image_url: string;
-  rating: 'bad' | 'neutral' | 'good' | null;
-  bookmark: boolean;
-  character_name: string | null;
+/**
+ * A Compare column: the same GenerationCardData fields Gallery/Bookmarks/Batch Detail cards use
+ * (so each column renders as `<GenerationCard>`, identical to those grids), plus the fields the
+ * diff table below needs.
+ */
+export interface CompareItem extends GenerationCardData {
   batch_short_id: string | null;
   seed: number | null;
   created_at: string;
@@ -289,17 +286,7 @@ export function ComparePage({
           </div>
           <div class="compare-columns">
             {items.map((item) => (
-              <div class="compare-col">
-                <a class="thumb-link" href={`/g/${item.short_id}`}>
-                  <img class="thumb-fg" src={item.image_url} alt={item.short_id} />
-                </a>
-                <a class="short-id-link" href={`/g/${item.short_id}`}>
-                  {item.short_id}
-                </a>
-                <CopyIdButton value={item.short_id} />
-                <RatingBookmark id={item.id} rating={item.rating} bookmark={item.bookmark} />
-                <div class="compare-meta">{item.character_name ?? NO_VALUE}</div>
-              </div>
+              <GenerationCard g={item} />
             ))}
           </div>
 
