@@ -18,6 +18,7 @@ import { tags } from './routes/tags';
 import { graph } from './routes/graph';
 import { images } from './routes/images';
 import { assets } from './routes/assets';
+import { styleCheck } from './routes/style-check';
 import { pages } from './routes/pages';
 import { createChimeraMcpServer } from './mcp';
 import type { Waitable } from './lib/hub-notify';
@@ -41,6 +42,7 @@ app.get('/api/v1/worker/ws', workerWs);
 app.route('/api/v1/characters', characters);
 app.route('/api/v1/tags', tags);
 app.route('/api/v1/graph', graph);
+app.route('/api/v1/style-check', styleCheck);
 app.route('/g', images);
 app.route('/assets', assets);
 

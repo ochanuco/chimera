@@ -14,7 +14,9 @@ Progressive disclosure
 ```
 
 Web GUI は ComfyUI へ到達しません。GUI が積んでよいのは semantic 判断を伴わない
-再実行（finalize / repair）だけで、GUI が触るのは自分の D1 の requests 行のみです
+再実行（finalize / repair）と、pin の再描画（[絵柄チェック](#絵柄チェック): pin 済み
+pose を pin の seed・recipe 既定のまま plain render する。GUI は prompt を書かない）
+だけで、GUI が触るのは自分の D1 の requests 行のみです
 （[worker-protocol.md](worker-protocol.md)）。ComfyUI workflow の構築・実行は
 comfyui-recipes（worker）が担います。
 
@@ -26,18 +28,19 @@ comfyui-recipes（worker）が担います。
 Chimera
 Gallery
 Bookmarks
-More（Batches / Experiments）
+More（Batches / Experiments / 絵柄チェック）
 ```
 
 `More` は `<details><summary>`によるドロップダウンです。開くと `Batches`
-`Experiments` の2リンクを持つパネルが summary の直下に現れます。パネル外クリックまたは
+`Experiments` `絵柄チェック` の3リンクを持つパネルが summary の直下に現れます。
+パネル外クリックまたは
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
 var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
 `/b/{short_id}` `/experiments` 配下（`/experiments/{short_id}` `/experiments/{short_id}/ab`
-含む）では`More`のsummaryがアクティブになります。`/compare`はグリッドから入る導線なので
-Galleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
+含む）と`/check`では`More`のsummaryがアクティブになります。`/compare`はグリッドから入る
+導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
 幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
 summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
@@ -404,6 +407,53 @@ positive/negativeプロンプト、値の表現はsemantic行と同じコンセ�
 
 Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求も指示テキストの生成も行いません。
 
+## 絵柄チェック
+
+`/check`。recipe既定のprompt/paramsが、pin済みの絵柄からずれていないか人間が見比べる
+ページです。対象recipe・代表ポーズの一覧は`src/lib/style-check.ts`の`STYLE_CHECK_POSES`
+が正本で、今は`yukari`だけです。
+
+``` text
+framing   pose
+bust      bust
+upper     brush
+cowboy    coffee
+full      step
+lying     sofa
+```
+
+ポーズごとに1行、左右2カラムで並べます。
+
+-   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` /
+    `referenceView`）。[Gallery](#gallery)と同じ[GenerationCard](#gallery)（サムネイル・
+    short_idリンク・基準ピル）で表示します。pinが無ければ行全体を「pin 無し」とだけ表示し、
+    右カラムは出しません（描けないため）。
+-   右: 今のカタログcommitでの、そのposeのplain render。default idempotency key
+    (`plain:<recipe>:<pose>:<seed>:<git_commit>` — MCP `plain_render`と同じ形、
+    `src/lib/plain-render.ts`の`plainRenderIdempotencyKey`)に一致するrequestを探すだけで
+    (積まない)、無ければ「まだ描いていない」と表示します。requestがqueued/runningなら
+    status行（[Finalize](#generation-detail)の`request-status-list`と同じ`<li
+    data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
+-   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
+    <結果のshort_id>`）を出します。
+
+ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
+（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに1行、MCP
+`plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
+gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
+keyが上と同じ既定キーなので、同じカタログcommitへの連打は積み直さず既存行を返します
+（`created: false`）。
+
+積んだ直後は応答のrequest idをその場の右カラムに挿し込むだけで、reloadしません
+（`data-style-check-slot="<pose>"`の要素を差し替える）。以後のrunning/doneは他ページと
+同じ`[data-request-id]`のWebSocket購読（`registerRequestElement` /
+`requestLiveApplyStatus`）で反映されます — [Finalize](#generation-detail)の
+`request-status-list`と同じく、doneでstatusが変わり結果Generationへのリンクが添わります。
+GenerationCard（サムネイル）への差し替えは次のGET `/check`（reload）で反映されます。
+
+絵柄チェックが書き込むのはこのplain renderのrequest行だけで、pinそのものは変更しません
+（pinの変更はGeneration Detailの「基準にする」、[domain-model.md](domain-model.md#基準-render-の-pin)）。
+
 ## Generation Detail
 
 幅1100px以上では左ペインに画像をペイン全体で表示し、右ペイン（幅比 2:1）に
@@ -528,9 +578,10 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-右ペイン最上部のFinalize / Repairセクションは、段階2の唯一の生成要求手段です（不変条件:
-GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / repairだけ。ComfyUIへは
-到達しない。[worker-protocol.md](worker-protocol.md)参照）。フォームは3つの
+右ペイン最上部のFinalize / Repairセクションは、Generation Detailにおける生成要求手段です
+（不変条件: GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / repairと、pinの
+再描画（[絵柄チェック](#絵柄チェック)）だけ。ComfyUIへは到達しない。
+[worker-protocol.md](worker-protocol.md)参照）。フォームは3つの
 `fieldset`（`仕上げ` / `納品の見た目` / `部分描き直し`）にグループ化されます。各
 コントロール名自体は`comfy-recipes` CLIのフラグ名（worker-protocol.md参照）に
 揃えて英語のままとし、ラベル直後に`?`の`finalize-help`マーカーを添えます。マーカーは
