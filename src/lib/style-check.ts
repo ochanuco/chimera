@@ -24,10 +24,10 @@ export const STYLE_CHECK_RECIPE = 'yukari';
 export const STYLE_CHECK_POSES: Record<string, StyleCheckPose[]> = {
   [STYLE_CHECK_RECIPE]: [
     { framing: 'bust', pose: 'bust' },
-    { framing: 'upper', pose: 'brush' },
     { framing: 'cowboy', pose: 'coffee' },
+    { framing: 'cowboy', pose: 'gao' },
     { framing: 'full', pose: 'step' },
-    { framing: 'lying', pose: 'sofa' },
+    { framing: 'full', pose: 'dance' },
   ],
 };
 

@@ -416,10 +416,10 @@ Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求
 ``` text
 framing   pose
 bust      bust
-upper     brush
 cowboy    coffee
+cowboy    gao
 full      step
-lying     sofa
+full      dance
 ```
 
 ポーズごとに1行、左右2カラムで並べます。
