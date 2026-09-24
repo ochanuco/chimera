@@ -131,6 +131,21 @@ describe('catalog dials passthrough', () => {
 });
 
 describe('finalizeOptionsSchema', () => {
+  it('accepts keep_regions rectangles and a keep_strength between 0 and 1', () => {
+    expect(finalizeOptionsSchema.safeParse({ keep_regions: [[0.3, 0.1, 0.7, 0.4]], keep_strength: 0.25 }).success).toBe(true);
+  });
+
+  it.each([
+    ['a null keep_regions', { keep_regions: null }],
+    ['a rectangle outside 0..1', { keep_regions: [[0, 0, 1.2, 1]] }],
+    ['a rectangle with x0 >= x1', { keep_regions: [[0.7, 0.1, 0.3, 0.4]] }],
+    ['keep_strength 0', { keep_strength: 0 }],
+    ['keep_strength 1', { keep_strength: 1 }],
+    ['a null keep_strength', { keep_strength: null }],
+  ])('rejects %s', (_label, options) => {
+    expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
+  });
+
   it('rejects handdrawn / toe_guard / lora_strength (dropped alongside the yukari-anima -> yukari rename)', () => {
     for (const key of ['handdrawn', 'toe_guard', 'lora_strength']) {
       const result = finalizeOptionsSchema.safeParse({ [key]: true });
