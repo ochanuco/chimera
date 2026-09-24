@@ -34,6 +34,15 @@ describe('Web GUI pages', () => {
     expect(body).toContain('posthog.capture');
   });
 
+  it('GET /assets/app.js has no lightbox code left (dropped in favor of plain navigation to Generation Detail)', async () => {
+    const res = await req('/assets/app.js');
+    const body = await res.text();
+    expect(body).not.toContain('initLightbox');
+    expect(body).not.toContain('showLightbox');
+    expect(body).not.toContain('lightbox');
+    expect(body).not.toContain('#g=');
+  });
+
   it('GET /assets/telemetry.js is a no-op when POSTHOG_KEY is unset', async () => {
     const res = await req('/assets/telemetry.js');
     expect(res.status).toBe(200);
@@ -306,7 +315,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain(`${png.byteLength} B`);
   });
 
-  it('GET /gallery card omits resolution/file size; the lightbox fragment shows them', async () => {
+  it('GET /gallery card omits resolution/file size; Generation Detail shows them', async () => {
     const png = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
       0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
@@ -331,12 +340,20 @@ describe('Web GUI pages', () => {
     expect(html).not.toContain('768×768');
     expect(html).not.toContain(`${png.byteLength} B`);
 
-    const lightbox = await req(`/g/${ingest.body.short_id}?partial=lightbox`);
-    expect(lightbox.status).toBe(200);
-    const lightboxHtml = await lightbox.text();
-    expect(lightboxHtml).not.toContain('<html');
-    expect(lightboxHtml).toContain('768×768');
-    expect(lightboxHtml).toContain(`${png.byteLength} B`);
+    const detail = await req(`/g/${ingest.body.short_id}`);
+    expect(detail.status).toBe(200);
+    const detailHtml = await detail.text();
+    expect(detailHtml).toContain('768×768');
+    expect(detailHtml).toContain(`${png.byteLength} B`);
+  });
+
+  it('GET /g/:short_id?partial=lightbox no longer returns a fragment -- the lightbox was dropped, so it renders the normal full page', async () => {
+    const { generation } = await createGeneration();
+    const res = await req(`/g/${generation.short_id}?partial=lightbox`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<html');
+    expect(html).toContain('Finalize');
   });
 
   it('GET /gallery default view hides bad-rated and finalize-output generations', async () => {
@@ -585,7 +602,7 @@ describe('Web GUI pages', () => {
     }
   });
 
-  it('only the Generation Detail / Lightbox Finalize form offers repair region drawing tools, not Finalize all arms', async () => {
+  it('only the Generation Detail Finalize form offers repair region drawing tools, not Finalize all arms', async () => {
     const { generation, batch } = await createGeneration();
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('data-repair-region-tools');
