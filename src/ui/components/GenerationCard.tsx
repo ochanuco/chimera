@@ -70,9 +70,10 @@ function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
 }
 
 /**
- * Card used in Gallery / Batch Detail / Bookmarks generation grids: thumbnail (with optional
- * `from <short_id>` / 公開済み overlays) + a single row of rating + bookmark. Everything else
- * (short_id link, copy button, image meta, tags, compare selection) lives in the lightbox instead.
+ * Card used in Gallery / Batch Detail / Bookmarks / Compare generation grids: thumbnail (with
+ * optional `from <short_id>` / 公開済み overlays) + a single row of rating + bookmark. Everything
+ * else (image meta, tags, compare selection) lives in Generation Detail instead, which the
+ * thumbnail links to.
  */
 export function GenerationCard({ g }: { g: GenerationCardData }) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.finalize_request);

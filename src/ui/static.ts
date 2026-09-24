@@ -282,8 +282,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-row { padding: 0.4rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .card-id-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 
-/* GenerationCard のサムネイルオーバーレイ (docs/ui.md「Gallery」カード)。from-badge は Lightbox の
-   from-row でも同じ見た目を静的な行として使う (position は .thumb-link の中でだけ絶対配置)。 */
+/* GenerationCard のサムネイルオーバーレイ (docs/ui.md「Gallery」カード)。position は
+   .thumb-link の中でだけ絶対配置。 */
 .card-from-badge {
   display: inline-flex;
   align-items: center;
@@ -422,9 +422,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .rate-btn[data-rating="good"].active { background: var(--good); color: #0c1a10; border-color: var(--good); }
 .rate-btn[data-rating="neutral"].active { background: var(--neutral); color: #1c1808; border-color: var(--neutral); }
 .rate-btn[data-rating="bad"].active { background: var(--bad); color: #200a08; border-color: var(--bad); }
-
-/* Lightbox の大きいrating group (docs/ui.md「Lightbox」)。 */
-.rating-group-lg .rate-btn { font-size: 0.8rem; padding: 0.3rem 0.75rem; }
 
 .bookmark-btn {
   background: transparent;
@@ -1008,8 +1005,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
 /* repair region drawing: a dependency-free rectangle-drag overlay sized/positioned in JS to
-   exactly match the rendered <img> box (gen-detail-hero / lightbox-image-area), so its
-   percentage-based rects line up regardless of zoom or object-fit scaling. */
+   exactly match the rendered <img> box (gen-detail-hero), so its percentage-based rects line
+   up regardless of zoom or object-fit scaling. */
 .repair-region-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .repair-region-clear {
   background: none;
@@ -1145,9 +1142,6 @@ details.section .section-body { margin-top: 0.6rem; }
 /* grid の auto-fill で列幅を全行共通にする（flex-wrap だと折り返し後の行だけカードが伸びる）。
    列数指定時は initCompareCols が grid-template-columns をインラインで上書きする */
 .compare-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); gap: 1rem; }
-.compare-col { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; }
-.compare-col img { width: 100%; border-radius: 6px; margin-bottom: 0.5rem; background: var(--checker); }
-.compare-meta { font-size: 0.8rem; color: var(--text-dim); }
 
 .compare-table-wrap { overflow-x: auto; margin-top: 1.25rem; }
 .compare-table { border-collapse: collapse; width: 100%; min-width: 480px; }
@@ -1355,123 +1349,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
 .exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 
-/* Lightbox (Gallery / Bookmarks / Batch Detail のサムネイルクリック, docs/ui.md「Lightbox」)。
-   overlay/画像/prev-next はJSが組み立て、.lightbox-panel の中身だけ GET /g/:short_id?partial=lightbox
-   のfragmentをそのまま挿入する。 */
-.lightbox-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  background: rgba(8, 8, 10, 0.78);
-  display: flex;
-  flex-direction: column;
-}
-.lightbox-overlay[hidden] { display: none; }
-body.lightbox-open { overflow: hidden; }
-
-.lightbox-topbar { display: none; }
-.lightbox-stage { flex: 1; min-height: 0; }
-.lightbox-image-area { position: relative; }
-.lightbox-image-area img.lightbox-image { background: var(--checker); display: block; }
-.lightbox-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 999px;
-  background: rgba(27, 27, 31, 0.92);
-  border: 1px solid var(--border);
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  /* above .repair-region-overlay, which sits right on top of the image itself and would
-     otherwise out-stack these (DOM order: prev, img, overlay, next) over the edges it overlaps */
-  z-index: 2;
-}
-.lightbox-nav[hidden] { display: none; }
-.lightbox-prev { left: 0.75rem; }
-.lightbox-next { right: 0.75rem; }
-
-.lightbox-panel {
-  font-size: 0.85rem;
-}
-.lightbox-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; }
-.lightbox-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.15rem; font-weight: 600; }
-.lightbox-header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
-.lightbox-close {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.lightbox-close:hover { color: var(--text); }
-.lightbox-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--text-dim); margin: 0 0 0.6rem; }
-.lightbox-from-row { margin: 0 0 0.6rem; }
-
-@media (min-width: 1100px) {
-  .lightbox-stage {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 420px;
-    /* 行を auto にすると画像の原寸で行が伸び、max-height: 100% が効かず画像が見切れる */
-    grid-template-rows: minmax(0, 1fr);
-    gap: 1.25rem;
-    padding: 1.5rem 2rem;
-    height: 100%;
-  }
-  .lightbox-image-area { height: 100%; display: flex; align-items: center; justify-content: center; }
-  .lightbox-image-area img.lightbox-image { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 10px; }
-  .lightbox-panel {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem 1.1rem;
-    overflow-y: auto;
-  }
-}
-
-@media (max-width: 1099.98px) {
-  .lightbox-overlay { background: var(--bg); }
-  .lightbox-topbar {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    height: 3.25rem;
-    padding: 0 0.75rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .lightbox-topbar .lightbox-close { width: 2.75rem; height: 2.75rem; }
-  .lightbox-topbar-short-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
-  .lightbox-topbar-detail-link { margin-left: auto; font-size: 0.85rem; }
-  .lightbox-stage { display: flex; flex-direction: column; overflow-y: auto; }
-  .lightbox-image-area img.lightbox-image {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: calc(100dvh - 3.25rem);
-    margin: 0 auto;
-    object-fit: contain;
-  }
-  .lightbox-nav { display: none; }
-  .lightbox-panel { padding: 0.9rem 1rem 2rem; }
-  .lightbox-panel .rate-btn { flex: 1; min-height: 2.75rem; }
-  .lightbox-panel .rating-group { flex: 1; display: flex; }
-  .lightbox-panel button,
-  .lightbox-panel input,
-  .lightbox-panel select,
-  .lightbox-panel textarea { min-height: 2.75rem; }
-  .lightbox-panel .tag-chip,
-  .lightbox-panel .publication-remove-btn,
-  .lightbox-panel .tag-remove-btn,
-  .lightbox-panel .copy-id-btn { min-height: 0; }
-}
 `;
 
 export const appJs = `
@@ -1577,8 +1454,8 @@ export const appJs = `
   }
 
   // --- Rating ---
-  // group と Lightbox の両方に同じGenerationのrating-groupが同時に存在しうるので、
-  // data-generation-id が一致する全要素に反映する (docs/ui.md「Lightbox」)。
+  // data-generation-id が一致する全要素に反映する (同じGenerationのrating-groupが
+  // ページ内に複数あっても揃える)。
   function applyRatingToGroups(id, rating) {
     qsa('.rating-group[data-generation-id="' + id + '"]').forEach(function (group) {
       group.setAttribute('data-current', rating || '');
@@ -1997,29 +1874,13 @@ export const appJs = `
     });
   }
 
-  // --- Pose reference pin (docs/ui.md「Lightbox」「Generation Detail」の「基準」行) ---
+  // --- Pose reference pin (docs/ui.md「Generation Detail」の「基準」行) ---
   function poseReferencePill(recipe, pose) {
     var span = document.createElement('span');
     span.className = 'card-reference-pill';
     span.title = recipe + ' の ' + pose + ' の基準 render';
     span.textContent = '基準 ' + pose;
     return span;
-  }
-
-  // 「基準にする」を lightbox から押した場合、元のグリッドカード (.thumb-link[data-short-id])
-  // にも同じピルを反映する (upsertCardFinalizeBadge と同じ手)。
-  function upsertCardReferencePill(shortId, recipe, pose) {
-    var link = document.querySelector('.thumb-link[data-short-id="' + shortId + '"]');
-    if (!link) return;
-    var wrap = qs('.thumb-badges-bottom', link);
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'thumb-badges-bottom';
-      link.appendChild(wrap);
-    }
-    var existing = qs('.card-reference-pill', wrap);
-    if (existing) existing.remove();
-    wrap.appendChild(poseReferencePill(recipe, pose));
   }
 
   function initPoseReference() {
@@ -2033,9 +1894,6 @@ export const appJs = `
           row.innerHTML = '';
           row.appendChild(poseReferencePill(result.recipe, result.name));
         });
-        if (result.reference && result.reference.short_id) {
-          upsertCardReferencePill(result.reference.short_id, result.recipe, result.name);
-        }
         track('pose_reference.set', { generation_id: generationId });
       } catch (e) {
         trackError('pose_reference.set', e, { generation_id: generationId });
@@ -2204,11 +2062,10 @@ export const appJs = `
   }
 
   // --- Finalize repair regions: drag rectangles over the Generation's own image ---
-  // Only .finalize-form (Generation Detail / Lightbox, rendered with FinalizeFields
-  // regionDrawing) gets a region overlay -- .finalize-all-form (Batch Detail) has no single
-  // image to draw on and is left untouched. State lives in a WeakMap keyed by the form itself
-  // (not by any input) since a set of rectangles has no single DOM home; finalizeOptionsFrom
-  // reads it back via regionsFor(form).
+  // Only .finalize-form (Generation Detail, rendered with FinalizeFields regionDrawing) gets a
+  // region overlay -- .finalize-all-form (Batch Detail) has no single image to draw on and is
+  // left untouched. State lives in a WeakMap keyed by the form itself (not by any input) since a
+  // set of rectangles has no single DOM home; finalizeOptionsFrom reads it back via regionsFor(form).
   var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
 
   function regionsFor(form) {
@@ -2216,10 +2073,7 @@ export const appJs = `
     return state ? state.regions : [];
   }
 
-  // Generation Detail renders one hero <img>; the Lightbox panel's <img> is the long-lived
-  // client-built element (lightboxImage, declared below) whose src is swapped per open.
-  function findFinalizeRegionImage(form) {
-    if (form.closest('.lightbox-panel-content')) return lightboxImage || null;
+  function findFinalizeRegionImage() {
     return qs('.gen-detail-hero img');
   }
 
@@ -2363,11 +2217,10 @@ export const appJs = `
     };
   }
 
-  // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass)
-  // or on a freshly-inserted one (Lightbox's per-open fragment swap replaces the <form> node).
+  // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass).
   function ensureRepairRegionOverlay(form) {
     if (!qs('[data-repair-region-tools]', form)) return null; // FinalizeFields rendered without regionDrawing
-    var img = findFinalizeRegionImage(form);
+    var img = findFinalizeRegionImage();
     var existing = repairRegionState.get(form);
     if (existing && existing.img === img && existing.overlay.isConnected) return existing;
     if (!img) {
@@ -2676,7 +2529,7 @@ export const appJs = `
     return li;
   }
 
-  // 積んだ結果の queued 行はフォームの下に足されるので、Lightbox では視界の外に出やすい。
+  // 積んだ結果の queued 行はフォームの下に足されるので、長いページでは視界の外に出やすい。
   // 押したことをボタン自身で返す: 送信中は disabled、積めたら少しの間 Queued 表示。
   function submitButtonFeedback(form) {
     var button = qs('button[type="submit"]', form);
@@ -2730,7 +2583,6 @@ export const appJs = `
           list.insertBefore(row, list.firstChild);
           registerRequestElement(row);
         }
-        upsertCardFinalizeBadge(shortId, request);
       } catch (e) {
         feedback.failed();
         trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
@@ -2867,7 +2719,7 @@ export const appJs = `
   // --- Request live status: progress / status を受けて [data-request-id] 要素の表示を更新する
   // ([data-request-id]は .request-status-list の <li> と GenerationCard の finalize 進捗ピルの
   // 2種類。後者は setFinalizeBadgeText で組み立てを分ける)。ページ読み込み後に追加された要素
-  // (finalize submit / Lightbox 再オープン / gallery live insertion で挿入したカード) も
+  // (finalize submit の挿入、gallery live insertion で挿入したカード) も
   // registerRequestElement が都度登録し、まだ繋がっていなければソケットを開く。
   var requestLive = { byId: {} };
 
@@ -2981,31 +2833,6 @@ export const appJs = `
 
   function initRequestLive() {
     qsa('[data-request-id]').forEach(registerRequestElement);
-  }
-
-  // Finalize submitted from the Lightbox (docs/ui.md「Lightbox」): the underlying grid card
-  // (Gallery / Bookmarks / Batch Detail, found by its .thumb-link[data-short-id]) gets the same
-  // finalize badge the card fragment would render, in the queued state, live-updated from here on.
-  function upsertCardFinalizeBadge(shortId, request) {
-    var link = document.querySelector('.thumb-link[data-short-id="' + shortId + '"]');
-    if (!link) return;
-    var wrap = qs('.thumb-badges-top', link);
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'thumb-badges-top';
-      link.appendChild(wrap);
-    }
-    var badge = qs('.card-finalize-badge', wrap);
-    if (!badge) {
-      badge = document.createElement('span');
-      wrap.appendChild(badge);
-    }
-    badge.className = 'card-finalize-badge request-status-' + request.status;
-    badge.setAttribute('data-request-id', request.id);
-    badge.setAttribute('data-request-status', request.status);
-    badge.setAttribute('data-request-kind', request.kind);
-    setFinalizeBadgeText(badge);
-    registerRequestElement(badge);
   }
 
   // --- Gallery pending changes (docs/ui.md「Gallery pending changes」) ---
@@ -3392,7 +3219,7 @@ export const appJs = `
   }
 
   // --- Compare selection bar ---
-  // Lightbox と Generation Detail の「比較に追加」ボタンが sessionStorage の compare set をトグルし、
+  // Generation Detail の「比較に追加」ボタンが sessionStorage の compare set をトグルし、
   // Layout が全ページに置く #compare-bar がこの set を描画する (docs/ui.md「Compare entry」)。
   // 要素は { id, short_id }。short_id を持つのは、チップのサムネイルをカードと同じ画像 URL にして
   // ブラウザキャッシュを共有するため。
@@ -3704,8 +3531,7 @@ export const appJs = `
 
   // --- Gallery infinite scroll (src/ui/pages/Gallery.tsx .load-more) ---
   // Fetches the .load-more link's href with partial=1, appended as an HTML fragment
-  // (cards + the next .load-more link, or nothing). loadMoreGalleryCards is shared with the
-  // Lightbox's "next" navigation past the last loaded card (docs/ui.md「Lightbox」).
+  // (cards + the next .load-more link, or nothing).
   var galleryLoadMoreInFlight = false;
   var galleryScrollObserver = null;
 
@@ -3757,271 +3583,6 @@ export const appJs = `
     if (initial) galleryScrollObserver.observe(initial);
   }
 
-  // --- Lightbox (Gallery / Bookmarks / Batch Detail, docs/ui.md「Lightbox」) ---
-  // A plain left-click on a card thumbnail opens this instead of navigating; modifier/middle
-  // clicks and no-JS still follow the <a href="/g/{short_id}"> normally. The overlay chrome
-  // (image, prev/next, topbar) is built once here; only .lightbox-panel's contents come from
-  // the server fragment (GET /g/:short_id?partial=lightbox), so behaviour stays defined once
-  // in the section components it shares with Generation Detail.
-  var lightboxOverlay = null;
-  var lightboxStage = null;
-  var lightboxImage = null;
-  var lightboxPanel = null;
-  var lightboxPrevBtn = null;
-  var lightboxNextBtn = null;
-  var lightboxTopbarShortId = null;
-  var lightboxTopbarDetailLink = null;
-  var lightboxCurrentLink = null;
-  var lightboxLastFocused = null;
-  var lightboxLoadToken = 0;
-  var lightboxPushedHistory = false;
-
-  function ensureLightboxOverlay() {
-    if (lightboxOverlay) return lightboxOverlay;
-    const overlay = document.createElement('div');
-    overlay.id = 'lightbox-overlay';
-    overlay.className = 'lightbox-overlay';
-    overlay.hidden = true;
-    overlay.innerHTML =
-      '<div class="lightbox-topbar">' +
-        '<button type="button" class="lightbox-close" aria-label="close"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 4L16 16M16 4L4 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg></button>' +
-        '<span class="lightbox-topbar-short-id"></span>' +
-        '<a class="lightbox-topbar-detail-link" href="#">詳細ページ ↗</a>' +
-      '</div>' +
-      '<div class="lightbox-stage">' +
-        '<div class="lightbox-image-area">' +
-          '<button type="button" class="lightbox-nav lightbox-prev" aria-label="prev">‹</button>' +
-          '<img class="lightbox-image" alt="">' +
-          '<button type="button" class="lightbox-nav lightbox-next" aria-label="next">›</button>' +
-        '</div>' +
-        '<div class="lightbox-panel"></div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-
-    lightboxOverlay = overlay;
-    lightboxStage = qs('.lightbox-stage', overlay);
-    lightboxImage = qs('.lightbox-image', overlay);
-    lightboxPanel = qs('.lightbox-panel', overlay);
-    lightboxPrevBtn = qs('.lightbox-prev', overlay);
-    lightboxNextBtn = qs('.lightbox-next', overlay);
-    lightboxTopbarShortId = qs('.lightbox-topbar-short-id', overlay);
-    lightboxTopbarDetailLink = qs('.lightbox-topbar-detail-link', overlay);
-
-    // Swipe (narrow layout): horizontal = prev/next, vertical-down from the top of the scroll = close.
-    var touchStartX = null;
-    var touchStartY = null;
-    var touchStartAtTop = false;
-    var SWIPE_THRESHOLD = 50;
-    lightboxStage.addEventListener(
-      'touchstart',
-      function (ev) {
-        if (ev.touches.length !== 1) return;
-        touchStartX = ev.touches[0].clientX;
-        touchStartY = ev.touches[0].clientY;
-        touchStartAtTop = lightboxStage.scrollTop === 0;
-      },
-      { passive: true },
-    );
-    lightboxStage.addEventListener(
-      'touchend',
-      function (ev) {
-        if (touchStartX === null) return;
-        var touch = ev.changedTouches[0];
-        var dx = touch.clientX - touchStartX;
-        var dy = touch.clientY - touchStartY;
-        touchStartX = null;
-        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
-          lightboxNavigate(dx < 0 ? 1 : -1);
-        } else if (dy > SWIPE_THRESHOLD && dy > Math.abs(dx) && touchStartAtTop) {
-          closeLightbox();
-        }
-      },
-      { passive: true },
-    );
-
-    // 画像・パネル・prev/next・トップバー以外のクリックで閉じる。押下も同じ背景で始まったときに
-    // 限るのは、パネル内のテキスト選択を背景で離したときの click で閉じないようにするため。
-    // document ではなく overlay で拾うのは、パネル内の委譲ハンドラが押された要素を DOM から
-    // 外す前に判定するため。
-    var LIGHTBOX_CONTENT = '.lightbox-image, .lightbox-panel, .lightbox-nav, .lightbox-topbar';
-    var backdropPressed = false;
-    overlay.addEventListener('pointerdown', function (ev) {
-      backdropPressed = !ev.target.closest(LIGHTBOX_CONTENT);
-    });
-    overlay.addEventListener('click', function (ev) {
-      var pressed = backdropPressed;
-      backdropPressed = false;
-      if (pressed && !ev.target.closest(LIGHTBOX_CONTENT)) closeLightbox();
-    });
-
-    return overlay;
-  }
-
-  function lightboxCardsInOrder() {
-    return qsa('.thumb-link');
-  }
-
-  function lightboxFindByShortId(shortId) {
-    var cards = lightboxCardsInOrder();
-    for (var i = 0; i < cards.length; i++) {
-      if (cards[i].getAttribute('data-short-id') === shortId) return cards[i];
-    }
-    return null;
-  }
-
-  function lightboxUpdateNavButtons() {
-    if (!lightboxPrevBtn || !lightboxNextBtn) return;
-    var cards = lightboxCardsInOrder();
-    var idx = lightboxCurrentLink ? cards.indexOf(lightboxCurrentLink) : -1;
-    lightboxPrevBtn.hidden = idx <= 0;
-    var hasMoreLink = Boolean(qs('.load-more'));
-    lightboxNextBtn.hidden = idx < 0 ? true : !(idx < cards.length - 1 || hasMoreLink);
-  }
-
-  async function lightboxNavigate(dir) {
-    var cards = lightboxCardsInOrder();
-    var idx = lightboxCurrentLink ? cards.indexOf(lightboxCurrentLink) : -1;
-    if (idx < 0) return;
-    var nextIdx = idx + dir;
-    if (dir > 0 && nextIdx >= cards.length) {
-      var link = qs('.load-more');
-      if (!link) return;
-      var loaded = await loadMoreGalleryCards(link);
-      if (!loaded) return;
-      cards = lightboxCardsInOrder();
-    }
-    var target = cards[nextIdx];
-    if (!target) return;
-    showLightbox(target.getAttribute('data-short-id'), target, 'replace');
-  }
-
-  // mode: 'push' (user opened a new image -- adds a history entry), 'replace' (navigating
-  // within an already-open lightbox), or 'none' (syncing to an already-current #g= hash).
-  function showLightbox(shortId, link, mode) {
-    if (!shortId) return;
-    ensureLightboxOverlay();
-    // 狭い幅ではステージごと縦スクロールするので、別の画像に移ったら先頭 (画像) から見せる
-    if (lightboxTopbarShortId.textContent !== shortId) lightboxStage.scrollTop = 0;
-    lightboxCurrentLink = link || lightboxFindByShortId(shortId);
-    if (!lightboxLastFocused) lightboxLastFocused = document.activeElement;
-    document.body.classList.add('lightbox-open');
-    lightboxOverlay.hidden = false;
-    lightboxUpdateNavButtons();
-
-    var img = lightboxCurrentLink ? qs('.thumb-fg', lightboxCurrentLink) : null;
-    lightboxImage.src = img ? img.src : '/g/' + encodeURIComponent(shortId) + '/image';
-    lightboxImage.alt = shortId;
-    lightboxTopbarShortId.textContent = shortId;
-    lightboxTopbarDetailLink.setAttribute('href', '/g/' + shortId);
-
-    const token = ++lightboxLoadToken;
-    fetch('/g/' + encodeURIComponent(shortId) + '?partial=lightbox')
-      .then(function (res) {
-        if (!res.ok) throw new Error('failed to load generation ' + shortId);
-        return res.text();
-      })
-      .then(function (html) {
-        if (token !== lightboxLoadToken) return;
-        lightboxPanel.innerHTML = html;
-        qsa('[data-request-id]', lightboxPanel).forEach(registerRequestElement);
-        qsa('.finalize-form', lightboxPanel).forEach(ensureRepairRegionOverlay);
-        qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeDeliverOnly);
-        qsa('.finalize-form, .finalize-all-form', lightboxPanel).forEach(syncFinalizeBackdropColor);
-        updateCompareBar();
-      })
-      .catch(function (e) {
-        if (token !== lightboxLoadToken) return;
-        trackError('lightbox.open', e, { short_id: shortId });
-      });
-
-    if (mode === 'push' || mode === 'replace') {
-      const url = new URL(location.href);
-      url.hash = 'g=' + encodeURIComponent(shortId);
-      if (mode === 'push' && !lightboxPushedHistory) {
-        history.pushState({ lightbox: true }, '', url);
-        lightboxPushedHistory = true;
-      } else {
-        history.replaceState({ lightbox: true }, '', url);
-      }
-    }
-  }
-
-  function doCloseLightbox() {
-    if (!lightboxOverlay) return;
-    lightboxOverlay.hidden = true;
-    document.body.classList.remove('lightbox-open');
-    lightboxLoadToken++;
-    lightboxCurrentLink = null;
-    if (lightboxLastFocused && typeof lightboxLastFocused.focus === 'function') {
-      try {
-        lightboxLastFocused.focus();
-      } catch (e) {}
-    }
-    lightboxLastFocused = null;
-    lightboxPushedHistory = false;
-  }
-
-  // Manual close (X / Esc / backdrop) goes through history.back() only when this page pushed the
-  // #g= entry, so the Back button and the close button agree; doCloseLightbox (called from the
-  // popstate handler) does the DOM teardown. A lightbox restored from the URL on load has no
-  // entry of ours to pop -- going back there would leave the page -- so it just drops the hash.
-  function closeLightbox() {
-    if (!lightboxOverlay || lightboxOverlay.hidden) return;
-    if (lightboxPushedHistory) {
-      history.back();
-      return;
-    }
-    if (/(?:^|#)g=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
-    doCloseLightbox();
-  }
-
-  function initLightbox() {
-    document.addEventListener('click', function (ev) {
-      const link = ev.target.closest ? ev.target.closest('.thumb-link') : null;
-      if (!link) return;
-      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-      ev.preventDefault();
-      showLightbox(link.getAttribute('data-short-id'), link, 'push');
-    });
-
-    document.addEventListener('click', function (ev) {
-      if (!lightboxOverlay) return;
-      if (ev.target.closest && ev.target.closest('.lightbox-close')) {
-        closeLightbox();
-        return;
-      }
-      const prev = ev.target.closest ? ev.target.closest('.lightbox-prev') : null;
-      if (prev) {
-        lightboxNavigate(-1);
-        return;
-      }
-      const next = ev.target.closest ? ev.target.closest('.lightbox-next') : null;
-      if (next) {
-        lightboxNavigate(1);
-      }
-    });
-
-    document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape' && lightboxOverlay && !lightboxOverlay.hidden) closeLightbox();
-    });
-
-    window.addEventListener('popstate', function () {
-      const match = /(?:^|#)g=([^&]+)/.exec(location.hash);
-      if (match) {
-        const shortId = decodeURIComponent(match[1]);
-        showLightbox(shortId, lightboxFindByShortId(shortId), 'none');
-      } else {
-        doCloseLightbox();
-      }
-    });
-
-    const initialMatch = /(?:^|#)g=([^&]+)/.exec(location.hash);
-    if (initialMatch) {
-      const shortId = decodeURIComponent(initialMatch[1]);
-      showLightbox(shortId, lightboxFindByShortId(shortId), 'none');
-    }
-  }
-
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -4048,7 +3609,6 @@ export const appJs = `
     initGalleryView();
     initGalleryInfiniteScroll();
     initGalleryPending();
-    initLightbox();
     initRequestLive();
     initNavQueue();
     initCompareBar();

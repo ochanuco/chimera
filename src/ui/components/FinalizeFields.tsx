@@ -150,7 +150,7 @@ export function FinalizeFields({
   recipeRef?: string | null;
   /** The published catalog's updated_at — cache-busts the otherwise-immutable thumbnail URL. */
   catalogVersion?: string | null;
-  /** True only where this form sits beside a single Generation's image (Generation Detail / Lightbox) — the batch "finalize all arms" form has no single image to draw regions on. */
+  /** True only where this form sits beside a single Generation's image (Generation Detail) — the batch "finalize all arms" form has no single image to draw regions on. */
   regionDrawing?: boolean;
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;

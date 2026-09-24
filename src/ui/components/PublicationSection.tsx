@@ -28,9 +28,8 @@ export function PublishIcon() {
 
 /**
  * `公開` section (docs/ui.md「Generation Detail」節): rating/bookmark 行の直後に置く、
- * Generation Detail のフルページと Lightbox パネル (`GET /g/:short_id?partial=lightbox`) の
- * 両方から使う共有コンポーネント。JS側の書き換え (initPublicationAdd 等, src/ui/static.ts) は
- * この markup と同じ形を組み立てる。
+ * Generation Detail のフルページが使うコンポーネント。JS側の書き換え
+ * (initPublicationAdd 等, src/ui/static.ts) はこの markup と同じ形を組み立てる。
  */
 export function PublicationSection({ generationId, publications }: { generationId: string; publications: PublicationData[] }) {
   return (

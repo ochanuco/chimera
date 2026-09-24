@@ -4,8 +4,8 @@ export interface PoseReferenceData {
 }
 
 /**
- * 「基準」行 (docs/ui.md「Lightbox」/「Generation Detail」): rating/bookmark 行の直後に置く、
- * Generation Detail のフルページと Lightbox パネルの両方から使う共有コンポーネント。pin 済みなら
+ * 「基準」行 (docs/ui.md「Generation Detail」): rating/bookmark 行の直後に置く、
+ * Generation Detail のフルページが使うコンポーネント。pin 済みなら
  * pill を、未pinなら POST /api/v1/generations/{id}/pose-reference を呼ぶボタンを出す。JS側の
  * 書き換え (initPoseReference, src/ui/static.ts) はこの markup と同じ形を組み立てる。
  */

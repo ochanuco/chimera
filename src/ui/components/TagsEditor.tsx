@@ -1,10 +1,9 @@
 /**
- * Tag chips (with remove buttons) + add-tag form, shared by Generation Detail's full page and
- * the Lightbox panel. `kind`/`id` address the tag API (`/api/v1/{kind}/{id}/tags`).
+ * Tag chips (with remove buttons) + add-tag form, used by Generation Detail's full page.
+ * `kind`/`id` address the tag API (`/api/v1/{kind}/{id}/tags`).
  */
 // `<datalist id="tag-suggestions">` は呼び出し側のページテンプレートが1つだけ持つ
-// (Gallery / BatchDetail / GenerationDetail)。Lightbox はページに重ねて描画されるため、
-// ここで作ると同じidの重複要素になってしまう。
+// (Gallery / BatchDetail / GenerationDetail)。ここで作ると同じidの重複要素になってしまう。
 export function TagsEditor({ kind, id, tags }: { kind: string; id: string; tags: { id: string; name: string }[] }) {
   return (
     <>

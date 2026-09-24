@@ -35,8 +35,8 @@ More（Batches / Experiments）
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
 var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
 `/b/{short_id}` `/experiments` 配下（`/experiments/{short_id}` `/experiments/{short_id}/ab`
-含む）では`More`のsummaryがアクティブになります。`/g/{short_id}` `/compare`はどの項目もアクティブに
-なりません。
+含む）では`More`のsummaryがアクティブになります。`/compare`はグリッドから入る導線なので
+Galleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
 幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
 summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
@@ -157,10 +157,9 @@ nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です
 
 #### bad
 
-badを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上またはLightbox内でratingを
+badを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上でratingを
 badにすると、カードはその位置のまま不透明度0.4（hover時0.75）になり、反映待ちに数えます。
-反映前にbad以外へ付け直すと元の表示に戻り、反映待ちからも外れます。Lightboxはbadにしても
-次の画像へは進みません。BookmarksとBatch Detailでは何も隠しません。
+反映前にbad以外へ付け直すと元の表示に戻り、反映待ちからも外れます。BookmarksとBatch Detailでは何も隠しません。
 
 #### 反映
 
@@ -182,8 +181,9 @@ Gallery / Bookmarksのグリッドは1行6枚です（幅1100px以下は4枚、8
 
 カードはサムネイル1枚と、その下の2行（short_idとbookmarkの行、rating（bad/neutral/good）の行）です。
 short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
-変えて末尾に✓を出します。画像メタ（解像度/ファイルサイズ）・タグ・比較チェックボックスは
-カードから外し、サムネイルクリックで開く[Lightbox](#lightbox)に移しました。サムネイル左上には
+変えて末尾に✓を出します。画像メタ（解像度/ファイルサイズ）・タグ・比較エントリはカードから外し、
+サムネイルクリックで遷移する[Generation Detail](#generation-detail)に置きました
+（サムネイルは修飾キーなしの左クリックも含め、素のリンク`<a href="/g/{short_id}">`です）。サムネイル左上には
 （上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
 橙文字、short_idは等幅）、このGenerationを対象にした最新のfinalize/repair/masked_redraw
@@ -207,8 +207,7 @@ finalize · failed                      ← --bad
 `[data-request-id]`要素なので、[Generation Detail](#generation-detail)のrequest live更新が
 受ける同じ`progress`/`status`メッセージでその場更新されます（runningの`progress`は
 `step`/`total`が分かっている間だけ`kind · running step/total`に、doneになった時点で結果の
-short_idを取得して`kind · done → <short_id>`に差し替えます）。Lightboxからfinalizeを
-送信したときも、その場でこのピルをqueued状態で足す/差し替えます（他のカードは触りません）。
+short_idを取得して`kind · done → <short_id>`に差し替えます）。
 
 カード表示例:
 
@@ -227,7 +226,7 @@ Batch Detail / Bookmarksも同じカードコンポーネントを使い、from-
 Gallery live insertionのカードフラグメントだけが持つデータなので、Batch Detailのカードには
 出ません。
 
-表示しないもの（サムネイルクリックで[Lightbox](#lightbox)を開けば見られます）:
+表示しないもの（サムネイルクリックで[Generation Detail](#generation-detail)を開けば見られます）:
 
 -   画像メタ（解像度/ファイルサイズ）
 -   タグ
@@ -238,76 +237,11 @@ Gallery live insertionのカードフラグメントだけが持つデータな�
 -   Story graph
 -   ComfyUI workflow
 
-## Lightbox
+## Compare entry
 
-Gallery / Bookmarks / Batch Detailのカードサムネイルを、修飾キーなしの左クリックで開きます。
-中クリック・Cmd/Ctrl/Shift/Altを押しながらのクリック・JS無効環境では従来通りカードの
-`<a href="/g/{short_id}">`として`/g/{short_id}`（Generation Detail）へ遷移します。
-
-パネルのHTMLは`GET /g/{short_id}?partial=lightbox`が返すフラグメント（`<html>`を含まない）で、
-Generation Detailと同じコンポーネント（RatingBookmark / PublicationSection / TagsEditor /
-FinalizeSection / NoteSection）から組み立てるため、挙動を二重管理しません。パネルの内容は
-上から次の順です。
-
-``` text
-short_id + コピーボタン ・ 比較に追加 ・ 閉じる
-画像メタ（解像度/ファイルサイズ） + 詳細ページ ↗
-from <short_id>（refineしている場合のみ、カードと同じ見た目のリンク行）
-rating（大きいボタン） + bookmark
-基準（pin済みならピル、未pinなら「基準にする」ボタン）
-公開
-Tag
-Finalize（展開）
-Note（折りたたみ）
-```
-
-基準行は、この render が既にpose の基準としてpinされていれば（[domain-model.md](domain-model.md)
-[domain-model.md](domain-model.md#基準-render-の-pin)）カードと同じ`基準 <pose名>`ピルを、まだなら`基準にする`ボタンを出します。
-ボタンは`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md)）を呼び、成功したらその場で
-ピルへ差し替え、背後のグリッドカードにも同じピルを反映します（Lightbox内でratingを変えたときの
-`rating-group`反映と同じ仕組み）。rating good でない・resolved Batchがpose/recipeを特定できない等の
-409は、理由をそのまま`alert`で表示します。Generation Detailのフルページにも同じ行を置きます
-（rating/bookmark行の直後）。
-
-画像本体とoverlayのUIはクリック側のJSが組み立てます（クリックしたカードの`<img class="thumb-fg">`が
-既に原寸相当のURLを持っているため、fragment自体は画像タグを含みません）。
-
-幅1100px以上では`rgba(8,8,10,0.78)`のscrim付き固定overlayで、`minmax(0,1fr) 420px`の2カラム
-（左: 画像、右: `--bg-elevated`・角丸10pxのパネル、`overflow-y: auto`）。行の高さは
-`minmax(0,1fr)`でoverlayの高さに固定し、画像は縦横とも画像エリアに収まるよう縮小します
-（見切れもスクロールもしません）。画像エリア左右端の中央に丸いprev/nextボタン（2.75rem）を
-重ねます。
-
-幅1100px未満では不透明（`--bg`）の全画面・縦スクロールです。上から3.25remのトップバー
-（閉じるボタン2.75rem・short_id・詳細ページ↗）→ 画像（幅いっぱい、ただし高さは
-トップバーを除いた画面の高さまで）→ パネル（rating各ボタン・
-ボタン・入力を2.75rem以上のタップ領域にしたもの）の順に並びます。画像上の左右スワイプで
-prev/next、パネルのスクロール位置が最上部（`scrollTop === 0`）にあるときの下スワイプで
-閉じます。
-
-Prev/Nextはページのグリッド内カードの現在のDOM順を辿ります。Galleryで最後に読み込んだカードを
-過ぎたときは、「もっと見る」リンクがあれば無限スクロールと同じfetchで次ページを読み込んでから
-続けます。
-
-開いている状態はURLの`#g=<short_id>`に反映します（最初に開くときはpushState、Lightbox内の
-prev/nextでの移動はreplaceState）。そのため、ブラウザのBackボタンで
-一度に閉じ、`#g=`付きURLを直接開く・再読み込みすると同じGenerationのLightboxが開き直します。
-`Esc`と、画像・パネル・prev/next・トップバー以外の場所（scrimや画像の余白）のクリックでも
-閉じます。背景クリックは押下も背景で始まったときだけ数えるので、パネル内でテキストを選択して
-背景で離しても閉じません。閉じるとフォーカスを開く前の要素へ戻し、背後のページのスクロール位置は
-動かしません（開いている間は`body`のスクロールをロックします）。
-
-Lightbox内でratingを変えると、背後のカードのrating-groupにも同じ値を反映します（逆方向 —
-カード側での変更をLightboxへ反映 — はLightboxが開くたびに再フェッチするので不要です）。
-
-rating / bookmark / タグ追加・削除 / note保存 / 公開の追加・URL入力・削除 / finalizeの各ハンドラは
-すべて`document`へのイベント委譲なので、差し込まれたfragment内でも再初期化なしにそのまま動きます。
-
-### Compare entry
-
-カードのチェックボックスは廃止しました。Lightboxと[Generation Detail](#generation-detail)の
-`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は`{ id, short_id }`）を
-トグルします（ボタンのラベルは`比較から外す`に切り替わります、telemetry `compare.add`）。
+Generation Detailの`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は
+`{ id, short_id }`）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
+telemetry `compare.add`）。
 
 `#compare-bar`はLayoutが全ページの下端に固定配置し、setが空でない間だけ表示します。表示中は
 `main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detail / Batch
@@ -330,7 +264,7 @@ Detailの2カラムはその分だけ高さを縮めます。バーの中身は�
 各ペインが独立してスクロールします。それ未満の幅では従来どおり縦一列です。
 
 左のサムネイルグリッドはGalleryと同じ[GenerationCard](#gallery)（from-badge / 公開済みピル
-込み）で、サムネイルクリックで同じ[Lightbox](#lightbox)を開きます。
+込み）で、サムネイルクリックで同じ[Generation Detail](#generation-detail)へ遷移します。
 
 例（2ペイン時）:
 
@@ -402,7 +336,6 @@ Finalizeセクションと同じ仕組み、後述）。
 -   Generation rating
 -   Bookmark
 -   Tag
--   Lightboxから比較に追加（[Compare entry](#compare-entry)）
 -   Finalize all arms
 -   provenance確認
 
@@ -412,17 +345,10 @@ Finalizeセクションと同じ仕組み、後述）。
 
 2〜9枚を想定します（10件以上の選択は先頭9件のみ表示し警告を出す）。
 
-Generationごとに縦カラムで並べ、上から画像・short_idリンク・rating/bookmark行・character名を表示します。
-rating/bookmark行はGeneration Detailと同じ部品で、比較しながらその場でratingとbookmarkを変更できます。
-
-``` text
-[IMAGE]                     [IMAGE]
-abc123                      xyz987
-[bad][neutral][good*] 🔖    [bad][neutral*][good] 🔖
-ゆかり                      ゆかり
-```
-
-originalがpurge済みのGenerationは、そのカラムだけ画像に`GET /g/{short_id}/preview`を表示します。
+Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[GenerationCard](#gallery)です
+（サムネイル・from-badge / 進捗ピル / 公開済み / 基準の各バッジ・rating/bookmark行、クリックで
+`/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
+purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
 
 その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全
@@ -492,8 +418,7 @@ originalが保持期間ジョブでpurge済み（[domain-model.md](domain-model.
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
 `原寸は破棄済み（preview のみ）`と添えます。Finalizeセクションはfinalizeフォームを出さず、代わりに
 「原寸は破棄済みのため finalize / repair / masked redraw は積めません。」という一文を表示します
-（profile登録フォームと進捗履歴のrequest一覧は表示したままです）。Lightboxパネルも同じ扱いです
-（`原寸は破棄済み（preview のみ）`をmeta行の下に、Finalizeセクションは同じ一文に差し替え）。
+（profile登録フォームと進捗履歴のrequest一覧は表示したままです）。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
@@ -663,7 +588,7 @@ repair feetのどちらもチェックされていない間`disabled`で、ど�
 deliver onlyで使うときはworkerがここを無視するため、GUIはrecipeを問わず一律disabledにする）、
 それ以外はrepair hands / repair feetのどちらかが必要です。
 
-Generation Detail / Lightbox（画像1枚に対して1つのFinalizeフォームが並ぶページ）は
+Generation Detail（画像1枚に対して1つのFinalizeフォームが並ぶページ）は
 これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます
 （Batch Detailの「Finalize all arms」は対象のGenerationが1枚に決まらないため、この
 操作自体を持ちません）。画像の親要素に`repair-region-overlay`をJSでサイズ・位置とも
@@ -671,7 +596,7 @@ Generation Detail / Lightbox（画像1枚に対して1つのFinalizeフォーム
 （`repair-region-rect`、右上に消去ボタン）になり、複数指定できます。矩形は表示中の画像
 サイズに対する分数`[x0, y0, x1, y1]`（0〜4桁に丸め、0..1にクランプ）としてfinalize
 formの状態に保持され、フォーム上の「範囲をすべて消す」ボタン（`data-repair-region-clear`）
-で一括削除できます。OFFの間はoverlayが`pointer-events: none`になり、画像のクリック・右クリック・タッチスクロールは画像側に届きます。描いた矩形はOFFにしても残り（送信にも積まれる）、消去ボタンもそのまま押せます。Lightboxでは開くたびにフォームが作り直されるため、毎回OFFから始まります。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
+で一括削除できます。OFFの間はoverlayが`pointer-events: none`になり、画像のクリック・右クリック・タッチスクロールは画像側に届きます。描いた矩形はOFFにしても残り（送信にも積まれる）、消去ボタンもそのまま押せます。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
 範囲、どちらか片方だけでも送信可）。描き直し（redraw）・deliver onlyどちらのモードでも、
 範囲が1つ以上あれば`repair_regions`を積み、`repair`は空配列にします（描いた範囲が部位の自動検出を置き換える。検出の円を矩形に足すとマスクが部位の外まで広がるため）。`repair pad` / `repair lora`のdisabledは
 これまで通り部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`
@@ -690,10 +615,9 @@ backdropが不正な値のときは`送信内容: —`）。プロファイル�
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
 `request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。挿入先はフォームの下で
-Lightboxでは視界の外になりやすいため、ボタン自身も押下に応えます。送信中は`disabled`で
+長いページでは視界の外になりやすいため、ボタン自身も押下に応えます。送信中は`disabled`で
 `Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`（Finalize all armsは`Queued N ✓`）を
-表示して元のラベルに戻り、失敗時はすぐ戻ります。Generation Detailと
-[Lightbox](#lightbox)のFinalizeフォームはどちらもこの仕組みです。この一覧には、このGenerationを
+表示して元のラベルに戻り、失敗時はすぐ戻ります。この一覧には、このGenerationを
 対象とした最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
 
@@ -703,7 +627,7 @@ Lightboxでは視界の外になりやすいため、ボタン自身も押下に
 `.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、`status`変化時は
 行のクラスと表示statusを書き換えます。`done` / `failed`への遷移時は該当requestと
 （`done`なら）納品Generationを取得し直し、ページ読み込み時と同じ結果リンク / errorをその場に
-追加します。ページ読み込み後に新しく現れた行（finalize送信直後の挿入、Lightboxの再オープン）も
+追加します。ページ読み込み後に新しく現れた行（finalize送信直後の挿入）も
 現れた時点でこの接続に登録され、まだ張っていなければソケットを開きます。Batch Detailの
 Finalize all armsセクションでも、finalize送信のたびに集計行（`N queued`）と
 `request-status-list`をその場で更新し、同じ仕組みで各行が進捗します。WebSocketが張れない
@@ -714,8 +638,7 @@ Generationか、相乗りしたrepairのsiblingのどちらか）であるとき
 request一覧の下に`profile に登録`フォーム（名前入力＋ボタン）を表示します。送信すると
 `POST /api/v1/presets/promote-profile`を呼び、その場に`registered: <name>
 v<version>`を表示します（リロードなし）。それ以外のGenerationにはこのフォームは
-出ません。[Lightbox](#lightbox)のFinalizeパネルにはこのフォームを置きません —
-フルページのGeneration Detailだけです。
+出ません。
 
 手足の局所redraw（[worker-protocol.md](worker-protocol.md#repair)の`repair`）は
 GUIでは独立したセクションを持たず、Finalizeフォームの`repair hands` / `repair feet`
@@ -869,7 +792,7 @@ GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外
 `すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
 トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
 
-Generationsセクションのカードと[Lightbox](#lightbox)はGalleryと共通です（bad非表示との
+Generationsセクションのカードは[GenerationCard](#gallery)でGalleryと共通です（bad非表示との
 組み合わせは無いため、[Gallery pending changes](#gallery-pending-changes)のbadの扱いはありません）。
 
 ## Search

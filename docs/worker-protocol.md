@@ -475,7 +475,7 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 `#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は
 recipe を問わず選べます。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、
-チェックした分だけ `repair` に積みます。Generation Detail / Lightbox は画像上にドラッグした矩形を
+チェックした分だけ `repair` に積みます。Generation Detail は画像上にドラッグした矩形を
 `repair_regions`（表示中の画像に対する分数 `[x0,y0,x1,y1]`）として持ち、部位チェックが無くても
 範囲だけで積めます。`repair pad` / `repair lora`（`repair lora` は `deliver_only` 中は常に送らない）
 / `repair seeds`（`deliver_only` 中のみ）の入力欄は空が既定で、空のまま積めば省略（worker 既定）です。
