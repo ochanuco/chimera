@@ -2698,7 +2698,7 @@ export const appJs = `
       try {
         var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
         (result.results || []).forEach(function (item) {
-          if (item.skipped) return;
+          if (item.skipped || (!item.created && item.status === 'done')) return;
           var slot = document.querySelector('[data-style-check-slot="' + item.pose + '"]');
           if (!slot) return;
           while (slot.firstChild) slot.removeChild(slot.firstChild);
