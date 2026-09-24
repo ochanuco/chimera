@@ -435,6 +435,8 @@ LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも fi
   upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
   deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
   stroke_light        null | "n".."nw"          `--stroke-light DIR`（8 方位、紫縁を光源側で細く影側で太く）
+  keep_regions        array\<[x0, y0, x1, y1]\>  `--keep-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1。redraw のとき、この矩形の中だけ元の絵をぼかした mask 越しに残す。redraw の絵柄を変える option なので `deliver_only` の既定を外す。null は worker が型エラーにするので、無しはキー省略で表す）
+  keep_strength       number (0 より大きく 1 未満)  `--keep-strength 0.25`（`keep_regions` の中に redraw がどれだけ触るか。worker 既定 0.25。`keep_regions` が無ければ意味を持たない。null は不可）
   repair              null | array\<"hands" \| "feet"\>  `--repair hands,feet`（同じ finalize request に相乗りする repair。null / 省略 / 空配列は off）
   repair_regions      null | array\<[x0, y0, x1, y1]\>   `--repair-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1）
   repair_denoise      null | number (0, 1] | word  `--repair-denoise 0.6`

@@ -68,6 +68,9 @@ export const finalizeOptionsSchema = z
     repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
     repair_lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
     repair_seeds: z.number().int().min(1).max(8).optional(),
+    // worker は keep_regions / keep_strength の null を型エラーにするので、他の option と違い nullable にしない。
+    keep_regions: z.array(repairRegionSchema).optional(),
+    keep_strength: z.number().gt(0).lt(1).optional(),
     deliver_only: z.boolean().optional(),
   })
   .strict();
