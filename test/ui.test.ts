@@ -356,7 +356,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain('Finalize');
   });
 
-  it('GET /gallery default view hides bad-rated and finalize-output generations', async () => {
+  it('GET /gallery default view (all) hides bad-rated generations but shows raw and finalize-output', async () => {
     const { generation: rawGen } = await createGeneration();
     const { generation: badGen } = await createGeneration();
     await req(`/api/v1/generations/${badGen.short_id}/rating`, {
@@ -376,6 +376,22 @@ describe('Web GUI pages', () => {
     const html = await res.text();
     expect(html).toContain(rawGen.short_id);
     expect(html).not.toContain(badGen.short_id);
+    expect(html).toContain(refined.generation.short_id);
+  });
+
+  it('GET /gallery?view=raw shows only raw generations (excludes finalize-output)', async () => {
+    const { generation: rawGen } = await createGeneration();
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const res = await req('/gallery?view=raw&limit=200');
+    const html = await res.text();
+    expect(html).toContain(rawGen.short_id);
     expect(html).not.toContain(refined.generation.short_id);
   });
 
@@ -441,7 +457,7 @@ describe('Web GUI pages', () => {
 
     const plain = await req('/gallery?limit=200');
     const plainHtml = await plain.text();
-    expect(plainHtml).toContain('data-gallery-view="raw"');
+    expect(plainHtml).toContain('data-gallery-view="all"');
     expect(plainHtml).toContain('data-gallery-live="true"');
 
     const refinedView = await req('/gallery?view=refined&limit=200');

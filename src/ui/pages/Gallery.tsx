@@ -20,7 +20,7 @@ export interface GalleryFilters {
 /** Every currently-active query param (view/bad included), used as the base for the view/bad/load-more links. */
 function activeParams(filters: GalleryFilters): URLSearchParams {
   const params = new URLSearchParams();
-  if (filters.view !== 'raw') params.set('view', filters.view);
+  if (filters.view !== 'all') params.set('view', filters.view);
   if (filters.bad) params.set('bad', '1');
   if (filters.ids) params.set('ids', filters.ids);
   if (filters.tag) params.set('tag', filters.tag);

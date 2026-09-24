@@ -29,8 +29,9 @@ Bookmarks
 More（Batches / Experiments）
 ```
 
-`More` は `<details><summary>`によるJSなしのドロップダウンです。開くと `Batches`
-`Experiments` の2リンクを持つパネルが summary の直下に現れます。
+`More` は `<details><summary>`によるドロップダウンです。開くと `Batches`
+`Experiments` の2リンクを持つパネルが summary の直下に現れます。パネル外クリックまたは
+Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
 var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
@@ -96,16 +97,17 @@ nav直下にsticky なツールバーを持ちます。
 [ finalize以外 | finalize | すべて ]   bad も表示 ☐   [ 絞り込み ▾ ]
 ```
 
-`view` は3値の切り替えです。既定は `view=raw`（finalize/repair/masked_redraw
-の出力ではない raw Generation のみ）で、`view=refined`（finalize
-済みの出力のみ）、`view=all`（両方）へ切り替えられます。raw / finalize済みの判定は Batch の
+`view` は3値の切り替えです。既定は `view=all`（raw / finalize済み両方）で、
+`view=raw`（finalize/repair/masked_redrawの出力ではない raw Generationのみ）、
+`view=refined`（finalize済みの出力のみ）へ絞り込めます。raw / finalize済みの判定は Batch の
 `refines_generation_id`（[domain-model.md](domain-model.md#batch)）です。
 
 「bad も表示」は既定で隠している bad rating の Generation を表示に加えるトグルです
 （`bad=1`）。未評価・good・neutralの Generation は常に表示します。
 
 `絞り込み`パネル（`<details>`。いずれかの項目に値が入っているときは開いた状態で描画）は
-次を持ちます。
+パネル外クリックまたはEscapeで閉じます（nav の `More` / キュー状態pill と共通の挙動、
+`initPopoverClose`）。次を持ちます。
 
 ``` text
 ID（複数可、改行またはカンマ区切り、short_id と UUID の混在可）
