@@ -1579,7 +1579,7 @@ POST /api/v1/style-check/{recipe}
 {
   "results": [
     { "framing": "bust", "pose": "bust", "skipped": null, "created": true, "request_id": "...", "status": "queued" },
-    { "framing": "upper", "pose": "brush", "skipped": "no_pin", "created": null, "request_id": null, "status": null }
+    { "framing": "full", "pose": "dance", "skipped": "no_pin", "created": null, "request_id": null, "status": null }
   ]
 }
 ```
