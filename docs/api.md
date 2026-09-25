@@ -34,9 +34,11 @@ POST /api/v1/experiments/{id}/promotions  # 安定条件を comfyui-recipes へ�
 ```
 
 Batch / Job 作成と ingest は冪等で、同一 idempotency_key / 同一 (job, output_index)
-の再送は既存を返します。クライアントは comfyui-recipes の `comfy-recipes generate` CLI
-（`comfyui_recipes` パッケージ、`request.json` 契約は
-[generation-request.md](generation-request.md)）です。
+の再送は既存を返します。この Write / ingest を呼ぶのは、chimera の requests
+キューから request を claim した worker（GPU 機の `comfy-recipes watch`）が起動する
+comfyui-recipes の `comfy-recipes generate` CLI（`comfyui_recipes` パッケージ、
+`request.json` 契約は [generation-request.md](generation-request.md)、requests
+キューとの関係は [worker-protocol.md](worker-protocol.md) 参照）です。
 
 ## Batch
 
@@ -121,6 +123,39 @@ GET /api/v1/batches/{id-or-short-id}
     Run（いずれも batch 未付与のものは含めない）。該当する ExperimentRun
     が無ければ `null`。BatchReference / BatchRelation / StoryRelation
     とは別物の、表示専用の4本目の軸です（[domain-model.md](domain-model.md#experiment)）。
+
+### List Batches
+
+``` text
+GET /api/v1/batches
+```
+
+主なquery:
+
+``` text
+bookmark   # "true" | "false"
+status
+limit
+offset
+```
+
+`created_at` DESC順です。各行に先頭 Generation のサムネイル情報を付けて返します。
+
+``` json
+{
+  "items": [
+    {
+      "id": "...",
+      "short_id": "abc123",
+      "status": "completed",
+      "recipe": "yukari",
+      "created_at": "...",
+      "generation_count": 9,
+      "thumbnail": { "id": "...", "short_id": "def456", "rating": null, "bookmark": false }
+    }
+  ]
+}
+```
 
 ## ComfyJob
 
@@ -1164,7 +1199,7 @@ file      アセット本体（バイナリ、1ファイル）
 
 `region` はキー省略・明示 `null` のどちらも「部位区分のない全体アセット」として受理します。
 
-`(generation_id, role, region)` は一意です。同じ組み合わせへの再投稿は既存行を**置換**し（id
+`(generation_id, role, region)` は一意です。同じ組み合わせへの再投稿は既存行を置換し（id
 は変わらず、`content_type` / `size` / `updated_at` を更新して R2 も同じ key
 へ上書き）200 を返します。初回投稿は 201 です。
 
@@ -1448,6 +1483,92 @@ POST /api/v1/batches/{target_batch_id}/relations
 }
 ```
 
+## Story
+
+### Create Story
+
+``` text
+POST /api/v1/stories
+```
+
+``` json
+{
+  "name": "海辺のシリーズ",
+  "description": "..."
+}
+```
+
+### List Stories
+
+``` text
+GET /api/v1/stories
+```
+
+`created_at` DESC順です。各行に `batch_count`（その Story の StoryRelation が指す Batch の
+重複無し件数）を付けて返します。
+
+``` json
+{
+  "items": [
+    {
+      "id": "...",
+      "name": "海辺のシリーズ",
+      "description": "...",
+      "note": null,
+      "bookmark": false,
+      "created_at": "...",
+      "batch_count": 3
+    }
+  ]
+}
+```
+
+### Get Story
+
+``` text
+GET /api/v1/stories/{id}
+```
+
+Story 本体に加えて、その StoryRelation が指す Batch（各 Batch の代表 Generation 付き）、
+relation 一覧、tag 一覧を返します。
+
+``` json
+{
+  "id": "...",
+  "name": "海辺のシリーズ",
+  "description": "...",
+  "note": null,
+  "bookmark": false,
+  "created_at": "...",
+  "relations": [
+    {
+      "id": "...",
+      "source_batch_id": "...",
+      "target_batch_id": "...",
+      "label": "海辺へ移動",
+      "description": "...",
+      "raw_instruction": "...",
+      "generated_by": "...",
+      "created_at": "...",
+      "updated_at": "..."
+    }
+  ],
+  "batches": [
+    { "id": "...", "short_id": "...", "representative_generation": { "id": "...", "short_id": "..." } }
+  ],
+  "tags": ["..."]
+}
+```
+
+### Update Story
+
+``` text
+PATCH /api/v1/stories/{id}
+```
+
+`name` / `description` / `note` を部分更新します（`description` / `note` は明示 `null` で
+クリアできます）。
+
 ## Story Relation
 
 ``` text
@@ -1463,6 +1584,14 @@ POST /api/v1/stories/{story_id}/relations
   "raw_instruction": "..."
 }
 ```
+
+### Update Story Relation
+
+``` text
+PATCH /api/v1/stories/{story_id}/relations/{relation_id}
+```
+
+`label` / `description` を部分更新します（明示 `null` でクリアできます）。
 
 ## Graph
 
@@ -1514,7 +1643,7 @@ GET /api/v1/graph
 ```
 
 `edges[].type`はBatchReference / BatchRelation /
-StoryRelationに対応し、統合しません（Relation Separation、`domain-model.md`
+StoryRelationに対応し、統合しません（[domain-model.md](domain-model.md#overview)
 参照）。reference エッジは、Generation起点のBatchReferenceをsource
 Generationが属するBatchへ集約したものです。source/targetが同一Batchになるものは除外します。
 
@@ -1626,7 +1755,7 @@ DELETE /api/v1/experiments/{id}/bookmark
 
 ## Rating
 
-MVPではGenerationのみ。
+Rating は Generation にのみ付きます。
 
 ``` text
 PUT /api/v1/generations/{id}/rating

@@ -22,13 +22,19 @@ Experiment
 上の試行の主体は ExperimentRun です。
 
 ただし、本システムの重要部分は階層そのものではなく、生成探索に存在する複数種類の
-Relation を意味ごとに分離することです。
+Relation を意味ごとに分離することです。以下の3種類を統合してはいけません。
 
 ``` text
 Batch ── BatchRelation ──▶ Batch
 Generation ── BatchReference ──▶ Batch
 Batch ── StoryRelation ──▶ Batch
 ```
+
+  Relation         意味
+  ---------------- ----------------------------------------------
+  BatchReference   過去Generationの何を生成材料として利用したか
+  BatchRelation    前Batchを受けてどう再試行したか
+  StoryRelation    作品・世界観としてどう続くか
 
 ## Experiment
 
@@ -47,12 +53,15 @@ note
 status
 base_recipe
 base_generation_id
+base_parameters_json
 character_id
 bookmark
 created_at
 updated_at
 completed_at
 ```
+
+`base_parameters_json` の語彙は [experiment-agent.md](experiment-agent.md#base_parameters) を参照。
 
 status の候補と遷移:
 
@@ -237,8 +246,7 @@ pose の本文を chimera が持たないのは、組み立てが costume に依
 持たせると、chimera が prompt の語彙を解釈することになり、下の不変条件と衝突します。
 
 Preset が解いているのは別の問題です。良かった生成の patches を名前と版の付いた
-再利用可能な単位にすること — 以前はそれに comfyui-recipes の PR と deploy が
-必要でした。
+再利用可能な単位にすること。
 
 主な属性:
 
@@ -584,7 +592,7 @@ baseline / arm のどちらを見ているか判別できません（盲検性�
 
 ## Batch
 
-**1生成リクエスト = 1 Batch** と定義します。
+1生成リクエスト = 1 Batch と定義します。
 
 「seed 違いで9枚」は1 Batchです。Claude が結果を反芻し prompt
 を修正して再度9枚生成した場合は別 Batch です。
@@ -604,9 +612,15 @@ git_dirty
 note
 bookmark
 status
+idempotency_key
 created_at
 refines_generation_id
+patches_json
+pose_fingerprint
+preset_versions_json
 ```
+
+`patches_json` / `pose_fingerprint` / `preset_versions_json` は [Preset](#preset) 参照。
 
 `refines_generation_id` は、この Batch が finalize/repair/masked_redraw で仕上げた元の raw
 Generation です。この Batch を target とする BatchRelation（`type = 'refinement'`,
@@ -709,6 +723,9 @@ summary_updated_at
 created_at
 original_purged_at
 original_recompress_checked_at
+image_width
+image_height
+image_size
 ```
 
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
@@ -770,7 +787,7 @@ original.png が消える（purge でも再圧縮でも）前には、その PNG
 
 ## Publication
 
-Generation 1件の**1回分の納品**（X への投稿）を表す行です。
+Generation 1件の1回分の納品（X への投稿）を表す行です。
 
 ```text
 Generation 1:N Publication
@@ -793,17 +810,13 @@ updated_at
 後から埋められます（`PATCH /api/v1/publications/{id}`）。「公開済み」とは、その
 Generation が少なくとも1件の Publication を持つことです。
 
-かつては `publish` タグ（`look:<pose>` と組で付与）がこの役割を兼ねていましたが、
-1タグ1回きりの二値では複数回の納品や投稿URLを表現できないため、この専用エンティティに
-分離しました。
-
 Generation 本体と同じく Publication も物理削除は妥当な操作です（誤登録の取り消し）。
 Generation 自体を物理削除しない不変条件とは別物です。
 
 ## GenerationAsset
 
 Generation 本体（`r2_object_key` が指す完成画像 = composite）に対して、線画・マスク・分解レイヤー・PSD
-等の**レイヤーアセット**を追加で紐付けます。
+等のレイヤーアセットを追加で紐付けます。
 
 ``` text
 Generation 1:N GenerationAsset
@@ -865,7 +878,7 @@ region は自由文字列で、絵ごとに増えて構いません。
 のどちらも受理し、いずれも `''` に正規化します。レスポンスでは逆に `''` を
 `null` に戻します。
 
-`(generation_id, role, region)` は一意です。同じ組み合わせへの再投稿は新しい行を追加せず、既存行を**置換**します（最新版のみ保持）。Generation
+`(generation_id, role, region)` は一意です。同じ組み合わせへの再投稿は新しい行を追加せず、既存行を置換します（最新版のみ保持）。Generation
 本体に適用される「物理削除しない」不変条件は GenerationAsset
 には適用しません — 置換は明示的な仕様です。
 
@@ -883,8 +896,8 @@ MVPでは複数キャラクター画像を対象外とします。
 
 ## BatchReference
 
-**新しい Batch を生成するために、過去 Generation
-の何を参照したか**を表す強い provenance です。
+新しい Batch を生成するために、過去 Generation
+の何を参照したかを表す強い provenance です。
 
 ``` text
 Generation ──▶ Batch
@@ -1137,15 +1150,3 @@ Core は Claude / API 間の安定した共通語彙です。判断不能な値�
 
 schema version を必須とし、将来の変更時に過去 Generation 全件を強制
 migration しない設計とします。
-
-## Relation Separation
-
-以下の3種類を統合してはいけません。
-
-  Relation         意味
-  ---------------- ----------------------------------------------
-  BatchReference   過去Generationの何を生成材料として利用したか
-  BatchRelation    前Batchを受けてどう再試行したか
-  StoryRelation    作品・世界観としてどう続くか
-
-この分離は本システムの重要な設計制約です。

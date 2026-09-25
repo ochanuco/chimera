@@ -2,7 +2,7 @@
 
 chimera を control plane、GPU 機を worker とする配置での repo をまたぐ契約です。requests
 キューのスキーマ、状態遷移、API、generate / finalize / repair / masked_redraw の payload、`recipe_ref`
-を定めます。段階 2（poll 方式）を対象とし、段階 3 の WorkerHub は概略だけ触れます。
+を定めます。段階 2（poll 方式）と段階 3（WorkerHub による push）の両方を対象とし、いずれも本番で稼働しています。
 
 決定の経緯は oolong `notes/2026-09-05_note-comfyui-recipes-mac-off-the-path.md`。
 
@@ -31,10 +31,6 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ## requests テーブル
 
-backfill 行（後述「ExperimentRun 由来の generate」の移行手順）の id だけは例外で
-`bf-{run_id}` を使います。一度きりの移行専用の値で、以後 chimera が発行する id
-はすべて UUIDv7 です。
-
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
 kind              TEXT NOT NULL               generate | finalize | repair | masked_redraw
@@ -56,6 +52,10 @@ created_by        TEXT NOT NULL               brain | mcp | gui | system
 created_at        TEXT NOT NULL
 updated_at        TEXT NOT NULL
 ```
+
+backfill 行（「[ExperimentRun 由来の generate](#experimentrun-由来の-generate)」の移行手順）の
+id だけは例外で `bf-{run_id}` を使います。一度きりの移行専用の値で、以後 chimera が発行する id
+はすべて UUIDv7 です。
 
 index: `(status, created_at)`（claim の走査）、`run_id`、`worker_id`。
 
@@ -120,9 +120,11 @@ POST /api/v1/requests
 「同じキーで別の要求」を弾く点だけ厳しくしています。
 
 `run_id` は `kind = generate` かつ `payload.experiment.run_id` があるときに chimera が
-転記します。転記の前に、Run の存在、`payload.experiment.experiment_id` との所属一致、
-`kind = generate` をサーバー側で検証し、外れていれば 400 です。`kind = finalize` /
-`kind = repair` / `kind = masked_redraw` の payload に `experiment` があっても無視します。
+転記します。転記の前に Run の存在を検証し、無ければ 404 です。存在すれば
+`payload.experiment.experiment_id` がその Run の所属 Experiment と一致するかを検証し、
+食い違えば 400（`payload.experiment.experiment_id does not match the run's experiment`）
+です。`kind = finalize` / `kind = repair` / `kind = masked_redraw` の payload に
+`experiment` があっても無視します。
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
@@ -663,9 +665,6 @@ Batch / Job の `idempotency_key` 再送で 200 が返るとき、レスポン�
 それ以外を記録済み `seed` で再実行します。`graph` は再送レスポンスに含めません
 （recipe と seed から再構築でき、同じ graph に戻るのは snapshot test が担保します）。
 
-これは chimera 側の変更点です（今の再送は Batch が `serializeBatch` のみ、Job が
-`id / batch_id / seed / index / status` のみ）。requests 実装と同じ PR で入れます。
-
 ### 再開の手順
 
 worker が claim した requests 行（`attempt >= 2`）に対して:
@@ -743,14 +742,8 @@ worker は requests だけを見ます。
   `plain:<recipe>:<pose>:<seed>:<git_commit>` なので、同じ catalog commit への連打は
   積み直さず既存行を返す。
 
-不変条件の文言は次の通り改めます。
-
-> GUI が積んでよいのは semantic 判断を伴わない再実行（finalize / repair）と、pin の再描画
-> （絵柄チェック: pin 済み pose を pin の seed・recipe 既定のまま plain render する。GUI は
-> prompt を書かない）だけ。GUI が触るのは自分の D1 の requests 行のみで、ComfyUI へは
-> 到達しない。
-
-Compare が比較表示のみである点は変わりません。
+GUI が積んでよい操作の範囲は [architecture.md](architecture.md#web-gui) の Web GUI
+Responsibilities を参照してください。Compare が比較表示のみである点は変わりません。
 
 ## MCP
 

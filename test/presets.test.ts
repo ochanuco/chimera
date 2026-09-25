@@ -58,7 +58,8 @@ async function publishAndImport(recipeRef: string, recipe: string): Promise<Impo
   return res.body;
 }
 
-/** Inserts a { base, patches } promote-shaped row directly, bypassing promote (段階 B, not implemented). */
+/** Inserts a { base, patches } promote-shaped row directly, without going through the promote
+ *  endpoint (this suite isn't testing promotion itself; see test/preset-promote.test.ts for that). */
 async function insertPromoteRow(row: {
   recipe: string;
   kind: string;
