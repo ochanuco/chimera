@@ -13,12 +13,10 @@ Progressive disclosure
 見る → 選ぶ → Claudeに渡す
 ```
 
-Web GUI は ComfyUI へ到達しません。GUI が積んでよいのは semantic 判断を伴わない
-再実行（finalize / repair）と、pin の再描画（[絵柄チェック](#絵柄チェック): pin 済み
-pose を pin の seed・recipe 既定のまま plain render する。GUI は prompt を書かない）
-だけで、GUI が触るのは自分の D1 の requests 行のみです
-（[worker-protocol.md](worker-protocol.md)）。ComfyUI workflow の構築・実行は
-comfyui-recipes（worker）が担います。
+Web GUI は ComfyUI へ到達せず、prompt も書きません。GUI が積むのは semantic 判断を伴わない
+再実行（finalize / repair）と、[絵柄チェック](#絵柄チェック)の pin 再描画の requests 行だけで、
+Compare は semantic metadata の diff を表示するところまでです（不変条件の正本は
+[architecture.md](architecture.md#web-gui)、requests の契約は [worker-protocol.md](worker-protocol.md)）。
 
 ## Navigation
 
@@ -75,16 +73,20 @@ Experiment単位、run_idの無いgenerateはrequest単位にまとめます（�
 
 | パス | 内容 |
 |---|---|
-| `/gallery` | 画像グリッド。`finalize以外` / `finalize` / `すべて` の3-way切り替え、bad表示トグル、ID / Tag / Rating / Bookmarkの絞り込み、カード上で rating・bookmark 変更、無限スクロール |
-| `/batches`, `/b/{short_id}` | 生成リクエスト単位の一覧・詳細 |
-| `/g/{short_id}` | Generation 詳細（canonical URL）。Summary / Semantic / References / Story / Prompt / Seed / Git などは折りたたみ表示 |
-| `/bookmarks` | Bookmark した Generation / Batch / Experiment |
-| `/compare?ids=a,b` | 2〜9枚比較。aspect を選んで Claude へ渡す指示テキストを生成・コピー |
-| `/experiments`, `/experiments/{short_id}` | Experiment の一覧・詳細。Run ごとの override 差分・評価・Promotion を表示 |
+| `/` | `/gallery` へのリダイレクト |
+| `/gallery` | [Gallery](#gallery) |
+| `/compare?ids=a,b` | [Compare](#compare)（2〜9枚の semantic metadata 比較） |
+| `/batches` | Batch 一覧（サムネイル・short_id・指示文の抜粋・status・Generation 数・作成時刻、Bookmarked only の絞り込み） |
+| `/b/{short_id}` | [Batch Detail](#batch-detail) |
+| `/g/{short_id}` | [Generation Detail](#generation-detail)（Generation の canonical URL） |
+| `/check` | [絵柄チェック](#絵柄チェック) |
+| `/experiments`, `/experiments/{short_id}` | [Experiment View](#experiment-view) |
+| `/experiments/{short_id}/ab` | [A/B Judge View](#a-b-judge-view) |
+| `/bookmarks` | [Bookmarks](#bookmarks) |
 
-Story一覧・DAG表示（`/stories`）と生成履歴全体のGraph表示（`/graph`）のSSR画面は持ちません。Batch
-Detail / Generation Detailは所属Storyの名前をリンクなしのテキストで表示します。`/api/v1/stories`
-`/api/v1/graph`のJSON APIとStory関連のMCPツールは引き続き提供します（[api.md](api.md)参照）。
+Story と系譜全体の走査は `/api/v1/stories` `/api/v1/graph` と MCP の担当です（[api.md](api.md)）。
+GUI では Batch Detail / Generation Detail が所属 Story の名前をリンクなしのテキストで、系譜を
+[Map](#batch-detail) の一列表示で見せます。
 
 ## Gallery
 
@@ -92,7 +94,7 @@ Detail / Generation Detailは所属Storyの名前をリンクなしのテキス�
 
 -   良い画像を探す
 -   過去Generationを再利用する
--   Bookmark / Rating / Tagを確認する
+-   Rating / Bookmarkを付ける
 
 nav直下にsticky なツールバーを持ちます。
 
@@ -128,16 +130,15 @@ pin されているGenerationだけに絞ります（[domain-model.md](domain-mo
 どちらも他のフィルタと同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの
 判定にも数えます。
 
-Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはGUIから外しました
-（`GET /api/v1/generations`はこれらのqueryを引き続き受け付けます。agentがMCP/APIから直接
-叩く用途、[api.md](api.md#generation-search)参照）。
+Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはパネルに置かず、
+`GET /api/v1/generations`のqueryとしてMCP/APIから使います（[api.md](api.md#generation-search)）。
 
 `ID`の指定を解決した結果がGeneration 1件だけになったとき（他の指定と組み合わせた結果も
 含む）は一覧を描画せず`/g/{short_id}`へ直接遷移します。0件・2件以上のときは通常どおり
 一覧を表示します。`ID`を指定した検索は`view`とbad非表示を無視し、指定したGenerationだけを
 返します。
 
-一覧はPrev/Nextページングの代わりに無限スクロールです。グリッド末尾の「もっと見る」
+一覧は無限スクロールです。グリッド末尾の「もっと見る」
 リンクが画面に入ると次ページを自動でフェッチしてグリッドへ追記します（JS無効環境では
 リンクとして機能します）。
 
@@ -149,7 +150,7 @@ Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込�
 
 #### 新着
 
-対象は`ids`・Tag・Rating・Bookmarked only・公開済みのみのいずれも指定していない既定表示だけで
+対象は`ids`・Tag・Rating・Bookmarked only・公開済みのみ・基準のみのいずれも指定していない既定表示だけで
 （`view`・`bad`は絞り込みに数えません）、その条件下でだけクライアントはviewer WebSocket
 （`/api/v1/requests/ws`、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）を開き
 （[Generation Detail](#generation-detail)のFinalizeで説明したrequest live接続を共有します）、
@@ -181,14 +182,12 @@ sticky toolbarの下へスクロールアウトしている間は、同じ文言
 ソケットが切れたときの再接続は同じ接続を使う[Generation Detail](#generation-detail)の
 request live更新と同じ指数バックオフ（1s→2s→…上限30s）です。
 
-Gallery / Bookmarksのグリッドは1行6枚です（幅1100px以下は4枚、800px以下は190px以上の幅で
-入るだけ並べます）。Batch Detailのグリッドは左ペインの幅に190px以上で入るだけ並べます。
+### GenerationCard
 
 カードはサムネイル1枚と、その下の2行（short_idとbookmarkの行、rating（bad/neutral/good）の行）です。
 short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
-変えて末尾に✓を出します。画像メタ（解像度/ファイルサイズ）・タグ・比較エントリはカードから外し、
-サムネイルクリックで遷移する[Generation Detail](#generation-detail)に置きました
-（サムネイルは修飾キーなしの左クリックも含め、素のリンク`<a href="/g/{short_id}">`です）。サムネイル左上には
+変えて末尾に✓を出します。サムネイルは[Generation Detail](#generation-detail)への素のリンク
+`<a href="/g/{short_id}">`です。サムネイル左上には
 （上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
 橙文字、short_idは等幅）、このGenerationを対象にした最新のfinalize/repair/masked_redraw
@@ -242,7 +241,70 @@ Gallery live insertionのカードフラグメントだけが持つデータな�
 -   Story graph
 -   ComfyUI workflow
 
-## Compare entry
+## Compare
+
+複数GenerationのSemantic Metadataをdiff表示します。
+
+対象は2〜9枚です（10件以上を渡すと先頭9件だけを表示し、警告を出します）。
+
+Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[GenerationCard](#gallery)です
+（サムネイル・from-badge / 進捗ピル / 公開済み / 基準の各バッジ・rating/bookmark行、クリックで
+`/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
+purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
+
+その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
+expression / outfit / style / composition）、strengths、defects、そして全
+Generationのattributesキーの和集合。列は各Generationです。
+
+``` text
+              abc123          xyz987
+summary       a girl on...    a girl on...
+pose          standing        sitting
+expression    smiling         —
+outfit        school uniform  school uniform
+style         —               —
+composition   —               —
+strengths     —               —
+defects       —               —
+lighting      backlit         —
+```
+
+同じ行で全カラムの値が一致しない場合、その行を黄系ハイライトで軽く強調表示（diff）します。
+semantic未解析（semantic_jsonがNULL）のGenerationは列全体が `(not analyzed)`
+になります。値がnullの項目は `—` と表示し、attributes行はすべてのGeneration
+で値なしの場合は行ごと表示しません（summary / core / strengths / defects の
+固定行は常に表示）。
+
+summary・core 5項目・strengths・defects・attributesの各セマンティック行では、
+基準列という概念を置かず、各セルは自分自身の値だけを表示したうえで全レーン
+（行内の実値セル全体）とのコンセンサスでトークンごとに3段階のハイライトを行い
+ます（他列のテキストを埋め込むことはしません）。あるトークンが同じ行の他の全レ
+ーンとも一致する場合はプレーン表示、一部のレーンとだけ一致する場合は黄、どのレ
+ーンとも一致しない（そのレーン固有の）場合は緑でハイライトします。strengths /
+defects / 配列形式のattributesは項目単位で同じ3段階の扱いをし、1行1項目で表示
+します。`(not analyzed)`、`—` のセル、行内の実値が1個以下の場合、および差分が
+無いセルはdiff装飾なしのプレーン表示です。テーブル上部にはこの3段階ハイライト
+を説明する凡例を表示します。
+
+テーブルは横スクロール可能なコンテナに収め、列数が多くても崩れないようにします。
+
+`created` 行の直後・`summary` 行の直前には、各GenerationのComfyJobから抽出した
+render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.checkpoint` /
+`render.sampler` / `render.steps` / `render.cfg` / `render.denoise` / `render.canvas` /
+`render.lora` / `render.controlnet` の行として並べます。値の表現はsemantic行と同じ
+コンセンサス方式のトークンハイライトを使い、行内の値が全カラムで一致しない場合は
+その行を黄系ハイライト（diff）します。ComfyJobにgraphが無いGenerationはそのカラムに
+`(no graph)` を表示し、全カラムが値なしの列（render_facts行）はその行ごと表示しません。
+
+続けて `render.positive` / `render.negative` 行（各Generationのpass 1の
+positive/negativeプロンプト、値の表現はsemantic行と同じコンセンサス方式の
+トークンハイライト）を並べます。いずれかのGenerationが2pass以上を持つ場合は、
+存在するpass indexごとに `render.positive (pass 2)` / `render.negative (pass 2)`
+のように追加します（全カラムが値なしの行は表示しません）。
+
+Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求も指示テキストの生成も行いません。
+
+### Compare entry
 
 Generation Detailの`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は
 `{ id, short_id }`）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
@@ -266,7 +328,7 @@ Detailの2カラムはその分だけ高さを縮めます。バーの中身は�
 
 幅1100px以上（MBP 16インチのフルスクリーン運用を想定）では、左（Generation
 サムネイルグリッド）: 右（情報）= 2:1 の2ペインをビューポート1画面に収め、
-各ペインが独立してスクロールします。それ未満の幅では従来どおり縦一列です。
+各ペインが独立してスクロールします。それ未満の幅では縦一列です。
 
 左のサムネイルグリッドはGalleryと同じ[GenerationCard](#gallery)（from-badge / 公開済みピル
 込み）で、サムネイルクリックで同じ[Generation Detail](#generation-detail)へ遷移します。
@@ -336,123 +398,8 @@ Finalize all armsセクションは、このBatch配下の全Generationについ
 1行ずつ持つ`request-status-list`を表示します（進捗の反映はGeneration Detailの
 Finalizeセクションと同じ仕組み、後述）。
 
-主な操作:
-
--   Generation rating
--   Bookmark
--   Tag
--   Finalize all arms
--   provenance確認
-
-## Compare
-
-複数GenerationのSemantic Metadataをdiff表示します。
-
-2〜9枚を想定します（10件以上の選択は先頭9件のみ表示し警告を出す）。
-
-Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[GenerationCard](#gallery)です
-（サムネイル・from-badge / 進捗ピル / 公開済み / 基準の各バッジ・rating/bookmark行、クリックで
-`/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
-purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
-
-その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
-expression / outfit / style / composition）、strengths、defects、そして全
-Generationのattributesキーの和集合。列は各Generationです。
-
-``` text
-              abc123          xyz987
-summary       a girl on...    a girl on...
-pose          standing        sitting
-expression    smiling         —
-outfit        school uniform  school uniform
-style         —               —
-composition   —               —
-strengths     —               —
-defects       —               —
-lighting      backlit         —
-```
-
-同じ行で全カラムの値が一致しない場合、その行を黄系ハイライトで軽く強調表示（diff）します。
-semantic未解析（semantic_jsonがNULL）のGenerationは列全体が `(not analyzed)`
-になります。値がnullの項目は `—` と表示し、attributes行はすべてのGeneration
-で値なしの場合は行ごと表示しません（summary / core / strengths / defects の
-固定行は常に表示）。
-
-summary・core 5項目・strengths・defects・attributesの各セマンティック行では、
-基準列という概念を置かず、各セルは自分自身の値だけを表示したうえで全レーン
-（行内の実値セル全体）とのコンセンサスでトークンごとに3段階のハイライトを行い
-ます（他列のテキストを埋め込むことはしません）。あるトークンが同じ行の他の全レ
-ーンとも一致する場合はプレーン表示、一部のレーンとだけ一致する場合は黄、どのレ
-ーンとも一致しない（そのレーン固有の）場合は緑でハイライトします。strengths /
-defects / 配列形式のattributesは項目単位で同じ3段階の扱いをし、1行1項目で表示
-します。`(not analyzed)`、`—` のセル、行内の実値が1個以下の場合、および差分が
-無いセルはdiff装飾なしのプレーン表示です。テーブル上部にはこの3段階ハイライト
-を説明する凡例を表示します。
-
-テーブルは横スクロール可能なコンテナに収め、列数が多くても崩れないようにします。
-
-`created` 行の直後・`summary` 行の直前には、各GenerationのComfyJobから抽出した
-render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.checkpoint` /
-`render.sampler` / `render.steps` / `render.cfg` / `render.denoise` / `render.canvas` /
-`render.lora` / `render.controlnet` の行として並べます。値の表現はsemantic行と同じ
-コンセンサス方式のトークンハイライトを使い、行内の値が全カラムで一致しない場合は
-その行を黄系ハイライト（diff）します。ComfyJobにgraphが無いGenerationはそのカラムに
-`(no graph)` を表示し、全カラムが値なしの列（render_facts行）はその行ごと表示しません。
-
-続けて `render.positive` / `render.negative` 行（各Generationのpass 1の
-positive/negativeプロンプト、値の表現はsemantic行と同じコンセンサス方式の
-トークンハイライト）を並べます。いずれかのGenerationが2pass以上を持つ場合は、
-存在するpass indexごとに `render.positive (pass 2)` / `render.negative (pass 2)`
-のように追加します（全カラムが値なしの行は表示しません）。
-
-Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求も指示テキストの生成も行いません。
-
-## 絵柄チェック
-
-`/check`。recipe既定のprompt/paramsが、pin済みの絵柄からずれていないか人間が見比べる
-ページです。対象recipe・代表ポーズの一覧は`src/lib/style-check.ts`の`STYLE_CHECK_POSES`
-が正本で、今は`yukari`だけです。
-
-``` text
-framing   pose
-bust      bust
-cowboy    coffee
-cowboy    gao
-full      step
-full      dance
-```
-
-ポーズごとに1行、左右2カラムで並べます。
-
--   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` /
-    `referenceView`）。[Gallery](#gallery)と同じ[GenerationCard](#gallery)（サムネイル・
-    short_idリンク・基準ピル）で表示します。pinが無ければ行全体を「pin 無し」とだけ表示し、
-    右カラムは出しません（描けないため）。
--   右: 今のカタログcommitでの、そのposeのplain render。default idempotency key
-    (`plain:<recipe>:<pose>:<seed>:<git_commit>` — MCP `plain_render`と同じ形、
-    `src/lib/plain-render.ts`の`plainRenderIdempotencyKey`)に一致するrequestを探すだけで
-    (積まない)、無ければ「まだ描いていない」と表示します。requestがqueued/runningなら
-    status行（[Finalize](#generation-detail)の`request-status-list`と同じ`<li
-    data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
--   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
-    <結果のshort_id>`）を出します。
-
-ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
-（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに1行、MCP
-`plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
-gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
-keyが上と同じ既定キーなので、同じカタログcommitへの連打は積み直さず既存行を返します
-（`created: false`）。
-
-積んだ直後は応答のrequest idをその場の右カラムに挿し込むだけで、reloadしません
-（`data-style-check-slot="<pose>"`の要素を差し替える）。以後のrunning/doneは他ページと
-同じ`[data-request-id]`のWebSocket購読（`registerRequestElement` /
-`requestLiveApplyStatus`）で反映されます — [Finalize](#generation-detail)の
-`request-status-list`と同じく、doneでstatusが変わり結果Generationへのリンクが添わります。
-GenerationCard（サムネイル）への差し替えは次のGET `/check`（reload）で反映されます。
-
-絵柄チェックが書き込むのはこのplain renderのrequest行だけで、pinそのものは変更しません
-（pinの変更はGeneration Detailの「基準にする」、[domain-model.md](domain-model.md#基準-render-の-pin)）。
+見出し行の🔖でBatch自体のbookmarkを切り替えます。Tagsセクションは付与済みタグのチップと
+[タグ追加フォーム](#タグ追加)を持ちます（チップに削除ボタンはありません）。
 
 ## Generation Detail
 
@@ -463,7 +410,9 @@ GenerationCard（サムネイル）への差し替えは次のGET `/check`（rel
 [ IMAGE ] | abc123  比較に追加
 [ IMAGE ] | 結月ゆかり
 [ IMAGE ] | good  🔖
-[ IMAGE ] | #pose-good #outfit-good
+[ IMAGE ] | 基準にする
+[ IMAGE ] | 公開 ...
+[ IMAGE ] | #pose-good ×  #outfit-good ×   [add tag] [+]
 ```
 
 originalが保持期間ジョブでpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
@@ -477,8 +426,8 @@ Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表
 Batch Detail の Parameters）のみ既定で畳みます。
 
 ``` text
-公開
 Finalize
+仕上げの解決値
 Summary
 Semantic
 Map
@@ -492,7 +441,13 @@ Git
 Note
 ```
 
-`公開`セクションはrating/bookmark行の直後にあります。[Publication](domain-model.md#publication)
+rating/bookmark行の直後は「基準」行です。このGenerationがposeの基準 renderとしてpinされていれば
+`基準 <pose名>`ピルを、されていなければ`基準にする`ボタンを表示します。ボタンは
+`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md#pose-reference-pin)）でpinし、
+その場で行をピルに書き換えます。recipe / poseはサーバーがBatchから推測し、rating goodでない
+Generationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
+
+続く`公開`セクションは[Publication](domain-model.md#publication)
 が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
 `--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・
 URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入力欄）・`×`削除ボタンの行として
@@ -500,6 +455,17 @@ URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入�
 （枠線・文字とも`#4fd8a4`、角丸6px）の追加フォームを置きます。追加・URL入力・削除の
 いずれも`/api/v1/generations/{id}/publications`・`/api/v1/publications/{id}`をfetchし、
 リロードなしでセクションを書き換えます。
+
+#### タグ追加
+
+`公開`の下には付与済みタグのチップ（各チップに`×`削除ボタン）とタグ追加フォームを置きます。
+フォームは自由入力のテキスト欄で、入力のたびに200ms待って`GET /api/v1/tags?q=`（前方一致、
+最大20件）を引き、既存タグ名を`<datalist>`の候補として出します。未登録の名前を送ればそのタグを
+作って付与します。追加・削除ともリロードせずチップを書き換えます。Batch DetailのTagsセクションも
+同じフォームです。
+
+`仕上げの解決値`セクションは、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
+だけ出し、要求した`options`（requested）とworkerが解決した値（resolved）をJSONのまま並べます。
 
 親・子・兄弟はBatch Detailと同じFamilyCard表示です。Batch
 Detailと異なり、このGenerationが属するBatch自体のRefinement/Story関係も合わせて表示するため、
@@ -529,8 +495,7 @@ Generation（FamilyCardのサムネイルと同じ選定）のshort_idで表示�
 Batchのshort_idで表示し、Batch Detailへリンクします。要素が2件未満の行（関連Batchなしの行）は表示せず、
 全行が該当する場合はMapセクション自体を表示しません。
 
-Workflowセクションは、以前の Prompt / Seed / Render facts
-の3セクションを統合したもので、「Story」の直後にあります。このGenerationの
+Workflowセクションは「Story」の直後にあります。このGenerationの
 ComfyJobから抽出したrender_facts（[domain-model.md](domain-model.md#comfyjob)参照）
 を使い、`/g/{short_id}` だけを見て（ほぼ）同じワークフローを再現できるだけの
 情報を読みやすいレイアウトで並べます:
@@ -578,10 +543,8 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-右ペイン最上部のFinalize / Repairセクションは、Generation Detailにおける生成要求手段です
-（不変条件: GUIが積んでよいのはsemantic判断を伴わない再実行=finalize / repairと、pinの
-再描画（[絵柄チェック](#絵柄チェック)）だけ。ComfyUIへは到達しない。
-[worker-protocol.md](worker-protocol.md)参照）。フォームは3つの
+Finalizeセクションは、Generation Detailから積める唯一の生成要求です（範囲は
+[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。フォームは3つの
 `fieldset`（`仕上げ` / `納品の見た目` / `部分描き直し`）にグループ化されます。各
 コントロール名自体は`comfy-recipes` CLIのフラグ名（worker-protocol.md参照）に
 揃えて英語のままとし、ラベル直後に`?`の`finalize-help`マーカーを添えます。マーカーは
@@ -599,8 +562,8 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 
 このBatchのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
-無いrecipeは今まで通りの数値入力・チェックボックスのままです（後方互換。
-[domain-model.md](domain-model.md#finalize-プロファイル)）。
+無いrecipeは数値入力とチェックボックスで表示します
+（[domain-model.md](domain-model.md#finalize-プロファイル)）。
 
 dial対応フォームは`仕上げ`グループの直前に`profile`の行を持ち、そのrecipeの
 `finalize`プロファイル（`list_presets kind=finalize`の最新active版）をボタンで
@@ -624,7 +587,7 @@ dial対応フォームに切り替わった時点で、catalogの語彙の有無
 配列）を1枚ずつカードで並べ、末尾に固定の`transparent`（透過PNG）と`color`（単色）の
 2枚を置きます。サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png`
 （`?v=`にcatalogのupdated_atを付けたキャッシュバスター付きURL）から都度取得し、
-カタログに`backdrops`が無い（旧worker）場合はサムネイル無しの`stripes`カード1枚だけに
+カタログに`backdrops`が無い場合はサムネイル無しの`stripes`カード1枚だけに
 フォールバックします。既定の選択はcatalogの`finalize.defaults.backdrop`（無ければ
 先頭のパターン）に従います。`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
 現れます（空か形式違いなら送信せずalertします）。続けて`stroke light（影の向き）`の
@@ -652,7 +615,7 @@ formの状態に保持され、フォーム上の「範囲をすべて消す」�
 で一括削除できます。OFFの間はoverlayが`pointer-events: none`になり、画像のクリック・右クリック・タッチスクロールは画像側に届きます。描いた矩形はOFFにしても残り（送信にも積まれる）、消去ボタンもそのまま押せます。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
 範囲、どちらか片方だけでも送信可）。描き直し（redraw）・deliver onlyどちらのモードでも、
 範囲が1つ以上あれば`repair_regions`を積み、`repair`は空配列にします（描いた範囲が部位の自動検出を置き換える。検出の円を矩形に足すとマスクが部位の外まで広がるため）。`repair pad` / `repair lora`のdisabledは
-これまで通り部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`
+部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`
 （deliver only中のみ）は部位チェックか範囲、どちらか一方でもあれば有効になります。
 
 送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
@@ -698,26 +661,52 @@ GUIでは独立したセクションを持たず、Finalizeフォームの`repai
 から同じfinalize requestに乗せます。`kind: "repair"`のrequestはAPI / MCPからだけ積め、
 このGenerationを対象にした行はFinalizeセクションのrequest一覧にfinalizeと並んで出ます。
 
-## Provenance View
+## 絵柄チェック
 
-全Generationを一度に描画しません。
-
-選択Generation / Batchの周辺1 hop程度を初期表示します。
-
-``` text
-G123 -- pose ----\
-                  > B200
-G456 -- outfit --/
-```
-
-必要に応じて:
+`/check`。recipe既定のprompt/paramsが、pin済みの絵柄からずれていないか人間が見比べる
+ページです。対象recipe・代表ポーズの一覧は`src/lib/style-check.ts`の`STYLE_CHECK_POSES`
+が正本で、現在は`yukari`だけです。
 
 ``` text
-Show ancestors
-Show descendants
+framing   pose
+bust      bust
+cowboy    coffee
+cowboy    gao
+full      step
+full      dance
 ```
 
-で展開します。
+ポーズごとに1行、左右2カラムで並べます。
+
+-   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` /
+    `referenceView`）。[Gallery](#gallery)と同じ[GenerationCard](#gallery)（サムネイル・
+    short_idリンク・基準ピル）で表示します。pinが無ければ行全体を「pin 無し」とだけ表示し、
+    右カラムは出しません（描けないため）。
+-   右: 今のカタログcommitでの、そのposeのplain render。default idempotency key
+    (`plain:<recipe>:<pose>:<seed>:<git_commit>` — MCP `plain_render`と同じ形、
+    `src/lib/plain-render.ts`の`plainRenderIdempotencyKey`)に一致するrequestを探すだけで
+    (積まない)、無ければ「まだ描いていない」と表示します。requestがqueued/runningなら
+    status行（[Finalize](#generation-detail)の`request-status-list`と同じ`<li
+    data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
+-   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
+    <結果のshort_id>`）を出します。
+
+ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
+（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに1行、MCP
+`plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
+gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
+keyが上と同じ既定キーなので、同じカタログcommitへの連打は積み直さず既存行を返します
+（`created: false`）。
+
+積んだ直後は応答のrequest idをその場の右カラムに挿し込むだけで、reloadしません
+（`data-style-check-slot="<pose>"`の要素を差し替える）。以後のrunning/doneは他ページと
+同じ`[data-request-id]`のWebSocket購読（`registerRequestElement` /
+`requestLiveApplyStatus`）で反映されます — [Finalize](#generation-detail)の
+`request-status-list`と同じく、doneでstatusが変わり結果Generationへのリンクが添わります。
+GenerationCard（サムネイル）への差し替えは次のGET `/check`（reload）で反映されます。
+
+絵柄チェックが書き込むのはこのplain renderのrequest行だけで、pinそのものは変更しません
+（pinの変更はGeneration Detailの「基準にする」、[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
 ## Experiment View
 
@@ -733,6 +722,7 @@ run count
 latest run
 latest result
 updated_at
+bookmark
 ```
 
 status で絞り込めます。
@@ -767,7 +757,7 @@ negative`の行、値がnullなら行ごと省略）。baseline以外のRunは�
 （JSON同値）はそのまま、基準Runになくこの Run で加わった patch は
 `+`、基準Runにありこの Run で消えた patch は `-`
 で印を付けます。override全文は折りたたみます。`overrides.patches`
-の形を認識できないRun（過去データなど）だけ従来のleaf diffへfallbackします。
+の形を認識できないRunだけleaf diffを表示します。
 
 ``` text
 #1  PASS なし
@@ -799,7 +789,7 @@ RunsとPromotionsの間に `A/B` セクションがあります。judgmentがあ
 「No judgments yet.」。その下にRunごとのrating内訳表（生成数 / good / neutral / bad /
 unrated、batch未attachのRunも0件で表示）が並びます。
 
-## A/B Judge View
+### A/B Judge View
 
 `/experiments/{id}/ab?baseline=<run_id>&arm=<run_id>` は、baseline runとarm
 runのGenerationを人間が盲検で1対1に対比較する画面です
@@ -839,7 +829,9 @@ Batches
 Experiments
 ```
 
-BookmarkはFavoriteではなく再利用・再訪のための導線です。
+BookmarkはFavoriteではなく再利用・再訪のための導線です。どの対象も🔖の1操作で切り替えます。
+Generationはカードと Generation Detail、BatchはBatch一覧の行とBatch Detailの見出し行、
+ExperimentはExperiment一覧の行とExperiment詳細に🔖を置きます。
 
 GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外` / `finalize` /
 `すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
@@ -848,61 +840,18 @@ GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外
 Generationsセクションのカードは[GenerationCard](#gallery)でGalleryと共通です（bad非表示との
 組み合わせは無いため、[Gallery pending changes](#gallery-pending-changes)のbadの扱いはありません）。
 
-## Search
-
-MVPの検索条件:
-
-``` text
-Character
-Tags
-Date range
-Rating
-Bookmark
-```
-
-ComfyUI Job ID / original filenameによる逆引きも提供します。
-
-prompt全文検索、semantic全文検索、高度なgraph queryはMVP対象外です。
-
-## Tag Editing
-
-Tagは自由入力ですが、既存Tagを優先表示します。
-
-例:
-
-``` text
-入力: pose
-
-候補:
-#pose-good
-#pose-bad
-#pose-reference
-
-[新規タグ "pose" を作成]
-```
-
-類似Tagの乱立を避けるため、Claudeにも既存Tag再利用を推奨します。
-
-## Rating
-
-Generationカード上から3段階で変更できることを想定します。
-
-``` text
-bad
-neutral
-good
-```
-
-## Bookmark
-
-Generation / Batch /
-Experimentの各画面で1操作で切り替えられるようにします。
-
 ## Responsive / Density
 
-画像一覧の密度は重要ですが、metadataを増やして情報密度を上げないこと。
+一覧の密度は画像の大きさと列数で調整し、カードにmetadataを足して上げることはしません。
+semantic情報はDetailに置きます。
 
-画像サイズと列数をレスポンシブに調整し、semantic情報はDetailへ退避します。
+ブレークポイントは3段です。
+
+| 幅 | 挙動 |
+|---|---|
+| 1100px以上 | Batch Detail / Generation Detailが2:1の2ペイン。Gallery / Bookmarksのグリッドは6列、Batch Detailのグリッドは左ペインに190px以上の幅で入るだけ並べる |
+| 1100px以下 | Detailは縦一列。グリッドは4列（800px以下は190px以上の幅で入るだけ並べる） |
+| 600px以下 | ナビ・カード・反映ピルのタップ領域を2.75rem以上に広げ、キュー状態pillは数字だけにする |
 
 ## Telemetry
 
@@ -934,6 +883,11 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `publication.add` | `generation_id`, `has_url` | Publicationの追加（`initPublicationAdd`） |
 | `publication.url` | `generation_id`, `has_url` | PublicationのURL入力（`initPublicationUrlSave`） |
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
+| `pose_reference.set` | `generation_id` | Generation Detailの`基準にする`（`initPoseReference`） |
+| `promote_profile.submit` | `generation_id`, `name`, `version` | Generation Detailの`profile に登録`（`initPromoteToProfile`） |
+| `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
+| `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
+| `queue.group.click` | `kinds`, `has_batch` | キュー状態パネルの行クリック（`navQueueRow`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
