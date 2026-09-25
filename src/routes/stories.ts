@@ -87,14 +87,12 @@ stories.get('/:id', async (c) => {
     });
   }
 
-  // Fetch all batches in one query
   const placeholders = batchIds.map(() => '?').join(',');
   const { results: batchRows } = await db
     .prepare(`SELECT * FROM batches WHERE id IN (${placeholders})`)
     .bind(...batchIds)
     .all<BatchRow>();
 
-  // Fetch representative generations for all batches in one query
   const { results: genRows } = await db
     .prepare(
       `SELECT * FROM (
@@ -106,14 +104,12 @@ stories.get('/:id', async (c) => {
     .bind(...batchIds)
     .all<GenerationRow>();
 
-  // Build lookup maps
   const batchMap = new Map<string, BatchRow>();
   (batchRows ?? []).forEach((b) => batchMap.set(b.id, b));
 
   const genMap = new Map<string, GenerationRow>();
   (genRows ?? []).forEach((g) => genMap.set(g.batch_id, g));
 
-  // Combine in original order
   const batches = batchIds
     .map((batchId) => {
       const batch = batchMap.get(batchId);

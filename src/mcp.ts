@@ -99,8 +99,9 @@ type ImageResult = Declared<z.infer<typeof mcpOutputSchemas.get_generation_image
 // structuredContent が無いと SDK が ProtocolError にするし、outputSchema を読まない
 // client のために text も要る（MCP 仕様 SEP-2106 §4.3 と同じ二重掲載）。
 // schema 引数は型の witness で、実行時には使わない。値で受け取らないと型引数の
-// 指定漏れが unknown に潰れて素通りし、schema と実体のずれが client 側の
-// validation error になるまで出てこない。
+// 指定漏れが unknown に潰れて素通りし、schema と実体のずれは tsc では捕まらず、
+// SDK の validateToolOutput が structuredContent を検証して tool error に変換する
+// までコンパイル時には気づけない。
 function jsonResult<S extends z.ZodType>(_schema: S, data: Declared<z.infer<S>>) {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
