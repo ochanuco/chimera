@@ -804,7 +804,7 @@ Batch からはそのまま引き継ぎます（pin 自体を飛ばす条件と�
 別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から
 `recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます。
 指定した Generation が finalize / repair / masked_redraw 済みなら、その元になった raw の Generation
-まで遡ってから引き継ぎます（[experiment-agent.md](experiment-agent.md#tool)）。worker
+まで遡ってから引き継ぎます（[experiment-agent.md](experiment-agent.md#derive_request)）。worker
 から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
 
 `promote_to_pose` は `rating = good` の Generation を新しい Preset の版にします。起点
