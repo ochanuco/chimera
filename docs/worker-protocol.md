@@ -701,7 +701,6 @@ worker は requests だけを見ます。
   以後も Run 作成時に自動起票される限り空です。段階 1 の watch（このエンドポイントを
   poll する版）が移行後も box で動き続けていても、同じ Run を requests 版と二重に
   実行することはありません。worker の切り替えが済んだら状況確認用の読み取りに留めます。
-  docs/experiment-agent.md の runner 節はこの文書を指すよう書き換えます。
 - 移行: requests テーブルを作る migration で、`batch_id IS NULL` かつ Experiment が
   active / stabilized の既存 Run について requests 行を backfill します
   （`created_by = system`、payload は同じ規則）。順序は次の通りで、どの時点でも同じ Run を
