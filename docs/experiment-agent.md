@@ -11,19 +11,14 @@ Experiment → Run → override 決定 → ComfyUI 生成 → evaluation → dec
 
 ## 構成
 
-Cloudflare OS のサーバー側 Agent は、外部ネットワークを無効化された Dynamic Worker 上で動きます。
-`https://chimera.chanu.co` を直接 fetch する経路はありません。
-用意されている入口は型付きバインディングと MCP サーバーの2つで、外部アプリを繋ぐときは後者を使います。
-
-権限は Gatekeeper が仲介します。
-Agent は権限ゼロから始まり、リソースと操作ごとに管理者が許可します。
-資格情報は Agent と生成コードから分離されます。
+`/mcp` は stateless な Streamable HTTP の MCP エンドポイントです。
+MCP protocol session も専用の Durable Object も持ちません。
+認証はアプリ内に実装せず、`/mcp` も Cloudflare Access の内側に置きます。
+MCP client は Access の Service Token で接続します。
 
 ``` text
-Cloudflare OS
-  Agent Workspace
-    └── MCP: chimera ──Gatekeeper──▶ chimera Worker /mcp
-                                        └── D1 / R2
+MCP client（Agent）──Access Service Token──▶ chimera Worker /mcp
+                                                └── D1 / R2
 
 GPU 機
   worker（comfy-recipes watch）──REST + Access Service Token──▶ chimera /api/v1/*
@@ -32,11 +27,7 @@ GPU 機
 
 Agent は生成を起動しません。
 requests 行を積むところまでを担当し、worker がそれを claim して実行します（[worker-protocol.md](worker-protocol.md)）。
-Agent の外部ネットワークが無効である以上ここは分離するしかなく、「chimera は ComfyUI へ生成要求を送らない」という不変条件とも一致します。
-
-`/mcp` は stateless な Streamable HTTP エンドポイントです。
-MCP protocol session も専用の Durable Object も持ちません。
-認証はアプリ内に実装せず、`/mcp` も Cloudflare Access の内側に置いて、Service Token を Gatekeeper が保持します。
+「chimera は ComfyUI へ生成要求を送らない」という不変条件は MCP でも変わりません。
 
 `/api/v1/*` は Python CLI と worker のための入口としてそのまま残ります。
 MCP は同じドメインへの別インターフェースで、tool のハンドラは REST routes と同じ `src/lib/*` の関数を呼びます。
@@ -179,7 +170,7 @@ seed は遡った先の raw Generation の comfy_job から取り、記録が無
 
 `plain_render` は、その pin の seed（または明示した `seed`）で `recipe` / `pose` を patches なしの recipe 既定のまま描く generate request を1件積みます。
 pose は Preset として存在すればよく（`promote_to_pose` で作った pose も含む）、catalog に載っている必要はありません。
-その Preset が無いとき、または `recipe_ref` の catalog が publish されていないときは 404、pin も `seed` も無ければ 409 です。
+その Preset が無いとき、または `recipe_ref` の catalog が publish されていないときは 404、pin も `seed` も無ければ 409（`no reference pinned for ...; pass seed or set_pose_reference first`）です。
 pin がまだ無い pose には、`seed` を渡して最初の基準 render を起こせます。
 既定の `idempotency_key` は `plain:<recipe>:<pose>:<seed>:<catalog の git_commit>` なので、同じ commit のまま繰り返し呼んでも複製せず再送になります。
 同じ seed と catalog でもう1件積むときは、`idempotency_key` を明示します。
@@ -190,15 +181,15 @@ pin がまだ無い pose には、`seed` を渡して最初の基準 render を�
 finalize / repair 済みの Generation は `derive_request` と同じ規則で raw まで遡りますが、rating は指定した Generation のものを見ます。
 
 base は、その Batch を作った generate request が pin していた版です。
-pin の無い Generation では `base_version` で明示し、どちらも無ければ 409 です（chimera は base を推測しません）。
-ほかに 409 になるのは、rating が good でないとき、起点 Batch が recipe を持たない graph-mode のとき、Batch が patches を持たないとき（全文上書きと finalize / repair / masked_redraw の出力はここで弾かれます）です。
+pin の無い Generation では `base_version` で明示し、どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です（chimera は base を推測しません）。
+ほかに 409 になるのは、rating が good でないとき（`promote requires rating good`）、起点 Batch が recipe を持たない graph-mode のとき、Batch が patches を持たないとき（`promote requires a batch with patches`。全文上書きと finalize / repair / masked_redraw の出力はここで弾かれます）です。
 Rating を書けるのは人間だけなので、Agent が単独で preset を本番へ入れることはできません。
 既存の版は書き換わらないため、昇格が過去の request の再現性を壊すこともありません。
 `idempotency_key` の再送は既に作られた版をそのまま返し、同じキーで別の Generation や名前を渡すと 409 です。
 
 `promote_to_profile` は、finalize request が産んだ rating good の Generation を kind `finalize` の Preset の新しい版にします（[worker-protocol.md](worker-protocol.md#finalize-profile)）。
-新しい版の本文は、その finalize request が積んだ options そのもの（dial の語はそのまま）です。
-finalize request の出力でない Generation と rating が good でない Generation は 409 です。
+`generation_id` の Batch を `result.batch_id` に持つ直近の `kind = finalize` request を探し、その `payload.options`（profile 展開後、dial の語はそのまま）を新しい版の本文にします。
+そういう request が無ければ 409（`generation is not a finalize-kind result; nothing to promote from`）、rating が good でなければ 409（`promote requires rating good`）です。
 版の足し方と再送の扱いは `promote_to_pose` と同じです。
 作った版は `finalize_generation` の `profile` で使います。
 
@@ -237,13 +228,18 @@ Experiment のサイクルに乗せるなら `create_run` を使います。
 起点 Batch から引き継ぐのは `recipe`、`parameters`、`patches_json` の patches、`preset_versions_json` の preset の pin です。
 `parameters` は上書きマージ、`patches` は既定で追記、`replace_patches: true` なら丸ごと置き換えます。
 patches を Batch から取るのは、`semantic.attributes.patches` が後から書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。
+Batch の `patches_json` が持つのは request 自身の分（α）だけで、preset の分は pin が運びます。
 引き継いだ pin は新しい payload の `generation.presets` に載り、`parameters` の該当 kind は Batch に記録された `recipe_pose` ではなく pin の `name` に戻します。
-Batch の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると pin が外れます。
+Batch の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると pin が外れ、`lounge-relaxed@3` からの派生が素の `lounge` になります。
 `identity_override` は起点から引き継がず、渡したときだけ `generation.identity_override` に載ります。
 
 起点 Batch が recipe を持たない graph-mode の Batch なら 409 です。
 起点 Batch が patches を持ちながら preset の pin を持たず、その recipe に Preset がある場合も 409 です。
-その patches は pin が入る前の preset 本文に対して書かれていて、現行の版に当てると needle 不在で落ちるためで、`replace_patches: true` で現行の preset に対して組み直すか、pin を持つ Batch を起点にします（[worker-protocol.md](worker-protocol.md)）。
+その patches は pin が入る前の preset 本文に対して書かれています。
+worker は pin が無ければ現行の版を解決するので、そのまま引き継ぐと text op が needle 不在で落ち、request を積んでから失敗します。
+`replace_patches: true` で現行の preset に対して組み直すか、pin を持つ Batch を起点にします。
+その recipe に Preset が1件も無ければ、patches はそのまま引き継ぎます。
+chimera は patch の op を読まないので、needle に依存する op だけを選り分けることはしません。
 `seeds` を渡すなら要素数は `count` と一致しなければなりません。
 
 `reference` は、起点 Generation への purpose `"derive"` の Reference として payload に載ります。
@@ -260,11 +256,13 @@ identity を意図して変えるときだけ `identity_override` に理由を�
 
 `finalize_generation` / `repair_generation` / `masked_redraw_generation` は、`create_request(kind: "finalize" | "repair" | "masked_redraw", ...)` と同じ requests 行を積む専用窓口です。
 `generation_id` を解決して `payload.generation_id` に short_id を詰め、`options`（finalize は `profile` も）を渡されたときだけ payload に載せます。
+options は REST の payload と同じ zod スキーマで検証します。
 `create_request` で payload を手で組む代わりに、これら3つを使います。
 どれも出力は source Generation の refinement Batch として記録され、source への rebuild の Reference を持ちます。
 options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[finalize](worker-protocol.md#finalize)」「[repair](worker-protocol.md#repair)」「[masked_redraw](worker-protocol.md#masked_redraw)」節が正本です。
 
-`finalize_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `finalize` の Preset を解決して options の土台にします（[finalize profile](worker-protocol.md#finalize-profile)）。
+`finalize_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `finalize` の Preset を解決して options の土台にします。
+展開は `create_request` の finalize payload と同じ処理を通ります（[finalize profile](worker-protocol.md#finalize-profile)）。
 options に同じキーがあればそちらが勝ち、明示の `null` も上書きとして扱います。
 
 `repair_generation` は hands / feet 専用です。
@@ -291,10 +289,26 @@ Run は削除できないため、レスポンスを失ってからキーなし�
 Experiment に `base_recipe` があり status が active / stabilized なら、Run 作成と同じトランザクションで requests 行が自動起票され（[worker-protocol.md「ExperimentRun 由来の generate」](worker-protocol.md#experimentrun-由来の-generate)）、その id が入ります。
 条件を満たさなければ `null` で、Agent は `create_request(kind: "generate", ...)` で明示的に積みます。
 
-`create_request` / `get_request` / `list_requests` は `POST /api/v1/requests` などと同じ `src/lib/requests.ts` を呼ぶ別窓口で、`created_by` は `mcp` に固定されます。
-kind ごとの payload 封筒（generate なら `schema_version` / `request` / `generation`）は REST と同じ規則で検証します。
+### requests キューに積む tool
+
+requests 行を積む tool と、その行の `created_by` は次の通りです。
+
+| tool | kind | created_by |
+| --- | --- | --- |
+| `create_run`（自動起票） | `generate`（`run_id` 付き、`idempotency_key` は `run:{run_id}`） | `system` |
+| `create_request` | 指定した kind | `mcp` |
+| `derive_request` / `plain_render` | `generate` | `mcp` |
+| `finalize_generation` / `repair_generation` / `masked_redraw_generation` | `finalize` / `repair` / `masked_redraw` | `mcp` |
+
+`create_run` 以外は `POST /api/v1/requests` と同じ `src/lib/requests.ts` の `createRequest` を通り、preset の pin と finalize profile の展開もそこで hash の計算より前に行います。
+`create_run` の自動起票も同じ規則で pin してから hash を取るので、同じ内容の request はどの経路でも同じ hash になります。
+worker から見える requests 行の形と claim / 状態遷移は、REST で積んだ行と変わりません。
+新しく積んだ行は WorkerHub に `queued` として通知します（[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）。
+
+`create_request` は kind ごとの payload 封筒（generate なら `schema_version` / `request` / `generation`）を REST と同じ規則で検証し、`created_by` は受け取りません。
 同じ `idempotency_key` に同じ kind / payload を渡すと元の行を返し（`created: false`）、別の kind / payload を渡すと 409 です。
 この再送の規則は requests 行を積むすべての tool に共通です。
+`get_request` / `list_requests` は読み取りだけで、claim はしません。
 
 ### Observation と Publication
 
@@ -318,8 +332,8 @@ Observation は append-only で、先の Observation を覆すときは `superse
 ### tool annotations
 
 読み取り tool には `readOnlyHint: true` を付けます。
-Cloudflare OS の gatekeeper-mcp は annotation の無い tool をすべて副作用ありの action として承認キューに入れ、呼び出し時点では結果を返しません。
-読み取りがそこに入ると、Agent はデータを受け取れず同じ呼び出しを繰り返します。
+MCP client は、readOnlyHint の無い tool を副作用ありとみなし、呼び出しの前に承認を求めたり結果を保留したりすることがあります。
+読み取りがそう扱われると、Agent はデータを受け取れず同じ呼び出しを繰り返します。
 
 追記 tool には `destructiveHint: false`、`idempotentHint: true`、`openWorldHint: false` を付け、description の先頭で「追記のみで、削除も上書きも送信もしない」と明示します。
 ChatGPT の MCP client は未注釈の書き込み tool を安全性チェックで呼び出し前に落とすため、この注釈と文言が無いと書き込み系が一切通りません。
@@ -358,7 +372,7 @@ REST（`GET /api/v1/generations/{id}` など）はこの折り畳みの影響を
 `width` は 256〜1024 に丸め、既定は 768 です。
 構図の確認には十分な解像度ですが、ピクセル単位の確認には向きません。
 
-Cloudflare OS の MCP client は tools/call のレスポンス全体を 1 MiB で切ります。
+MCP client は tools/call のレスポンスの大きさに上限を設けていることがあり、1 MiB で切る client に合わせています。
 生成物の元 PNG（1MB 台）は base64 化するとほぼ必ずこの上限を超え、base64 は 4/3 に膨れるため、inline で返すのは 700 KiB までです。
 それを超えるとき、または変換前の画像が Images binding の入力上限（20 MiB）を超えるときは、画像の代わりに canonical URL を返します（`inlined: false`、`reason` に理由）。
 変換に失敗したときは、元画像が上限内に収まればそのまま返します。
@@ -399,13 +413,12 @@ Agent     get_run で生成物を見る
               ↓ decision を受けて次の create_run
 ```
 
-Agent 側は Cloudflare OS のスケジュール実行で再入します。
+次の周へ入る契機は Agent 側が持ちます。
 待ち合わせのために chimera 側へ追加するものはありません。
 
 ## 扱わないこと
 
 ``` text
 MCP からの Promotion の作成（REST の POST /api/v1/experiments/{id}/promotions だけ）
-Agent による自動反復。1周ごとに人間が確認する
 comfyui-recipes への自動 commit / PR 作成
 ```
