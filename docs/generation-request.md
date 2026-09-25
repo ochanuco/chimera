@@ -7,7 +7,7 @@ brain はこれを `kind = generate` の requests 行の `payload` として chi
 が claim して ComfyUI で実行します（[worker-protocol.md](worker-protocol.md#配置と責務)）。
 
 ``` text
-brain（Claude Code / Cloudflare OS Agent / Human）
+brain（Mac の Claude Code / MCP client の Agent / Human）
   ↓ request.json を payload に積む（POST /api/v1/requests、MCP create_request / derive_request）
 chimera requests キュー
   ↓ claim
