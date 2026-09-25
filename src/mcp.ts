@@ -8,10 +8,9 @@
 // に変換する（node_modules/@modelcontextprotocol/server の実装、
 // createToolError を参照）ので、メッセージはそのまま tool error に出る。
 
-// 読み取り tool には readOnlyHint を付ける。Cloudflare OS の gatekeeper-mcp は
-// annotation のない tool をすべて副作用ありの action として承認キューに入れ、
-// 呼び出し時点では結果を返さない。読み取りがそこに入ると Agent はデータを
-// 受け取れず同じ呼び出しを繰り返す。
+// 読み取り tool には readOnlyHint を付ける。MCP client は annotation のない tool を
+// 副作用ありとみなし、承認待ちにして呼び出し時点では結果を返さないことがある。
+// 読み取りがそう扱われると Agent はデータを受け取れず同じ呼び出しを繰り返す。
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
@@ -70,8 +69,8 @@ import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generat
 import type { Bindings } from './types';
 
 /**
- * MCP クライアント（cloudflare-os の packages/mcp-shared/src/fetch.ts、MAX_RESPONSE_BYTES）は
- * tools/call レスポンス全体を 1 MiB で切る。inline image は base64 化で 4/3 に膨れるため、
+ * MCP client は tools/call レスポンス全体の大きさに上限を設けることがあり、1 MiB で切る
+ * client に合わせる。inline image は base64 化で 4/3 に膨れるため、
  * 実際に返せる生バイト数は 1 MiB ÷ (4/3) ≈ 786 KiB。JSON-RPC envelope の分の余裕を見て
  * 700 KiB に切り詰める。
  */

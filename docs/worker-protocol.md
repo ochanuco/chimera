@@ -9,7 +9,7 @@ chimera を control plane、GPU 機を worker とする配置での repo をま�
 ## 配置と責務
 
 ``` text
-brain（Mac の Claude Code / Cloudflare OS Agent / Human）
+brain（Mac の Claude Code / MCP client の Agent / Human）
   │  request を積む・結果を読む            ← chimera としか話さない
   ▼
 chimera（Cloudflare Workers + D1 + R2）     control plane。判断はしない
@@ -754,113 +754,11 @@ Compare が比較表示のみである点は変わりません。
 
 ## MCP
 
-`/mcp` に次を足します。
-
-``` text
-create_request(kind, payload, recipe_ref?, idempotency_key)
-finalize_generation(generation_id, options?, profile?, idempotency_key)
-repair_generation(generation_id, options?, idempotency_key)
-masked_redraw_generation(generation_id, options, idempotency_key)
-get_request(id)
-list_requests(status?, kind?, run_id?)
-derive_request(from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, idempotency_key, recipe_ref?)
-list_presets(recipe?, kind?, include_deprecated?)
-get_preset(recipe, kind, name, version?)
-promote_to_pose(generation_id, name, kind?, note?, idempotency_key)
-set_pose_reference(recipe, pose, generation_id, idempotency_key)   基準 render を (recipe, 'pose', pose) に pin する
-plain_render(recipe, pose, seed?, idempotency_key?, recipe_ref?)   pin (または明示 seed) で recipe 既定を再度描く
-promote_to_profile(generation_id, name, note?, idempotency_key)
-```
-
-`create_run` は上記の自動起票により、追加の tool を呼ばなくても worker に届きます。
-
-`finalize_generation` / `repair_generation` / `masked_redraw_generation` は `create_request` と同じ
-`kind: "finalize"` / `"repair"` / `"masked_redraw"` の requests 行を積む別窓口です。`generation_id`（UUID / short_id どちらでも
-可）を解決して `payload.generation_id` に short_id を詰め、`options` を渡された場合だけ
-そのまま `payload.options` に載せます（各 kind の options 表と zod スキーマを共有）。
-masked redraw の `pad` / `feather` alias は canonical key に正規化されます。手で payload の封筒を組み立てる `create_request` に対して、
-この3つは finalize / repair / masked redraw に特化した窓口です。masked redraw は options
-（regions / prompt_patch / denoise / mask_padding / mask_feather）が必須です。
-`finalize_generation` は `profile` も受け取り、渡せば `create_request` と同じく
-[finalize profile](#finalize-profile) の展開を通します。
-
-`derive_request` が preset の pin を引き継ぐ元は Batch の `preset_versions_json` です。
-Batch の `parameters` は worker が preset を解決した後の値なので、`parameters.pose` には
-preset の名前ではなく `recipe_pose` が入っています。ここをコピーすると pin が外れ、
-`lounge-relaxed@3` からの派生が素の `lounge` になります。`preset_versions_json` には名前と
-版の両方が残るので、派生は pin ごと引き継げます。patches の引き継ぎ元も Batch の
-`patches_json`（α の分だけ）で、preset の分は pin が運びます。
-
-pin の無い Batch の patches は引き継ぎません。`preset_versions_json` が空の Batch は pin が
-入る前のもので、その patches は当時の preset 本文に対して書かれています。worker は pin が
-無ければ現行の版を解決するため、そのまま引き継ぐと text op が needle 不在で落ち、request を
-積んでから失敗します。起点 Batch が patches を持ち pin を持たず、その `recipe` に Preset が
-1件でもあれば 409 です。`replace_patches: true` で現行の preset に対して patches を組み直すか、
-pin を持つ Batch を起点にします。`recipe` に Preset が1件も無ければ動く本文が無いので、その
-Batch からはそのまま引き継ぎます（pin 自体を飛ばす条件と同じ）。chimera は patch の op を
-読まないので、needle に依存する op だけを選り分けることはしません。
-
-`derive_request` は `create_request` と同じ `kind: "generate"` の requests 行を積む
-別窓口です。手で payload 全体を組み立てる代わりに、既存の Generation の Batch から
-`recipe` / `parameters` / `patches` を引き継いだ payload を chimera 側で組み立てます。
-指定した Generation が finalize / repair / masked_redraw 済みなら、その元になった raw の Generation
-まで遡ってから引き継ぎます（[experiment-agent.md](experiment-agent.md#tool)）。worker
-から見える requests 行の形・claim/状態遷移は `create_request` 由来のものと変わりません。
-
-`promote_to_pose` は `rating = good` の Generation を新しい Preset の版にします。起点
-Generation の Batch から `recipe`・pin されていた preset の版・patches・pose レコードの
-fingerprint を取り、`{ base, patches }` の body を組み立てて `(recipe, kind, name)` の
-次の版として INSERT します。patches を Batch から取るのは、`semantic.attributes.patches` が
-後から書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。Batch が
-patches を持たなければ 409（`promote requires a batch with patches`）で、全文上書きと
-finalize / repair / masked_redraw の出力はこれで弾かれます。`name` を既存の名前にすれば
-その名前の新版、新しい名前にすればその名前の version 1 です。`kind` の既定は `pose`。
-rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
-graph-mode で recipe を持たなければ 409 です。既存の版は書き換えません。
-
-指定した Generation が finalize / repair / masked_redraw 済みなら、`derive_request` と同じ規則で
-元になった raw の Generation まで遡ってから起点にします。rating を見るのは指定された
-Generation で、`recipe`・base・patches・fingerprint は遡った先の Batch から取ります。
-
-base になる版は、その Batch を作った generate request が pin していた版です。段階 B より
-前に作られた Generation には pin が無いので、その場合は `base_version` で明示します。
-どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です。
-chimera は base を推測しません。`idempotency_key` の再送は、既に作られた版をそのまま返します。
-
-`set_pose_reference` は `(recipe, 'pose', pose)` の基準 render を pin します
-（[domain-model.md](domain-model.md#基準-render-の-pin)）。`generation_id` は
-`rating = good` でなければならず、finalize / repair 済みなら `derive_request` と同じ規則で
-raw の Generation まで遡ります。遡った先の Batch は recipe が一致し、その pose を描き、
-patches を持たず、その Batch を起こした generate request が prompt を上書きしていない
-「素の render」でなければ 409 で、満たさない条件はまとめて1つのメッセージで返します。
-seed は遡った先の raw Generation を作った comfy_job から取ります。再設定は現行の pin を
-`superseded_at` で閉じてから新しい行を挿むので、それまでの pin は物理削除されず履歴に
-残ります。
-
-`plain_render` はその pin の seed（明示すれば `seed`）で `recipe`/`pose` の既定
-（patches なし）を1件だけ描かせる、`kind: "generate"` の requests 行を積みます。pose は
-Preset として存在すればよく（`promote_to_pose` で作った pose も含む）、catalog に載って
-いる必要はありません。既定の
-`idempotency_key` は `plain:<recipe>:<pose>:<seed>:<catalog の git_commit>` で、同じ
-catalog commit のまま繰り返し呼べば複製せず再送になります。pin も `seed` も無ければ
-409（`no reference pinned for ...; pass seed or set_pose_reference first`）です。
-
-`list_presets` / `get_preset` は preset の読み取り側です。`list_presets` は名前と版の
-一覧（`record` の本文は含まない）、`get_preset` は解決済みの本文（`record` 1件と平坦化
-した patches）を返します。版を省略すると最新の `active` 版を見ます。段階 C で
-`list_catalog` / `get_catalog_pose` を置き換えます。どちらも `kind` に `finalize` を
-渡せます — その場合 `record` は `{ options }`、`patches` は常に `[]` です
-（[finalize profile](#finalize-profile)）。どちらのレスポンスにも `set_pose_reference` が
-pin した現行の基準 render を `reference`（無ければ `null`）で返します。
-
-`promote_to_profile` は `rating = good` かつ finalize request が産んだ Generation を
-新しい kind `finalize` の Preset の版にします。`generation_id` の Batch に対する
-`result.batch_id` を持つ直近の `kind = finalize` request を探し、その `payload.options`
-（profile 展開後）をそのまま body にします。見つからなければ 409
-（`generation is not a finalize-kind result; nothing to promote from`）、rating が good
-でなければ 409（`promote requires rating good`）です。`promote_to_pose` と同じく
-既存の版は書き換えず、`name` が既存ならその次の版、新しい名前なら version 1、
-`idempotency_key` の再送は既に作られた版をそのまま返します。
+`/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
+`plain_render`、`finalize_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
+規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
+tool ごとの契約と `created_by` は
+[experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。
 
 ## 段階 3: WorkerHub
 
