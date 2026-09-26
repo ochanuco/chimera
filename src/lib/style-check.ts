@@ -1,7 +1,6 @@
-// 絵柄チェック (docs/ui.md「絵柄チェック」): 代表ポーズを今のカタログ既定で並べ、pin から
-// 絵柄がずれていないか人間が見比べる。生成そのものは plain_render (lib/plain-render.ts) と
-// 同じ経路 — このファイルは「どのポーズを並べるか」の正本と、既存の plain render request を
-// 探す/積むだけの薄い層。
+// 絵柄チェック (docs/ui.md「絵柄チェック」): 代表ポーズを今のカタログ既定で並べ、pin から絵柄がずれていないか
+// 人間が見比べる。生成は plain_render (lib/plain-render.ts) と同じ経路 — このファイルは「どのポーズを並べるか」
+// の正本と、既存 request を探す/積むだけの薄い層。
 
 import { buildPlainRenderRequest, plainRenderIdempotencyKey } from './plain-render';
 import { createRequest, defaultRecipeRef } from './requests';
@@ -17,9 +16,8 @@ export interface StyleCheckPose {
 export const STYLE_CHECK_RECIPE = 'yukari';
 
 /**
- * recipe ごとの代表ポーズ一覧 — 絵柄チェックの唯一の正本。増減・入れ替えはここだけ直す。
- * 各 pose は Preset (`getPresetRow`) として存在し、pin (`preset_references`) を持っている
- * ことを前提にする (無ければ行は「pin 無し」表示になり、描けない)。
+ * recipe ごとの代表ポーズ一覧 — 絵柄チェックの唯一の正本。各 pose は Preset として存在し pin を持っている
+ * ことを前提にする (無ければ「pin 無し」表示になり描けない)。
  */
 export const STYLE_CHECK_POSES: Record<string, StyleCheckPose[]> = {
   [STYLE_CHECK_RECIPE]: [
@@ -84,10 +82,9 @@ export interface RenderStyleCheckResult {
 }
 
 /**
- * POST /api/v1/style-check/{recipe}: pin を持つ代表ポーズごとに、MCP `plain_render`
- * (src/mcp.ts) と同じ組み立て (buildPlainRenderRequest → createRequest) で
- * kind=generate を積む。default idempotency key なので、同じ catalog commit への連打は
- * 何も作らず既存行を返す (created: false)。pin が無い pose は skip され、結果に理由が残る。
+ * POST /api/v1/style-check/{recipe}: pin を持つ代表ポーズごとに、MCP `plain_render` と同じ組み立て
+ * (buildPlainRenderRequest → createRequest) で kind=generate を積む。default idempotency key なので、
+ * 同じ catalog commit への連打は何も作らず既存行を返す (created: false)。pin が無い pose は skip される。
  */
 export async function renderStyleCheck(
   db: D1Database,

@@ -1,10 +1,8 @@
-// WorkerHub (docs/worker-protocol.md 段階3) の WebSocket push / 進捗中継のテスト。
+// WorkerHub tests (docs/worker-protocol.md): WebSocket push / progress relay.
 //
-// WebSocket は `app.request(url, { headers: { Upgrade: 'websocket' } }, env)` で開く。
-// このハーネス (@cloudflare/vitest-plugin) は実 workerd 上で `app.request` をそのまま
-// fetch handler に渡すため、返る Response が本物の `webSocket` (WebSocketPair の
-// client 側) を持つ — SELF.fetch でも同様に動くことを確認済みだが、test/helpers.ts の
-// 他のヘルパーと同じ app.request の流儀に揃えるためこちらを使う。
+// WebSocket は `app.request(url, { headers: { Upgrade: 'websocket' } }, env)` で開く。このハーネス
+// (@cloudflare/vitest-plugin) では実 workerd 上で返る Response が本物の `webSocket` を持つ —
+// SELF.fetch でも同様に動くが、test/helpers.ts の他のヘルパーと同じ流儀に揃えている。
 import { env, runDurableObjectAlarm } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
@@ -13,8 +11,7 @@ import { createBatch, createGeneration, createJob, getJson, ingestGeneration, po
 const BASE = 'https://chimera.test';
 
 beforeEach(async () => {
-  // claim() はグローバルに最古の queued 行を掴む (test/requests.test.ts と同じ注記)。
-  // hub のテストも claim / stale-requeue を経由するので、他テストの残骸を持ち込まない。
+  // claim() はグローバルに最古の queued 行を掴む (test/requests.test.ts と同じ注記) — hub のテストも claim / stale-requeue を経由するので他テストの残骸を持ち込まない。
   await env.DB.prepare('DELETE FROM requests').run();
 });
 
@@ -260,8 +257,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     expect(created.status).toBe(201);
     const requestId = created.body.id;
 
-    // 届かないことの確認: 十分待っても messages に現れないことを見る (waitFor のタイムアウトは使わない —
-    // 届かないのが正しい結果なので、待ちきる方を積極的に待たない)。
+    // 届かないことの確認なので waitFor のタイムアウトは使わず、素朴に待って現れないことを見る。
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(workerT.messages.find((m) => m.type === 'queued' && m.request_id === requestId)).toBeUndefined();
 

@@ -26,8 +26,7 @@ describe('served app.js', () => {
     expect(appJs).toContain('options.deliver_only = true;');
     expect(appJs).toContain("qs('input[name=\"deliver_only\"]', form)");
     // repair / repair_regions / repair_pad are assigned before the deliverOnly branch, so both
-    // modes get them; only denoise and repair_lora (redraw-only) and repair_seeds (deliver_only-only)
-    // differ by mode.
+    // modes get them; only denoise/repair_lora (redraw-only) and repair_seeds (deliver_only-only) differ.
     expect(appJs).toContain('options.repair = repair;');
     expect(appJs).toContain('options.repair_regions = regions;');
     const deliverOnlyBranch = appJs.split('if (deliverOnly) {')[1]?.split('return options;\n    }')[0] ?? '';
@@ -43,8 +42,7 @@ describe('served app.js', () => {
   });
 
   it('finalizeOptionsFrom gates every repair* key on a checked part or a drawn region, not on deliver_only', () => {
-    // repairActive (the deliver_only+feet+regions case: repair non-empty or regions non-empty)
-    // gates options.repair/options.repair_regions; nothing checked and no regions sends neither.
+    // repairActive (repair non-empty or regions non-empty) gates options.repair/repair_regions.
     expect(appJs).toContain('var repairActive = repair.length > 0 || regions.length > 0;');
     expect(appJs).toContain('if (repairActive) {\n      options.repair = repair;\n      if (regions.length > 0) options.repair_regions = regions;\n    }');
     expect(appJs).toContain('if (regions.length > 0) repair = [];');

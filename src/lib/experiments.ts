@@ -1,6 +1,4 @@
-// Experiment / ExperimentRun のクエリと更新ロジック。REST routes (src/routes/experiments.ts)
-// と MCP tools (src/mcp.ts) の両方が同じ関数を呼ぶことで、guardrails (409/404) や
-// クエリを二重に持たないようにする。
+// REST routes (src/routes/experiments.ts) と MCP tools (src/mcp.ts) が同じ関数を呼び、guardrails/クエリの二重管理を避ける。
 
 import {
   chunk,
@@ -87,8 +85,7 @@ export async function latestRunByExperiment(
 ): Promise<Map<string, ExperimentRunRow>> {
   const unique = Array.from(new Set(experimentIds));
   const map = new Map<string, ExperimentRunRow>();
-  // ROW_NUMBER() は experiment_id ごとに独立して振られるので、チャンクをまたいでも
-  // (互いに素な experiment_id の集合を投げているため) 結果は変わらない。
+  // ROW_NUMBER() は experiment_id ごとに独立して振られるため、チャンク分割しても結果は変わらない。
   for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
@@ -106,10 +103,7 @@ export async function latestRunByExperiment(
   return map;
 }
 
-/**
- * Run に紐づく Batch / Generation を1回のクエリずつで解決する。Generation
- * 未 attach でも Batch の代表 Generation をサムネイルに使えるようにする。
- */
+/** Run に紐づく Batch / Generation を1回のクエリずつで解決する。Generation 未 attach でも Batch のサムネイルは出す。 */
 export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org: string) {
   const batchIds = runs.map((r) => r.batch_id).filter((id): id is string => id !== null);
   const generationIds = runs.map((r) => r.generation_id).filter((id): id is string => id !== null);
@@ -205,10 +199,8 @@ export interface ExperimentRunFamily {
 
 /**
  * GET /api/v1/batches/{id} 用の ExperimentRun 由来の 4 軸目 (`experiment`)。BatchReference /
- * BatchRelation / StoryRelation とは別物 (docs/domain-model.md の Relation 3種の不変条件) で、
- * ここは experiment_runs から読み取るだけの display-only な派生であり、行を作らない。
- * batch_id が無い ("実行前"の) Run は親/子/兄弟のどれにも出さない — GUI で辿れるのは
- * Batch 単位のリンクだけなので、リンク先の無い Run を混ぜても意味がない。
+ * BatchRelation / StoryRelation とは別の display-only な派生で、行は作らない。
+ * batch_id の無い Run はリンク先が無いため親/子/兄弟から除外する。
  */
 export async function getExperimentRunFamily(db: D1Database, batchId: string): Promise<ExperimentRunFamily | null> {
   const run = await db
@@ -370,8 +362,7 @@ export async function createExperimentRun(
   if (body.idempotency_key) {
     const existing = await findRunByIdempotencyKey(db, body.idempotency_key);
     if (existing) {
-      // このキーは既に別の Experiment の Run で使われている。「無ければ作る」の
-      // 意味論を保つには、ここで黙って再利用するのではなく衝突として拒否する。
+      // 別 Experiment の Run で使われ済みのキーは黙って再利用せず衝突として拒否する。
       if (existing.experiment_id !== experiment.id) {
         throw conflict(
           `idempotency_key already used by a run under a different experiment (${existing.experiment_id})`,
@@ -392,8 +383,7 @@ export async function createExperimentRun(
 
   const batchId = body.batch_id ? (await resolveBatchOr404(db, body.batch_id)).id : null;
   if (batchId) await assertBatchNotAttachedToAnotherRun(db, batchId, null);
-  // 代表 Generation は Run 自身の Batch から選ぶもの。updateExperimentRun と同じ規則を
-  // 作成時にも適用しないと、こちらの経路から provenance の合わない紐付けが入る。
+  // 代表 Generation は Run 自身の Batch から出たものに限る（updateExperimentRun と同じ規則、provenance を壊さないため）。
   let generationId: string | null = null;
   if (body.generation_id) {
     const generation = await resolveGenerationOr404(db, body.generation_id);
@@ -411,11 +401,7 @@ export async function createExperimentRun(
   const now = nowIso();
   const id = uuidv7();
 
-  // base_recipe があり status が active/stabilized の Experiment だけ、Run 作成と
-  // 同じトランザクションで kind=generate の requests 行を自動起票する
-  // (worker-protocol.md「ExperimentRun 由来の generate」)。base_recipe の無い
-  // Experiment に後から付けても、既存 Run へは遡って起票しない。batch_id 付きで
-  // 作られた Run は実行済みの記録なので起票しない。
+  // docs/worker-protocol.md「ExperimentRun 由来の generate」。既存 Run へは遡って起票しない。
   const shouldAutoCreateRequest =
     experiment.base_recipe !== null &&
     batchId === null &&
@@ -424,9 +410,8 @@ export async function createExperimentRun(
   let requestPayloadJson: string | null = null;
   let requestPayloadHash: string | null = null;
   if (shouldAutoCreateRequest) {
-    // run_index は下の INSERT ... SELECT が確定する採番の正本。ここでの概算値は
-    // 自動起票する payload の instruction 文言 (objective 未指定時のフォールバック)
-    // にしか使わないため、同時作成による多少のズレは許容する。
+    // run_index は下の INSERT ... SELECT が確定する採番の正本。ここでの概算値は payload の
+    // instruction フォールバックにしか使わないため、同時作成によるズレは許容する。
     const countRow = await db
       .prepare('SELECT COUNT(*) AS c FROM experiment_runs WHERE experiment_id = ?')
       .bind(experiment.id)
@@ -448,18 +433,14 @@ export async function createExperimentRun(
       created_at: now,
       updated_at: now,
     };
-    // pinPresets を hash の前に適用する: request 側 (createRequest) の pin と同じ規則で
-    // 版を焼き込んでから payload_hash を取らないと、Run 経由と create_request 経由で
-    // 同じ内容の request が別 hash になってしまう (docs/worker-protocol.md「preset の pin」)。
+    // pinPresets は payload_hash を取る前に適用する（docs/worker-protocol.md「preset の pin」、createRequest と同じ規則でないと同内容が別 hash になる）。
     const payload = await pinPresets(db, buildRunRequestPayload(experiment, approxRunForPayload));
     requestId = uuidv7();
     requestPayloadJson = JSON.stringify(payload);
     requestPayloadHash = await canonicalPayloadHash('generate', payload);
   }
 
-  // run_index の採番を SELECT MAX(...) → INSERT の2ステップに分けると、同じ Experiment への
-  // 同時 create が同じ次番号を読み、片方が UNIQUE (experiment_id, run_index) で失敗する。
-  // 採番を INSERT ... SELECT の1文に埋め込み、MAX の読み取りと確定を単一の atomic statement にする。
+  // 採番を SELECT MAX → INSERT の2ステップに分けると同時 create が同じ次番号を読み UNIQUE 違反になるため、1文の atomic statement にする。
   const runInsertStatement = db
     .prepare(
       `INSERT INTO experiment_runs
@@ -530,9 +511,8 @@ export interface UpdateExperimentRunInput {
 }
 
 /**
- * PATCH /api/v1/experiment-runs/{id} と attach_generation / set_evaluation / set_decision
- * MCP tools が共有する。呼び出し側は「更新したいフィールドだけ」を渡す
- * （undefined は「このフィールドは変更しない」の意味、REST の PATCH と同じ）。
+ * PATCH /api/v1/experiment-runs/{id} と attach_generation / set_evaluation / set_decision MCP tools が共有する。
+ * undefined は「変更しない」の意味（REST の PATCH と同じ）。
  */
 export async function updateExperimentRun(
   db: D1Database,
@@ -554,9 +534,8 @@ export async function updateExperimentRun(
     }
     assign('overrides_json', JSON.stringify(body.overrides));
   }
-  // generation_id の妥当性チェックは batch_id の解決後に行う必要がある: 同じ PATCH で
-  // batch_id と generation_id を両方渡した場合、Generation は「これから設定される Batch」
-  // (= effectiveBatchId) に対して検証されるべきで、Run に元々ついていた Batch ではない。
+  // 同じ PATCH で batch_id と generation_id を両方渡した場合、generation は「これから設定される
+  // Batch」(= effectiveBatchId) に対して検証する必要があるため、batch_id の解決を先に行う。
   let effectiveBatchId = run.batch_id;
   if (body.batch_id !== undefined) {
     const batch = await resolveBatchOr404(db, body.batch_id);
@@ -572,8 +551,6 @@ export async function updateExperimentRun(
     if (run.generation_id && run.generation_id !== generation.id) {
       throw conflict('run already has a generation attached');
     }
-    // Run の代表 Generation はその Run 自身の Batch から出たものでなければ、
-    // 何が何を生んだかという provenance が壊れる。
     if (!effectiveBatchId) {
       throw conflict('run has no batch attached; attach a batch before attaching a generation');
     }
@@ -617,10 +594,8 @@ export interface PendingRunRow extends ExperimentRunRow {
 }
 
 /**
- * GET /api/v1/experiment-runs?pending=true の唯一の実装。`batch_id` が null かつ
- * requests 行を持たない Run を Experiment 横断で拾う（base_recipe の無い
- * Experiment の Run など、requests が自動起票されなかったもの）。abandoned /
- * promoted な Experiment の Run は拾わない（docs/experiment-agent.md 参照）。
+ * GET /api/v1/experiment-runs?pending=true の唯一の実装。requests が自動起票されなかった
+ * Run を Experiment 横断で拾う。abandoned / promoted な Experiment の Run は除く。
  */
 export async function listPendingRuns(db: D1Database, limit: number, offset: number): Promise<PendingRunRow[]> {
   const { results } = await db

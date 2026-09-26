@@ -1,6 +1,5 @@
-// Thumbnail-sized preview for a Generation (long edge <=1024px, WebP), stored
-// alongside the original so every thumbnail-sized use in the GUI/API stops
-// paying for the full-size PNG. Created lazily on first request.
+// Thumbnail-sized preview for a Generation (long edge <=1024px, WebP), stored alongside the
+// original so thumbnail-sized use stops paying for the full-size PNG. Created lazily on first request.
 
 import type { Bindings, GenerationRow } from '../types';
 
@@ -23,9 +22,8 @@ export function generationPreviewR2Key(generationId: string): string {
 /**
  * Returns the stored preview if one exists; otherwise builds it from the original (downscaled to
  * fit 1024x1024, re-encoded as WebP) and stores it for next time. Falls back to the original bytes,
- * unmodified, when the original is over the transform input limit or the transform throws (e.g. a
- * corrupt source) — same idiom as `get_generation_image` in src/mcp.ts. Returns null when neither the
- * preview nor the original exists in R2.
+ * unmodified, when it's over the transform input limit or the transform throws (e.g. a corrupt
+ * source) -- same idiom as `get_generation_image` in src/mcp.ts.
  */
 export async function loadOrCreateGenerationPreview(
   env: Bindings,
@@ -66,9 +64,8 @@ export async function loadOrCreateGenerationPreview(
 
 /**
  * Guarantees a stored preview exists for `generation`, creating it from the original if needed.
- * Returns false when neither object exists in R2 (or the original was too large / unusable and no
- * preview could be created). For callers that only need the guarantee, not the bytes — e.g. a
- * scheduled purge of originals that must not delete one before a preview backs it up.
+ * For callers that only need the guarantee, not the bytes -- e.g. a scheduled purge of originals
+ * that must not delete one before a preview backs it up.
  */
 export async function ensureGenerationPreview(env: Bindings, generation: GenerationPreviewSource): Promise<boolean> {
   const preview = await loadOrCreateGenerationPreview(env, generation);

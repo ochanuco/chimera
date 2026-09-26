@@ -6,8 +6,7 @@ function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
 }
 
-// presets は recipe_ref ではなく (recipe, kind, name, version) で一意なので、recipe
-// 名自体をテストごとにユニークにする (test/presets.test.ts と同じ理由)。
+// presets は recipe_ref ではなく (recipe, kind, name, version) で一意なので recipe 名自体をテストごとにユニークにする (test/presets.test.ts と同じ理由)。
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
 }
@@ -133,12 +132,10 @@ async function setPatches(generationId: string, patches: unknown[]): Promise<voi
 }
 
 /**
- * Builds a raw (non-refinement) Batch + Generation for `recipe`, and — unless
- * `withPin` is false — a matching kind=generate request that pins `parameters.pose`
- * (the pin promote later reads as its base). Marks the request `done` against the
- * created Batch so `promoteGenerationToPreset`'s `json_extract(result_json, '$.batch_id')`
- * lookup finds it. `patches` / `poseFingerprint`, when given, land on the Batch row itself
- * (`patches_json` / `pose_fingerprint`) — the source promote actually reads.
+ * Builds a raw (non-refinement) Batch + Generation for `recipe`, and — unless `withPin` is
+ * false — a matching kind=generate request pinning `parameters.pose` (the pin promote reads as
+ * its base), marked `done` against the created Batch (so promote's result-lookup finds it).
+ * `patches` / `poseFingerprint` land on the Batch row itself, which is what promote reads.
  */
 async function setupGeneration(
   recipe: string,
@@ -182,10 +179,9 @@ async function setupGeneration(
 }
 
 /**
- * Builds a derivation source whose Batch `parameters.pose` ("lounge", simulating the
- * worker-resolved `recipe_pose`) deliberately differs from the pin it recorded
- * ("lounge-relaxed", simulating a promoted preset name) — so a test can tell whether
- * `derive_request` copied the Batch value or the pin's name.
+ * Batch `parameters.pose` ("lounge") deliberately differs from the pin it recorded
+ * ("lounge-relaxed") — so a test can tell whether `derive_request` copied the Batch value or
+ * the pin's name.
  */
 async function setupPinnedDerivationSource(recipe: string, patches: unknown[]) {
   const { batch, generation } = await createGeneration({

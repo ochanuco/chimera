@@ -72,10 +72,8 @@ async function setRatingGood(generationId: string): Promise<void> {
 }
 
 /**
- * A raw (source) Generation plus a finalize request against it, claimed and marked done against a
- * second (delivered) Generation — the shape promote_to_profile and applyFinalizeProfile expect
- * (docs/worker-protocol.md「finalize」). `result.batch_id` is the delivered Generation's own Batch,
- * matching what the worker's `done` transition records.
+ * A raw (source) Generation plus a finalize request claimed and marked done against a second
+ * (delivered) Generation — the shape promote_to_profile / applyFinalizeProfile expect.
  */
 async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
   const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
@@ -553,8 +551,8 @@ describe('result.resolved_options (worker-written, opaque)', () => {
     expect(html).toContain('{&quot;denoise&quot;:&quot;tidy&quot;}');
     expect(html).toContain('{&quot;denoise&quot;:0.65}');
 
-    // The source Generation's own page lists this request among those *targeting* it, and shows
-    // the resolved value there too (it is not the delivered row, so no 仕上げの解決値 section).
+    // The source's own page lists this request among those targeting it and shows the resolved
+    // value too, but it's not the delivered row, so no 仕上げの解決値 section.
     const sourceHtml = await (await req(`/g/${source.short_id}`)).text();
     expect(sourceHtml).not.toContain('仕上げの解決値');
     expect(sourceHtml).toContain('resolved:');

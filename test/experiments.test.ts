@@ -983,11 +983,9 @@ describe('D1 bound-parameter chunking (>100 ids)', () => {
     const RUN_COUNT = 120;
     const now = new Date().toISOString();
 
-    // 120件を REST 経由で1件ずつ作ると直列 fetch でテストが遅くなるため、env.DB へ直接
-    // INSERT する。各 Run に一意な batch_id を振ることで、decorateRuns の
-    // `batches WHERE id IN (...)` / `resolveBatchThumbnails` が 100 個を超える bound
-    // parameter を要求する状況を再現する。batch_id は FK 制約があるため、ダミーの
-    // batches 行も先に用意する。
+    // 120件を REST 経由で作ると遅いので env.DB へ直接 INSERT する。各 Run に一意な batch_id を振ることで
+    // decorateRuns の `batches WHERE id IN (...)` が 100 個を超える bound parameter を要求する状況を再現する
+    // (batch_id は FK 制約があるため、ダミーの batches 行も先に用意する)。
     const batchIds = Array.from({ length: RUN_COUNT }, () => crypto.randomUUID());
     const batchStatements = batchIds.map((id) =>
       env.DB.prepare(

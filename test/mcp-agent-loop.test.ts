@@ -167,10 +167,9 @@ describe('MCP derive_request', () => {
   }
 
   /**
-   * Builds a refinement Batch (the shape finalize/repair leave behind): a Batch whose
-   * `parameters` is a finalize-style payload (not generate parameters), with a generation in
-   * it, wired back to `source` via `batch_relations` (type=refinement) and `batch_references`
-   * (purpose=rebuild) — the same two tables lib/lineage.ts walks.
+   * Builds a refinement Batch (the shape finalize/repair leave behind): `parameters` is a
+   * finalize-style payload, wired back to `source` via batch_relations (type=refinement) and
+   * batch_references (purpose=rebuild) — the two tables lib/lineage.ts walks.
    */
   async function createRefinementBatch(source: { batch: { id: string }; generation: { id: string } }) {
     const refinementBatch = await createBatch({
@@ -200,7 +199,7 @@ describe('MCP derive_request', () => {
     const patches = [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }];
     const { generation } = await createParent({ patches });
     // semantic.attributes.patches is a different value — proves derive_request reads the Batch,
-    // not this (docs/domain-model.md#preset の不変条件: semantic は正本ではない).
+    // not this (docs/domain-model.md「preset の不変条件」: semantic は正本ではない).
     await postJson(
       `/api/v1/generations/${generation.id}/semantic`,
       { schema_version: 1, attributes: { patches: [{ target: 'pose', op: 'set', value: 'from semantic (ignored)', reason: 'x' }] } },

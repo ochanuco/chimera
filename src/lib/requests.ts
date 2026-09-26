@@ -1,10 +1,5 @@
-// requests キュー (docs/worker-protocol.md) のクエリと状態遷移。REST routes
-// (src/routes/requests.ts) と MCP tools (src/mcp.ts) の両方がここを呼ぶ。
-//
-// lib/experiments.ts (createExperimentRun) はここの canonicalPayloadHash /
-// buildRunRequestPayload を呼んで Run 作成と同じ db.batch で requests 行を
-// 起票する。逆方向 (ここから lib/experiments.ts) には依存しない — 循環 import を
-// 避けるため、touchExperiment は共通の lib/db.ts 側に置いている。
+// lib/experiments.ts が canonicalPayloadHash / buildRunRequestPayload をここから呼ぶが、逆方向には依存しない
+// (循環 import 回避のため touchExperiment は lib/db.ts 側に置く)。
 
 import {
   chunk,
@@ -40,11 +35,7 @@ export async function canonicalPayloadHash(kind: string, payload: unknown): Prom
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * ExperimentRun 由来の generate payload。今 watch.build_request (comfy-recipes 側)
- * が Run から組み立てているものと同じ request.json v1 の形にする。語彙の解釈は
- * しない（base_parameters の詰め替えだけ）。
- */
+/** ExperimentRun 由来の generate payload。comfy-recipes の watch.build_request と同じ request.json v1 形式にする（語彙は解釈せず base_parameters を詰め替えるだけ）。 */
 export function buildRunRequestPayload(experiment: ExperimentRow, run: ExperimentRunRow): JsonObject {
   const baseParameters = parseJsonObject(experiment.base_parameters_json) as JsonObject & { count?: unknown };
   const { count, ...parameters } = baseParameters;
@@ -60,8 +51,7 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
       overrides: parseJsonObject(run.overrides_json),
     },
   };
-  // Experiment が起点とする Generation は「再現(rebuild)したい対象」であって、pose/outfit
-  // などの構図参照 (composition) とは意味が違うため purpose を分ける (docs/generation-request.md)。
+  // base_generation_id は「再現(rebuild)対象」で、pose/outfit の構図参照とは purpose が違う (docs/generation-request.md)。
   if (experiment.base_generation_id) {
     payload.references = [{ generation_id: experiment.base_generation_id, purpose: 'rebuild' }];
   }
@@ -77,13 +67,10 @@ export interface DerivationSource {
 }
 
 /**
- * `derive_request` の起点解決。finalize/repair (comfyui-recipes) が積む refinement Batch
- * は `parameters_json` が hires-chain 等の仕上げ payload であって generate parameters では
- * ないため、これを親として carry forward すると worker 側の parameters バリデーションに
- * 落ちる。incoming `batch_relations` (`type = 'refinement'`) を遡り、対になる
- * `batch_references` (`purpose = 'rebuild'`) が指す raw Generation/Batch まで戻す
- * (lib/lineage.ts の祖先探索と同じ2テーブル)。raw Batch (incoming refinement relation が
- * 無い) に着いたら停止する。
+ * `derive_request` の起点解決。finalize/repair が積む refinement Batch は `parameters_json` が
+ * 仕上げ payload で generate parameters ではないため、そのまま親にすると worker のバリデーションに落ちる。
+ * incoming `batch_relations(type='refinement')` を遡り、対になる `batch_references(purpose='rebuild')` が
+ * 指す raw Generation/Batch まで戻す (lib/lineage.ts の祖先探索と同じ2テーブル)。
  */
 export async function resolveDerivationSource(db: D1Database, generation: GenerationRow): Promise<DerivationSource> {
   let currentGeneration = generation;
@@ -158,8 +145,7 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
   if (!input.parentRecipe) {
     throw conflict('parent batch has no recipe; a graph-mode batch cannot be derived');
   }
-  // patches は書かれた当時の preset 本文に対する差分で、その本文を特定するのが pin。
-  // pin が無ければ worker は現行の版を解決するので、そのまま引き継ぐと差分の宛先がずれ、
+  // patches は書かれた時点の preset 本文への差分。pin が無いと worker が現行版を解決し、差分の宛先がずれて
   // text op が needle 不在で落ちる (docs/worker-protocol.md「preset の pin」)。
   if (!input.replacePatches && input.parentPatches.length > 0 && input.parentPresets.length === 0 && input.parentRecipeHasPresets) {
     throw conflict(
@@ -173,11 +159,9 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
     ? (input.patches ?? [])
     : [...input.parentPatches, ...(input.patches ?? [])];
 
-  // A pin only carries forward for a kind the caller didn't explicitly override — otherwise the
-  // caller named a different pose/costume/expression and the old pin no longer applies. Batch's
-  // `parameters_json` holds the worker-resolved `recipe_pose`, not the preset name, so a carried
-  // pin overwrites `mergedParameters[kind]` with the pin's `name` to keep the two in sync
-  // (docs/worker-protocol.md「preset の pin」).
+  // A pin carries forward only for a kind the caller didn't override. Batch's `parameters_json` holds the
+  // worker-resolved `recipe_pose`, not the preset name, so the carried pin's `name` overwrites
+  // `mergedParameters[kind]` to keep the two in sync (docs/worker-protocol.md「preset の pin」).
   const overriddenKinds = new Set(Object.keys(input.parameters ?? {}));
   const carriedPresets = input.parentPresets.filter((pin) => !overriddenKinds.has(pin.kind));
   for (const pin of carriedPresets) mergedParameters[pin.kind] = pin.name;
@@ -227,11 +211,7 @@ export async function findProducingRequest(db: D1Database, generationId: string)
     .first<RequestRow>();
 }
 
-/**
- * backfill 行 (migrations/0011_requests.sql) は payload_hash に SQL では再現できない
- * TS 側の SHA-256 を持てないため 'backfill' を仮置きしている。再送の一致判定では
- * その場で payload_json から計算し直す。
- */
+/** backfill 行 (migrations/0011_requests.sql) は SHA-256 を持たず payload_hash='backfill' が仮置き。再送の一致判定ではその場で計算し直す。 */
 async function resolvedStoredHash(row: RequestRow): Promise<string> {
   if (row.payload_hash !== 'backfill') return row.payload_hash;
   return canonicalPayloadHash(row.kind, JSON.parse(row.payload_json));
@@ -245,10 +225,7 @@ async function replayOrConflict(existing: RequestRow, kind: RequestKind, newHash
   return { row: existing, created: false };
 }
 
-/**
- * recipe_ref の既定。契約上は "production" だが、段階 4 まで box にそのブランチは無いので
- * wrangler の var で "main" に寄せている（docs/worker-protocol.md「注意」節）。
- */
+/** recipe_ref の既定。契約上は "production" だが、段階 4 まで box にそのブランチが無いので wrangler var で "main" に寄せる (docs/worker-protocol.md「注意」節)。 */
 export function defaultRecipeRef(env: { REQUESTS_DEFAULT_RECIPE_REF?: string }): string {
   return env.REQUESTS_DEFAULT_RECIPE_REF || 'production';
 }
@@ -269,10 +246,8 @@ export interface CreateRequestResult {
 
 export interface CreateRequestOptions {
   /**
-   * `kind = generate` かつ `payload.experiment.run_id` があるときの Run 解決・
-   * 所属検証 (worker-protocol.md 参照) を行うかどうか。既定 true。
-   * createExperimentRun の自動起票は Run 自身をまだコミットしていない同じ
-   * db.batch の中で呼ばれる (SELECT で見えない) ため false で呼ぶ。
+   * `kind=generate` かつ run_id があるときの Run 解決・所属検証 (worker-protocol.md) を行うか。既定 true。
+   * createExperimentRun はまだコミットしていない同じ db.batch 内で呼ぶため false にする（SELECT で見えない）。
    */
   runValidation?: boolean;
   /** `recipe_ref` 省略時の値。routes / MCP は defaultRecipeRef(env) を渡す。 */
@@ -285,12 +260,9 @@ export async function createRequest(
   options: CreateRequestOptions = {},
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
-  // Keep the persisted/hashed worker contract stable when callers use the short
-  // masked-redraw aliases, pin preset versions before generate payloads are hashed
-  // (docs/worker-protocol.md「preset の pin」), and expand a finalize profile into options
-  // before it is hashed (docs/worker-protocol.md「finalize profile」). REST and MCP validate
-  // the envelope before reaching here; this shared normalization also covers internal
-  // callers and idempotency replays.
+  // masked_redraw のエイリアス正規化、generate の preset pin (worker-protocol.md「preset の pin」)、
+  // finalize profile の展開 (worker-protocol.md「finalize profile」) は payload をハッシュする前にここで行う
+  // — 内部呼び出しや idempotency 再送もこの正規化を通す。
   const payload =
     input.kind === 'masked_redraw'
       ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject)
@@ -307,13 +279,10 @@ export async function createRequest(
     .first<RequestRow>();
   if (existing) return replayOrConflict(existing, input.kind, payloadHash);
 
-  // finalize/repair/masked_redraw の worker は payload.generation_id を GET
-  // /api/v1/generations/{id}/context で解決してその Generation 自身の画像を読む
-  // (docs/worker-protocol.md — 「元画像を読みます」節、derive_request の
-  // resolveDerivationSource のような別 Generation への遡りはしない)。original が
-  // purge 済みならその読み出しが失敗するので、ここで止める。idempotency 再送
-  // (上の early return) はここを通らないので、purge より前に作られた行の再送は
-  // 妨げない。
+  // finalize/repair/masked_redraw の worker は generation_id 自身の画像を読む（derive_request の
+  // resolveDerivationSource のような別 Generation への遡りはしない、docs/worker-protocol.md「元画像を読みます」）。
+  // original purge 済みならその読み出しが失敗するのでここで止める。idempotency 再送（上の early return）は
+  // ここを通らないので、purge より前に作られた行の再送は妨げない。
   if (input.kind === 'finalize' || input.kind === 'repair' || input.kind === 'masked_redraw') {
     const generationId = (payload as { generation_id?: unknown }).generation_id;
     if (typeof generationId === 'string') {
@@ -344,8 +313,7 @@ export async function createRequest(
       runId = run.id;
     }
   }
-  // kind = finalize / repair / masked_redraw の payload に experiment があっても無視する
-  // （上の分岐に入らない）。
+  // finalize / repair / masked_redraw の payload.experiment は無視する。
 
   const id = uuidv7();
   const now = nowIso();
@@ -463,10 +431,9 @@ export interface RequeuedRequestRow {
 }
 
 /**
- * stale な running 行 (`heartbeat_at` が5分より古い) を回収する。`attempt < max_attempts`
- * なら queued に戻し、それ以外は `error = "heartbeat timeout"` で failed にする
- * (worker-protocol.md「状態遷移」節)。claimRequest (段階2、claim の直前) と WorkerHub の
- * alarm (段階3) の両方がこれを呼ぶ — 回収の規則は1つだけ持つ。
+ * stale な running 行 (`heartbeat_at` が5分より古い) を回収する。`attempt < max_attempts` なら queued に戻し、
+ * それ以外は failed にする (worker-protocol.md「状態遷移」)。claimRequest と WorkerHub の alarm の両方が
+ * これを呼ぶ — 回収の規則は1つだけ持つ。
  */
 export async function requeueStaleRunning(db: D1Database, now: string): Promise<RequeuedRequestRow[]> {
   const staleThreshold = new Date(new Date(now).getTime() - HEARTBEAT_TIMEOUT_MS).toISOString();
@@ -494,8 +461,7 @@ export async function claimRequest(
   // 1) stale な running 行を回収する。claim の直前にだけ走査するので cron は要らない。
   const requeued = await requeueStaleRunning(db, nowIso());
 
-  // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも
-  // 同じ行を2度渡さない (worker-protocol.md「Claim」節)。
+  // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも同じ行を2度渡さない (worker-protocol.md「Claim」)。
   const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'repair', 'masked_redraw'] as RequestKind[]);
   const placeholders = kindsList.map(() => '?').join(', ');
   const claimedAt = nowIso();
@@ -531,7 +497,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   const now = nowIso();
 
   if (body.status === 'cancelled') {
-    // queued 以外からの cancelled は409 (worker-protocol.md「Update Request」節)。
+    // queued 以外からの cancelled は409 (worker-protocol.md「Update Request」)。
     if (row.status !== 'queued') throw conflict('cancelled is only allowed from a queued request');
     await db
       .prepare('UPDATE requests SET status = ?, finished_at = ?, updated_at = ? WHERE id = ?')
@@ -540,8 +506,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     return getRequestOr404(db, row.id);
   }
 
-  // running/done/failed は claim した worker だけが書ける。stale 判定で別 worker に
-  // 渡った後の旧 worker からの書き込みはここで弾く。
+  // running/done/failed は claim した worker だけが書ける。stale 判定で別 worker に渡った後の旧 worker の書き込みはここで弾く。
   if (row.status !== 'running') throw conflict('request is not running');
   if (body.worker_id !== row.worker_id) throw conflict('worker_id does not match the claim');
 
@@ -550,9 +515,8 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     return getRequestOr404(db, row.id);
   }
 
-  // release。自分が claim したまま落ちた行を、途絶の 5 分を待たずに手放す。行き先は
-  // 途絶と同じ規則にする — 手放す理由が違うだけで、結果として起きることは同じなので、
-  // 規則を 2 つ持つと attempt の扱いが 2 通りに割れる (docs/worker-protocol.md「状態遷移」)。
+  // release: 自分が claim したまま落ちた行を、途絶の5分を待たずに手放す。行き先は途絶と同じ規則にする
+  // — 規則を2つ持つと attempt の扱いが2通りに割れる (docs/worker-protocol.md「状態遷移」)。
   if (body.status === 'queued') {
     const exhausted = row.attempt >= row.max_attempts;
     await db
@@ -579,9 +543,8 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   if (!result) throw badRequest('result is required when status is done');
   const resultJson = JSON.stringify(result);
 
-  // pin が無ければ preset_versions_json は書かない — payload.generation.presets は
-  // request 作成時に pinPresets が置いたものだけを持つ（graph-mode や preset 未導入の
-  // recipe では presets キー自体が無い）。
+  // pin が無ければ preset_versions_json は書かない — payload.generation.presets は request 作成時に
+  // pinPresets が置いたものだけを持つ（graph-mode や preset 未導入の recipe では presets キー自体が無い）。
   const pins = extractPins(JSON.parse(row.payload_json));
   const presetVersionsJson = pins && pins.length > 0 ? JSON.stringify(pins) : null;
 
@@ -592,14 +555,12 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     const batch = await getBatchByIdOrShortId(db, result.batch_id);
     if (!batch) throw notFound(`batch '${result.batch_id}'`);
 
-    // Run に既に別の batch が付いていれば409で、request 行も done になりません
-    // (worker-protocol.md「Update Request」節)。
+    // Run に既に別の batch が付いていれば409で、request 行も done になりません (worker-protocol.md「Update Request」)。
     if (run.batch_id && run.batch_id !== batch.id) {
       throw conflict('run already has a different batch attached');
     }
 
-    // request の done と experiment_runs.batch_id の attach を単一トランザクションにする。
-    // request だけが done になって Run に batch が付かない状態は作らない。
+    // request の done と experiment_runs.batch_id の attach を単一トランザクションにする（片方だけの状態を作らない）。
     const statements = [
       db
         .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
@@ -616,9 +577,8 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     await db.batch(statements);
     await touchExperiment(db, run.experiment_id, now);
   } else {
-    // pin の記録は付随的なもの。result.batch_id が解決できないときは request の完了を
-    // 妨げず、preset_versions_json の書き込みだけを飛ばす（run_id 経路はもともと
-    // batch 未解決を 409/404 で拒む契約なので、そちらの挙動は変えない）。
+    // pin の記録は付随的なもの: result.batch_id が解決できなければ request の完了は妨げず、
+    // preset_versions_json の書き込みだけ飛ばす（run_id 経路は batch 未解決を 409/404 で拒む契約のまま）。
     const batch = presetVersionsJson ? await getBatchByIdOrShortId(db, result.batch_id) : null;
     if (presetVersionsJson && batch) {
       await db.batch([
@@ -746,8 +706,7 @@ interface SummaryBucket {
 
 /**
  * ナビの queue pill / パネル (docs/ui.md「キュー状態」) 向けの集計。1 グループ = 1 遷移先:
- * Batch (finalize/repair/masked_redraw)、Experiment (generate で run_id があるとき)、
- * request 単体 (generate で run_id が無いとき) — src/routes/requests.ts のルートはこれを呼んで組み立てるだけ。
+ * Batch (finalize/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
  */
 export async function summarizeRequests(db: D1Database, now: string): Promise<RequestSummary> {
   const cutoff = new Date(new Date(now).getTime() - SUMMARY_FAILED_WINDOW_MS).toISOString();

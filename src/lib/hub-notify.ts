@@ -1,21 +1,13 @@
-// requests 行のライフサイクルを WorkerHub DO (段階3, src/worker-hub.ts) に知らせる。
-// hub は通知路であって正本ではないので、失敗しても呼び出し元の HTTP レスポンスは
-// 落とさない — try/catch で握りつぶし console.error に出すだけ。
-//
-// env を必要とするため routes / mcp からだけ呼ぶ。lib/requests.ts や lib/experiments.ts
-// (テストが env なしで直接叩く) からは呼ばない。
+// requests 行のライフサイクルを WorkerHub DO (src/worker-hub.ts) に知らせる。hub は通知路であって
+// 正本ではないので、失敗しても呼び出し元の HTTP レスポンスは落とさず try/catch で握りつぶす。
+// env を必要とするため routes / mcp からだけ呼ぶ（lib/requests.ts・lib/experiments.ts からは呼ばない）。
 
 import { getWorkerHubStub } from '../worker-hub';
 import type { Bindings, RequestKind, RequestStatus } from '../types';
 
 export type HubNotifyType = 'queued' | 'status';
 
-/**
- * waitUntil だけを要求する最小の型。呼び出し側は Hono の `Context.executionCtx`
- * (waitUntil + passThroughOnException) だったり、Worker 本体の `ExecutionContext`
- * (waitUntil + passThroughOnException + tracing + abort) だったりして構造が食い違うため、
- * 両方を構造的に満たす最小の形をここで定義する。
- */
+/** waitUntil だけを要求する最小の型。Hono の `Context.executionCtx` と Worker 本体の `ExecutionContext` は構造が食い違うため、両方を満たす最小形をここで定義する。 */
 export interface Waitable {
   waitUntil(promise: Promise<unknown>): void;
 }
@@ -66,11 +58,7 @@ export async function notifyHubGeneration(env: Bindings, generation: HubNotifyGe
   }
 }
 
-/**
- * `c.executionCtx` はテストハーネス (`app.request(url, init, env)`) では未設定で、
- * アクセスすると例外を投げる (src/app.ts の `/mcp` ハンドラと同じガード)。本番では
- * waitUntil に積んで通知のレイテンシをレスポンスに乗せない。
- */
+/** `c.executionCtx` はテストハーネスでは未設定でアクセスすると例外を投げる。本番では waitUntil に積んで通知のレイテンシをレスポンスに乗せない。 */
 export function runInBackground(c: { executionCtx: Waitable }, promise: Promise<unknown>): void {
   let ctx: Waitable | undefined;
   try {

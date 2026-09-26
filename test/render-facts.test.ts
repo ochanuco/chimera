@@ -59,9 +59,8 @@ const CHECKPOINT_LORA_CONTROLNET_GRAPH = {
   },
 };
 
-// 3. UNETLoader + CLIPLoader + VAELoader graph (no CheckpointLoaderSimple / DiffusersLoader at
-// all). positive/negative point straight at the CLIPLoader node (not a CLIPTextEncode), so
-// prompt resolution intentionally comes back null.
+// 3. UNETLoader + CLIPLoader + VAELoader graph (no CheckpointLoaderSimple/DiffusersLoader).
+// positive/negative point straight at CLIPLoader (not CLIPTextEncode), so prompt resolution is null.
 const UNET_CLIP_GRAPH = {
   '1': { class_type: 'UNETLoader', inputs: { unet_name: 'anima.safetensors', weight_dtype: 'default' } },
   '2': { class_type: 'CLIPLoader', inputs: { clip_name: 'clip.safetensors' } },
@@ -84,9 +83,8 @@ const UNET_CLIP_GRAPH = {
   '5': { class_type: 'EmptyLatentImage', inputs: { width: 1024, height: 1024, batch_size: 1 } },
 };
 
-// 4. chain_pass graph: first pass DiffusersLoader "4" (prompt via node "6"), literal ImageScale
-// upscale, second pass against a different DiffusersLoader ("20") with a distinct hires prompt
-// via node "6b" -- so pass 1 / pass 2 positive prompts differ.
+// 4. chain_pass graph: pass 1 (DiffusersLoader "4", prompt via "6") feeds a literal ImageScale
+// upscale into pass 2 (DiffusersLoader "20", hires prompt via "6b") -- pass 1/2 prompts differ.
 const CHAIN_PASS_GRAPH = {
   '3': {
     class_type: 'KSampler',

@@ -124,12 +124,8 @@ function DenoiseField({ dials }: { dials: FinalizeDials | null }) {
   );
 }
 
-/**
- * Shared body of the Finalize form (GenerationDetail / BatchDetail), rendered inside the
- * caller's own `<form>`. `dialsEnabled` gates the UI-level dial/profile treatment (denoise's
- * word buttons still separately require the catalog to carry words — see DenoiseField); when
- * the recipe has neither dials nor profiles, every field renders exactly as it always has.
- */
+/** Shared body of the Finalize form (GenerationDetail / BatchDetail), rendered inside the caller's own `<form>`.
+ * `dialsEnabled` gates the UI-level dial/profile treatment (denoise's word buttons still separately require catalog words — see DenoiseField). */
 export function FinalizeFields({
   submitLabel,
   dials = null,
@@ -144,7 +140,7 @@ export function FinalizeFields({
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
   profiles?: FinalizeProfileOption[];
-  /** Catalog top-level `backdrops` (name/label only, no thumbnail bytes — those are fetched via backdropThumbnailUrl). Empty for a catalog published before this key existed, or with no catalog at all. */
+  /** Catalog top-level `backdrops` (name/label only; thumbnail bytes come from backdropThumbnailUrl). Empty when the catalog predates this key, or there's no catalog. */
   backdrops?: BackdropOption[];
   /** recipe_ref the thumbnail route serves under (defaultRecipeRef(env)); null when there's no catalog to serve from. */
   recipeRef?: string | null;
@@ -161,9 +157,8 @@ export function FinalizeFields({
       ? defaults.stroke_light
       : 'none';
 
-  // Pattern choices: the catalog's backdrops when it published any, else the pre-thumbnail
-  // fallback of a single unillustrated "stripes" card (fallback behaviour required for a
-  // catalog from a worker that predates this key).
+  // Pattern choices: catalog backdrops when published, else the pre-thumbnail fallback of a single
+  // unillustrated "stripes" card (needed for a catalog from a worker that predates this key).
   const patternChoices = backdrops.length > 0 ? backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
   const backdropChoiceNames = [...patternChoices.map((b) => b.name), 'transparent', 'color'];
   const rawBackdropDefault = typeof defaults?.backdrop === 'string' ? defaults.backdrop : null;
