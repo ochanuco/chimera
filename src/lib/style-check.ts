@@ -28,6 +28,7 @@ export const STYLE_CHECK_POSES: Record<string, StyleCheckPose[]> = {
     { framing: 'cowboy', pose: 'gao' },
     { framing: 'full', pose: 'step' },
     { framing: 'full', pose: 'dance' },
+    { framing: 'full', pose: 'anyo' },
   ],
 };
 
