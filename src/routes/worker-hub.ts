@@ -1,7 +1,5 @@
-// WebSocket upgrade エンドポイント (docs/worker-protocol.md 段階3)。実体は src/worker-hub.ts
-// の単一 WorkerHub DO インスタンス — ここは Access の内側で受けたリクエストに role
-// マーカーを付けて DO へ転送するだけ。role はこのサーバー側コードが決め、client
-// からは信用しない (worker 用と viewer 用でパスが分かれているのはそのため)。
+// WebSocket upgrade は単一 WorkerHub DO (src/worker-hub.ts) へ転送するだけ。role はこの
+// サーバー側コードが決め、client からは信用しない — worker/viewer でパスを分ける理由。
 import type { Context } from 'hono';
 import { getWorkerHubStub } from '../worker-hub';
 import type { AppEnv } from '../types';
@@ -23,10 +21,7 @@ export function workerWs(c: Context<AppEnv>): Promise<Response> {
   return upgradeToHub(c, 'worker');
 }
 
-/**
- * GET /api/v1/requests/ws — src/routes/requests.ts の `GET /:id` より前に登録すること。
- * Hono のルーターは登録順を見るので、後に置くと "ws" が :id にマッチしてしまう。
- */
+/** GET /api/v1/requests/ws。登録順の制約は src/routes/requests.ts 参照。 */
 export function viewerWs(c: Context<AppEnv>): Promise<Response> {
   return upgradeToHub(c, 'viewer');
 }

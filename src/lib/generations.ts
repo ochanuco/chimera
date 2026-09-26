@@ -1,6 +1,4 @@
-// Generation detail / 一覧のドメインロジック。REST (src/routes/generations.ts) と
-// MCP tool `get_generation` / `list_generations` (src/mcp.ts) の両方がここを呼ぶ —
-// どちらも GET /api/v1/generations{,/id} と同じ形を返す。
+// REST (src/routes/generations.ts) と MCP tool `get_generation`/`list_generations` (src/mcp.ts) の両方がここを呼び、同じ形を返す。
 
 import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl, generationPreviewUrl } from './serialize';
@@ -89,10 +87,8 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
       instruction: r.instruction,
       created_at: r.created_at,
     })),
-    // Batches that used this Generation as reference material ("children" via Reference).
-    // Same underlying batch_references rows as `references` above (both keyed by
-    // source_generation_id = this Generation), kept as a separate field so callers
-    // reading "who used me as material" don't have to infer it from `references`.
+    // Batches that used this Generation as reference material. Same rows as `references`
+    // above, kept as a separate field so "who used me as material" doesn't need inference.
     used_by: (references.results ?? []).map((r) => ({
       id: r.id,
       batch_id: r.target_batch_id,
@@ -187,11 +183,9 @@ export interface GenerationFinalizeRequestBadge {
 }
 
 /**
- * このページに載る各Generationを対象にした最新のfinalize/repair/masked_redraw requestを1クエリで集める
- * (`GET /api/v1/generations`のfinalize_request、docs/ui.md「Gallery」カードの進捗ピル)。
- * request.payload.generation_id はUUIDでもshort_idでもよい (worker-protocol.md「payload」) ので、
- * 両方をIN句に渡し、行側でどちらのGenerationを指しているか引き直す。created_at DESCで取り、
- * 各Generationについて最初に見つかった行(=最新)だけを採用する。
+ * 各Generationを対象にした最新のfinalize/repair/masked_redraw requestを1クエリで集める。
+ * request.payload.generation_id はUUIDでもshort_idでもよい (worker-protocol.md「payload」) ので両方をIN句に渡し、
+ * created_at DESCで取って各Generationにつき最初に見つかった行(=最新)だけを採用する。
  */
 export async function getLatestFinalizeRequestsForGenerations(
   db: D1Database,
@@ -208,8 +202,7 @@ export async function getLatestFinalizeRequestsForGenerations(
     payloadIds.push(g.id, g.short_id);
   }
 
-  // D1 の1クエリ bind 数上限 (queryGenerations の ids フィルタと同じ理由、上のコメント参照) を
-  // ページサイズ x2 で越えうるので、placeholders ではなく json_each の1 bind にまとめる。
+  // D1 の1クエリ bind 数上限をページサイズ x2 で越えうるので、placeholders ではなく json_each の1 bind にまとめる。
   const { results } = await db
     .prepare(
       `SELECT id, kind, status, payload_json, result_json FROM requests

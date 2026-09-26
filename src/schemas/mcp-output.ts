@@ -1,15 +1,6 @@
-// MCP tool の outputSchema。ChatGPT のような client は outputSchema を持たない tool の
-// 結果を「型の分からない JSON テキスト」としてしか扱えず、開発者モードで
-// 「出力スキーマ推奨」の警告になる。
-//
-// SDK は structuredContent をこの schema で検証し、通らなければ tool call ごと
-// ProtocolError にする（@modelcontextprotocol/server の validateToolOutput）。つまり
-// ここを厳しく書くと、serializer に欄が1つ増えただけで本番の tool call が落ちる。
-// なので:
-//   - すべて looseObject（未知のキーを許す）
-//   - 深い所（payload / graph / semantic / catalog record など）は unknown のまま渡す
-//   - 実在を確かめていない欄は optional
-// 目的は形の宣言であって、契約の二重定義ではない。正本は各 serializer。
+// MCP tool の outputSchema。SDK が structuredContent をこれで検証し、通らなければ tool call を
+// ProtocolError にする（validateToolOutput）。なので全て looseObject + 深い所は unknown + optional 多め。
+// 目的は形の宣言であって契約の二重定義ではない。正本は各 serializer。
 
 import { z } from 'zod';
 
@@ -195,8 +186,7 @@ export const mcpOutputSchemas = {
     generations: z.array(generationLightSchema),
   }),
 
-  // 画像そのものは content の image ブロックで返る。structuredContent 側は
-  // 「返せたのか、なぜ返せなかったのか」だけを持つ。
+  // 画像そのものは content の image ブロックで返る。structuredContent は「返せたか/なぜ返せなかったか」だけ。
   get_generation_image: z.looseObject({
     short_id: z.string(),
     canonical_url: z.string(),

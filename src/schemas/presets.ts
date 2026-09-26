@@ -16,12 +16,8 @@ export const presetPromoteRequestSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
-/**
- * import 由来の行は pose の本文を持たず、comfyui-recipes 側の poses.py への名前参照
- * だけを持つ (docs/domain-model.md「Preset」body の形)。本文の組み立て (costume 依存の
- * 分岐) を chimera 側で行わないための境界で、解決するのは worker の graph compiler。
- * .strict() は import 由来/promote 由来を取り違えず区別するためだけのもの。
- */
+/** import 由来の行は本文を持たず、poses.py への名前参照だけ (docs/domain-model.md「Preset」)。本文の組み立ては worker の graph compiler が行う。
+ * .strict() は import/promote 由来を取り違えず区別するため。 */
 const presetBodyImportSchema = z.object({ recipe_pose: z.string().min(1) }).strict();
 
 const presetBodyPromoteSchema = z
@@ -36,12 +32,8 @@ const presetBodyPromoteSchema = z
   })
   .strict();
 
-/**
- * kind `finalize` の本文: その場で入れ子になった `finalizeOptionsSchema` そのもの
- * (docs/domain-model.md「Preset」body の形)。pose/costume/expression と違って base
- * への参照も patches も持たない — promote_to_profile が起点の finalize request から
- * 直接書き、以降の版もその場限りの全文上書きで、チェーンを作らない。
- */
+/** kind `finalize` の本文は `finalizeOptionsSchema` そのもの (docs/domain-model.md「Preset」)。base 参照も patches も持たず、
+ * 各版は全文上書きでチェーンを作らない。 */
 export const presetBodyFinalizeSchema = z.object({ options: finalizeOptionsSchema }).strict();
 
 export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema, presetBodyFinalizeSchema]);

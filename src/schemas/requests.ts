@@ -9,42 +9,29 @@ export const jsonObject = z.record(z.string(), z.unknown());
 /** worker-protocol.md: `recipe_ref` は origin のブランチ名相当の文字列だけを検証し、存在は確認しない。 */
 export const RECIPE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
-/**
- * catalog の `dials` が定義する word の語彙 (docs/worker-protocol.md「finalize profile」)。
- * 値が実在する word かは worker が検証する — chimera が見るのは型だけ。
- */
+/** catalog の `dials` が定義する word の語彙 (docs/worker-protocol.md「finalize profile」)。実在するかは worker が検証、chimera は型だけ見る。 */
 export const DIAL_WORD_RE = /^[a-z][a-z0-9-]*$/;
 const dialWord = z.string().regex(DIAL_WORD_RE);
 
-/**
- * repair の region は width/height に対する分数の矩形 [x0, y0, x1, y1] で、
- * x0<x1 かつ y0<y1 を要求する。単体の repair request (`regions`) と finalize
- * に相乗りする repair (`repair_regions`) が共有する。
- */
+/** repair region は width/height に対する分数の矩形 [x0,y0,x1,y1] (x0<x1, y0<y1)。
+ * 単体の repair request (`regions`) と finalize 相乗りの repair (`repair_regions`) で共有。 */
 const repairRegionSchema = z
   .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
   .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
     message: 'region must have x0 < x1 and y0 < y1',
   });
 
-/**
- * Generic masked redraw rectangles use the same normalized coordinate convention as repair,
- * but are deliberately a separate schema: a masked redraw must name at least one rectangle,
- * and overlapping rectangles are rejected so the worker receives an unambiguous mask union.
- */
+/** Same coordinate convention as repair, but deliberately a separate schema: masked redraw requires
+ * >=1 rectangle and rejects overlaps so the worker gets an unambiguous mask union. */
 export const maskedRedrawRegionSchema = repairRegionSchema;
 
 function regionsOverlap(a: readonly [number, number, number, number], b: readonly [number, number, number, number]): boolean {
   return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 }
 
-/**
- * finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す
- * (docs/worker-protocol.md「finalize」節の表)。組み合わせの妥当性 (recipe が
- * route を持つか等) は worker が判定して failed にする — chimera が見るのは型だけ。
- * `repair*` は同じリクエストに相乗りする repair (masked local redraw) の引数で、
- * 単体の repair request の options と語彙を揃えている。
- */
+/** finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す (docs/worker-protocol.md「finalize」)。
+ * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。
+ * `repair*` は相乗り repair の引数で、単体 repair request の options と語彙を揃えている。 */
 export const finalizeOptionsSchema = z
   .object({
     denoise: z.union([z.number(), dialWord]).nullable().optional(),
@@ -91,10 +78,7 @@ export const finalizePayloadSchema = z
   })
   .strict();
 
-/**
- * repair の options は masked local redraw (hands/feet) の worker 側引数に写す
- * (docs/worker-protocol.md「repair」節の表)。finalize と同じく chimera が見るのは型だけ。
- */
+/** repair の options は masked local redraw (hands/feet) の worker 側引数に写す (docs/worker-protocol.md「repair」)。chimera は型だけ見る。 */
 export const repairOptionsSchema = z
   .object({
     parts: z.array(z.enum(['hands', 'feet'])).optional(),
@@ -117,12 +101,9 @@ export const repairPayloadSchema = z
 /** Generic masked redraw keeps its strength in the low-to-medium inpaint range. */
 export const MASKED_REDRAW_MAX_DENOISE = 0.75;
 
-/**
- * Generic masked-img2img/inpaint options. `mask_padding` and `mask_feather` are pixel
- * distances applied by the worker after resolving the source image dimensions. `pad` and
- * `feather` are accepted as compatibility aliases for workers that use the shorter repair
- * vocabulary; both aliases are canonicalized before a request is persisted.
- */
+/** Generic masked-img2img/inpaint options. `mask_padding`/`mask_feather` are pixel distances the worker
+ * applies after resolving image dimensions. `pad`/`feather` are compatibility aliases (shorter repair
+ * vocabulary), canonicalized before a request is persisted. */
 export const maskedRedrawOptionsSchema = z
   .object({
     regions: z.array(maskedRedrawRegionSchema).min(1, 'at least one region is required'),
@@ -130,8 +111,6 @@ export const maskedRedrawOptionsSchema = z
     denoise: z.union([z.number().gt(0).lte(MASKED_REDRAW_MAX_DENOISE), dialWord]).optional(),
     mask_padding: z.number().min(0).max(512).optional(),
     mask_feather: z.number().min(0).max(256).optional(),
-    // Narrow aliases keep the contract easy to adapt to comfyui-recipes' existing masked
-    // redraw helper without changing the repair_generation semantics.
     pad: z.number().min(0).max(512).optional(),
     feather: z.number().min(0).max(256).optional(),
     size: z.number().int().min(256).multipleOf(8).nullable().optional(),
@@ -165,11 +144,8 @@ export const maskedRedrawPayloadSchema = z
   })
   .strict();
 
-/**
- * Store one stable vocabulary in the queue even when a caller uses the short aliases.
- * Validation happens at the REST/MCP boundary; parsing here also protects direct callers
- * such as request helpers from persisting an invalid masked-redraw payload.
- */
+/** Canonicalizes to one stable vocabulary even when a caller uses aliases. Validation normally happens
+ * at the REST/MCP boundary; parsing here also guards direct callers (e.g. request helpers). */
 export function canonicalizeMaskedRedrawPayload(payload: unknown): Record<string, unknown> {
   const parsed = maskedRedrawPayloadSchema.parse(payload);
   const { pad, feather, ...options } = parsed.options;
@@ -178,11 +154,7 @@ export function canonicalizeMaskedRedrawPayload(payload: unknown): Record<string
   return { generation_id: parsed.generation_id, options };
 }
 
-/**
- * generate の payload は request.json v1 をそのまま包む (generation-request.md)。
- * chimera が検証するのは封筒の形 (schema_version=1 と request/generation の存在)
- * だけで、中身の語彙は comfyui-recipes 側のものなので検証しない。
- */
+/** generate の payload は request.json v1 をそのまま包む (generation-request.md)。chimera が検証するのは封筒の形だけで、中身の語彙は検証しない。 */
 export const generatePayloadSchema = z
   .object({
     schema_version: z.literal(1),
@@ -228,11 +200,8 @@ export const claimRequestSchema = z.object({
 
 export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
 
-/**
- * `.passthrough()`: worker が finalize/repair/masked_redraw の done に添える `resolved_options`
- * (docs/worker-protocol.md「finalize profile」) のような追加欄を、素の z.object が黙って
- * 落とさないようにする。chimera はこの欄を不透明な JSON として保存するだけで、形を検証しない。
- */
+/** `.passthrough()`: worker が done に添える `resolved_options` 等 (docs/worker-protocol.md「finalize profile」) を
+ * 素の z.object が黙って落とさないため。chimera は不透明な JSON として保存するだけ。 */
 export const updateRequestResultSchema = z
   .object({
     batch_id: z.string().min(1),
@@ -241,10 +210,7 @@ export const updateRequestResultSchema = z
   })
   .passthrough();
 
-/**
- * worker が書く running/queued/done/failed は claim 済みの worker_id を伴う (409 の元にする
- * ため)。brain/GUI が書く cancelled だけは worker_id を持たない。
- */
+/** worker が書く running/queued/done/failed は claim 済みの worker_id を伴う (409 の元にするため)。brain/GUI の cancelled だけ持たない。 */
 export const updateRequestSchema = z
   .object({
     status: z.enum(['running', 'queued', 'done', 'failed', 'cancelled']),

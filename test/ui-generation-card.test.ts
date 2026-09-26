@@ -22,9 +22,8 @@ async function createFinalizeLikeRequest(
 }
 
 /**
- * Slices out one card's markup (`<div class="card">...</div></div>`) so assertions don't leak
- * into sibling cards or, when a card is the only one in its grid (e.g. Batch Detail), into the
- * unrelated sections that follow it on the page.
+ * Slices out one card's markup so assertions don't leak into sibling cards or, when a card is
+ * the only one in its grid (e.g. Batch Detail), into the unrelated sections that follow it.
  */
 function cardHtml(html: string, shortId: string): string {
   const marker = html.indexOf(`data-short-id="${shortId}"`);

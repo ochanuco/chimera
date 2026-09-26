@@ -45,11 +45,8 @@ async function getBatchOr404(db: D1Database, idOrShortId: string): Promise<Batch
   return row;
 }
 
-/**
- * worker-protocol.md「再送レスポンスに含めるもの」: idempotency_key 再送は新規作成時と
- * 同じ形に加え、worker が再開に使う `jobs[]`（各 Job の seed/status/comfy_prompt_id と
- * ingest 済み generations）を含める。`graph` は含めない（recipe と seed から再構築できる）。
- */
+// worker-protocol.md「再送レスポンスに含めるもの」: 再送は jobs[]（seed/status/comfy_prompt_id +
+// ingest 済み generations）を含める。graph は含めない（recipe と seed から再構築できる）。
 async function buildReplayJobs(db: D1Database, batchId: string) {
   const [jobsResult, generationsResult] = await Promise.all([
     db.prepare('SELECT * FROM comfy_jobs WHERE batch_id = ? ORDER BY job_index ASC').bind(batchId).all<ComfyJobRow>(),
@@ -147,11 +144,8 @@ batches.post('/', async (c) => {
     updated_at: now,
     patches_json: body.patches ? JSON.stringify(body.patches) : null,
     pose_fingerprint: body.pose_fingerprint ?? null,
-    // request が done になった時点で lib/requests.ts が書く (preset の pin から)。
-    // Batch 作成時にはまだ確定していない。
-    preset_versions_json: null,
-    // refinesGenerationUpdateStatement (下) が同じ db.batch 内で計算する。この時点では未確定。
-    refines_generation_id: null,
+    preset_versions_json: null, // request 完了時に lib/requests.ts が preset pin から書く
+    refines_generation_id: null, // refinesGenerationUpdateStatement (下) が同一 db.batch 内で計算
   };
 
   const statements = [
@@ -214,8 +208,6 @@ batches.post('/', async (c) => {
     );
   }
 
-  // references と refinement relation が上ですでに積まれているので、同じ db.batch トランザクション
-  // 内でこの直後に refines_generation_id を計算できる (src/lib/batch-refinement.ts)。
   statements.push(refinesGenerationUpdateStatement(db, id));
 
   if (body.story) {
@@ -242,10 +234,8 @@ batches.post('/', async (c) => {
   }
 
   try {
-    // db.batch is transactional: a concurrent request with the same idempotency
-    // key makes this fail on the unique constraint and rolls back the reference /
-    // relation inserts too, so no rows end up pointing at a batch that was never
-    // created.
+    // db.batch is transactional: a concurrent same-idempotency-key request fails the unique
+    // constraint and rolls back the reference/relation inserts too — no orphaned rows.
     await db.batch(statements);
   } catch (err) {
     const raced = await db
@@ -256,13 +246,10 @@ batches.post('/', async (c) => {
     return c.json({ ...serializeBatch(raced), jobs: await buildReplayJobs(db, raced.id) }, 200);
   }
 
-  // refines_generation_id は db.batch 内の UPDATE で確定したので、in-memory の row (null 固定)
-  // ではなく確定後の行を読み直してレスポンスに使う。
+  // refines_generation_id は db.batch 内の UPDATE で確定するので、in-memory row (null 固定) ではなく読み直す。
   const created = (await getBatchByIdOrShortId(db, id))!;
 
-  // provenance の中核 (prompt / recipe / instruction) が全部空の登録は、API を
-  // 直接叩いて request.json 契約を経由していない可能性が高い。自動化を壊さない
-  // よう拒否はせず、warnings とログで気付けるようにするだけに留める。
+  // provenance が全部空の登録は request.json 契約を経由していない可能性が高いが、自動化を壊さないよう拒否せず warn のみ。
   const hasGenerationMetadata =
     body.raw_instruction != null ||
     body.recipe != null ||
@@ -372,8 +359,7 @@ batches.get('/', async (c) => {
             bookmark: r.first_gen_bookmark as number,
             character_id: r.first_gen_character_id as string | null,
             created_at: r.first_gen_created_at as string,
-            // Not selected by this listing's join (only the thumbnail_url is used from
-            // the result, not the resolution/size/purge fields) — see BatchRow.tsx.
+            // join doesn't select these; only thumbnail_url is used here (see BatchRow.tsx)
             image_width: null,
             image_height: null,
             image_size: null,
@@ -478,9 +464,8 @@ batches.get('/:id', async (c) => {
     await Promise.all(jobRows.map(async (j) => [j.id, await renderFactsForJob(db, j)] as const)),
   );
 
-  // Card badges (GenerationCard の from-badge / 公開済みピル): このBatchが refine
-  // したraw Generationのshort_id（Batch単位で全Generation共通）と、各Generationが
-  // 少なくとも1件Publicationを持つか。
+  // Card badges (from-badge / 公開済みピル): refine 元 raw Generation の short_id (Batch 単位で共通) と、
+  // 各 Generation が Publication を持つか。
   const generationRows = generations.results ?? [];
   const [refinesShortIds, publishedGenerationIds] = await Promise.all([
     resolveGenerationShortIds(db, batch.refines_generation_id ? [batch.refines_generation_id] : []),

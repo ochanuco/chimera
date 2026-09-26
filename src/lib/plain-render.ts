@@ -1,6 +1,3 @@
-// plain_render (MCP) が組み立てる request.json v1 payload。preset の基準 render の pin
-// (lib/preset-references.ts) を種に、recipe の既定 (patches なし) で pose を再度描く。
-
 import { getPresetRow } from './presets';
 import { getCatalog } from './catalogs';
 import { getCurrentReference, referenceView, type PresetReferenceView } from './preset-references';
@@ -28,12 +25,9 @@ export function plainRenderIdempotencyKey(recipe: string, pose: string, seed: nu
 }
 
 /**
- * seed defaults to the pose's current basis-render pin; pass `seed` explicitly to bootstrap a
- * pose that has no pin yet. 409s when neither is available. `parameters` names only the pose:
- * a plain render is the recipe's defaults, so the recipe applies the pose's default costume
- * itself. The pose has to exist as a Preset, not in the
- * catalog: a promoted pose (promote_to_pose) lives only in presets, and the worker resolves it
- * through the pin. The catalog is consulted only for the git_commit in the default key.
+ * seed defaults to the pose's pin; pass `seed` to bootstrap an unpinned pose (409 if neither is available).
+ * The pose must exist as a Preset — a promoted pose lives only in presets, not the catalog, which is
+ * consulted only for the git_commit in the default idempotency key.
  */
 export async function buildPlainRenderRequest(db: D1Database, input: PlainRenderInput): Promise<PlainRenderRequestBuild> {
   const presetRow = await getPresetRow(db, input.recipe, 'pose', input.pose);

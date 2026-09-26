@@ -184,7 +184,7 @@ describe('Create PairwiseJudgment validation', () => {
   it('409s when a run has no batch attached', async () => {
     const experiment = await createExperiment();
     const baselineRun = await createRun(experiment.body.id);
-    const armRun = await createRun(experiment.body.id); // no batch attached
+    const armRun = await createRun(experiment.body.id);
     const { batch: baselineBatch, generations: baselineGens } = await createBatchWithSeeds([11]);
     await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: baselineBatch.id }, 'PATCH');
 

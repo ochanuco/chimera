@@ -1,19 +1,12 @@
 import { z } from 'zod';
 
-/**
- * overrides / evaluation / decision / promoted_overrides は typed schema を持たない
- * JSON blob として受ける（docs/domain-model.md 参照）。評価軸は Experiment や
- * 評価者ごとに変わるため、ここで固定するとその都度 migration が必要になる。
- */
+/** overrides/evaluation/decision/promoted_overrides は typed schema を持たない JSON blob として受ける
+ * (docs/domain-model.md)。評価軸は Experiment/評価者ごとに変わるため、固定すると都度 migration が必要になる。 */
 export const jsonObject = z.record(z.string(), z.unknown());
 
-/**
- * overrides / promoted_overrides のエンベロープ検証。patch の語彙 (target / op の値、
- * value・old の型) は comfyui-recipes 側の実装に属するため検証しない。chimera が
- * 保証するのは「diff の形をしているか」だけ — base_parameters 相当の生成パラメータが
- * overrides に紛れ込む事故 (docs/experiment-agent.md 参照) を型では防げないので、
- * せめて封筒の形だけ弾く。evaluation / decision はここを通さない（自由記述のまま）。
- */
+/** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は comfyui-recipes 側の
+ * 実装に属するため検証しない — 保証するのは「diff の形をしているか」だけ (docs/experiment-agent.md)。
+ * evaluation/decision はここを通さない（自由記述のまま）。 */
 export const overridesSchema = jsonObject.superRefine((value, ctx) => {
   const keys = Object.keys(value);
   const unexpected = keys.filter((k) => k !== 'patches');
@@ -94,13 +87,9 @@ export const updateExperimentSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
-/**
- * Run に付記する自由記述の factor マップ。グラフ (render_facts) から読み取れない
- * 要因 (prompt variant のラベルなど) を人間・Agent が書き添えるためのもので、
- * overrides と違い batch/generation 付与後も編集できる（docs/domain-model.md 参照）。
- * フラットな 1 階層のみ許容: 値を string|number に絞ることでネスト/配列/真偽値/null は
- * zod が自動的に弾く。
- */
+/** Run に付記する自由記述の factor マップ。render_facts から読み取れない要因を人間/Agent が書き添えるもので、
+ * overrides と違い batch/generation 付与後も編集できる（docs/domain-model.md）。値を string|number に絞ることで
+ * ネスト/配列/真偽値/null は zod が自動的に弾く。 */
 export const runVariablesSchema = z.record(z.string().min(1), z.union([z.string(), z.number()]));
 
 export const createExperimentRunSchema = z.object({
@@ -116,11 +105,8 @@ export const createExperimentRunSchema = z.object({
   variables: runVariablesSchema.optional(),
 });
 
-/**
- * `batch_id` / `generation_id` は attach 専用（nullable ではない）。一度結び付いた
- * 生成結果を付け替えると Run が「何を生んだ試行か」の記録でなくなるため、
- * 付け替えは 409 で拒否する。evaluation / decision は上書き・クリア可能。
- */
+/** `batch_id`/`generation_id` は attach 専用（nullable ではない）。付け替えると Run が「何を生んだ試行か」の
+ * 記録でなくなるため 409 で拒否する。evaluation/decision は上書き・クリア可能。 */
 export const updateExperimentRunSchema = z
   .object({
     overrides: overridesSchema.optional(),

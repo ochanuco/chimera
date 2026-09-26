@@ -1,8 +1,7 @@
 // 保持期間を過ぎても original を持ち続けている Generation を、purge の後で lossless WebP
 // (~32% 小さく、不透明なら画素同一) へ再圧縮する定期ジョブ (src/index.ts scheduled)。
-// 透過 PNG は変換しない — alpha=0 の下の RGB は lossless 再エンコードでも保存されず、
-// ComfyUI の LoadImage はそこを読むため。PNG の `prompt` text chunk (グラフ) は
-// original が消える前に graph-rescue.ts が comfy_jobs.graph へ救出する。
+// 透過 PNG は変換しない — alpha=0 の下の RGB は lossless 再エンコードでも保存されず、ComfyUI の
+// LoadImage はそこを読むため。PNG の `prompt` text chunk は graph-rescue.ts が先に救出する。
 
 import type { Bindings, GenerationRow } from '../types';
 import { MAX_TRANSFORM_INPUT_BYTES } from './generation-preview';
@@ -10,8 +9,7 @@ import { rescueGraphFromOriginal } from './graph-rescue';
 import { extractPngTextChunk, parsePngDimensions, pngHasTransparency } from './image-meta';
 import { ORIGINAL_RETENTION_DAYS, PURGE_ELIGIBLE_SQL, resolveBatchSize } from './original-purge';
 
-// original-purge.ts の docstring 参照: purge ≤100×5=500 + recompress ≤60×6=360 で
-// Workers Paid の 1000 subrequest 予算に収まるようにしたキャップ。
+// original-purge.ts と合わせて Workers Paid の 1000 subrequest 予算に収まるようにしたキャップ。
 const RECOMPRESS_BATCH_CAP = 60;
 
 export interface RecompressRetainedOriginalsResult {
@@ -35,10 +33,7 @@ async function findRecompressCandidates(db: D1Database, cutoff: string, limit: n
   return results ?? [];
 }
 
-/**
- * 1回分の再圧縮を実行する。env.ORIGINAL_RECOMPRESS が 'on' でなければ (本番は
- * wrangler.jsonc で 'on'、未設定なら無効) クエリすら投げず {converted: 0, kept: 0} を返す。
- */
+/** 1回分の再圧縮を実行する。env.ORIGINAL_RECOMPRESS が 'on' でなければクエリすら投げず {converted: 0, kept: 0} を返す。 */
 export async function recompressRetainedOriginals(
   env: Bindings,
   now: string,
@@ -74,7 +69,6 @@ export async function recompressRetainedOriginals(
     const bytes = new Uint8Array(await object.arrayBuffer());
     const dimensions = parsePngDimensions(bytes);
     if (!dimensions || pngHasTransparency(bytes)) {
-      // 非PNG、または透過あり: このどちらも変換対象外 (ファイル冒頭のコメント参照)。
       await markChecked(generation.id);
       kept += 1;
       continue;
@@ -82,8 +76,7 @@ export async function recompressRetainedOriginals(
 
     const graphPresent = await rescueGraphFromOriginal(env, generation, bytes);
     if (!graphPresent && extractPngTextChunk(bytes, 'prompt') !== null) {
-      // prompt チャンクはあるのに救出できなかった (JSON として不正 / オブジェクトでない):
-      // これから壊すデータに graph が残っているので変換を諦める。
+      // prompt チャンクはあるのに救出できなかった: これから壊すデータに graph が残っているので変換を諦める。
       await markChecked(generation.id);
       kept += 1;
       continue;
@@ -110,9 +103,7 @@ export async function recompressRetainedOriginals(
     }
 
     const webpKey = `generations/${generation.id}/original.webp`;
-    // PUT → D1 更新 → 旧 PNG delete の順: どの段階で落ちても r2_object_key は実在する
-    // オブジェクトを指す (PUT 直後に落ちれば行はまだ旧 PNG を指すだけ、D1 更新直後に
-    // 落ちれば旧 PNG が孤児のまま残るだけで、どちらも original-purge / ingest replay を壊さない)。
+    // PUT → D1 更新 → 旧 PNG delete の順: どの段階で落ちても r2_object_key は実在するオブジェクトを指す。
     await env.IMAGES.put(webpKey, webpBytes, { httpMetadata: { contentType: 'image/webp' } });
     await db
       .prepare('UPDATE generations SET r2_object_key = ?, image_size = ?, original_recompress_checked_at = ? WHERE id = ?')

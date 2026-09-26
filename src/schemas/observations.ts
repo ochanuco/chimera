@@ -2,11 +2,8 @@ import { z } from 'zod';
 
 export const observationOutcomeSchema = z.enum(['accepted', 'rejected', 'inconclusive']);
 
-/**
- * sync の body はファイル単位 (docs/api.md「Observation」)。各要素の検証は行わない —
- * 受理しないレコードは 400 ではなく skipped として返すため、ここでは配列の形だけを見て、
- * 各レコードの妥当性判定は lib/observations.ts (normalizeRecord) に任せる。
- */
+/** sync の body はファイル単位 (docs/api.md「Observation」)。不正レコードは 400 ではなく skipped で返すため、
+ * ここでは配列の形だけ検証し各レコードの妥当性判定は lib/observations.ts (normalizeRecord) に任せる。 */
 export const observationSyncRequestSchema = z.object({
   files: z.array(
     z.object({
@@ -14,9 +11,7 @@ export const observationSyncRequestSchema = z.object({
       records: z.array(
         z.object({
           line: z.number().int().positive(),
-          // record 自身が同じキーを持たないときだけ使う。パスからは推測しない — ディレクトリ名が
-          // character を、ファイル名が component を代表するとは限らない (docs/api.md「Observation」)。
-          // どちらも id の計算には入らない。
+          // record 自身が持たないときだけ使うフォールバック。パスからは推測しない (docs/api.md「Observation」)。id の計算には入らない。
           character: z.string().min(1).optional(),
           component: z.string().min(1).optional(),
           record: z.unknown(),
@@ -26,12 +21,8 @@ export const observationSyncRequestSchema = z.object({
   ),
 });
 
-/**
- * pose / component の少なくとも一方が必須という不変条件 (docs/domain-model.md「Observation」)
- * を REST (createObservationSchema) と MCP tool (record_observation, src/mcp.ts) の両方に
- * 同じ形でかける。MCP 側だけ observed_at を持たない (import 由来の記録専用の欄) ため、
- * refine 前のプレーンな ZodObject をここで export して mcp.ts 側で .omit する。
- */
+/** pose/component の一方必須という不変条件 (docs/domain-model.md「Observation」) を REST と MCP tool 両方にかける。
+ * MCP は observed_at を持たないため、refine 前のプレーン ZodObject を export し mcp.ts 側で .omit する。 */
 export const createObservationObjectSchema = z.object({
   character: z.string().min(1),
   pose: z.string().min(1).optional(),

@@ -1,7 +1,5 @@
-// Batch 集約クエリ。REST (src/routes/batches.ts) と MCP tool `list_batch`
-// (src/mcp.ts) の両方が使う共通部分だけをここに置く — REST の GET /:id は
-// UI 向けにもっと多くのフィールド（siblings 等）を返すため、そちらは
-// 引き続き route 側に持つ。
+// REST (src/routes/batches.ts) と MCP tool `list_batch` の両方が使う共通部分だけをここに置く。
+// REST の GET /:id は UI 向けにさらに多くのフィールド (siblings 等) を返すため route 側に持つ。
 
 import { toBool } from './db';
 import { canonicalGenerationUrl, generationImageUrl, serializeBatch } from './serialize';

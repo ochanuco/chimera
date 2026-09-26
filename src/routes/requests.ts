@@ -20,8 +20,7 @@ import type { AppEnv, RequestKind, RequestStatus } from '../types';
 
 export const requests = new Hono<AppEnv>();
 
-// GET /api/v1/requests/ws (段階3 WorkerHub の viewer 接続) は下の GET /:id より前に
-// 登録すること — Hono のルーターは登録順で "ws" が :id にマッチするのを防ぐ。
+// GET /:id より前に登録すること — Hono は登録順で "ws" が :id にマッチしてしまう。
 requests.get('/ws', viewerWs);
 
 requests.post('/', async (c) => {

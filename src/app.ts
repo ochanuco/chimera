@@ -46,14 +46,9 @@ app.route('/api/v1/style-check', styleCheck);
 app.route('/g', images);
 app.route('/assets', assets);
 
-// stateless な MCP エンドポイント (docs/experiment-agent.md)。
-// Durable Object もセッションも持たない — createMcpHandler 自体が
-// agents パッケージの stateless 実装 (createStatelessMcpHandler)。tool は
-// c.env の D1 / R2 を必要とするため、factory を毎リクエスト c.env に
-// クロージャで束縛する（McpServerFactory 自体は env を受け取らない）。
-// c.executionCtx は Worker 本番では常に存在するが、テストハーネスの
-// app.request(url, init, env) は ExecutionContext を渡さないため未設定
-// でも動くようガードする（createMcpHandler は ctx が undefined でも動作する）。
+// stateless MCP エンドポイント。McpServerFactory は env を受け取らないので、tool が
+// 必要とする c.env の D1/R2 を毎リクエストのクロージャで束縛する。c.executionCtx は
+// テストハーネスの app.request(url, init, env) では未設定になるためガードする。
 app.all('/mcp', (c) => {
   const origin = new URL(c.req.url).origin;
   let executionCtx: unknown;

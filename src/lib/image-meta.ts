@@ -6,10 +6,7 @@ export interface ImageMeta {
   size: number;
 }
 
-/**
- * Reads width/height from the PNG signature + IHDR chunk header (offsets 0-24).
- * Returns null for non-PNG or truncated byte sequences.
- */
+/** Reads width/height from the PNG signature + IHDR chunk header (offsets 0-24); null for non-PNG or truncated input. */
 export function parsePngDimensions(bytes: Uint8Array): { width: number; height: number } | null {
   if (bytes.length < 24 || !PNG_SIGNATURE.every((b, i) => bytes[i] === b)) return null;
 
@@ -22,11 +19,7 @@ interface PngChunk {
   data: Uint8Array;
 }
 
-/**
- * Walks the chunk list of a full (not ranged) PNG buffer. Stops without throwing at the
- * signature, a missing/incomplete chunk header, or a length that overruns the buffer —
- * callers see this as "no more chunks", which is what a truncated/corrupt input should look like.
- */
+/** Walks the chunk list of a full (not ranged) PNG buffer. Stops without throwing on a truncated/corrupt input -- callers just see "no more chunks". */
 function walkPngChunks(bytes: Uint8Array): PngChunk[] {
   if (bytes.length < 8 || !PNG_SIGNATURE.every((b, i) => bytes[i] === b)) return [];
 
@@ -47,10 +40,8 @@ function walkPngChunks(bytes: Uint8Array): PngChunk[] {
 }
 
 /**
- * True when the PNG can carry visible transparency: colour type 4/6 (grey/RGB + alpha) in IHDR,
- * or a `tRNS` chunk (palette/colour-key transparency). Recompression must skip these — the RGB
- * under alpha=0 isn't preserved by a lossless re-encode, and ComfyUI's LoadImage reads it anyway.
- * Returns null for non-PNG bytes or a PNG without a readable IHDR.
+ * True when the PNG can carry visible transparency (colour type 4/6, or a `tRNS` chunk).
+ * Recompression must skip these -- RGB under alpha=0 isn't preserved by a lossless re-encode, and ComfyUI's LoadImage reads it anyway.
  */
 export function pngHasTransparency(bytes: Uint8Array): boolean | null {
   const chunks = walkPngChunks(bytes);
@@ -66,10 +57,8 @@ const LATIN1_DECODER = new TextDecoder('latin1');
 const UTF8_DECODER = new TextDecoder('utf-8');
 
 /**
- * Returns the text of the first `tEXt` or uncompressed `iTXt` chunk whose keyword matches
- * (chunks are checked in file order; compressed `iTXt` and all `zTXt` are ignored since they'd
- * need the same zlib inflate we only have as a CompressionStream, not worth it for a lookup that
- * fails soft anyway). Returns null when absent, not a PNG, or a chunk is malformed.
+ * Returns the text of the first `tEXt` or uncompressed `iTXt` chunk whose keyword matches.
+ * Compressed `iTXt` and all `zTXt` are ignored (would need zlib inflate, not worth it for a lookup that fails soft anyway).
  */
 export function extractPngTextChunk(bytes: Uint8Array, keyword: string): string | null {
   const chunks = walkPngChunks(bytes);
@@ -101,10 +90,9 @@ export function extractPngTextChunk(bytes: Uint8Array, keyword: string): string 
 }
 
 /**
- * Reads resolution + size directly from R2 without any D1 schema change, so it
- * works retroactively on every already-ingested image. A ranged get of the
- * first 26 bytes covers the PNG signature (8B) + IHDR chunk header/width/height
- * (up to offset 24); width/height stay null for non-PNG or truncated objects.
+ * Reads resolution + size directly from R2 without any D1 schema change, so it works
+ * retroactively on every already-ingested image. Ranged get of the first 26 bytes covers
+ * the PNG signature + IHDR width/height; stays null for non-PNG or truncated objects.
  */
 export async function getImageMeta(bucket: R2Bucket, key: string): Promise<ImageMeta | null> {
   const object = await bucket.get(key, { range: { offset: 0, length: 26 } });

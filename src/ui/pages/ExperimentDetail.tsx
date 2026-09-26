@@ -130,10 +130,7 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-/**
- * Base run for a delta: the run named by parent_run_id when set, else the
- * previous entry in the (run_index ASC) list, else none.
- */
+/** Base run for a delta: parent_run_id when set, else the previous entry in the (run_index ASC) list, else none. */
 function findBaseRun(run: ExperimentDetailRun, runs: ExperimentDetailRun[]): ExperimentDetailRun | null {
   if (run.parent_run_id) {
     return runs.find((r) => r.id === run.parent_run_id) ?? null;
@@ -158,13 +155,8 @@ function renderDeltaLine(entry: ReturnType<typeof diffOverrides>[number]) {
 
 type Patch = Record<string, unknown>;
 
-/**
- * Recognizes the comfyui-recipes patch shape (`overrides.patches`): an array
- * whose entries are all plain objects. Chimera never validates the entries
- * themselves (target/op/value are opaque to it) — this is purely a rendering
- * hint, so anything else (missing key, non-array, an array with a non-object
- * entry) returns null and callers fall back to the leaf diff.
- */
+/** Recognizes the comfyui-recipes patch shape (`overrides.patches`): array of plain objects, opaque to chimera
+ * (target/op/value not validated) — purely a rendering hint; anything else falls back to the leaf diff. */
 function readPatches(overrides: JsonObject): Patch[] | null {
   const patches = overrides.patches;
   if (!Array.isArray(patches)) return null;
@@ -196,12 +188,8 @@ function renderPatchLine(patch: Patch, marker: 'added' | 'removed' | 'kept') {
   );
 }
 
-/**
- * `overrides.patches` is already a diff against the base recipe, so comparing
- * two runs' patch lists leaf-by-leaf (via diffOverrides) collapses to one
- * unreadable "patches[] changed" entry. Instead show this run's patch list
- * directly, marking each line against the base run's list by JSON identity.
- */
+/** `overrides.patches` is already a diff against the base recipe, so leaf-diffing two patch lists (via diffOverrides)
+ * collapses to one unreadable "patches[] changed" entry; instead each line is marked against the base run's list by JSON identity. */
 function countByKey(patches: Patch[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const patch of patches) {
@@ -211,12 +199,8 @@ function countByKey(patches: Patch[]): Map<string, number> {
   return counts;
 }
 
-/**
- * `basePatches` が null のときは比較相手のない最初の Run。その patch は
- * 「前回からの追加」ではないので marker を付けない。
- * 同一 patch が複数入りうるので Set ではなく多重集合として突き合わせる。
- * patch を全部外した Run も変更なので、removed 行だけが残る場合はそれを出す。
- */
+/** basePatches が null なら比較相手のない最初の Run（marker なし）。同一 patch が複数入りうるので多重集合として突き合わせ、
+ * patch を全部外した Run は removed 行だけが残ることで変更ありと分かる。 */
 function renderPatchDelta(runPatches: Patch[], basePatches: Patch[] | null, label: string) {
   const remaining = countByKey(basePatches ?? []);
   const lines = runPatches.map((patch) => {
@@ -247,8 +231,7 @@ function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
   const label = base ? `Changed from #${base.run_index}` : 'Initial overrides';
   const runPatches = readPatches(run.overrides);
   if (runPatches) {
-    // base が patch 形式でないなら比較軸が違う。patch リストとして突き合わせると
-    // base 側の中身が全部消えたように見えるので、その組み合わせは leaf diff に落とす。
+    // base が patch 形式でないと突き合わせ軸が違い base 側が全部消えたように見えるため、その組み合わせは leaf diff に落とす。
     const basePatches = base ? readPatches(base.overrides) : null;
     if (!base || basePatches) {
       return renderPatchDelta(runPatches, basePatches, label);
@@ -440,11 +423,8 @@ function passOnePrompt(facts: RenderFacts | null, polarity: 'positive' | 'negati
   return facts?.samplers[0]?.prompt[polarity] ?? null;
 }
 
-/**
- * Prompt rows below the patches breakdown: the baseline's own pass-1 positive/negative (omitted
- * when null), then for every other Run the same pair but only when it differs from the
- * baseline's — rendered diffed against it so added/removed/weight-changed chips stand out.
- */
+/** Prompt rows below the patches breakdown: baseline's own pass-1 positive/negative (omitted when null), then each
+ * other Run's pair only when it differs from baseline's, diffed against it so added/removed/weight-changed chips stand out. */
 function renderExpFactsPromptRows(runs: ExperimentDetailRun[], baseline: ExperimentDetailRun | null, columnCount: number) {
   if (!baseline) return null;
 
@@ -484,12 +464,8 @@ function renderExpFactsPromptRows(runs: ExperimentDetailRun[], baseline: Experim
   ));
 }
 
-/**
- * Facts table above the per-run list: one row per Run with its render_facts summary and
- * variables, plus a patches breakdown below. Shown only when at least one Run carries
- * render_facts or variables — most Experiments never got this far, and an all-empty table
- * would just be noise.
- */
+/** Facts table above the per-run list: one row per Run with render_facts summary + variables, plus a patches
+ * breakdown below. Shown only when at least one Run carries render_facts or variables, to avoid an all-empty table. */
 function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDetailRun | null) {
   const hasAnything = runs.some((r) => r.render_facts !== null || (r.variables && Object.keys(r.variables).length > 0));
   if (!hasAnything) return null;

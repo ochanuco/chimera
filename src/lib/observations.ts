@@ -1,7 +1,5 @@
-// Observation のクエリ。REST (src/routes/observations.ts) と MCP tools
-// list_observations / get_observation / record_observation (src/mcp.ts) の両方が
-// ここを呼ぶ。sync (JSONL からの取り込み) と1件書く createObservation は経路が
-// 違うが、id の計算規則 (observationId) はどちらも共有する。
+// REST (src/routes/observations.ts) と MCP tools (src/mcp.ts) の両方がここを呼ぶ。
+// sync (JSONL 取り込み) と createObservation は経路が違うが、id の計算規則 (observationId) は共有する。
 
 import { nowIso, chunk, D1_MAX_BOUND_PARAMS, type Pagination } from './db';
 import { stableStringify } from './json-canonical';
@@ -12,9 +10,7 @@ const OUTCOMES: readonly ObservationOutcome[] = ['accepted', 'rejected', 'inconc
 
 /**
  * `{ path, line, record }` の正規化 JSON の SHA-256 (docs/domain-model.md「Observation」)。
- * `record` は変換前の元レコードそのもの — 正規化ロジック (not adopted の読み替え、形 C の
- * 変換) を後から直しても既存行の id が動かないようにするため。sync 由来でない直接書き込み
- * (createObservation) には実ファイルが無いので `path: 'direct', line: 0` を使う。
+ * `record` は変換前の元レコードそのもの — 正規化ロジックを後から直しても既存行の id が動かないようにするため。
  */
 export async function observationId(envelope: { path: string; line: number; record: unknown }): Promise<string> {
   const bytes = new TextEncoder().encode(stableStringify(envelope));
@@ -57,10 +53,8 @@ function normalizeGenerationIds(value: unknown): string[] | null {
 }
 
 /**
- * 実験のアーム (Batch と seed を指名し、verdict / observation を持つ形) のうち、axis と
- * arms を持つ形（形 C）だけは Observation に変換して受理する (docs/domain-model.md
- * 「実験のアームは Observation ではない」)。アーム分けそのもの (どの arm が選ばれたか) は
- * chimera に対応する行が無いので持ち込まず、JSONL 側に残す。
+ * axis/arms を持つ形（形 C）のみ Observation に変換して受理する (docs/domain-model.md
+ * 「実験のアームは Observation ではない」)。どの arm が選ばれたかは対応する行が無いため持ち込まない。
  */
 function transformFormC(r: Record<string, unknown>): Record<string, unknown> {
   const arms = r.arms;
@@ -82,11 +76,7 @@ function transformFormC(r: Record<string, unknown>): Record<string, unknown> {
 }
 
 export interface NormalizeOptions {
-  /**
-   * record 自身が同じキーを持たないときだけ使う値。sync の records 要素が明示したもので、
-   * パスからは推測しない — ディレクトリ名が character を、ファイル名が component を代表する
-   * とは限らない (docs/api.md「Observation」)。どちらも id の計算には入らない。
-   */
+  /** record 自身が同じキーを持たないときだけ使う値。パスからは推測しない（ディレクトリ名やファイル名が character/component を代表するとは限らない）。id の計算には入らない。 */
   character?: string;
   component?: string;
 }
@@ -100,8 +90,7 @@ export function normalizeRecord(record: unknown, options: NormalizeOptions = {})
 
   const hasAxisArms = 'axis' in r && 'arms' in r;
 
-  // アームの判定を先に置く。pose も component も持たないアームに 'no pose or component' を
-  // 返すと、読んだ人が「ラベルを足せば入る」と読む。実際は形が違うので入らない。
+  // アーム判定を先に置く: 'no pose or component' を先に返すと「ラベルを足せば入る」と誤読される。
   if (!hasAxisArms && ('verdict' in r || 'observation' in r || 'arms' in r)) {
     return { ok: false, reason: 'experiment arm, not an observation' };
   }
@@ -132,8 +121,6 @@ export function normalizeRecord(record: unknown, options: NormalizeOptions = {})
   const reason = nonEmptyString(fields.reason);
   const value = stringifyValue(fields.value);
   if (character === null || parameter === null || value === null || reason === null) {
-    // どのフィールドかを言う。送り手が封筒に足せば直るのか、レコード自体が観測でないのかを
-    // レスポンスだけで判断できるようにするため。
     const missing = [
       character === null ? 'character' : null,
       parameter === null ? 'parameter' : null,
@@ -192,10 +179,8 @@ const INSERT_COLUMNS =
    generation_ids_json, recipe, observed_at, supersedes_id, source, created_at`;
 
 /**
- * files を丸ごと冪等に upsert する。同じ (path, line) は同じ id になるので何度送っても
- * 行は増えない (docs/domain-model.md「Observation」)。payload に無い既存行は消さない
- * (sync は追加のみ)。import 由来の行は supersedes_id を持たない不変条件があるため、
- * レコードにその欄があっても読まず常に NULL を書く。
+ * files を丸ごと冪等に upsert する。同じ (path, line) は同じ id になるので何度送っても行は増えない。
+ * payload に無い既存行は消さない (sync は追加のみ)。import 由来の行は supersedes_id を持たない不変条件のため常に NULL を書く。
  */
 export async function syncObservations(db: D1Database, files: SyncFile[]): Promise<SyncResult> {
   const now = nowIso();
@@ -289,11 +274,7 @@ function serializeObservation(row: ObservationRow): ObservationSummary {
   };
 }
 
-/**
- * MCP / GUI から1件書く (docs/api.md「Observation」)。id は sync と同じ content-hash
- * 規則 (`path: 'direct', line: 0`) で計算するので、同じ内容の呼び出しは新しい行を
- * 作らずに既存行をそのまま返す (冪等)。
- */
+/** MCP / GUI から1件書く。id は sync と同じ content-hash 規則で計算するので同じ内容の呼び出しは冪等。 */
 export async function createObservation(
   db: D1Database,
   input: CreateObservationInput,
@@ -314,8 +295,7 @@ export async function createObservation(
     observed_at: input.observed_at ?? null,
     supersedes_id: input.supersedes_id ?? null,
   };
-  // 直接書き込みの id は内容ではなく idempotency_key から作る。内容から作ると、同期側と
-  // 同じ理由で再測定が黙って消える (docs/domain-model.md「Observation」不変条件)。
+  // id は内容ではなく idempotency_key から作る。内容から作ると再測定が黙って消える (sync 側と同じ理由)。
   const id = await observationId({ path: 'direct', line: 0, record: { idempotency_key: input.idempotency_key } });
   const now = nowIso();
 
