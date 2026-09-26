@@ -205,39 +205,11 @@ file yk-lineT3_00001_.png
 ## UC-15: overrideを変えながら検証を反復する
 
 人間 / Claude / Agent いずれかが検証テーマとして Experiment
-を作成します。
+を作成し、override を変えた Run の生成、評価、decision の記録を繰り返します。
+次の Run は decision を踏まえて `parent_run_id` に前 Run を指定して作り、安定するまで繰り返します。
 
-``` text
-POST /api/v1/experiments
-```
-
-Runを作成し、overrideを添えて生成を実行します。
-
-``` text
-POST /api/v1/experiments/{id}/runs
-```
-
-生成完了後、対応する Batch / Generation を Run へ紐付けます。
-
-``` text
-PATCH /api/v1/experiment-runs/{run_id}
-```
-
-結果を評価し、次の一手を decision として記録します。
-
-``` text
-PATCH /api/v1/experiment-runs/{run_id}
-```
-
-``` json
-{
-  "evaluation": { "overall": "fail" },
-  "decision": { "action": "retry", "next_overrides": { "...": "..." } }
-}
-```
-
-decisionのnext_overridesを踏まえ、`parent_run_id`
-に前Runを指定して次のRunを作成します。安定するまで繰り返します。
+1周の流れは [experiment-agent.md「1サイクル」](experiment-agent.md#1サイクル)、
+各エンドポイントは [api.md](api.md) を参照してください。
 
 ## UC-16: 安定した条件をcomfyui-recipesへ昇格する
 
@@ -274,19 +246,9 @@ PATCH /api/v1/promotions/{promotion_id}
 
 ## UC-17: AgentがExperimentサイクルを回す
 
-Agent が Git リポジトリへの書き込み権限を持たなくても、以下がAPIだけで完結します。
+Agent が Git リポジトリへの書き込み権限を持たなくても、過去 Run の読み取りから
+Run の作成、生成結果の紐付け、evaluation / decision の記録、必要なら Promotion の提案
+（`POST /api/v1/experiments/{id}/promotions`）までが chimera だけで完結します。
 
-``` text
-GET   /api/v1/experiments/{id}          # Experiment取得（過去Run込み）
-GET   /api/v1/generations/{id}/context  # 参照するGenerationのcontext取得
-POST  /api/v1/experiments/{id}/runs     # override決定→Run作成
-PATCH /api/v1/experiment-runs/{run_id}  # 生成結果の紐付け、evaluation/decision保存
-POST  /api/v1/experiments/{id}/promotions  # 必要ならPromotion提案
-```
-
-Agentが通常操作してはいけないもの:
-
--   comfyui-recipesの任意ファイル編集
--   recipe自体の直接変更
--   既存Experiment履歴の破壊的変更
--   過去Runの削除
+手順は [experiment-agent.md「1サイクル」](experiment-agent.md#1サイクル)、
+Agent に許さない操作は [「生やさない操作」](experiment-agent.md#生やさない操作) を参照してください。

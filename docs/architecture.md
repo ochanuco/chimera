@@ -242,6 +242,6 @@ self-approve の制限に当たらないようにします。`production` は昇
 ありません。rollback は Cloudflare の Workers versions から前バージョンを選ぶか、main を
 戻して再昇格します。
 
-`recipe_ref` の既定（wrangler var `REQUESTS_DEFAULT_RECIPE_REF`）は comfyui-recipes 側の
-box が `production` を checkout した時点で `main` から `production` に戻します
+`recipe_ref` の既定（wrangler var `REQUESTS_DEFAULT_RECIPE_REF`）は `production` です。
+comfyui-recipes 側の box は `production` を checkout して動きます
 （[worker-protocol.md](worker-protocol.md)）。
