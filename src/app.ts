@@ -46,7 +46,7 @@ app.route('/api/v1/style-check', styleCheck);
 app.route('/g', images);
 app.route('/assets', assets);
 
-// Cloudflare OS 上の Agent 用の stateless MCP エンドポイント (docs/experiment-agent.md)。
+// stateless な MCP エンドポイント (docs/experiment-agent.md)。
 // Durable Object もセッションも持たない — createMcpHandler 自体が
 // agents パッケージの stateless 実装 (createStatelessMcpHandler)。tool は
 // c.env の D1 / R2 を必要とするため、factory を毎リクエスト c.env に

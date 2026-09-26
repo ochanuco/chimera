@@ -31,7 +31,6 @@ characters.post('/', async (c) => {
       .bind(row.id, row.name, row.aliases)
       .run();
   } catch (err) {
-    // Check if this is a unique constraint violation on name
     if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
       throw conflict(`character with name '${body.name}' already exists`);
     }

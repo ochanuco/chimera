@@ -783,7 +783,6 @@ describe('GET /api/v1/requests', () => {
     const finalizeA = await createFinalizeRequest(gA.id);
     const finalizeB = await createFinalizeRequest(gB.short_id);
 
-    // status
     const queuedList = await getJson<{ items: RequestBody[] }>('/api/v1/requests?status=queued&limit=200');
     expect(queuedList.body.items.map((r) => r.id)).toEqual(
       expect.arrayContaining([generateReq.body.id, finalizeA.body.id, finalizeB.body.id]),
@@ -796,7 +795,6 @@ describe('GET /api/v1/requests', () => {
     const pendingAfterClaim = await getJson<{ items: RequestBody[] }>('/api/v1/requests?pending=true&limit=200');
     expect(pendingAfterClaim.body.items.map((r) => r.id)).not.toContain(generateReq.body.id);
 
-    // kind
     const finalizeList = await getJson<{ items: RequestBody[] }>('/api/v1/requests?kind=finalize&limit=200');
     expect(finalizeList.body.items.every((r) => r.kind === 'finalize')).toBe(true);
     expect(finalizeList.body.items.map((r) => r.id)).toEqual(expect.arrayContaining([finalizeA.body.id, finalizeB.body.id]));
