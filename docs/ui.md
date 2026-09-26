@@ -674,6 +674,7 @@ cowboy    coffee
 cowboy    gao
 full      step
 full      dance
+full      anyo
 ```
 
 ポーズごとに1行、左右2カラムで並べます。
