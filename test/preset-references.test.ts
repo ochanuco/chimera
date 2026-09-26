@@ -6,8 +6,7 @@ function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
 }
 
-// presets は recipe_ref ではなく (recipe, kind, name, version) で一意なので、recipe
-// 名自体をテストごとにユニークにする (test/preset-promote.test.ts と同じ理由)。
+// presets は recipe_ref ではなく (recipe, kind, name, version) で一意なので recipe 名自体をテストごとにユニークにする (test/preset-promote.test.ts と同じ理由)。
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
 }
@@ -111,12 +110,9 @@ async function setRatingGood(generationId: string): Promise<void> {
 
 /**
  * Builds a raw (non-refinement) Batch + Generation for `recipe`, and — unless `withPin` is
- * false — a matching kind=generate request that pins `parameters.pose` (the pin
- * set_pose_reference later reads to confirm the resolved Batch drew this pose). Marks the
- * request `done` against the created Batch so its `json_extract(result_json, '$.batch_id')`
- * lookup finds it. `patches`, when given, land on the Batch row itself (`patches_json` /
- * `pose_fingerprint`). `generationPayload`, when given, is merged into the pinning request's
- * `payload.generation` (used to simulate a prompt override).
+ * false — a matching kind=generate request pinning `parameters.pose`, marked `done` against the
+ * created Batch (so set_pose_reference's result-lookup finds it). `patches` land on the Batch row
+ * itself; `generationPayload` merges into the pinning request (to simulate a prompt override).
  */
 async function setupGeneration(
   recipe: string,
@@ -164,11 +160,10 @@ async function setupGeneration(
 }
 
 /**
- * Builds a refinement Batch (the shape finalize/repair leave behind): a Batch whose generation
- * is wired back to `source` via `batch_relations` (type=refinement) and `batch_references`
- * (purpose=rebuild) — the two tables resolveDerivationSource (lib/requests.ts) walks. Modeled on
- * test/mcp-agent-loop.test.ts's createRefinementBatch. Uses a different seed than `source` so a
- * test can tell whether set_pose_reference read the source's seed rather than this one's.
+ * Builds a refinement Batch (the shape finalize/repair leave behind): wired back to `source` via
+ * batch_relations (type=refinement) and batch_references (purpose=rebuild) — the two tables
+ * resolveDerivationSource (lib/requests.ts) walks. Uses a different seed than `source` so a test
+ * can tell whether set_pose_reference read the source's seed rather than this one's.
  */
 async function createRefinementBatch(source: { batch: { id: string }; generation: { id: string } }) {
   const refinementBatch = await createBatch({

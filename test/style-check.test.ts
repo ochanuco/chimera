@@ -2,10 +2,9 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createGeneration, getJson, mcpToolCall, postJson, req } from './helpers';
 
-// STYLE_CHECK_RECIPE / STYLE_CHECK_POSES (src/lib/style-check.ts) hardcode 'yukari', and
-// defaultRecipeRef (src/lib/requests.ts) falls back to 'production' when
-// REQUESTS_DEFAULT_RECIPE_REF is unset (as in this test env) — so both are fixed here rather
-// than uniqued per test like other suites do.
+// STYLE_CHECK_RECIPE/POSES (src/lib/style-check.ts) hardcode 'yukari', and defaultRecipeRef
+// falls back to 'production' when REQUESTS_DEFAULT_RECIPE_REF is unset — so both are fixed
+// here rather than uniqued per test like other suites do.
 const RECIPE = 'yukari';
 const RECIPE_REF = 'production';
 

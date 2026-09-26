@@ -256,13 +256,13 @@ describe('Web GUI pages', () => {
 
   it('GET /g/{short_id} shows the resolution from D1 columns even when the R2 object is gone', async () => {
     const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
-      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
-      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
       0x00, 0x00, 0x01, 0x00, // width = 256
       0x00, 0x00, 0x00, 0x80, // height = 128
-      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
-      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+      0x08, 0x06, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
     ]);
     const batch = await createBatch();
     const job = await createJob(batch.body.id);
@@ -273,9 +273,8 @@ describe('Web GUI pages', () => {
     );
     expect(ingest.status).toBe(201);
 
-    // Proves the meta banner comes from the persisted D1 columns, not a fresh
-    // R2 ranged get: getImageMeta would return null width/height (or fail
-    // entirely) once the object is gone.
+    // Confirms the banner reads persisted D1 columns, not R2: a ranged get against
+    // the now-deleted object would return null/fail.
     await env.IMAGES.delete(ingest.body.r2_object_key);
 
     const res = await req(`/g/${ingest.body.short_id}`);
@@ -287,13 +286,13 @@ describe('Web GUI pages', () => {
 
   it('GET /g/{short_id} falls back to an R2 read when the D1 image_size column is NULL (pre-backfill row)', async () => {
     const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
-      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
-      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
       0x00, 0x00, 0x00, 0x64, // width = 100
       0x00, 0x00, 0x00, 0x32, // height = 50
-      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
-      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+      0x08, 0x06, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
     ]);
     const batch = await createBatch();
     const job = await createJob(batch.body.id);
@@ -317,13 +316,13 @@ describe('Web GUI pages', () => {
 
   it('GET /gallery card omits resolution/file size; Generation Detail shows them', async () => {
     const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // signature
-      0x00, 0x00, 0x00, 0x0d, // IHDR length = 13
-      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
       0x00, 0x00, 0x03, 0x00, // width = 768
       0x00, 0x00, 0x03, 0x00, // height = 768
-      0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
-      0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
+      0x08, 0x06, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
     ]);
     const batch = await createBatch();
     const job = await createJob(batch.body.id);
@@ -683,9 +682,8 @@ describe('Web GUI pages', () => {
 
     const res = await req('/bookmarks');
     const html = await res.text();
-    // sourceGen's own card is absent (view=refined hides raw generations); its short_id can still
-    // appear inside the refined card's "from <short_id>" badge (GenerationCard), so assert on the
-    // card link specifically rather than the bare short_id string.
+    // sourceGen's short_id can still appear inside the refined card's "from" badge, so assert on
+    // the card link specifically rather than the bare short_id string.
     expect(html).not.toContain(`href="/g/${sourceGen.short_id}"`);
     expect(html).toContain(refined.generation.short_id);
 
@@ -794,9 +792,7 @@ describe('Web GUI pages', () => {
     const res = await req(`/g/${middleGen.short_id}`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    // 親 shows the material this Generation's own Batch referenced.
     expect(html).toContain(material.short_id);
-    // 子 shows the Batch that used this Generation as material.
     expect(html).toContain(consumer.body.short_id);
   });
 
@@ -869,10 +865,8 @@ describe('Web GUI pages', () => {
     expect(body).toContain(g2.short_id);
     expect(body).toContain('standing');
     expect(body).toContain('class="diff"');
-    // With only 2 real-value lanes, the consensus 3-step degenerates to same/uniq (no partial):
-    // g1's "standing" matches no other lane, g2's "sitting" matches no other lane, so both render
-    // as tok-uniq — each cell shows only its own text, never the other lane's. (The legend itself
-    // carries a sample tok-partial span, so scope the "no partial" check to the table body.)
+    // With only 2 lanes, consensus degenerates to same/uniq (no partial) — the legend itself has a
+    // sample tok-partial span, so scope the "no partial" check to the table body.
     const tableBody = body.slice(body.indexOf('<tbody>'));
     expect(tableBody).toContain('class="tok-uniq"');
     expect(tableBody).not.toContain('class="tok-partial"');
@@ -880,8 +874,6 @@ describe('Web GUI pages', () => {
     expect(body).toMatch(/<span class="tok-uniq">[^<]*sitting[^<]*<\/span>/);
     expect(body).toContain('class="compare-legend"');
 
-    // Locate the pose row and check each cell's own <td>...</td> in isolation: g1's cell must not
-    // contain "sitting", and g2's cell must not contain "standing".
     const poseRowMatch = body.match(/<tr><td>pose<\/td>(.*?)<\/tr>/s);
     expect(poseRowMatch).not.toBeNull();
     const poseCells = [...poseRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
@@ -941,17 +933,11 @@ describe('Web GUI pages', () => {
     const poseCells = [...poseRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
     expect(poseCells).toHaveLength(3);
 
-    // g1 "standing on grass": "standing" matches neither other lane (uniq); " on " matches both
-    // (plain, no span); "grass" matches g2 only, not g3 (partial). Never shows "sitting"/"sand".
+    // Per-word consensus: a word shared by all lanes renders plain; shared by exactly 2 renders
+    // tok-partial; unique to one lane renders tok-uniq. g2's row is fully tok-partial (no uniq).
     expect(poseCells[0]).toBe('<span class="tok-uniq">standing</span> on <span class="tok-partial">grass</span>');
-
-    // g2 "sitting on grass": "sitting" matches g3 only (partial); " on " matches both (plain);
-    // "grass" matches g1 only (partial). Nothing in this row is g2-unique.
     expect(poseCells[1]).toBe('<span class="tok-partial">sitting</span> on <span class="tok-partial">grass</span>');
     expect(poseCells[1]).not.toContain('tok-uniq');
-
-    // g3 "sitting on sand": "sitting" matches g2 only (partial); " on " matches both (plain);
-    // "sand" matches neither other lane (uniq).
     expect(poseCells[2]).toBe('<span class="tok-partial">sitting</span> on <span class="tok-uniq">sand</span>');
   });
 
@@ -974,16 +960,12 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const body = await res.text();
 
-    // With only 2 real-value lanes, consensus degenerates to same/uniq (no partial). (The legend
-    // carries a sample tok-partial span, so scope the "no partial" check to the table body.)
     const tableBody = body.slice(body.indexOf('<tbody>'));
     expect(tableBody).toContain('class="tok-uniq"');
     expect(tableBody).not.toContain('class="tok-partial"');
     expect(body).toMatch(/<span class="tok-uniq">[^<]*sleeping[^<]*<\/span>/);
     expect(body).toMatch(/<span class="tok-uniq">[^<]*sitting[^<]*<\/span>/);
 
-    // Each lane shows only its own text: g1's summary cell never shows "sleeping"/"sofa", and
-    // g2's cell never shows "sitting"/"chair".
     const summaryRowMatch = body.match(/<tr><td>summary<\/td>(.*?)<\/tr>/s);
     expect(summaryRowMatch).not.toBeNull();
     const summaryCells = [...summaryRowMatch![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]!);
@@ -1055,9 +1037,8 @@ describe('Web GUI pages', () => {
 });
 
 describe('Finalize profiles and word dials (GUI)', () => {
-  // claimRequest claims the oldest queued row of its kind regardless of test — other tests in
-  // this file post finalize requests without ever completing them, which would otherwise starve
-  // our claim() calls here (same reason test/finalize-profiles.test.ts resets this table).
+  // Other tests in this file post finalize requests without completing them, which would starve
+  // our claim() calls (same reason test/finalize-profiles.test.ts resets this table).
   beforeEach(async () => {
     await env.DB.prepare('DELETE FROM requests').run();
   });
@@ -1105,10 +1086,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
     worker_id: string | null;
   }
 
-  /**
-   * A raw (source) Generation plus a finalize request against it, claimed and marked done against
-   * a second (delivered) Generation — mirrors test/finalize-profiles.test.ts's createFinalizeResult.
-   */
+  /** Mirrors test/finalize-profiles.test.ts's createFinalizeResult: claims and completes a finalize request. */
   async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
     const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
     const { batch: deliveredBatch, generation: delivered } = await createGeneration({ batchOverrides: { recipe } });
@@ -1306,10 +1284,8 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     const html = await res.text();
 
     expect(html).toContain('class="family-strip"');
-    // 親: the owning Batch's own reference material, rendered as a Generation thumbnail card.
     expect(html).toContain(`src="/g/${material.short_id}/preview"`);
     expect(html).toContain(`href="/g/${material.short_id}"`);
-    // 子: the Batch that used this Generation as material, rendered as a Batch card.
     expect(html).toContain(`href="/b/${consumer.body.short_id}"`);
     expect(html).toContain('rel-badge rel-reference');
   });
@@ -1327,14 +1303,13 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
 
-    // 親: batchA is the retry source of the owning Batch (batchB) -- a Batch-level relation, so
-    // the card is annotated "via batch" to distinguish it from the Generation-level material cards.
+    // batchA is a Batch-level retry relation, so its card is annotated "via batch" to distinguish
+    // it from the Generation-level material cards.
     expect(html).toContain(`href="/b/${batchA.short_id}"`);
     expect(html).toContain('via batch');
     expect(html).toContain('reason: retry composition');
     expect(html).toContain('rel-badge rel-refinement');
 
-    // 子: batchC is the retry target of the owning Batch.
     expect(html).toContain(`href="/b/${batchC.body.short_id}"`);
     expect(html).toContain('reason: retry lighting');
   });
@@ -1585,8 +1560,7 @@ describe('Experiments pages', () => {
 
   it('GET /experiments/{short_id} shows the override delta of each run against its base', async () => {
     const experiment = await createExperiment({ base_recipe: 'dq3', description: 'legwear separation' });
-    // 非 patch 形式の overrides は API のエンベロープ検証を通らないため、leaf diff
-    // 表示経路をテストするにはここだけ env.DB へ直接 INSERT する。
+    // 非 patch 形式の overrides は API のエンベロープ検証を通らないため、leaf diff 経路のテストのため env.DB へ直接 INSERT する。
     const now = new Date().toISOString();
     const firstId = crypto.randomUUID();
     const secondId = crypto.randomUUID();
@@ -1651,8 +1625,7 @@ describe('Experiments pages', () => {
 
   it('GET /experiments/{short_id} falls back to the leaf diff when overrides.patches is not a patch list', async () => {
     const experiment = await createExperiment({ base_recipe: 'dq3' });
-    // patches はあるが中身がオブジェクトでない (patch 形式と誤認してはいけない) —
-    // これも API のエンベロープ検証を通らないため env.DB へ直接 INSERT する。
+    // patches はあるが中身がオブジェクトでない (patch 形式と誤認してはいけない) ので env.DB へ直接 INSERT する。
     const now = new Date().toISOString();
     const firstId = crypto.randomUUID();
     const secondId = crypto.randomUUID();
@@ -2056,8 +2029,6 @@ describe('Experiment run patch delta matching', () => {
     const experiment = await postJson<{ id: string; short_id: string }>('/api/v1/experiments', {
       name: `ui-exp-match-${crypto.randomUUID().slice(0, 8)}`,
     });
-    // base run の overrides は非 patch 形式 (leaf diff フォールバックを起こすため) なので
-    // API のエンベロープ検証を通らず env.DB へ直接 INSERT する。
     const now = new Date().toISOString();
     const baseId = crypto.randomUUID();
     await env.DB.prepare(

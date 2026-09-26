@@ -60,10 +60,8 @@ describe('foldRequestPayloadPrompts', () => {
       old: foldPromptText('old positive text'),
       value: foldPromptText('new positive text'),
     });
-    // Non-prompt patch target: untouched.
     expect(folded.generation.patches[1]).toEqual(payload.generation.patches[1]);
     expect(folded.request).toEqual(payload.request);
-    // Input not mutated.
     expect(payload).toEqual(snapshot);
   });
 

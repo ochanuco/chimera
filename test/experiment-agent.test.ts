@@ -88,8 +88,7 @@ describe('GET /api/v1/experiment-runs?pending=true', () => {
   });
 
   it('returns only runs without a batch, oldest first, with experiment context including base_parameters', async () => {
-    // base_recipe が無い Experiment: Run 作成時に requests 行が自動起票されないので
-    // pending=true の対象に残る (base_recipe 有りの場合は別の describe ブロックで検証)。
+    // base_recipe が無い Experiment は Run 作成時に requests 行が自動起票されないので pending=true の対象に残る。
     const exp = await createExperiment({ base_parameters: { pose: 'lounge', count: 3 } });
     const r1 = await createRun(exp.body.id);
     const r2 = await createRun(exp.body.id);
@@ -418,8 +417,7 @@ describe('MCP get_generation_image', () => {
 
   it('refuses a source over the transform input limit without touching the binding', async () => {
     const { generation } = await createGeneration();
-    // ingest 済みの R2 オブジェクトを直接 20MB 超へ差し替える。.input() の上限
-    // チェックが transform を試みる前に効くことだけを確認する。D1 行はそのまま。
+    // R2 オブジェクトを直接 20MB 超へ差し替え、.input() の上限チェックが transform を試みる前に効くことを確認する。
     const key = `generations/${generation.id}/original.png`;
     await env.IMAGES.put(key, new Uint8Array(20 * 1024 * 1024 + 1));
 
@@ -444,8 +442,7 @@ describe('MCP get_generation_image', () => {
 
   it('falls back to the canonical URL when the transform fails and the original is over the inline cap', async () => {
     const { generation } = await createGeneration();
-    // 壊れたオブジェクトを inline cap 超のサイズで用意し、フォールバックも
-    // ポインタに落ちることを確認する。
+    // 壊れたオブジェクトを inline cap 超のサイズで用意し、フォールバックもポインタに落ちることを確認する。
     const key = `generations/${generation.id}/original.png`;
     await env.IMAGES.put(key, new Uint8Array(701 * 1024));
 
@@ -514,9 +511,8 @@ describe('MCP tool annotations', () => {
     ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint, name).toBe(true);
     }
-    // 副作用のある tool は承認キューに入るべきなので、readOnlyHint を主張しない。
-    // 追記専用なので destructiveHint: false と idempotentHint: true は主張する (ChatGPT の
-    // 安全性チェックは未注釈の書き込み tool を破壊的とみなして呼び出し前に落とす)。
+    // 副作用のある tool は承認キューに入るので readOnlyHint は主張しない。追記専用なので destructiveHint: false /
+    // idempotentHint: true は主張する (ChatGPT の安全性チェックは未注釈の書き込み tool を破壊的とみなして落とす)。
     for (const name of [
       'create_run',
       'attach_generation',

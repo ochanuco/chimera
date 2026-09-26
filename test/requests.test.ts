@@ -586,8 +586,7 @@ describe('POST /api/v1/requests/claim', () => {
     expect(reclaimed.body!.id).toBe(created.body.id);
     expect(reclaimed.body!.attempt).toBe(2);
     expect(reclaimed.body!.worker_id).toBe('worker-b');
-    // claim route が requeueStaleRunning (src/lib/requests.ts, WorkerHub の alarm と共有) を
-    // 経由しても、回収した行を素通りせずちゃんと running に載せ替えていること。
+    // claim route が requeueStaleRunning (WorkerHub の alarm と共有) を経由しても running に載せ替わっていること。
     expect(reclaimed.body!.heartbeat_at).not.toBe(staleHeartbeat);
   });
 
@@ -799,7 +798,6 @@ describe('GET /api/v1/requests', () => {
     expect(finalizeList.body.items.every((r) => r.kind === 'finalize')).toBe(true);
     expect(finalizeList.body.items.map((r) => r.id)).toEqual(expect.arrayContaining([finalizeA.body.id, finalizeB.body.id]));
 
-    // run_id
     const runList = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?run_id=${run.body.id}`);
     expect(runList.body.items.map((r) => r.id)).toEqual([generateReq.body.id]);
 
