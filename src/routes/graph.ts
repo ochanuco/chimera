@@ -42,9 +42,8 @@ interface StoryEdgeRow {
   relation_label: string | null;
 }
 
-// GET /api/v1/graph — the whole-history provenance graph. Batches are nodes;
-// the three Relation Separation kinds (docs/domain-model.md) become distinctly
-// typed edges so the GUI can render them without conflating meaning.
+// Batches are nodes; the three Relation Separation kinds (docs/domain-model.md)
+// become distinctly typed edges so the GUI doesn't conflate their meaning.
 graph.get('/', async (c) => {
   const db = c.env.DB;
 
@@ -61,8 +60,7 @@ graph.get('/', async (c) => {
          ORDER BY b.created_at ASC, b.id ASC`,
       )
       .all<BatchNodeRow>(),
-    // One bulk query for every Batch's first 9 Generations (by created_at), so the
-    // per-node thumbnail strip never costs an N+1 round trip per Batch.
+    // Bulk query for every Batch's first 9 Generations, avoiding an N+1 per Batch.
     db
       .prepare(
         `WITH ranked AS (
@@ -75,8 +73,8 @@ graph.get('/', async (c) => {
          ORDER BY batch_id ASC, rn ASC`,
       )
       .all<BatchGenerationRow>(),
-    // Reference edges are provenance from a Generation to a Batch; rolled up to
-    // the source Generation's own Batch so the graph stays batch-to-batch.
+    // Reference edges are Generation-to-Batch; rolled up to the source Generation's
+    // own Batch so the graph stays batch-to-batch.
     db
       .prepare(
         `SELECT g.batch_id AS source_batch_id, br.target_batch_id AS target_batch_id,
@@ -121,7 +119,7 @@ graph.get('/', async (c) => {
       created_at: row.created_at,
       generation_count: row.generation_count,
       generations,
-      // Back-compat: earlier single-thumbnail field, now redundant with generations[0].
+      // Back-compat: kept for callers still reading the single-thumbnail field.
       thumbnail_generation_short_id: generations[0]?.short_id ?? null,
     };
   });

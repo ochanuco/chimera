@@ -6,10 +6,8 @@ const VIEW_OPTIONS: { value: GalleryView; label: string }[] = [
   { value: 'all', label: 'すべて' },
 ];
 
-/**
- * 3-way segmented view switch (Gallery / Bookmarks Generations). `params` carries every other
- * currently-active query param so switching view doesn't drop the rest of the filter.
- */
+/** 3-way segmented view switch (Gallery / Bookmarks Generations). `params` carries every other
+ * currently-active query param so switching view doesn't drop the rest of the filter. */
 export function ViewSwitch({ basePath, current, params }: { basePath: string; current: GalleryView; params: URLSearchParams }) {
   return (
     <div class="view-switch" role="group" aria-label="表示範囲">

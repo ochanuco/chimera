@@ -1,13 +1,9 @@
-// ComfyUI プロンプトグラフ (API format `{ "<node_id>": { class_type, inputs } }`) から
-// 「何で生成したか」を横断比較できる形に抽出する。値は常にリテラルか、他ノードへの参照
-// `[node_id, output_index]` のどちらか — 参照はスカラー欄では null 扱いにする。v2 では
-// prompt（positive/negative のテキスト）と各サンプラーの latent 由来（empty / upscale /
-// 前段 KSampler からの継続）もグラフをたどって解決する（depth <= 8、循環ガード付き）。
+// ComfyUI プロンプトグラフ (`{ "<node_id>": { class_type, inputs } }`) から「何で生成したか」を横断比較できる
+// 形に抽出する。値はリテラルか他ノード参照 `[node_id, output_index]` のどちらかで、参照はスカラー欄では null 扱い。
+// v2 では prompt と各サンプラーの latent 由来もグラフをたどって解決する (depth<=8、循環ガード付き)。
 //
-// この中核部分 (extract/summarize/diff) は D1 に触れない純関数で、D1 を要する
-// lazy-extraction ヘルパー (renderFactsForJob / resolveBatchRenderFacts) は下部に置く。
-// どちらも同じファイルにあるが、前者は D1Database 型を一切参照しないので
-// cloudflare:test なしの素の vitest からも import できる。
+// extract/summarize/diff は D1 に触れない純関数。D1 を要する lazy-extraction ヘルパーは下部に置く
+// (前者は D1Database 型を参照しないので cloudflare:test なしの素の vitest からも import できる)。
 
 import { chunk, D1_MAX_BOUND_PARAMS } from './db';
 import { tokenizePrompt, diffTokens } from './prompt-tokens';
@@ -152,7 +148,6 @@ function extractCheckpoints(nodes: GraphNode[]): string[] {
     const name = asNonEmptyString(node.inputs[field]);
     if (name) checkpoints.push(name);
   }
-  // Dedupe exact duplicates, keeping first-occurrence order.
   return Array.from(new Set(checkpoints));
 }
 
@@ -252,8 +247,7 @@ function resolveLatentSource(nodeMap: Map<string, GraphNode>, ref: unknown): Ren
     }
   }
 
-  // Anything else upstream of a sampler (a VAEEncode without a recognized scale node, a
-  // passthrough node, ...): keep only where it continues from, no size/method facts.
+  // Anything else upstream of a sampler: keep only where it continues from, no size/method facts.
   const origin = resolveSamplerOrigin(nodeMap, ref);
   return origin ? { kind: 'other', width: null, height: null, upscale_method: null, scale_by: null, from_node_id: origin } : null;
 }
@@ -594,8 +588,6 @@ export function diffFactSummaries(
   }
   return entries;
 }
-
-// --- D1 側: lazy extraction + cache 永続化 ---
 
 /** render_facts_json を返す。未抽出 (NULL) または version が古ければ graph から再抽出して書き戻す。graph も無ければ null。 */
 export async function renderFactsForJob(db: D1Database, job: ComfyJobRow): Promise<RenderFacts | null> {

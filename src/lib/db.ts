@@ -5,21 +5,15 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
-/**
- * Run / Promotion / requests 行の追加・更新も Experiment の「最終活動時刻」なので
- * updated_at を進める。lib/experiments.ts と lib/requests.ts の両方が使うため、
- * どちらにも属さないここに置く（両者間の循環 import を避ける）。
- */
+/** lib/experiments.ts と lib/requests.ts の両方が使うため、循環 import を避けてここに置く。 */
 export async function touchExperiment(db: D1Database, experimentId: string, at: string): Promise<void> {
   await db.prepare('UPDATE experiments SET updated_at = ? WHERE id = ?').bind(at, experimentId).run();
 }
 
-/** D1 は 1 クエリあたり最大 100 個の bound parameter しか受け付けない。`IN (?, ?, ...)` を
- * 組み立てるヘルパーはこの上限を超えないよう、id 配列を `chunk` でこのサイズ以下に割ってから
- * クエリを複数回実行する。 */
+/** D1 は 1 クエリあたり最大 100 個の bound parameter しか受け付けない。`IN (?, ?, ...)` を組み立てる
+ * ヘルパーは id 配列を `chunk` でこのサイズ以下に割ってからクエリを複数回実行する。 */
 export const D1_MAX_BOUND_PARAMS = 100;
 
-/** Splits `items` into chunks of at most `size` elements. */
 export function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -48,7 +42,6 @@ export async function getBatchByIdOrShortId(
     .first<BatchRow>();
 }
 
-/** Resolves a Generation by its UUID or short_id (path {id} accepts both). */
 export async function getGenerationByIdOrShortId(
   db: D1Database,
   idOrShortId: string,
@@ -60,7 +53,6 @@ export async function getGenerationByIdOrShortId(
     .first<GenerationRow>();
 }
 
-/** Resolves an Experiment by its UUID or short_id (path {id} accepts both). */
 export async function getExperimentByIdOrShortId(
   db: D1Database,
   idOrShortId: string,
@@ -87,7 +79,6 @@ export async function resolveBatchShortIds(db: D1Database, ids: string[]): Promi
   return map;
 }
 
-/** Resolves short_ids for a set of Generation UUIDs, for display in reference links. Missing ids are simply absent from the result. */
 export async function resolveGenerationShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(ids));
   const map = new Map<string, string>();
@@ -103,19 +94,14 @@ export async function resolveGenerationShortIds(db: D1Database, ids: string[]): 
 }
 
 /**
- * Resolves each Batch's representative Generation (for a family-card thumbnail), keyed by
- * Batch id -> that Generation's short_id. Selection rule: designated thumbnail, else first
- * 'good' rating, else creation order. There is no per-Batch "designated thumbnail" column in
- * the schema -- `thumbnail_generation_short_id` (graph.ts) is always the first-created
- * Generation, so tier 1 always matches when a Batch has any Generations and tiers 2/3 never
- * get reached. This mirrors that outcome directly (first by created_at, id), the same
- * ROW_NUMBER pattern graph.ts and stories.ts already use for the same purpose.
+ * Batch id -> representative Generation's short_id (family-card thumbnail). No per-Batch
+ * "designated thumbnail" column exists; this mirrors the first-created Generation, the same
+ * ROW_NUMBER pattern graph.ts and stories.ts use for the same purpose.
  */
 export async function resolveBatchThumbnails(db: D1Database, batchIds: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(batchIds));
   const map = new Map<string, string>();
-  // ROW_NUMBER() は batch_id ごとに独立して振られるので、チャンクをまたいでも
-  // (互いに素な batch_id の集合を投げているため) 結果は変わらない。
+  // ROW_NUMBER() は batch_id ごとに独立して振られるため、チャンク分割しても結果は変わらない。
   for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
@@ -159,11 +145,8 @@ export async function resolveBatchPrompts(
 }
 
 /**
- * Batches reachable from `batchId` by walking BatchRelation edges as an undirected graph
- * (i.e. the retry-chain connected component containing `batchId`), including `batchId` itself.
- * A Batch with no relation edges at all still comes back as its own 1-element component --
- * callers that only want to render a chain of >=2 should check the result length themselves.
- * Capped at 100 members as a runaway-recursion safety net; real retry chains are far shorter.
+ * Retry-chain connected component containing `batchId` (undirected walk over BatchRelation
+ * edges), including `batchId` itself even with no edges. Capped at 100 as a recursion safety net.
  */
 export async function getRelationChainBatches(db: D1Database, batchId: string): Promise<ChainBatch[]> {
   const { results } = await db
@@ -186,11 +169,7 @@ export async function getRelationChainBatches(db: D1Database, batchId: string): 
   return results ?? [];
 }
 
-/**
- * Every Batch that appears (as source or target) in `storyId`'s StoryRelation rows, i.e. the
- * Story's full lineage of Batches. Unlike getRelationChainBatches this isn't a graph walk --
- * StoryRelation rows already name every Batch on the Story's timeline directly.
- */
+/** Every Batch in `storyId`'s StoryRelation rows. Unlike getRelationChainBatches this isn't a graph walk -- the rows already name every Batch on the timeline directly. */
 export async function getStoryChainBatches(db: D1Database, storyId: string): Promise<ChainBatch[]> {
   const { results } = await db
     .prepare(
@@ -210,12 +189,9 @@ export async function getStoryChainBatches(db: D1Database, storyId: string): Pro
 }
 
 /**
- * Reference (material) lineage of `batchId`: its ancestors (Batches whose Generations were used
- * as material, recursively) and descendants (Batches that used this Batch's Generations,
- * recursively), rolled up to Batch level via generations.batch_id, plus `batchId` itself.
- * Directed reachability only -- not the undirected component -- so unrelated branches of a shared
- * ancestor stay out. Ordered by created_at (a topological order in practice, since material must
- * exist before the Batch consuming it). Capped at 100 as a runaway-recursion safety net.
+ * Reference (material) lineage of `batchId`: ancestors + descendants via generations.batch_id,
+ * plus `batchId` itself. Directed reachability only, so unrelated branches of a shared ancestor
+ * stay out. Capped at 100 as a recursion safety net.
  */
 export async function getReferenceLineageBatches(db: D1Database, batchId: string): Promise<ChainBatch[]> {
   const { results } = await db

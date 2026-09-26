@@ -1,6 +1,5 @@
 // original.png が purge / 再圧縮で消える前に、ComfyUI が書き込む `prompt` text chunk から
-// 生成グラフを comfy_jobs.graph へ救出する。両ジョブ (original-purge.ts /
-// original-recompress.ts) が同じ呼び出しを共有する。
+// 生成グラフを comfy_jobs.graph へ救出する。original-purge.ts / original-recompress.ts が共有する。
 
 import { nowIso } from './db';
 import { extractPngTextChunk } from './image-meta';
@@ -14,12 +13,11 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 export type GraphRescueSource = Pick<GenerationRow, 'id' | 'comfy_job_id' | 'r2_object_key'>;
 
 /**
- * No-op when the job already has a graph. Otherwise reads `pngBytes` (or fetches the original
- * from R2 when omitted), extracts its `prompt` chunk, and writes `graph` + `render_facts_json`
- * (computed exactly as `PATCH /api/v1/jobs/:jobId` does) when it parses as a JSON object.
- * Invalid or absent metadata leaves `graph` NULL — never throws. Returns whether the job's graph
- * is non-NULL after the call (already was, or was just rescued), so a caller that is about to
- * destroy the only copy of the metadata can tell a genuine rescue failure from "nothing to rescue".
+ * No-op when the job already has a graph. Otherwise reads `pngBytes` (or fetches the original from
+ * R2 when omitted), extracts its `prompt` chunk, and writes `graph` + `render_facts_json` when it
+ * parses as a JSON object. Invalid or absent metadata leaves `graph` NULL -- never throws. Returns
+ * whether the job's graph is non-NULL after the call, so a caller about to destroy the only copy
+ * of the metadata can tell a genuine rescue failure from "nothing to rescue".
  */
 export async function rescueGraphFromOriginal(
   env: Bindings,

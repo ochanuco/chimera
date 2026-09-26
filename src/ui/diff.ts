@@ -1,8 +1,5 @@
-/**
- * Token-level diff helpers for the Compare page's semantic diff table (consensus-style: every
- * lane's own text is shown, with tokens highlighted by how many *other* lanes in the row also
- * have them — no lane is singled out as a "base").
- */
+/** Token-level diff helpers for the Compare page's semantic diff table (consensus-style: every lane's own text is
+ * shown, tokens highlighted by how many *other* lanes in the row also have them — no lane is singled out as a "base"). */
 
 export type DiffSeg = { text: string; type: 'same' | 'uniq' | 'partial' };
 
@@ -56,13 +53,8 @@ function lcsOps(base: string[], target: string[]): Op[] {
   return ops;
 }
 
-/**
- * Returns one boolean per token, true where that token is part of the pairwise LCS match against
- * `other` (i.e. it has a counterpart there), false where it's unique to `tokens` against `other`.
- * Falls back to a coarse whole-value comparison when tokens.length * other.length exceeds
- * DP_PRODUCT_LIMIT, to avoid O(n·m) blowup: all true if the joined values are equal, all false
- * otherwise.
- */
+/** One boolean per token: true where it's part of the pairwise LCS match against `other`, false where unique to `tokens`.
+ * Falls back to a coarse whole-value comparison above DP_PRODUCT_LIMIT (avoid O(n·m) blowup): all true if joined values are equal, else all false. */
 export function matchMask(tokens: string[], other: string[]): boolean[] {
   if (tokens.length * other.length > DP_PRODUCT_LIMIT) {
     const same = tokens.join('') === other.join('');
@@ -73,12 +65,8 @@ export function matchMask(tokens: string[], other: string[]): boolean[] {
     .map((op) => op.type === 'same');
 }
 
-/**
- * Builds consensus segments for one lane's tokens: for each token, matchCounts[i] is how many of
- * the row's other lanes it matched against (0..othersCount). A token matching every other lane is
- * 'same' (plain), matching none is 'uniq' (lane-specific), anything in between is 'partial'.
- * Adjacent tokens of the same resulting type are merged into one segment.
- */
+/** Consensus segments for one lane's tokens: matchCounts[i] is how many other lanes matched that token (0..othersCount) —
+ * 'same' if all, 'uniq' if none, else 'partial'. Adjacent same-type tokens merge into one segment. */
 export function consensusSegments(tokens: string[], matchCounts: number[], othersCount: number): DiffSeg[] {
   const segs: DiffSeg[] = [];
   for (let i = 0; i < tokens.length; i++) {

@@ -1,8 +1,5 @@
-/**
- * `reference` / `refinement` / `story` are the three stored Relation kinds (see CLAUDE.md
- * invariants — never merged). `experiment` is a fourth, display-only axis derived from
- * ExperimentRun.parent_run_id / run_index at read time; it writes no row of its own.
- */
+/** `reference` / `refinement` / `story` are the three stored Relation kinds (see CLAUDE.md invariants — never merged).
+ * `experiment` is a fourth, display-only axis derived from ExperimentRun.parent_run_id / run_index at read time; it writes no row of its own. */
 export type RelKind = 'reference' | 'refinement' | 'story' | 'experiment';
 
 /** Small rounded label distinguishing which family-card kind (see RelKind) a card comes from. */

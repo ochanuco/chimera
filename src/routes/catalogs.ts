@@ -43,10 +43,8 @@ catalogs.get('/:recipe_ref', async (c) => {
   });
 });
 
-// GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png — a single backdrop pattern's thumbnail
-// (catalog top-level `backdrops[].thumbnail`, a data: URI) decoded and served as a PNG. The FinalizeFields
-// picker builds its <img> src with a `?v=<catalog updated_at>` query so a republished catalog never serves a
-// stale thumbnail under this otherwise-immutable URL.
+// Decodes catalog `backdrops[].thumbnail` (a data: URI) and serves it as a PNG. Callers
+// cache-bust this otherwise-immutable URL with a `?v=<catalog updated_at>` query.
 catalogs.get('/:recipe_ref/backdrops/:file', async (c) => {
   const recipeRef = requireRecipeRef(c.req.param('recipe_ref'));
   const file = c.req.param('file');

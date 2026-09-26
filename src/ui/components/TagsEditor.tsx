@@ -1,9 +1,5 @@
-/**
- * Tag chips (with remove buttons) + add-tag form, used by Generation Detail's full page.
- * `kind`/`id` address the tag API (`/api/v1/{kind}/{id}/tags`).
- */
-// `<datalist id="tag-suggestions">` は呼び出し側のページテンプレートが1つだけ持つ
-// (Gallery / BatchDetail / GenerationDetail)。ここで作ると同じidの重複要素になってしまう。
+/** Tag chips (with remove buttons) + add-tag form. `kind`/`id` address the tag API (`/api/v1/{kind}/{id}/tags`). */
+// `<datalist id="tag-suggestions">` は呼び出し側のページテンプレート (Gallery / BatchDetail / GenerationDetail) が1つだけ持つ。ここで作ると重複idになる。
 export function TagsEditor({ kind, id, tags }: { kind: string; id: string; tags: { id: string; name: string }[] }) {
   return (
     <>

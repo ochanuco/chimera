@@ -43,11 +43,8 @@ function finalizeKindLabel(kind: FinalizeRequestBadgeData['kind']): string {
   return kind === 'repair' ? 'repair' : kind === 'masked_redraw' ? 'masked redraw' : 'finalize';
 }
 
-/**
- * サムネイル左上の進捗ピル (docs/ui.md「Gallery」)。live更新 (`[data-request-id]`) の
- * 対象なので、appJsのsetFinalizeBadgeTextが再現するのと同じDOM構造 (`kind · status` +
- * done時は`.card-finalize-result`の子span) で組む。
- */
+/** サムネイル左上の進捗ピル (docs/ui.md「Gallery」)。live更新 (`[data-request-id]`) の対象なので、
+ * app.js の setFinalizeBadgeText が再現するのと同じ DOM 構造 (`kind · status` + done 時は `.card-finalize-result` の子span) で組む。 */
 function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
   const label = finalizeKindLabel(r.kind);
   return (
@@ -69,12 +66,8 @@ function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
   );
 }
 
-/**
- * Card used in Gallery / Batch Detail / Bookmarks / Compare generation grids: thumbnail (with
- * optional `from <short_id>` / 公開済み overlays) + a single row of rating + bookmark. Everything
- * else (image meta, tags, compare selection) lives in Generation Detail instead, which the
- * thumbnail links to.
- */
+/** Card used in Gallery / Batch Detail / Bookmarks / Compare generation grids: thumbnail (with optional
+ * `from <short_id>` / 公開済み overlays) + a row of rating + bookmark. Everything else lives in Generation Detail, which the thumbnail links to. */
 export function GenerationCard({ g }: { g: GenerationCardData }) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.finalize_request);
   return (

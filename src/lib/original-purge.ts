@@ -1,6 +1,5 @@
 // 保持期間を過ぎた低価値 Generation の original.png を削除する定期ジョブ (src/index.ts scheduled)。
-// D1 行と preview.webp は残す — 消えるのは original オブジェクトだけで、
-// 「Generation は物理削除しない」(CLAUDE.md) 不変条件はそのまま保たれる。
+// D1 行と preview.webp は残すため「Generation は物理削除しない」不変条件は保たれる。
 
 import type { Bindings, GenerationRow } from '../types';
 import { ensureGenerationPreview } from './generation-preview';
@@ -44,15 +43,8 @@ interface PurgeCandidate extends GenerationRow {
 
 /**
  * 保持期間を過ぎ、かつどこからも参照されていない unrated/bad の Generation を古い順に返す。
- * 各 NOT EXISTS は original がまだ用済みでない理由に1つずつ対応する
- * (docs/domain-model.md「original の保持」): Publication・pose 基準 render の pin・
- * profile の起点・Experiment の起点・他 Batch の参照材料・仕上げ元・進行中の
- * finalize/repair/masked_redraw request。最後の request 判定は
- * src/lib/requests.ts の generation_id フィルタ (id / short_id どちらでも一致) と
- * 同じ idiom。
- *
- * comfy_jobs を join して `job_graph_is_null` も返す。graph が既にあるのが普通なので、
- * これで purgeOldOriginals は救出用の original 読み込みを本当に必要な行だけに絞れる。
+ * 各 NOT EXISTS は original がまだ用済みでない理由に1つずつ対応する (docs/domain-model.md「original の保持」)。
+ * comfy_jobs を join して返す `job_graph_is_null` により、purgeOldOriginals は救出用の original 読み込みを必要な行だけに絞れる。
  */
 async function findPurgeCandidates(db: D1Database, cutoff: string, limit: number): Promise<PurgeCandidate[]> {
   const { results } = await db
@@ -76,13 +68,9 @@ export interface PurgeOldOriginalsResult {
 }
 
 /**
- * 1回分の purge を実行する。Generation ごとに最悪 ~5 subrequest
- * (preview 確認の R2 get、無ければ transform 用の get + put、graph 未救出なら救出用の
- * original get、original の delete、無ければ head) かかる。scheduled ハンドラは同じ
- * invocation でこの直後に original-recompress.ts の再圧縮 (Generation ごと最悪 ~6
- * subrequest) も走らせるため、既定値は purge ≤100×5=500 + recompress ≤60×6=360
- * (original-recompress.ts の RECOMPRESS_BATCH_CAP) で Workers Paid の 1000 subrequest
- * 予算に収まるよう選んである。env.ORIGINAL_PURGE_BATCH_SIZE で上書きできる。
+ * 1回分の purge を実行する。Generation ごと最悪 ~5 subrequest。scheduled ハンドラは同じ invocation で
+ * 直後に original-recompress.ts の再圧縮 (Generation ごと最悪 ~6 subrequest) も走らせるため、
+ * 既定値は purge ≤100×5=500 + recompress ≤60×6=360 で Workers Paid の 1000 subrequest 予算に収まるよう選んである。
  */
 export async function purgeOldOriginals(env: Bindings, now: string, limit?: number): Promise<PurgeOldOriginalsResult> {
   const db = env.DB;

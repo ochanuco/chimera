@@ -21,11 +21,7 @@ export interface CompareSemantic {
   attributes: Record<string, unknown>;
 }
 
-/**
- * A Compare column: the same GenerationCardData fields Gallery/Bookmarks/Batch Detail cards use
- * (so each column renders as `<GenerationCard>`, identical to those grids), plus the fields the
- * diff table below needs.
- */
+/** A Compare column: same fields Gallery/Bookmarks/Batch Detail cards use (renders as `<GenerationCard>`), plus the diff table's own fields. */
 export interface CompareItem extends GenerationCardData {
   batch_short_id: string | null;
   seed: number | null;
@@ -38,12 +34,8 @@ interface CompareRow {
   label: string;
   values: string[];
   diff: boolean;
-  /**
-   * Per-column diff segments, each lane highlighting only its own text against the consensus of
-   * every other real-value lane in the row (no base column): undefined for basic rows; null for a
-   * cell rendered plain (no value, only one real value in the row, or nothing differs from every
-   * other lane). A cell never shows another cell's text.
-   */
+  /** Per-column diff segments vs. the row's other real-value lanes (no base column): undefined for basic rows;
+   * null for a cell rendered plain (no value / only one real value in the row / nothing differs). */
   segments?: (DiffSeg[] | null)[];
 }
 
@@ -105,11 +97,8 @@ function stripTrailingNewline(segs: DiffSeg[]): DiffSeg[] {
   return [...segs.slice(0, -1), { ...last, text: last.text.slice(0, -1) }];
 }
 
-/**
- * Consensus segments for one lane: for each of its tokens, counts how many of the row's other
- * real-value lanes also have it (via pairwise LCS matching), then buckets into same/partial/uniq.
- * Null when every token matches every other lane (nothing lane-specific to highlight).
- */
+/** Consensus segments for one lane: counts how many other real-value lanes share each token (pairwise LCS),
+ * then buckets into same/partial/uniq. Null when every token matches every other lane. */
 function computeConsensusSegments(cellItems: string[], otherItemsList: string[][], isList: boolean): DiffSeg[] | null {
   if (otherItemsList.length === 0) return null;
   const tokens = isList ? withLineSep(cellItems) : cellItems;
@@ -124,13 +113,8 @@ function computeConsensusSegments(cellItems: string[], otherItemsList: string[][
   return isList ? stripTrailingNewline(segs) : segs;
 }
 
-/**
- * Core cells -> CompareRow builder shared by every diffable row: the "all differ" row-level
- * flag, plus per-cell consensus segments. Every cell with a real value is diffed against the
- * consensus of all other real-value cells in the row (no base column): a token shared with
- * every other lane renders plain, one shared with some renders 'partial', one unique to this
- * lane renders 'uniq' — no cell ever renders another cell's text.
- */
+/** Core cells -> CompareRow builder shared by every diffable row: row's "all differ" flag, plus per-cell consensus
+ * segments (no base column) — shared-by-all renders plain, shared-by-some 'partial', unique 'uniq'; no cell ever shows another cell's text. */
 function buildDiffRow(label: string, cells: SemanticCell[]): CompareRow {
   const values = cells.map((c) => c.display);
   const diff = new Set(values).size > 1;
@@ -165,11 +149,8 @@ function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: C
   return buildDiffRow(label, cells);
 }
 
-/**
- * Builds one `render.<column>` row from each item's pre-summarized render_facts: "(no graph)"
- * when the Generation's ComfyJob carries no graph, NO_VALUE when the graph doesn't populate this
- * column. Returns null (row omitted entirely) when every item has no value for this column.
- */
+/** Builds one `render.<column>` row from each item's pre-summarized render_facts: "(no graph)" when the ComfyJob
+ * carries no graph, NO_VALUE when the graph doesn't populate this column. Null (row omitted) when every item lacks a value. */
 function buildRenderFactRow(
   column: RenderFactColumn,
   summaries: (Record<RenderFactColumn, string | null> | null)[],
@@ -190,11 +171,7 @@ function promptCell(item: CompareItem, passIndex: number, polarity: 'positive' |
   return text === null ? { display: NO_VALUE, raw: null, kind: 'text' } : { display: text, raw: text, kind: 'text' };
 }
 
-/**
- * Builds a `render.positive` / `render.negative` row for pass 1, or `render.positive (pass 2)`
- * etc. for later passes. Returns null (row omitted) when every item has no value for that
- * pass/polarity.
- */
+/** Builds a `render.positive`/`render.negative` row (`(pass N)` suffix for N>1). Null (row omitted) when every item lacks a value for that pass/polarity. */
 function buildPromptRow(items: CompareItem[], passIndex: number, polarity: 'positive' | 'negative'): CompareRow | null {
   const label = passIndex === 0 ? `render.${polarity}` : `render.${polarity} (pass ${passIndex + 1})`;
   const cells = items.map((item) => promptCell(item, passIndex, polarity));

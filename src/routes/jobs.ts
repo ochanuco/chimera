@@ -36,8 +36,7 @@ jobs.patch('/:jobId', async (c) => {
   if (body.graph !== undefined) {
     sets.push('graph = ?');
     binds.push(JSON.stringify(body.graph));
-    // グラフが更新された時点で常に再抽出する: グラフはジョブごとに一度きり PATCH で
-    // 確定するものなので、古いキャッシュが後続の graph 変更に取り残されることはない。
+    // graph はジョブごとに一度きり PATCH で確定するので、常に再抽出しても古いキャッシュは残らない。
     sets.push('render_facts_json = ?');
     binds.push(JSON.stringify(extractRenderFacts(body.graph)));
   }
@@ -97,10 +96,8 @@ jobs.post('/:jobId/generations', async (c) => {
       status,
     );
 
-  // Replay path for a prior ingest that inserted the row but failed before the
-  // R2 PUT completed: the row already fixes the object key, so re-upload there.
-  // A Generation whose original was since purged must stay purged — a replay is not
-  // a reason to bring the object back.
+  // Replay of an ingest that inserted the row but failed before the R2 PUT: re-upload
+  // to the row's existing key. A purged original must stay purged, not be restored.
   const ensureObject = async (g: Pick<GenerationRow, 'r2_object_key' | 'original_purged_at'>) => {
     if (g.original_purged_at) return;
     const head = await c.env.IMAGES.head(g.r2_object_key);
@@ -126,9 +123,8 @@ jobs.post('/:jobId/generations', async (c) => {
   const r2ObjectKey = `generations/${id}/original.png`;
   const now = nowIso();
 
-  // D1 first: committing the row fixes the Generation ID / R2 key before any R2
-  // write, so a failure at either store leaves no orphan object and every retry
-  // converges on the same row and key.
+  // D1 first: the row fixes the ID/R2 key before any R2 write, so a failure at either
+  // store never orphans an object, and retries converge on the same row and key.
   try {
     await db
       .prepare(
@@ -154,9 +150,8 @@ jobs.post('/:jobId/generations', async (c) => {
       )
       .run();
   } catch (err) {
-    // Concurrent duplicate ingest raced us on the (comfy_job_id, comfy_output_index)
-    // unique constraint. Return the row the other request created, making sure the
-    // object exists in case the winner has not finished its R2 PUT yet.
+    // Lost the (comfy_job_id, comfy_output_index) unique-constraint race: return the
+    // winner's row, ensuring the object exists in case its R2 PUT hasn't landed yet.
     const raced = await db
       .prepare('SELECT * FROM generations WHERE comfy_job_id = ? AND comfy_output_index = ?')
       .bind(job.id, metadata.comfy_output_index)
@@ -175,9 +170,8 @@ jobs.post('/:jobId/generations', async (c) => {
     await db.prepare('UPDATE comfy_jobs SET status = ?, updated_at = ? WHERE id = ?').bind('ingested', now, job.id).run();
   }
 
-  // Gallery live insertion (docs/ui.md「Gallery」): only on the newly-created row, not on an
-  // idempotent resend — a re-ingest of the same (comfy_job_id, comfy_output_index) already
-  // exists on every viewer's grid.
+  // Gallery live insertion (docs/ui.md「Gallery」) only fires for the new row, not an
+  // idempotent resend, which every viewer's grid already has.
   const batchRow = await db
     .prepare('SELECT refines_generation_id FROM batches WHERE id = ?')
     .bind(job.batch_id)

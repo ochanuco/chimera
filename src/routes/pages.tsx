@@ -126,7 +126,6 @@ pages.get('/b/:shortId', async (c) => {
   ]);
   const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
   const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
-  // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
   const finalizeBackdrops = catalogDoc ? findBackdrops(catalogDoc.doc).map(({ name, label }) => ({ name, label })) : [];
   const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
   const finalizeCatalogVersion = catalogDoc?.row.updated_at ?? null;
@@ -192,8 +191,7 @@ pages.get('/b/:shortId', async (c) => {
       resolveBatchPrompts(c.env.DB, diffParentId ? [diffParentId] : []),
     ]);
 
-  // Finalize all arms の状況表示: このBatch配下の全GenerationについてのfinalizeRequestをstatus別に集計する
-  // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
+  // Finalize all arms の状況表示: Batch 配下の全 Generation の finalizeRequest を status 別に集計（GUI は表示のみ、worker-protocol.md）。
   const finalizeRequestsRes = await internalApiRequest(c, `/api/v1/requests?kind=finalize&batch_id=${data.id}&limit=200`);
   const finalizeRequestsData = (await finalizeRequestsRes.json()) as { items: { id: string; status: string }[] };
   const finalizeSummary: FinalizeSummary = { queued: 0, running: 0, done: 0, failed: 0 };
@@ -221,7 +219,6 @@ pages.get('/b/:shortId', async (c) => {
     tags: (generationTags[i] ?? []).map((t) => t.name),
   }));
 
-  // 系譜ミニマップ: 自Batchの参照系譜・再試行連結成分と、自Batchが属する各Storyの全Batch。
   const batchMapItem = (b: { id: string; short_id: string }) => ({
     short_id: b.short_id,
     href: `/b/${b.short_id}`,
@@ -265,8 +262,7 @@ pages.get('/b/:shortId', async (c) => {
 });
 
 pages.get('/experiments', async (c) => {
-  // 未知の status をそのまま転送すると API が 400 を返し、一覧が描画できなくなる。
-  // GUI のフィルタなので、候補外の値は指定なしとして扱う。
+  // 未知の status を転送すると API が 400 を返し描画できなくなるため、候補外は指定なし扱いにする。
   const statusParam = c.req.query('status');
   const status = statusParam && (EXPERIMENT_STATUSES as readonly string[]).includes(statusParam)
     ? statusParam
@@ -558,9 +554,8 @@ pages.get('/compare', async (c) => {
     ),
   );
 
-  // Card-facing fields (thumbnail, from-badge, 公開済み / 基準 pills, finalize progress…) come
-  // from the same queryGenerations the Gallery/Bookmarks list API builds them from, so Compare's
-  // cards never drift from those grids (docs/ui.md「Compare」).
+  // Card-facing fields reuse the same queryGenerations the Gallery/Bookmarks list API builds
+  // them from, so Compare's cards never drift from those grids (docs/ui.md「Compare」).
   const cardData = rows.length > 0 ? await queryGenerations(c.env.DB, { ids: rows.map((row) => row.id).join(',') }, origin) : { items: [] };
   const cardByGenerationId = new Map(cardData.items.map((item) => [item.id, item]));
 

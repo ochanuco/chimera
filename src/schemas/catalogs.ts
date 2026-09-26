@@ -1,10 +1,6 @@
 import { z } from 'zod';
 
-/**
- * Envelope-only validation. Vocabulary (what a "pose"/"costume"/"expression" carries,
- * per-recipe `parameters`, `patches` shapes) belongs to comfyui-recipes — chimera stores
- * and republishes it without interpreting it (docs/api.md「Recipe Catalog」).
- */
+/** Envelope-only: vocabulary (pose/costume/expression, patches shapes) belongs to comfyui-recipes; chimera stores and republishes without interpreting it (docs/api.md「Recipe Catalog」). */
 export const recipeCatalogEnvelopeSchema = z
   .object({
     schema_version: z.literal(1),

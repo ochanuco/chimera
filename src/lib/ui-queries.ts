@@ -1,6 +1,4 @@
-// Read-only helpers for the Web GUI (src/routes/pages.ts, src/routes/images.ts).
-// The Management API does not expose bookmark filtering for experiments, so the
-// GUI queries D1 directly here rather than changing existing API routes.
+// Management API does not expose bookmark filtering for experiments, so the GUI queries D1 directly here.
 import type { ExperimentRow } from '../types';
 
 export interface BookmarkedExperiment {

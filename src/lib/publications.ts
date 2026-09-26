@@ -1,6 +1,4 @@
-// Publication: 1回分の納品（Xへの投稿）(docs/domain-model.md#publication)。REST
-// (src/routes/generations.ts, src/routes/publications.ts) と MCP tool `record_publication` /
-// `get_generation` (src/mcp.ts) の両方がここを呼ぶ。
+// Publication: 1回分の納品（Xへの投稿）(docs/domain-model.md#publication)。
 
 import { nowIso } from './db';
 import { uuidv7 } from './uuidv7';
