@@ -22,7 +22,7 @@ export interface GenerationDetailData {
   short_id: string;
   canonical_url: string;
   image: { url: string };
-  /** original.png が保持ジョブで削除された時刻。null なら未削除 (migrations/0023)。 */
+  /** original.png が保持ジョブで削除された時刻。null なら未削除。 */
   original_purged_at: string | null;
   character: { id: string; name: string } | null;
   created_at: string;
@@ -89,7 +89,6 @@ export interface ProducedByOptions {
   resolved: Record<string, unknown>;
 }
 
-/** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
@@ -206,10 +205,10 @@ export function GenerationDetailPage({
   relationsIncoming: { source_batch_id: string; reason: string | null }[];
   /** Retry relations of the owning Batch (target_batch_id = the Batch this one was refined into). */
   relationsOutgoing: { target_batch_id: string; reason: string | null }[];
-  /** ExperimentRun 由来の 4 軸目 (owning Batch 起点)。所属 Batch が Experiment に属さなければ null。 */
+  /** owning Batch が Experiment に属さなければ null。 */
   experimentRun: ExperimentRunFamily | null;
   imageMeta: ImageMeta | null;
-  /** 最新の finalize request 一覧 (最大5件、新しい順)。段階2の GUI はここに積むだけで進捗はここで見る。 */
+  /** 最新の finalize request 一覧 (最大5件、新しい順)。GUI はここに積むだけで進捗もここで見る。 */
   finalizeRequests: FinalizeRequestSummary[];
   finalizeDials: FinalizeDials | null;
   finalizeDefaults?: FinalizeDefaults | null;
@@ -326,9 +325,7 @@ export function GenerationDetailPage({
     }),
   ];
 
-  // BatchReference 由来の兄弟 (同じ material を参照した他の Batch) は、この Generation の
-  // 所属 Batch にとっての「他の Generation」と実質同じものなのでここには出さない
-  // (docs/ui.md)。ExperimentRun の run_index 兄弟だけを見せる。
+  // BatchReference 由来の兄弟は所属 Batch の「他の Generation」と実質同じなのでここには出さない (docs/ui.md)。
   const siblingCards: FamilyCardData[] = (experimentRun?.siblings ?? []).map((s): FamilyCardData => {
     const link = refLink('/b/', s.batch_id, batchShortIds);
     const genShortId = batchThumbnails.get(s.batch_id);

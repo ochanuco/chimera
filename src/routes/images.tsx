@@ -97,10 +97,8 @@ function wantsJson(c: Context): boolean {
   return accept.includes('application/json') && !accept.includes('text/html');
 }
 
-// GET /g/{short_id} — canonical human-facing Generation page (SSR HTML).
-// Callers that explicitly ask for JSON (Accept: application/json, or
-// ?format=json) get a small pointer payload to the machine-readable API
-// instead, preserving the previous stub's contract for scripted consumers.
+// GET /g/{short_id} — canonical SSR page; JSON opt-in (Accept/format=json) returns a
+// pointer payload for scripted consumers instead of the full HTML page.
 images.get('/:shortId', async (c) => {
   const db = c.env.DB;
   const shortId = c.req.param('shortId');
@@ -111,8 +109,8 @@ images.get('/:shortId', async (c) => {
     return c.html(<NotFoundPage what="Generation" />, 404);
   }
 
-  // Gallery live insertion fragment (docs/ui.md「Gallery」): the exact card the Gallery /
-  // Bookmarks list itself would render, reusing queryGenerations so the two never drift.
+  // Gallery live insertion fragment: reuses queryGenerations so this card never drifts from
+  // what the Gallery / Bookmarks list itself renders (docs/ui.md「Gallery」).
   if (c.req.query('partial') === 'card') {
     const origin = new URL(c.req.url).origin;
     const cardData = await queryGenerations(db, { ids: generation.short_id }, origin);
@@ -138,11 +136,9 @@ images.get('/:shortId', async (c) => {
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
-  // Finalize セクション: このGenerationを対象にした最新のrequest (finalize / repair) を状況表示する
-  // (段階2のGUIはrequestsを積むことと状態を表示することだけを行う。worker-protocol.md参照)。
+  // Finalize セクション: 最新の finalize/repair request の状態表示のみ（GUI は request を積むだけ、worker-protocol.md）。
   const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
 
-  // dials / profile buttons (FinalizeFields): needs no more than one catalog + preset lookup.
   const recipe = data.batch?.recipe ?? null;
   const [catalogDoc, finalizeProfiles] = await Promise.all([
     recipe ? getCatalog(db, defaultRecipeRef(c.env)) : Promise.resolve(null),
@@ -160,18 +156,14 @@ images.get('/:shortId', async (c) => {
   const canPromoteToProfile =
     data.rating === 'good' && data.batch !== null && (await findFinalizeRequestForBatch(db, data.batch.id)) !== null;
 
-  // resolved_options (worker が done の result に書く解決済みの値、docs/worker-protocol.md
-  // 「finalize profile」): このGeneration自身を産んだ request からしか出せない。worker がまだ
-  // 書かない行は null（段階的ロールアウトの間は何も増えない）。
   const producedByOptions = await findProducedByOptions(db, generation.id);
 
-  // "親" (parent) material for a Generation is its own Batch's reference material
-  // (batch_references where target_batch_id = the owning Batch), not `data.references`
-  // (which is the reverse: Batches downstream that used *this* Generation as material,
-  // i.e. this Generation's "子" — see `used_by` below).
+  // "親" material is the owning Batch's own reference material (batch_references,
+  // target_batch_id = this Batch) — not `data.references`, which is the reverse: downstream
+  // Batches that used this Generation as material (this Generation's "子", see `used_by` below).
   let parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[] = [];
-  // Batch-level relations of the owning Batch (retries / Story continuation), surfaced on the
-  // Generation page as "via batch" family cards alongside the Generation-level material relations.
+  // Batch-level relations (retries / Story continuation), surfaced as "via batch" family cards
+  // alongside the Generation-level material relations above.
   let relationsIncoming: { source_batch_id: string; reason: string | null }[] = [];
   let relationsOutgoing: { target_batch_id: string; reason: string | null }[] = [];
   let storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[] =
@@ -215,7 +207,6 @@ images.get('/:shortId', async (c) => {
     }
   }
 
-  // 系譜ミニマップ: 所属Batchの参照系譜・再試行連結成分と、所属Batchが属する各Storyの全Batch。
   const ownBatchId = data.batch?.id;
   const miniMapStoryIds = Array.from(new Set(storyLinks.map((s) => s.story_id)));
   const [referenceLineageBatches, relationChainBatches, storyChainBatchesList] = await Promise.all([
@@ -223,9 +214,8 @@ images.get('/:shortId', async (c) => {
     ownBatchId ? getRelationChainBatches(db, ownBatchId) : Promise.resolve([]),
     Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(db, sid))),
   ]);
-  // The map stays on Generation pages: each Batch is stood in for by its representative
-  // Generation, and the owning Batch by this Generation itself. A Batch with no Generations
-  // yet has nothing to show at /g/, so it keeps its Batch link.
+  // Each Batch is stood in for by its representative Generation (owning Batch by this
+  // Generation itself); a Batch with no Generations yet keeps its /b/ link instead.
   const mapThumbnails = await resolveBatchThumbnails(
     db,
     [referenceLineageBatches, relationChainBatches, ...storyChainBatchesList].flat().map((b) => b.id),
@@ -248,8 +238,6 @@ images.get('/:shortId', async (c) => {
       ]
     : [];
 
-  // Every Batch referenced by a family card (used_by / relation retries / Story neighbors)
-  // needs both its short_id (for the link) and its representative Generation (for the thumbnail).
   const relatedBatchIds = [
     ...data.used_by.map((r) => r.batch_id),
     ...relationsIncoming.map((r) => r.source_batch_id),
@@ -316,10 +304,8 @@ images.get('/:shortId/image', async (c) => {
   });
 });
 
-// GET /g/{short_id}/preview — thumbnail-sized WebP, created from the original on first
-// request and stored for next time (src/lib/generation-preview.ts). Falls back to the
-// original bytes when a preview can't be created; that response is cached far more briefly
-// since it isn't the stable, final asset.
+// GET /g/{short_id}/preview — thumbnail WebP, created on first request and stored for next
+// time. Falls back to the original bytes (cached far more briefly) when a preview can't be made.
 images.get('/:shortId/preview', async (c) => {
   const db = c.env.DB;
   const shortId = c.req.param('shortId');
@@ -337,9 +323,7 @@ images.get('/:shortId/preview', async (c) => {
   });
 });
 
-// GET /g/{short_id}/assets/{role}[?region=] — streams a layered asset
-// (lineart / mask / decomposed layer / PSD / ...) for a Generation.
-// region omitted means '' (the "whole image, no region" row).
+// GET /g/{short_id}/assets/{role}[?region=] — region omitted means '' (the "whole image" row).
 images.get('/:shortId/assets/:role', async (c) => {
   const db = c.env.DB;
   const shortId = c.req.param('shortId');

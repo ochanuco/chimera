@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
-// role / region share the same token shape: lowercase, digits, `.` `_` `-`,
-// starting with an alphanumeric. role is a free string by design (no enum) —
-// recommended vocabulary lives in docs/domain-model.md, not in code.
+// role is free-form by design (no enum) — vocabulary lives in docs/domain-model.md, not code.
 const tokenSchema = z
   .string()
   .min(1)
@@ -11,9 +9,7 @@ const tokenSchema = z
 
 export const ingestGenerationAssetMetadataSchema = z.object({
   role: tokenSchema,
-  // '' is the "whole image, no region" sentinel (see docs/domain-model.md).
-  // Omitted key and explicit null both mean "no region", matching this
-  // project's request.json nullish-acceptance convention.
+  // '' means "whole image, no region"; omitted key and null both mean "no region" (request.json nullish convention, docs/domain-model.md).
   region: tokenSchema.nullish(),
   content_type: z.string().min(1).optional(),
 });

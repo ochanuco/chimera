@@ -1,8 +1,5 @@
-// Preset のクエリ。REST (src/routes/presets.ts) と MCP tools `list_presets` /
-// `get_preset` (src/mcp.ts) の両方がここを呼ぶ。読み取りと catalog からの取り込み
-// (段階 A) に加え、版の pin (段階 B, docs/worker-protocol.md「preset の pin」) もここに
-// 置く。promote は resolveDerivationSource (lib/requests.ts) を要るため、この
-// ファイルから requests.ts への依存を作らないよう lib/promote.ts に分けている。
+// Preset のクエリ。読み取り・catalog からの取り込みに加え、版の pin (docs/worker-protocol.md「preset の pin」)
+// もここに置く。promote は resolveDerivationSource (lib/requests.ts) を要るため、循環 import を避けて lib/promote.ts に分けている。
 
 import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso } from './db';
 import { getCatalog } from './catalogs';
@@ -12,8 +9,7 @@ import { uuidv7 } from './uuidv7';
 import type { JsonObject } from './overrides';
 import type { PresetKind, PresetRow, PresetSource, PresetStatus } from '../types';
 
-// src/lib/catalogs.ts の extractNames と同じ判定。catalogs.ts は段階 C で消えるので
-// 共有せず、preset 側が自分の抽出を持つ。
+// catalogs.ts の extractNames と同じ判定だが、catalogs.ts は段階 C で消えるため共有せず複製している。
 function extractEntryName(entry: unknown): string | null {
   if (typeof entry === 'string') return entry;
   if (entry && typeof entry === 'object' && typeof (entry as Record<string, unknown>).name === 'string') {
@@ -57,11 +53,7 @@ export interface PresetImportResult {
   skipped: { recipe: string; kind: PresetKind; name: string }[];
 }
 
-/**
- * Idempotent: a name already present at any version (regardless of status) is skipped, so
- * calling this repeatedly for the same recipe_ref converges rather than accumulating
- * duplicate version-1 rows (docs/worker-protocol.md「preset の移行」段階 A).
- */
+/** Idempotent: a name already present at any version is skipped, so repeated calls converge rather than accumulating duplicate version-1 rows (docs/worker-protocol.md「preset の移行」段階 A). */
 export async function importFromCatalog(db: D1Database, recipeRef: string): Promise<PresetImportResult> {
   const found = await getCatalog(db, recipeRef);
   if (!found) throw notFound('recipe catalog');
@@ -70,8 +62,7 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
   const skipped: { recipe: string; kind: PresetKind; name: string }[] = [];
   const now = nowIso();
 
-  // カタログ 1件あたり数十〜百件のエントリを回すので、存在確認はエントリごとに引かず
-  // 一度で済ませる。preset は物理削除しないため、この一覧が途中で古くなることもない。
+  // カタログ1件あたり数十〜百件のエントリを回すので、存在確認は一度で済ませる（preset は物理削除しないため一覧が途中で古くなることもない）。
   const { results: existingRows } = await db
     .prepare('SELECT DISTINCT recipe, kind, name FROM presets')
     .all<{ recipe: string; kind: string; name: string }>();
@@ -83,9 +74,8 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
-  // costume / expression は import しない。catalog がそれらに publish できるのは名前の
-  // 配列だけで、参照にしても行が増えるだけで何も足さない (docs/domain-model.md「Preset」
-  // body の形)。
+  // costume / expression は import しない。catalog がそれらに publish するのは名前の配列だけで、
+  // 行にしても何も足さない (docs/domain-model.md「Preset」body の形)。
   const kind: PresetKind = 'pose';
   for (const recipe of found.doc.recipes) {
     const r = recipe as Record<string, unknown>;
@@ -155,15 +145,11 @@ function isJsonObject(value: unknown): value is JsonObject {
 }
 
 /**
- * Explicit `generation.presets` bypasses resolution from `parameters`, but the two must still
- * agree per kind: worker decides `parameters.{kind}` vs. the pin's `name` by fiat, not chimera
- * (docs/worker-protocol.md「preset の pin」). A kind missing from `parameters` is unchecked —
- * omission is allowed.
- */
-/**
- * The pins the caller supplied, or null when `generation.presets` is absent or not an array.
- * A malformed entry is rejected rather than skipped: dropping it would silently re-resolve that
- * kind from `parameters` and pin the latest active version instead of the one the caller named.
+ * Pins in `generation.presets` bypass resolution from `parameters` but must still agree per kind
+ * (worker decides by fiat, not chimera — docs/worker-protocol.md「preset の pin」). Returns null when
+ * `generation.presets` is absent/not an array. A malformed entry throws rather than being skipped,
+ * since dropping it would silently re-resolve that kind to the latest active version instead of the
+ * one the caller named.
  */
 function existingPins(generation: JsonObject): { kind: PresetKind; name: string; version: number }[] | null {
   const presets = generation.presets;
@@ -203,18 +189,16 @@ function assertPinsMatchParameters(generation: JsonObject): void {
 }
 
 /**
- * Pure transform: resolves `generation.parameters.{pose,costume,expression}` to pinned
- * `{kind, name, version}` entries under `generation.presets` (docs/worker-protocol.md
- * 「preset の pin」). Never mutates `payload` — returns it unchanged (by reference) when
- * there is nothing to pin, so callers hashing the result don't see spurious differences.
+ * Pure transform: resolves `generation.parameters.{pose,costume,expression}` to pinned entries under
+ * `generation.presets` (docs/worker-protocol.md「preset の pin」). Returns `payload` unchanged by reference
+ * when there's nothing to pin, so callers hashing the result don't see spurious differences.
  */
 export async function pinPresets(db: D1Database, payload: JsonObject): Promise<JsonObject> {
   const generation = payload.generation;
   if (!isJsonObject(generation)) return payload;
   if (generation.graph || typeof generation.recipe !== 'string') return payload;
-  // 明示された pin は版ごと尊重し、pin されていない kind だけ parameters から解決する。
-  // derive_request が「一部の kind だけ pin を引き継ぎ、残りは呼び出し側の指名」という
-  // payload を組むため、明示があったら丸ごと手を引くと残りが pin されないまま通る。
+  // 明示された pin は版ごと尊重し、pin されていない kind だけ parameters から解決する — derive_request が
+  // 「一部の kind だけ pin を引き継ぎ、残りは呼び出し側の指名」という payload を組むため。
   const given = existingPins(generation);
   if (given) assertPinsMatchParameters(generation);
 
@@ -228,9 +212,8 @@ export async function pinPresets(db: D1Database, payload: JsonObject): Promise<J
     if (pinnedKinds.has(kind)) continue;
     const name = parameters[kind];
     if (typeof name !== 'string' || name === '') continue;
-    // import が作るのは pose だけで costume / expression は名前の配列でしか publish されない
-    // （docs/domain-model.md「Preset」）。行が一つも無い kind は worker 側の上書きに任せて
-    // 素通しにし、行のある kind で名前が無いときだけ 400 にする。
+    // import が作るのは pose だけ（docs/domain-model.md「Preset」）。行が一つも無い kind は worker 側の
+    // 上書きに任せて素通しにし、行のある kind で名前が無いときだけ 400 にする。
     if (!(await recipeHasPresetsOfKind(db, recipe, kind))) continue;
     const row = await getPresetRow(db, recipe, kind, name);
     if (!row) throw badRequest(`preset not found: ${recipe}/${kind}/${name}`);
@@ -248,11 +231,7 @@ export interface ListPresetsFilters {
   includeDeprecated?: boolean;
 }
 
-/**
- * One row per (recipe, kind, name), the highest version among the rows the status filter
- * admits — so with the default active-only filter, a name whose newest version has been
- * deprecated still surfaces at its latest active version rather than disappearing.
- */
+/** One row per (recipe, kind, name), the highest version the status filter admits — so a name whose newest version was deprecated still surfaces at its latest active version rather than disappearing. */
 export async function listPresets(db: D1Database, filters: ListPresetsFilters = {}): Promise<PresetSummary[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -347,10 +326,9 @@ export interface ResolvedPreset {
 }
 
 /**
- * Follows body_json.base up to the root ({ recipe_pose }) row and flattens the patches of
- * every promote hop along the way, oldest first — the shape the worker's graph compiler
- * needs to fold into one prompt (docs/domain-model.md「Preset」body の形). Depth is capped
- * well above any real chain length, as a guard against a corrupted or cyclic base reference.
+ * Follows body_json.base up to the root ({ recipe_pose }) row, flattening every promote hop's
+ * patches oldest-first — the shape the worker's graph compiler needs (docs/domain-model.md「Preset」
+ * body の形). Depth is capped as a guard against a corrupted or cyclic base reference.
  */
 export async function resolvePreset(db: D1Database, row: PresetRow): Promise<ResolvedPreset> {
   const bodies: PresetBody[] = [];
@@ -400,10 +378,9 @@ export function extractPins(payload: unknown): { kind: string; name: string; ver
 }
 
 /**
- * finalize payload の `profile` を `options` に展開する (docs/worker-protocol.md「finalize
- * profile」)。明示された `options` の同名キー (explicit null を含む) が profile の値に勝つ。
- * `profile` が無ければ payload をそのまま返す。未知の profile / generation は 404 相当の
- * notFound を投げ、queued 行を作らせない — createRequest より前に呼ぶこと。
+ * finalize payload の `profile` を `options` に展開する (docs/worker-protocol.md「finalize profile」)。
+ * 明示された `options` の同名キーが profile の値に勝つ。未知の profile / generation は notFound を投げるので、
+ * queued 行を作らせないよう createRequest より前に呼ぶこと。
  */
 export async function applyFinalizeProfile(db: D1Database, payload: JsonObject): Promise<JsonObject> {
   const profile = payload.profile;
@@ -438,11 +415,7 @@ export interface FinalizeProfileSummary {
   options: JsonObject;
 }
 
-/**
- * Latest active `finalize` Presets for `recipe` — what FinalizeFields offers as one-click profile
- * buttons. One query (the same latest-per-name window as listPresets, body_json included) rather
- * than listPresets + a getPresetRow per name, since a recipe can carry many profiles.
- */
+/** Latest active `finalize` Presets for `recipe` — one query (same latest-per-name window as listPresets) rather than listPresets + a getPresetRow per name, since a recipe can carry many profiles. */
 export async function listFinalizeProfiles(db: D1Database, recipe: string): Promise<FinalizeProfileSummary[]> {
   const { results } = await db
     .prepare(

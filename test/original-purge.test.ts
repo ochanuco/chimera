@@ -42,13 +42,13 @@ async function putRealOriginal(generationId: string): Promise<void> {
 }
 
 // purgeOldOriginals scans every candidate row in the table, so leftover rows from an earlier
-// test in this file (unlike a fresh createGeneration() per test) would pollute "oldest first" /
-// global-count assertions — same reasoning as test/requests.test.ts's claim() beforeEach.
+// test in this file would pollute "oldest first" / global-count assertions (same reasoning as
+// test/requests.test.ts's claim() beforeEach).
 beforeEach(async () => {
   await env.DB.batch([
     // batches.refines_generation_id / experiments.base_generation_id point back at generations,
-    // while generations.batch_id points at batches — a genuine FK cycle between the two tables —
-    // so the back-references must be cleared before either table's rows can be deleted.
+    // while generations.batch_id points at batches — a genuine FK cycle, so back-references must
+    // be cleared before either table's rows can be deleted.
     env.DB.prepare('UPDATE batches SET refines_generation_id = NULL'),
     env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
     env.DB.prepare('DELETE FROM generation_assets'),
@@ -255,8 +255,8 @@ describe('purgeOldOriginals', () => {
     const { generation } = await createGeneration();
     await putRealOriginal(generation.id);
     await ageGeneration(generation.id, 31);
-    // Pre-populate the preview (any bytes — this path never reads them) and drop the original,
-    // as if a previous run's R2 delete succeeded but its D1 write didn't.
+    // Pre-populate the preview and drop the original, as if a previous run's R2 delete succeeded
+    // but its D1 write didn't.
     await env.IMAGES.put(generationPreviewR2Key(generation.id), new Uint8Array([1, 2, 3]), {
       httpMetadata: { contentType: 'image/webp' },
     });

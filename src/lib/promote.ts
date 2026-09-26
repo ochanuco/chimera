@@ -1,7 +1,5 @@
-// promote_to_pose (MCP) / POST /api/v1/presets/promote が呼ぶ。resolveDerivationSource
-// (lib/requests.ts) と getPresetRow / resolvePreset (lib/presets.ts) の両方に依存するため、
-// どちらのファイルにも属さずここに置く（presets.ts は requests.ts を import しない —
-// requests.ts が presets.ts の pinPresets を使う片方向の依存と衝突させないため）。
+// resolveDerivationSource (lib/requests.ts) と getPresetRow / resolvePreset (lib/presets.ts) の両方に
+// 依存するため独立ファイル — presets.ts が requests.ts を import しない片方向依存を保つため。
 
 import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso } from './db';
 import { resolveDerivationSource } from './requests';
@@ -53,9 +51,8 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   const generation = await getGenerationByIdOrShortId(db, input.generation_id);
   if (!generation) throw notFound('generation');
 
-  // 再送は同じ入力のときだけ既存の版を返す。key を使い回して別の Generation や別の名前を
-  // 渡すと、無関係な版が 200 で返って「昇格できた」と読まれる。createRequest が
-  // payload_hash の不一致を conflict にするのと同じ規則。
+  // 再送は同じ入力のときだけ既存の版を返す — key を使い回して別の Generation/名前を渡すと、無関係な版が
+  // 200 で「昇格できた」と読まれてしまう (createRequest の payload_hash 不一致と同じ規則)。
   if (existing) {
     const sameInput =
       existing.source_generation_id === generation.id && existing.kind === input.kind && existing.name === input.name;
@@ -69,8 +66,7 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   const recipe = sourceBatch.recipe;
   if (!recipe) throw conflict('promote requires a recipe-mode batch');
 
-  // その Batch を作った generate request が pin していた版 — 段階 B より前に作られた
-  // Generation にはこの行自体が無いので、undefined のままにして base_version へ落ちる。
+  // その Batch を作った generate request が pin していた版。段階 B より前の Generation にはこの行が無く、undefined のまま base_version へ落ちる。
   const buildingRequest = await db
     .prepare(
       `SELECT payload_json FROM requests WHERE kind = 'generate' AND json_extract(result_json, '$.batch_id') = ?
@@ -98,9 +94,9 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
     throw conflict(`preset base missing: ${recipe}/${input.kind}/${baseName}@${baseVersion}`);
   }
 
-  // patches は Batch 行から取る。semantic.attributes.patches は生成後に書き換わりうる
-  // 場所で正本になれない (docs/domain-model.md「Preset」不変条件)。全文上書きと
-  // finalize / repair / masked_redraw の出力は patches を持たないのでここで弾かれる。
+  // patches は Batch 行から取る。semantic.attributes.patches は生成後に書き換わりうるので正本になれない
+  // (docs/domain-model.md「Preset」不変条件)。全文上書きと finalize/repair/masked_redraw の出力は patches
+  // を持たないのでここで弾かれる。
   let patches: unknown[] = [];
   if (sourceBatch.patches_json) {
     try {
@@ -123,9 +119,8 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   const now = nowIso();
 
   try {
-    // MAX(version) の読み取りと確定を1文にして、同じ (recipe, kind, name) への同時 promote
-    // が同じ次番号を読んで UNIQUE (recipe, kind, name, version) に落ちるレースを避ける
-    // (lib/experiments.ts の run_index 採番と同じ手)。
+    // MAX(version) の読み取りと確定を1文にして、同じ (recipe, kind, name) への同時 promote が同じ次番号を
+    // 読んで UNIQUE(recipe, kind, name, version) に落ちるレースを避ける (lib/experiments.ts の run_index 採番と同じ手)。
     await db
       .prepare(
         `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, idempotency_key, base_fingerprint)
@@ -150,9 +145,8 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
       )
       .run();
   } catch (err) {
-    // 同じ idempotency_key での同時 promote が UNIQUE (idempotency_key) に落ちるレース。
-    // 先に確定した側を読み直す。version の衝突 (別 idempotency_key の同時 promote) はここでは
-    // 拾えないので、そのまま呼び出し元に投げる。
+    // 同時 promote が UNIQUE (idempotency_key) に落ちるレース。先に確定した側を読み直す。version の衝突
+    // (別 idempotency_key の同時 promote) はここでは拾えないので、そのまま呼び出し元に投げる。
     const raced = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
     if (!raced) throw err;
     return serializeResolvedPreset(raced, await resolvePreset(db, raced));
@@ -184,10 +178,9 @@ export interface PromoteGenerationToProfileInput {
 }
 
 /**
- * Turns a rating=good finalize-kind Generation into a new `finalize` Preset version
- * (docs/worker-protocol.md「finalize profile」). Unlike promoteGenerationToPreset, there is no
- * base chain to resolve — the body is that Generation's own finalize request payload.options,
- * as queued (words preserved, after any profile expansion applyFinalizeProfile already did).
+ * Turns a rating=good finalize-kind Generation into a new `finalize` Preset version (docs/worker-protocol.md
+ * 「finalize profile」). Unlike promoteGenerationToPreset there is no base chain to resolve — the body is
+ * that Generation's own finalize request payload.options, as queued (after any applyFinalizeProfile expansion).
  */
 export async function promoteGenerationToProfile(db: D1Database, input: PromoteGenerationToProfileInput) {
   const existing = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
@@ -218,8 +211,7 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
   const now = nowIso();
 
   try {
-    // MAX(version) の読み取りと確定を1文にする (promoteGenerationToPreset と同じ、
-    // 同じ (recipe, kind, name) への同時 promote のレース対策)。
+    // MAX(version) の読み取りと確定を1文にする (promoteGenerationToPreset と同じレース対策)。
     await db
       .prepare(
         `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, idempotency_key, base_fingerprint)
@@ -229,7 +221,7 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
       .bind(id, batch.recipe, input.name, bodyJson, generation.id, input.note ?? null, input.created_by, now, input.idempotency_key, batch.recipe, input.name)
       .run();
   } catch (err) {
-    // 同じ idempotency_key での同時 promote が UNIQUE (idempotency_key) に落ちるレース。
+    // 同時 promote が UNIQUE (idempotency_key) に落ちるレース (promoteGenerationToPreset と同じ)。
     const raced = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
     if (!raced) throw err;
     return serializeResolvedPreset(raced, await resolvePreset(db, raced));

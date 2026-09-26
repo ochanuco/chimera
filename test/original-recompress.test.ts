@@ -54,9 +54,8 @@ async function putOriginal(generationId: string, bytes: Uint8Array): Promise<voi
 }
 
 beforeEach(async () => {
-  // Same reasoning as test/original-purge.test.ts's beforeEach: recompressRetainedOriginals
-  // scans every candidate row in the table, so leftover rows from an earlier test would
-  // pollute "oldest first" / global-count assertions.
+  // Same reasoning as test/original-purge.test.ts's beforeEach: scans every candidate row, so
+  // leftover rows from an earlier test would pollute "oldest first" / global-count assertions.
   await env.DB.batch([
     env.DB.prepare('UPDATE batches SET refines_generation_id = NULL'),
     env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),

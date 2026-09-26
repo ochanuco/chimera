@@ -44,9 +44,8 @@ export interface McpJsonRpcResponse<T = unknown> {
 
 /**
  * Drives POST /mcp with a plain JSON-RPC request body. The stateless handler answers with an
- * SSE frame (`event: message\ndata: {...}\n\n`) rather than a bare JSON body, so this parses the
- * `data:` line back out. `Accept: application/json, text/event-stream` is required by the
- * installed @modelcontextprotocol/server handler (checked by hitting the endpoint directly).
+ * SSE frame (`event: message\ndata: {...}\n\n`), so this parses the `data:` line back out.
+ * `Accept: application/json, text/event-stream` is required by the installed MCP server handler.
  */
 export async function mcpCall<T = unknown>(
   method: string,
@@ -77,8 +76,7 @@ export interface McpToolCallResult {
 
 /**
  * tools/call convenience wrapper; parses the first text content block as JSON when it looks like one.
- * structuredContent は宣言した outputSchema で検証する — 本物の MCP client も同じ検証をするので、
- * ここで落としておかないと schema と実体のずれが client 側の validation error として初めて出る。
+ * structuredContent は宣言した outputSchema で検証する — ここで落とさないと schema とのずれが client 側の validation error として初めて表面化する。
  */
 export async function mcpToolCall<T = unknown>(name: string, args: unknown, id: number | string = 1) {
   const { status, body } = await mcpCall<McpToolCallResult>('tools/call', { name, arguments: args }, id);
@@ -166,9 +164,8 @@ export async function zlibDeflate(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Builds a real, decodable solid-color PNG at the given size (8-bit RGB, no interlace).
- * Used where a fixture must be big enough for the Images binding to actually resize —
- * TINY_PNG (1x1) never shrinks under the default scale-down fit.
+ * Builds a real, decodable solid-color PNG at the given size (8-bit RGB, no interlace) — for
+ * fixtures big enough that the Images binding actually resizes them, unlike TINY_PNG (1x1).
  */
 export async function makeSolidPng(width: number, height: number, rgb: [number, number, number]): Promise<Uint8Array> {
   const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -183,7 +180,7 @@ export async function makeSolidPng(width: number, height: number, rgb: [number, 
   const rowBytes = 1 + width * 3;
   const raw = new Uint8Array(rowBytes * height);
   for (let y = 0; y < height; y++) {
-    const rowStart = y * rowBytes; // raw[rowStart] stays 0: filter type "none"
+    const rowStart = y * rowBytes; // leading byte per row stays 0: filter type "none"
     for (let x = 0; x < width; x++) {
       const px = rowStart + 1 + x * 3;
       raw.set(rgb, px);
@@ -208,9 +205,8 @@ export interface PngChunkSpec {
 
 /**
  * General-purpose PNG builder for cases makeSolidPng can't cover: an explicit color type
- * (2 = RGB, 6 = RGBA, for pngHasTransparency), extra chunks spliced in before IDAT (for
- * extractPngTextChunk / graph-rescue fixtures), and a per-pixel color function (for content
- * that actually compresses differently under PNG vs. lossless WebP, unlike a solid fill).
+ * (2 = RGB, 6 = RGBA), extra chunks spliced in before IDAT (tEXt/iTXt fixtures), and a
+ * per-pixel color function (content that compresses differently than a solid fill).
  */
 export async function makePngWithChunks(
   width: number,
@@ -229,14 +225,14 @@ export async function makePngWithChunks(
   const ihdrData = new Uint8Array(13);
   new DataView(ihdrData.buffer).setUint32(0, width);
   new DataView(ihdrData.buffer).setUint32(4, height);
-  ihdrData[8] = 8; // bit depth
+  ihdrData[8] = 8;
   ihdrData[9] = colorType;
   const ihdr = pngChunk('IHDR', ihdrData);
 
   const rowBytes = 1 + width * channels;
   const raw = new Uint8Array(rowBytes * height);
   for (let y = 0; y < height; y++) {
-    const rowStart = y * rowBytes; // raw[rowStart] stays 0: filter type "none"
+    const rowStart = y * rowBytes;
     for (let x = 0; x < width; x++) {
       const px = rowStart + 1 + x * channels;
       raw.set(pixel(x, y), px);
@@ -293,7 +289,6 @@ export async function createBatch(overrides: Record<string, unknown> = {}) {
   });
 }
 
-// Track next index per batch for default calls
 const batchIndexCounters = new Map<string, number>();
 
 export async function createJob(batchId: string, overrides: Record<string, unknown> = {}) {

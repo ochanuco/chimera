@@ -1,6 +1,4 @@
-// Recipe catalog のクエリ。REST (src/routes/catalogs.ts) と MCP tools
-// `list_catalog` / `get_catalog_pose` (src/mcp.ts) の両方がここを呼ぶ。
-// recipe_ref ごとに最新の1件だけを保持する (migrations/0014_recipe_catalogs.sql)。
+// REST (src/routes/catalogs.ts) と MCP tools `list_catalog`/`get_catalog_pose` の両方がここを呼ぶ。recipe_ref ごとに最新の1件だけ保持する。
 
 import { nowIso } from './db';
 import type { RecipeCatalogDoc } from '../schemas/catalogs';
@@ -84,11 +82,9 @@ export async function listCatalogs(db: D1Database): Promise<CatalogListItem[]> {
 }
 
 /**
- * Recipe names, pose/costume/expression NAMES, prompt part names (`parts`), bare `identity_tags`,
- * `parameters`, the `patches` vocabulary and git info — no prompt bodies (identity_tags are bare
- * tags, not prompt bodies either). What `list_catalog` and the PUT response return;
- * `get_catalog_pose` returns the full pose record (prompt bodies included) via `findCatalogPose`
- * instead.
+ * Recipe names, pose/costume/expression NAMES, prompt part names, bare `identity_tags`,
+ * `parameters`, `patches` vocabulary and git info — no prompt bodies. What `list_catalog` and the
+ * PUT response return; `get_catalog_pose` returns the full pose record via `findCatalogPose` instead.
  */
 export function summarizeCatalog(doc: RecipeCatalogDoc) {
   const recipes = doc.recipes.map((recipe) => {

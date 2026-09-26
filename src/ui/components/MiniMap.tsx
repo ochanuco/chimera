@@ -13,13 +13,9 @@ export function hasMiniMapContent(rows: MiniMapRow[]): boolean {
   return visibleRows(rows).length > 0;
 }
 
-/**
- * One-line, image-free lineage strip per relation chain / Story: `b_abc -- b_def -- [b_ghi] -- b_jkl`,
- * current position bracketed and unlinked. Items are whatever the host page is about (Batches on
- * Batch Detail, Generations on Generation Detail), so following the map never switches page kind.
- * Deliberately lighter than FamilyStrip (no thumbnails) --
- * this is for skimming "where am I in the lineage", not for material/detail lookup.
- */
+/** One-line, image-free lineage strip per relation chain / Story: `b_abc -- b_def -- [b_ghi] -- b_jkl`, current position
+ * bracketed and unlinked. Items are whatever the host page is about, so following the map never switches page kind.
+ * Deliberately lighter than FamilyStrip (no thumbnails) -- for skimming "where am I", not material/detail lookup. */
 export function MiniMap({ rows }: { rows: MiniMapRow[] }) {
   return (
     <div class="mini-map">

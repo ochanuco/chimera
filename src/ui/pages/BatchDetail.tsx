@@ -54,13 +54,12 @@ export interface FinalizeSummary {
   failed: number;
 }
 
-/** 集計行の下に出す個別行（段階3: /api/v1/requests/ws の progress/status をここに反映する）。 */
+/** 集計行の下に出す個別行（/api/v1/requests/ws の progress/status をここに反映する）。 */
 export interface FinalizeRequestStatus {
   id: string;
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 }
 
-/** Renders a reference link, preferring the resolved short_id over the raw UUID for both href and label. */
 function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
   const shortId = shortIds.get(id);
   return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
@@ -97,7 +96,7 @@ export function BatchDetailPage({
   diffParent?: { shortId: string; prompt: string | null; negative_prompt: string | null } | null;
   /** このBatch配下の全GenerationについてのfinalizeRequest状況の集計。 */
   finalizeSummary: FinalizeSummary;
-  /** 集計行の内訳（段階3のWebSocket progress/statusが更新する個別行）。 */
+  /** 集計行の内訳（WebSocket progress/status が更新する個別行）。 */
   finalizeRequests: FinalizeRequestStatus[];
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;

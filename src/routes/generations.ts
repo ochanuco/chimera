@@ -139,7 +139,6 @@ generations.delete('/:id/tags/:tagId', async (c) => {
   return c.body(null, 204);
 });
 
-// GET /api/v1/generations/{id}/publications — Publication 一覧 (docs/domain-model.md#publication)。
 generations.get('/:id/publications', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
@@ -147,8 +146,7 @@ generations.get('/:id/publications', async (c) => {
   return c.json({ items: rows.map(serializePublication) });
 });
 
-// POST /api/v1/generations/{id}/publications — GUI の「公開を記録」が呼ぶ窓口。created_by は
-// 'gui' 固定 (MCP は record_publication 経由で別途 'mcp' を渡す。src/mcp.ts 参照)。
+// created_by は 'gui' 固定 (MCP は record_publication 経由で別途 'mcp' を渡す。src/mcp.ts 参照)。
 generations.post('/:id/publications', async (c) => {
   const body = createPublicationSchema.parse(await c.req.json());
   const db = c.env.DB;
@@ -162,10 +160,8 @@ generations.post('/:id/publications', async (c) => {
   return c.json(serializePublication(row), created ? 201 : 200);
 });
 
-// POST /api/v1/generations/{id}/pose-reference — GUI の「基準にする」(Generation Detail) が呼ぶ窓口
-// (docs/domain-model.md「基準 render の pin」)。recipe/pose は明示しない: MCP set_pose_reference
-// と違い呼び出し側はそれを知らないので、resolved raw Batch から推測する
-// (lib/preset-references.ts setPoseReferenceForGeneration)。created_by は 'gui' 固定。
+// GUI の「基準にする」窓口 (docs/domain-model.md「基準 render の pin」)。MCP set_pose_reference と違い
+// 呼び出し側は recipe/pose を知らないため raw Batch から推測する (lib/preset-references.ts)。created_by は 'gui' 固定。
 generations.post('/:id/pose-reference', async (c) => {
   const body = setPoseReferenceForGenerationSchema.parse(await c.req.json());
   const db = c.env.DB;
@@ -205,9 +201,7 @@ async function upsertGenerationAsset(
   return { ...existing, content_type: contentType, size, r2_object_key: r2Key, updated_at: now };
 }
 
-// POST /api/v1/generations/{id}/assets — upsert (replace) a layered asset
-// (lineart / mask / decomposed layer / PSD / ...) for a Generation, keyed by
-// (generation_id, role, region). See docs/domain-model.md.
+// Upsert keyed by (generation_id, role, region); replaces rather than versions.
 generations.post('/:id/assets', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
@@ -239,8 +233,7 @@ generations.post('/:id/assets', async (c) => {
   const now = nowIso();
 
   const putObject = () => c.env.IMAGES.put(r2Key, buffer, { httpMetadata: { contentType } });
-  // Replace semantics: only the latest version is kept. A content_type change
-  // moves the deterministic key (extension), so drop the superseded object.
+  // A content_type change moves the deterministic key (extension); drop the superseded object.
   const replaceAsset = async (row: GenerationAssetRow) => {
     const updated = await upsertGenerationAsset(db, row, contentType, size, r2Key, now);
     await putObject();
@@ -264,8 +257,7 @@ generations.post('/:id/assets', async (c) => {
       .bind(id, generation.id, metadata.role, region, r2Key, contentType, size, now, now)
       .run();
   } catch (err) {
-    // Concurrent ingest raced us on the (generation_id, role, region) unique
-    // constraint; fall back to the update path for the row the winner created.
+    // Concurrent ingest raced us on the unique constraint; fall back to updating the winner's row.
     const raced = await getGenerationAsset(db, generation.id, metadata.role, region);
     if (!raced) throw err;
     const updated = await replaceAsset(raced);
@@ -287,7 +279,6 @@ generations.post('/:id/assets', async (c) => {
   return c.json(serializeGenerationAsset(created, org, generation.short_id), 201);
 });
 
-// GET /api/v1/generations/{id}/assets — list every layered asset for a Generation.
 generations.get('/:id/assets', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));

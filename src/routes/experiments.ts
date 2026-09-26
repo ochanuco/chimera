@@ -55,7 +55,6 @@ function origin(c: { req: { url: string } }): string {
   return new URL(c.req.url).origin;
 }
 
-/** proposed からのみ確定でき、applied / rejected は終端。 */
 const PROMOTION_STATUS_TRANSITIONS: Record<PromotionStatus, PromotionStatus[]> = {
   proposed: ['applied', 'rejected'],
   applied: [],
@@ -82,8 +81,6 @@ async function resolveBaseGenerationId(db: D1Database, idOrShortId: string): Pro
   if (!generation) throw notFound('generation');
   return generation.id;
 }
-
-// --- Experiment ---
 
 experiments.post('/', async (c) => {
   const body = createExperimentSchema.parse(await c.req.json());
@@ -229,8 +226,6 @@ experiments.patch('/:id', async (c) => {
   return c.json(serializeExperiment(updated));
 });
 
-// --- ExperimentRun ---
-
 experiments.post('/:id/runs', async (c) => {
   const body = createExperimentRunSchema.parse(await c.req.json());
   const db = c.env.DB;
@@ -286,8 +281,6 @@ experimentRuns.patch('/:runId', async (c) => {
   const updated = await updateExperimentRun(db, run, body);
   return c.json(serializeExperimentRun(updated));
 });
-
-// --- Promotion ---
 
 experiments.post('/:id/promotions', async (c) => {
   const body = createPromotionSchema.parse(await c.req.json());
@@ -405,8 +398,6 @@ promotions.patch('/:promotionId', async (c) => {
   return c.json(serializeExperimentPromotion(updated));
 });
 
-// --- PairwiseJudgment ---
-
 experiments.post('/:id/judgments', async (c) => {
   const body = createJudgmentSchema.parse(await c.req.json());
   const db = c.env.DB;
@@ -427,8 +418,6 @@ experiments.get('/:id/judgments/summary', async (c) => {
   const experiment = await getExperimentOr404(db, c.req.param('id'));
   return c.json(await judgmentSummary(db, experiment));
 });
-
-// --- Bookmark / Tag ---
 
 experiments.put('/:id/bookmark', async (c) => {
   const experiment = await getExperimentOr404(c.env.DB, c.req.param('id'));

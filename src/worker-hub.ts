@@ -1,10 +1,6 @@
-// WorkerHub (docs/worker-protocol.md 段階3): requests キューの push / 進捗中継用 Durable
-// Object。正本は D1 のまま — このオブジェクトは通知路であって状態の正本ではない
-// (`progress:<request_id>` の DO storage エントリも、viewer が後から繋いだときの
-// snapshot 用キャッシュに過ぎない)。
-//
-// 単一インスタンスを `idFromName('global')` で運用する。Hibernation API を使うので
-// 接続数が多くても課金対象の起動時間は増えない。
+// requests キューの push / 進捗中継用 Durable Object。正本は D1 — このオブジェクトは通知路であって
+// 状態の正本ではない（progress cache も viewer 再接続時の snapshot 用に過ぎない）。単一インスタンス
+// (idFromName('global')) を Hibernation API 上で運用するため、接続数が多くても課金対象の起動時間は増えない。
 
 import { DurableObject } from 'cloudflare:workers';
 import { nowIso } from './lib/db';
@@ -67,15 +63,14 @@ function readAttachment(ws: WebSocket): Attachment | null {
 }
 
 function acceptsKind(attachment: WorkerAttachment | null, kind: RequestKind): boolean {
-  if (!attachment || !attachment.kinds) return true; // hello 未送信の worker は全種を受け取る
+  if (!attachment || !attachment.kinds) return true;
   return attachment.kinds.includes(kind);
 }
 
 export class WorkerHub extends DurableObject<Bindings> {
   constructor(ctx: DurableObjectState, env: Bindings) {
     super(ctx, env);
-    // ping/pong は Hibernation の auto-response に任せ、DO を起こさない
-    // (worker-protocol.md「Messages」節)。
+    // ping/pong は Hibernation の auto-response に任せ、DO を起こさない。
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'));
   }
 
@@ -141,7 +136,7 @@ export class WorkerHub extends DurableObject<Bindings> {
     }
   }
 
-  /** 各ソケットへの送信失敗 (閉じている等) を個別に握りつぶす。戻り値は実際に送れた数。 */
+  /** ソケットごとの送信失敗 (閉じている等) を個別に握りつぶし、他への送信は続ける。 */
   private broadcast(sockets: WebSocket[], data: unknown): number {
     const text = JSON.stringify(data);
     let sent = 0;
@@ -150,7 +145,7 @@ export class WorkerHub extends DurableObject<Bindings> {
         ws.send(text);
         sent += 1;
       } catch {
-        // ignore — per-socket failure only.
+        // per-socket failure only.
       }
     }
     return sent;
@@ -162,7 +157,7 @@ export class WorkerHub extends DurableObject<Bindings> {
     try {
       data = JSON.parse(message);
     } catch {
-      return; // unparsable frame -> ignore (worker-protocol.md「Messages」節)
+      return; // unparsable frame -> ignore
     }
     if (!data || typeof data !== 'object') return;
 
@@ -183,7 +178,6 @@ export class WorkerHub extends DurableObject<Bindings> {
       this.sendTo(ws, { type: 'pong' });
       return;
     }
-    // unknown type -> ignore
   }
 
   private async handleHello(ws: WebSocket, body: { worker_id?: unknown; kinds?: unknown }): Promise<void> {
@@ -221,9 +215,8 @@ export class WorkerHub extends DurableObject<Bindings> {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    // 1005/1006 (no status / abnormal) はクライアントが実際に送ってくるコードでは
-    // あり得るが、close() に渡すと invalid code として例外になる。素の close() に
-    // 落として、下位のソケット解放だけ行う。
+    // 1005/1006 はクライアントが送ってくることがあるが、close() に渡すと invalid code
+    // として例外になるため、無引数の close() にフォールバックする。
     try {
       ws.close(code, reason);
     } catch {
@@ -303,7 +296,7 @@ export class WorkerHub extends DurableObject<Bindings> {
     }
   }
 
-  /** stale running の回収 (claimRequest と同じ規則、src/lib/requests.ts の requeueStaleRunning)。 */
+  /** stale running を回収する (claimRequest と同じ規則)。 */
   async alarm(): Promise<void> {
     const rows = await requeueStaleRunning(this.env.DB, nowIso());
     for (const row of rows) {

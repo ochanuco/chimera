@@ -1,7 +1,5 @@
-// PairwiseJudgment のクエリと作成ロジック。左右の向き (left/right) は表示時に
-// ランダムに割り当てられたものなので、baseline / arm のどちらが勝ったかは
-// verdict と各 Generation の batch_id (baseline_run / arm_run のどちらの
-// batch から出たか) を突き合わせて導く。
+// PairwiseJudgment のクエリと作成ロジック。左右の向き (left/right) は表示時にランダムに割り当てられる
+// ため、baseline / arm のどちらが勝ったかは verdict と各 Generation の batch_id を突き合わせて導く。
 
 import { chunk, D1_MAX_BOUND_PARAMS, nowIso } from './db';
 import { badRequest, conflict } from './errors';
@@ -11,11 +9,7 @@ import { parseJsonObjectOrNull } from './overrides';
 import { diffFactSummaries, resolveBatchRenderFacts, summarizeRenderFacts, type FactDiffEntry } from './render-facts';
 import type { ExperimentRow, ExperimentRunRow, JudgmentVerdict, JudgmentWinner, PairwiseJudgmentRow } from '../types';
 
-/**
- * Run ごとの render_facts サマリに variables を `variables.<key>` として合流させる。
- * A/B の reveal と judgments/summary の render_diff は同じこのマップから作る
- * (docs/api.md 参照)。
- */
+/** Run ごとの render_facts サマリに variables を `variables.<key>` として合流させる。A/B の reveal と judgments/summary の render_diff は同じこのマップから作る。 */
 export async function runFactSummary(
   db: D1Database,
   runs: ExperimentRunRow[],

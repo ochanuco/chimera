@@ -1,16 +1,8 @@
 // chimera ドメインへの MCP インターフェース。docs/experiment-agent.md 参照。
-//
-// tool のハンドラは REST routes (src/routes/experiments.ts) と同じ
-// src/lib/experiments.ts の関数を呼ぶ。クエリ・guardrails (404/409) を
-// 二重に持たないため。ApiError はここで握りつぶさずそのまま投げる:
-// McpServer の tools/call ハンドラが catch して
-// `{ content: [{ type: 'text', text: error.message }], isError: true }`
-// に変換する（node_modules/@modelcontextprotocol/server の実装、
-// createToolError を参照）ので、メッセージはそのまま tool error に出る。
+// tool ハンドラは REST routes と同じ src/lib/*.ts の関数を呼び、guardrails (404/409) を二重に持たない。
+// ApiError は握りつぶさず投げる: McpServer の tools/call ハンドラが catch してそのまま tool error のメッセージにする。
 
-// 読み取り tool には readOnlyHint を付ける。MCP client は annotation のない tool を
-// 副作用ありとみなし、承認待ちにして呼び出し時点では結果を返さないことがある。
-// 読み取りがそう扱われると Agent はデータを受け取れず同じ呼び出しを繰り返す。
+// 読み取り tool には readOnlyHint を付ける（annotation が無いと副作用ありとみなし、承認待ちで結果を返さない client がある）。
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
@@ -68,12 +60,7 @@ import { foldBatchDigestPrompts, foldGenerationDetailPrompts, foldRequestPayload
 import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
 import type { Bindings } from './types';
 
-/**
- * MCP client は tools/call レスポンス全体の大きさに上限を設けることがあり、1 MiB で切る
- * client に合わせる。inline image は base64 化で 4/3 に膨れるため、
- * 実際に返せる生バイト数は 1 MiB ÷ (4/3) ≈ 786 KiB。JSON-RPC envelope の分の余裕を見て
- * 700 KiB に切り詰める。
- */
+/** MCP client の 1 MiB レスポンス上限に合わせる。base64 化で 4/3 に膨れる分と JSON-RPC envelope の余裕を見て 700 KiB に切り詰める。 */
 const MAX_RETURNED_IMAGE_BYTES = 700 * 1024;
 
 const DEFAULT_IMAGE_WIDTH = 768;
@@ -95,13 +82,10 @@ type Declared<T> = T extends readonly (infer U)[]
 /** get_generation_image だけは image block を返すため jsonResult を通らず、structuredContent を直に組む。 */
 type ImageResult = Declared<z.infer<typeof mcpOutputSchemas.get_generation_image>>;
 
-// text と structuredContent の両方を返す。outputSchema を宣言した tool は
-// structuredContent が無いと SDK が ProtocolError にするし、outputSchema を読まない
-// client のために text も要る（MCP 仕様 SEP-2106 §4.3 と同じ二重掲載）。
-// schema 引数は型の witness で、実行時には使わない。値で受け取らないと型引数の
-// 指定漏れが unknown に潰れて素通りし、schema と実体のずれは tsc では捕まらず、
-// SDK の validateToolOutput が structuredContent を検証して tool error に変換する
-// までコンパイル時には気づけない。
+// content と structuredContent の両方を返す: outputSchema 宣言時は structuredContent が無いと SDK が
+// ProtocolError にし、outputSchema 未対応の client のため text も要る（MCP SEP-2106 §4.3）。
+// schema 引数は型の witness（実行時には使わない）。値で受けないと型引数の指定漏れが unknown に潰れて
+// tsc で検出できなくなる。
 function jsonResult<S extends z.ZodType>(_schema: S, data: Declared<z.infer<S>>) {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
@@ -120,10 +104,7 @@ function parseJsonArray(raw: string | null): unknown[] {
   }
 }
 
-/**
- * Uint8Array -> base64。`btoa(String.fromCharCode(...bytes))` は引数展開が
- * 呼び出しスタック上限に当たるため、chunk に分けて畳み込む。
- */
+/** Uint8Array -> base64。`btoa(String.fromCharCode(...bytes))` は引数展開でスタック上限に当たるため chunk に分けて畳み込む。 */
 function toBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunkSize = 0x8000;
@@ -133,8 +114,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-// 呼び出し側が repair の crop 用 prompt で prompt.positive を丸ごと replace し、identity の
-// 指定を消した事故があった。create_request と derive_request で同じ案内を出す。
+// prompt.positive の丸ごと replace は identity 指定を消す事故のもと。create_request と derive_request で同じ案内を出す。
 function promptPartGuidance(identityOverrideField: string): string {
   return (
     'Prompt edits: to change only expression, background, pose or another single aspect, patch that part alone with ' +
@@ -305,18 +285,12 @@ const listObservationsInputSchema = z.object({
 
 const getObservationInputSchema = z.object({ id: z.string().min(1) });
 
-/**
- * record_observation は observed_at を持たない — それは import 由来 (JSONL の記録日) 専用の
- * 欄で、MCP から今書く Observation には意味がない。base の ZodObject を
- * createObservationObjectSchema (schemas/observations.ts) から借り、同じ pose/component
- * 必須 refine をかけ直す。
- */
+/** observed_at は import 専用 (JSONL 記録日) の欄なので持たない。base は createObservationObjectSchema (schemas/observations.ts) を借り、同じ pose/component 必須 refine をかけ直す。 */
 const recordObservationInputSchema = createObservationObjectSchema.omit({ observed_at: true }).superRefine(requirePoseOrComponent);
 
 /**
- * Server-level guidance, returned in the initialize response. Tool descriptions alone leave the client to guess
- * the order of operations; without this, a client that has only seen a rating=good Generation re-invents a pose
- * that already exists in the catalog (stand + whole-prompt replace instead of the `bust` pose and its pin).
+ * Server-level guidance in the initialize response: tool descriptions alone leave the client to guess the order
+ * of operations, so a client seeing only a rating=good Generation re-invents a pose that already exists in the catalog.
  */
 const MCP_INSTRUCTIONS =
   'chimera manages ComfyUI generations for comfyui-recipes. Order of operations:\n' +
@@ -493,8 +467,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const object = await bucket.get(sourceKey);
       if (!object) throw notFound('image');
 
-      // transform 用と、失敗時のフォールバック用に body を分ける。成功すれば
-      // フォールバック側は誰も読まないまま捨てられる。
+      // transform 用と失敗時フォールバック用に body を分ける（成功すればフォールバック側は読まれず捨てられる）。
       const [forTransform, forFallback] = object.body.tee();
 
       let bytes: Uint8Array;
@@ -506,9 +479,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         bytes = new Uint8Array(await result.response().arrayBuffer());
         mimeType = 'image/jpeg';
       } catch {
-        // 変換失敗（壊れた画像、binding 未提供の環境など）でも tool call 自体は
-        // 失敗させない。元画像がキャップ内に収まればそのまま返し、収まらなければ
-        // 従来どおりポインタに落とす。
+        // 変換失敗（壊れた画像、binding 未提供など）でも tool call 自体は失敗させない。
+        // 元画像がキャップ内に収まればそのまま返し、収まらなければポインタに落とす。
         bytes = new Uint8Array(await new Response(forFallback).arrayBuffer());
         mimeType = object.httpMetadata?.contentType ?? 'image/png';
       }
@@ -1041,8 +1013,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const record = findCatalogPose(found.doc, recipe, pose);
       if (!record) throw notFound(`pose '${pose}' in recipe '${recipe}'`);
       const reference = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
-      // catalog は本文を持たない pose を裸の名前文字列で書ける。structuredContent は
-      // object でなければならないので、その形だけここで {name} に揃える。
+      // catalog は本文を持たない pose を裸の名前文字列で書ける。structuredContent は object 必須なのでここで {name} に揃える。
       const recordObject = typeof record === 'string' ? { name: record } : (record as Record<string, unknown>);
       return jsonResult(mcpOutputSchemas.get_catalog_pose, { ...recordObject, reference });
     },

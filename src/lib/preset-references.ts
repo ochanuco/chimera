@@ -1,7 +1,6 @@
-// pose の基準 render の pin (docs/domain-model.md「Preset」基準 render の pin)。
-// promoteGenerationToPreset (lib/promote.ts) と同じ理由でここに置く: resolveDerivationSource
-// (lib/requests.ts) と getPresetRow (lib/presets.ts) の両方に依存するため、どちらのファイル
-// にも属さない — presets.ts は requests.ts を import しない片方向依存を保つため。
+// pose の基準 render の pin (docs/domain-model.md「Preset」基準 render の pin)。resolveDerivationSource
+// (lib/requests.ts) と getPresetRow (lib/presets.ts) の両方に依存するため独立ファイル — presets.ts が
+// requests.ts を import しない片方向依存を保つため。
 
 import { getGenerationByIdOrShortId, nowIso } from './db';
 import { resolveDerivationSource } from './requests';
@@ -164,18 +163,13 @@ async function toResult(
 }
 
 /**
- * Pins `generation_id` as the baseline render for `recipe`/`pose`. Rules, in order:
- * 1. idempotency replay: same (recipe, pose, resolved generation) returns the existing row;
- *    a different one 409s.
- * 2. the pose must already exist as a Preset.
- * 3. generation_id must resolve and carry rating=good.
- * 4. finalize/repair outputs resolve to their raw Generation (resolveDerivationSource, same as
- *    derive_request).
- * 5. the resolved Batch must be a *plain render* of recipe/pose — same recipe, drew this pose, no
- *    patches, and the queued generate request (when one exists) did not override the prompt.
- *    Every failing rule is collected into one 409 message.
- * 6. the seed comes from the resolved Generation's comfy_job.
- * Re-setting supersedes the previous current row rather than overwriting it — the history is kept.
+ * Pins `generation_id` as the baseline render for `recipe`/`pose`. Checks, in order: idempotency replay
+ * (same recipe/pose/generation returns the existing row, a different one 409s) → pose must already exist
+ * as a Preset → generation must resolve with rating=good → finalize/repair outputs resolve to their raw
+ * Generation (resolveDerivationSource, same as derive_request) → resolved Batch must be a *plain render*
+ * of recipe/pose (same recipe, drew this pose, no patches, request didn't override the prompt — every
+ * failing rule collected into one 409) → seed comes from the resolved Generation's comfy_job.
+ * Re-setting supersedes the previous row rather than overwriting it, keeping history.
  */
 export async function setPoseReference(db: D1Database, input: SetPoseReferenceInput): Promise<SetPoseReferenceResult> {
   const existing = await db
@@ -259,8 +253,7 @@ export async function setPoseReference(db: D1Database, input: SetPoseReferenceIn
         .bind(id, input.recipe, input.pose, generation.id, source.id, seed, input.idempotency_key, input.created_by, now),
     ]);
   } catch (err) {
-    // 同じ idempotency_key での同時 set_pose_reference が UNIQUE (idempotency_key) に落ちるレース
-    // (lib/promote.ts と同じ手)。先に確定した側を読み直す。
+    // 同時 set_pose_reference が UNIQUE (idempotency_key) に落ちるレース (lib/promote.ts と同じ手)。先に確定した側を読み直す。
     const raced = await db.prepare('SELECT * FROM preset_references WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetReferenceRow>();
     if (!raced) throw err;
     return toResult(db, raced, false, null);
@@ -278,11 +271,9 @@ export interface SetPoseReferenceForGenerationInput {
 }
 
 /**
- * GUI 版 set_pose_reference (docs/domain-model.md「基準 render の pin」): 呼び出し側は
- * recipe/pose を知らない（Generation Detail は Generation しか持たない）ので、resolveDerivationSource
- * で遡った raw Batch から推測してから setPoseReference に委譲する。setPoseReference は
- * 内部でもう一度同じ解決をやり直すが、409 の理由付けを1箇所（そちら）にまとめるための
- * 重複であり、ここでは「どのpose/recipeを狙うか」の決定だけを行う。
+ * GUI 版 set_pose_reference (docs/domain-model.md「基準 render の pin」): recipe/pose を知らない呼び出し側
+ * (Generation Detail) のため resolveDerivationSource で raw Batch から推測し、setPoseReference に委譲する。
+ * setPoseReference が内部で同じ解決をやり直すのは、409 の理由付けを1箇所にまとめるため。
  */
 export async function setPoseReferenceForGeneration(
   db: D1Database,

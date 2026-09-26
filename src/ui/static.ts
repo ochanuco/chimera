@@ -20,7 +20,7 @@ export const styleCss = `
   --nav-h: 3.25rem;
   --compare-bar-h: 3.75rem;
   --thumb-ar: 2 / 3;
-  /* Generation 画像を置く面すべてに敷く市松。透過部分と余白を見分けるためのもので、img 自体には手を加えない */
+  /* 透過/余白を判別するための市松（img 自体は変更しない） */
   --checker:
     linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%) 0 0 / 16px 16px,
     #1a1a1a linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%) 8px 8px / 16px 16px;
@@ -282,8 +282,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-row { padding: 0.4rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .card-id-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
 
-/* GenerationCard のサムネイルオーバーレイ (docs/ui.md「Gallery」カード)。position は
-   .thumb-link の中でだけ絶対配置。 */
+/* position は .thumb-link 内でのみ絶対配置 (docs/ui.md「Gallery」) */
 .card-from-badge {
   display: inline-flex;
   align-items: center;
@@ -299,8 +298,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-from-badge-link { text-decoration: none; }
 .card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
 
-/* from-badge と finalizeピルを縦に積むコンテナ (docs/ui.md「Gallery」)。from-badge が無ければ
-   finalizeピルだけがこの位置に来る。 */
+/* from-badge が無ければ finalize ピルのみがこの位置に来る (docs/ui.md「Gallery」) */
 .card .thumb-link .thumb-badges-top {
   position: absolute;
   top: 0.4rem;
@@ -313,8 +311,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   max-width: calc(100% - 0.8rem);
 }
 
-/* finalize/repair/masked_redraw の進捗ピル (docs/ui.md「Gallery」)。request-status-* は
-   .request-status-list と共通の色クラス (このファイル下方)。 */
+/* request-status-* は .request-status-list と共通の色クラス（本ファイル下方） */
 .card-finalize-badge {
   display: inline-flex;
   align-items: center;
@@ -332,7 +329,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .card-finalize-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-/* 公開済み・基準ピルを横に並べる、下端寄せのコンテナ (thumb-badges-top の下端版)。 */
 .card .thumb-link .thumb-badges-bottom {
   position: absolute;
   bottom: 0.4rem;
@@ -385,8 +381,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-/* 親の高さが auto だと max-height: 100% は効かないため、img に直接ビューポート基準の上限を課す。
-   26px = 外側マージン 8px×2 + パディング 4px×2 + ボーダー 1px×2（枠ごとビューポートに収める） */
+/* 親が height:auto だと max-height:100% が効かないため viewport 基準で上限を課す。26px = margin 8px×2 + padding 4px×2 + border 1px×2 */
 #thumb-preview img { display: block; max-width: calc(100vw - 26px); max-height: calc(100vh - 26px); border-radius: 6px; background: var(--checker); }
 #thumb-preview.visible { display: block; }
 .card-top-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
@@ -402,7 +397,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   cursor: pointer;
 }
 .copy-id-btn:hover { color: var(--text); }
-/* ID の文字そのものがコピーボタン (GenerationCard)。コピーしたら文字を置き換えず色と ✓ で知らせる */
+/* ID 文字そのものがコピー操作（copy-id-btn とは別）。コピー後は文字を置き換えず色と ✓ で知らせる */
 .copy-id-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); padding: 0; cursor: copy; }
 .copy-id-text:hover { color: var(--accent); }
 .copy-id-text.copied { color: var(--good); }
@@ -447,7 +442,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .tag-remove-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0; font-size: 0.75rem; }
 
-/* Relation-type badges for 親/子/兄弟 rows (Batch/Generation Detail). */
 .rel-badge {
   display: inline-block;
   border-radius: 4px;
@@ -461,7 +455,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .rel-badge.rel-story { background: color-mix(in srgb, var(--graph-story) 22%, transparent); color: var(--graph-story); }
 .rel-badge.rel-experiment { background: color-mix(in srgb, var(--graph-experiment) 22%, transparent); color: var(--graph-experiment); }
 
-/* 親/子/兄弟 セクションのサムネイルカード（FamilyCard）。GenerationCard/.card より軽量で横並びに畳める。 */
+/* FamilyCard: GenerationCard/.card より軽量で横並びに畳められる */
 .family-strip { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .family-card {
   display: flex;
@@ -520,7 +514,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-size: 0.72rem;
 }
 
-/* 公開セクション (Generation Detail「公開」, docs/ui.md参照)。 */
 .publication-status { color: var(--text-dim); font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; margin: 0 0 0.5rem; }
 .publication-status.published { color: #4fd8a4; }
 .publication-list { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
@@ -558,7 +551,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   padding: 0.2rem 0.6rem;
 }
 
-/* 比較エントリ (docs/ui.md「Compare entry」)。sessionStorage の compare set をトグルする。 */
+/* sessionStorage の compare set をトグルする (docs/ui.md「Compare entry」) */
 .compare-add-btn {
   background: none;
   border: 1px solid var(--border);
@@ -570,7 +563,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .compare-add-btn.active { border-color: var(--accent); color: var(--accent); }
 
-/* Layout が全ページに置く。固定配置なので、表示中は main 末尾がバーに隠れないよう余白を足す */
+/* 固定配置のバーが main 末尾を隠さないよう余白を足す */
 .compare-bar {
   position: fixed;
   bottom: 0;
@@ -646,7 +639,6 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   .compare-bar { padding: 0 0.75rem; gap: 0.5rem; }
 }
 
-/* Gallery ツールバー (view switch / bad toggle / 絞り込みパネル)。nav の下に sticky で張り付く。 */
 .gallery-toolbar {
   position: sticky;
   top: var(--nav-h);
@@ -735,8 +727,7 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   min-height: 2rem;
 }
 
-/* Gallery の反映待ち (docs/ui.md「Gallery pending changes」)。帯はグリッドの直前、ピルは帯が
-   スクロールアウトしている間だけ sticky ツールバーの直下中央に浮かぶ。 */
+/* 帯はグリッド直前、ピルは帯がスクロールアウトしている間だけ sticky ツールバー直下に浮かぶ (docs/ui.md「Gallery pending changes」) */
 .gallery-pending-strip {
   display: flex;
   align-items: center;
@@ -799,7 +790,6 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   .view-switch-item { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
   .bad-toggle, .filter-panel summary { min-height: 2.75rem; }
 
-  /* GenerationCard: bookmark はサムネイル右上のヒット領域に、rating は行いっぱいに広げる (docs/ui.md「Gallery」)。 */
   .card .card-bookmark-btn {
     position: absolute;
     top: 0.4rem;
@@ -834,7 +824,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .kv-table td { padding: 0.2rem 0.5rem 0.2rem 0; vertical-align: top; font-size: 0.85rem; }
 .kv-table td:first-child { color: var(--text-dim); white-space: nowrap; }
 
-/* Batch Detail の Prompt セクション: 生文字列テーブルの代わりにトークンチップで表示する。 */
 .prompt-diff-base { font-size: 0.75rem; color: var(--text-dim); margin: 0 0 0.5rem; }
 .prompt-field { margin-bottom: 0.7rem; }
 .prompt-field:last-of-type { margin-bottom: 0; }
@@ -870,7 +859,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .w-badge.w-down { color: var(--text-dim); background: color-mix(in srgb, var(--border) 60%, transparent); }
 .prompt-raw { white-space: pre-wrap; font-size: 0.85rem; margin: 0; }
 
-/* Generation Detail の Workflow セクション: モデル/LoRA/ControlNetのkv-tableに続けてPassごとのブロックを並べる。 */
 .workflow-pass { border-left: 2px solid var(--border); padding-left: 0.6rem; margin: 0.6rem 0; }
 .workflow-pass-head { font-weight: 600; }
 .workflow-line { color: var(--text-dim); font-size: 0.85rem; }
@@ -888,8 +876,7 @@ details.section .section-body { margin-top: 0.6rem; }
     height: calc(100vh - var(--nav-h) - 2.5rem);
     overflow: hidden;
   }
-  /* 縦 flex にして画像へ残り全高を割り当てる。hero を height: 100% にすると
-     直後の .image-meta がスクロール下に押し出されて見えなくなる */
+  /* hero を height:100% にすると直後の .image-meta が押し出されて見えなくなるため縦 flex にする */
   .detail-left { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
   .detail-right { overflow-y: auto; min-height: 0; }
 
@@ -929,8 +916,7 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .finalize-form, .finalize-all-form { display: flex; flex-direction: column; gap: 0.7rem; }
 .finalize-form input[type="number"], .finalize-all-form input[type="number"] { width: 5rem; }
-/* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial / profile ボタンが
-   全部アクセント色で塗られて選択中が見えなくなる */
+/* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial/profile ボタン全部がアクセント色で塗られ選択中が見えなくなる */
 .finalize-form button[type="submit"], .finalize-all-form button[type="submit"] {
   align-self: flex-start;
   background: var(--accent);
@@ -971,8 +957,7 @@ details.section .section-body { margin-top: 0.6rem; }
   border-radius: 6px;
   padding: 0.6rem 0.8rem 0.8rem;
   margin: 0;
-  /* 吹き出しの位置基準。マーカー基準にすると、右ペインが overflow-y: auto で
-     横もクリップするため右寄りのマーカーで切れる */
+  /* 吹き出しの位置基準。マーカー基準だと右ペインの overflow-y: auto で横もクリップされ、右寄りのマーカーで切れる */
   position: relative;
 }
 .finalize-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
@@ -1004,9 +989,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 .finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
-/* repair region drawing: a dependency-free rectangle-drag overlay sized/positioned in JS to
-   exactly match the rendered <img> box (gen-detail-hero), so its percentage-based rects line
-   up regardless of zoom or object-fit scaling. */
+/* repair region drawing: dependency-free rectangle-drag overlay, sized in JS to match the
+   rendered <img> box so percentage-based rects stay aligned across zoom/object-fit scaling. */
 .repair-region-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .repair-region-clear {
   background: none;
@@ -1029,8 +1013,7 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .repair-region-toggle[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: rgba(124, 156, 245, 0.18); }
 .repair-region-overlay { position: absolute; touch-action: none; cursor: crosshair; z-index: 1; }
-/* Drawing off: clicks, right-click and touch scrolling fall through to the image; drawn rects
-   stay visible and their remove buttons stay clickable. */
+/* Drawing off: clicks/scroll fall through to the image; rects stay visible and removable. */
 .repair-region-overlay:not(.repair-region-drawing-on) { pointer-events: none; touch-action: auto; cursor: auto; }
 .repair-region-overlay:not(.repair-region-drawing-on) .repair-region-remove { pointer-events: auto; }
 .repair-region-rect {
@@ -1156,8 +1139,8 @@ details.section .section-body { margin-top: 0.6rem; }
   padding: 0.25rem 0.4rem;
   font-size: 0.8rem;
 }
-/* grid の auto-fill で列幅を全行共通にする（flex-wrap だと折り返し後の行だけカードが伸びる）。
-   列数指定時は initCompareCols が grid-template-columns をインラインで上書きする */
+/* auto-fill で列幅を全行共通に（flex-wrap だと折り返し後の行だけ伸びる）。列数指定時は
+   initCompareCols が grid-template-columns をインラインで上書きする */
 .compare-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); gap: 1rem; }
 
 .compare-table-wrap { overflow-x: auto; margin-top: 1.25rem; }
@@ -1184,7 +1167,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .empty-state { color: var(--text-dim); padding: 2rem 0; }
 .bookmark-section { margin-bottom: 2rem; }
 
-/* Experiments */
 .status-badge {
   display: inline-block;
   border-radius: 4px;
@@ -1394,9 +1376,8 @@ export const appJs = `
     return ct.indexOf('application/json') !== -1 ? res.json() : null;
   }
 
-  // --- Telemetry (docs/ui.md "Telemetry"): /assets/telemetry.js が PostHog を初期化した
-  // ときだけ window.posthog がある。無効時は no-op。
-  // 多くの呼び出し元が capture 直後に reload / 遷移するので、バッチに乗せず即時 beacon で送る。
+  // docs/ui.md「Telemetry」。posthog 未初期化時は no-op。呼び出し元の多くが capture 直後に
+  // reload/遷移するため、バッチに乗せず即時 beacon で送る。
   function track(event, props) {
     try {
       if (window.posthog && typeof window.posthog.capture === 'function') {
@@ -1408,7 +1389,6 @@ export const appJs = `
     track('ui.error', Object.assign({ action: action, message: e && e.message ? e.message : String(e), status: e && e.status ? e.status : null }, props || {}));
   }
 
-  // --- Clipboard helpers (used by copy-id buttons) ---
   function flashCopied(btn, text) {
     const original = btn.textContent;
     btn.textContent = text || 'Copied';
@@ -1423,8 +1403,7 @@ export const appJs = `
     } catch (e) {}
   }
 
-  // --- Copy-id buttons (short_id / prompt_id displays across the app) ---
-  // 連続でコピーしたときに前回のタイマーが ✓ を早く消さないよう、ボタンごとに保持する
+  // 連続コピー時に前回のタイマーが ✓ を早く消さないよう、ボタンごとに保持する
   var copyIdTextTimers = new WeakMap();
 
   function initCopyIdButtons() {
@@ -1449,7 +1428,6 @@ export const appJs = `
     });
   }
 
-  // --- Compare column-count picker ---
   function initCompareCols() {
     const select = document.getElementById('compare-cols');
     const grid = document.querySelector('.compare-columns');
@@ -1470,9 +1448,7 @@ export const appJs = `
     });
   }
 
-  // --- Rating ---
-  // data-generation-id が一致する全要素に反映する (同じGenerationのrating-groupが
-  // ページ内に複数あっても揃える)。
+  // data-generation-id が一致する全要素に反映する（同じ Generation の rating-group が複数あっても揃える）
   function applyRatingToGroups(id, rating) {
     qsa('.rating-group[data-generation-id="' + id + '"]').forEach(function (group) {
       group.setAttribute('data-current', rating || '');
@@ -1503,7 +1479,6 @@ export const appJs = `
     });
   }
 
-  // --- Bookmark ---
   function initBookmark() {
     document.addEventListener('click', async function (ev) {
       const btn = ev.target.closest('.bookmark-btn');
@@ -1523,7 +1498,6 @@ export const appJs = `
     });
   }
 
-  // --- Experiment status transition ---
   function initExperimentStatus() {
     document.addEventListener('change', async function (ev) {
       const select = ev.target.closest('.exp-status-select');
@@ -1544,7 +1518,6 @@ export const appJs = `
     });
   }
 
-  // --- Thumbnail hover preview ---
   function initThumbPreview() {
     if (!window.matchMedia || !window.matchMedia('(hover: hover)').matches) return;
 
@@ -1624,7 +1597,6 @@ export const appJs = `
     window.addEventListener('scroll', hide, true);
   }
 
-  // --- Tag add ---
   function initTagAdd() {
     document.addEventListener('submit', async function (ev) {
       const form = ev.target.closest('.tag-add-form');
@@ -1669,7 +1641,6 @@ export const appJs = `
     });
   }
 
-  // --- Tag remove ---
   function initTagRemove() {
     document.addEventListener('click', async function (ev) {
       const btn = ev.target.closest('.tag-remove-btn');
@@ -1688,7 +1659,6 @@ export const appJs = `
     });
   }
 
-  // --- Tag suggestions ---
   function initTagSuggestions() {
     let debounceTimer = null;
     let abortController = null;
@@ -1697,9 +1667,7 @@ export const appJs = `
       if (!input) return;
       const q = input.value.trim();
 
-      // Clear previous timer
       if (debounceTimer) clearTimeout(debounceTimer);
-      // Abort previous request
       if (abortController) abortController.abort();
 
       if (!q) return;
@@ -1724,14 +1692,12 @@ export const appJs = `
           }
         } catch (e) {
           if (e.name !== 'AbortError') {
-            // Ignore abort errors, log others silently
           }
         }
       }, 200);
     });
   }
 
-  // --- Note editing ---
   function initNoteForm() {
     document.addEventListener('submit', async function (ev) {
       const form = ev.target.closest('.note-form');
@@ -1755,7 +1721,6 @@ export const appJs = `
     });
   }
 
-  // --- Publication (Generation Detail「公開」, docs/ui.md参照) ---
   // 'MM-DD HH:mm'（UTC）。src/ui/pages/GenerationDetail.tsx の formatPublishedAt と同じ書式。
   function formatPublishedAt(iso) {
     var d = new Date(iso);
@@ -1891,7 +1856,6 @@ export const appJs = `
     });
   }
 
-  // --- Pose reference pin (docs/ui.md「Generation Detail」の「基準」行) ---
   function poseReferencePill(recipe, pose) {
     var span = document.createElement('span');
     span.className = 'card-reference-pill';
@@ -1919,9 +1883,8 @@ export const appJs = `
     });
   }
 
-  // --- Finalize dial groups (denoise / keep_legwear / repair_lora word buttons) ---
-  // A dial group's state lives in its own data-dial-mode attribute: 'default'/'off' (no value
-  // sent, the plain default), a word (sent as that string), or 'custom' (read the number input).
+  // dial group state lives in data-dial-mode: 'default'/'off' (no value sent), a word (sent as
+  // that string), or 'custom' (read the number input).
   function dialGroupValue(form, key) {
     var group = qs('[data-dial-key="' + key + '"]', form);
     if (!group) return undefined; // no dial-group rendered for this key -> caller falls back to the plain input
@@ -1970,7 +1933,6 @@ export const appJs = `
     }
   }
 
-  // Dial button clicks: word / 既定 / off / on select that mode directly; custom reveals the number input.
   function initDialGroups() {
     document.addEventListener('click', function (ev) {
       var btn = ev.target.closest ? ev.target.closest('.dial-group .dial-btn') : null;
@@ -1992,9 +1954,8 @@ export const appJs = `
     });
   }
 
-  // options.backdrop is null (transparent), a #RRGGBB color, or a pattern name — never the
-  // literal 'transparent'/'color' mode strings a radio value can be (finalizeOptionsFrom's
-  // own output, mirrored here so a profile's saved backdrop re-selects the right card).
+  // options.backdrop is null/a #RRGGBB color/a pattern name — never the literal 'transparent'/
+  // 'color' radio-value strings (finalizeOptionsFrom's output, mirrored here for profile re-select).
   function applyBackdropToForm(form, value) {
     var mode;
     if (value === null || value === undefined) {
@@ -2016,7 +1977,6 @@ export const appJs = `
     if (matched) syncFinalizeBackdropColor(form);
   }
 
-  // --- Finalize profile buttons ---
   function applyProfileOptionsToForm(form, options) {
     Object.keys(options).forEach(function (key) {
       var value = options[key];
@@ -2078,11 +2038,9 @@ export const appJs = `
     return version === undefined ? { name: nameInput.value } : { name: nameInput.value, version: version };
   }
 
-  // --- Finalize repair regions: drag rectangles over the Generation's own image ---
-  // Only .finalize-form (Generation Detail, rendered with FinalizeFields regionDrawing) gets a
-  // region overlay -- .finalize-all-form (Batch Detail) has no single image to draw on and is
-  // left untouched. State lives in a WeakMap keyed by the form itself (not by any input) since a
-  // set of rectangles has no single DOM home; finalizeOptionsFrom reads it back via regionsFor(form).
+  // Only .finalize-form (single image) gets a region overlay; .finalize-all-form (Batch Detail,
+  // no single image) is left untouched. State keyed by the form itself in a WeakMap, since a set
+  // of rectangles has no single DOM home; finalizeOptionsFrom reads it back via regionsFor(form).
   var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
 
   function regionsFor(form) {
@@ -2118,8 +2076,7 @@ export const appJs = `
     if (state) state.overlay.classList.toggle('repair-region-drawing-on', on);
   }
 
-  // Repair pad/lora/seeds enablement depends on both the checkboxes and the drawn regions, so
-  // any region change re-runs the same sync that deliver_only/repair_hands/repair_feet changes do.
+  // repair pad/lora/seeds enablement depends on regions too, so re-run the same sync here
   function onRepairRegionsChanged(form) {
     var countEl = repairRegionCount(form);
     if (countEl) {
@@ -2157,9 +2114,8 @@ export const appJs = `
     onRepairRegionsChanged(form);
   }
 
-  // Fractions are relative to the overlay's own box, which syncRepairRegionOverlayGeometry keeps
-  // pinned to the rendered <img> box -- so the fraction is invariant to zoom/object-fit scaling,
-  // matching the [x0,y0,x1,y1] convention repair/masked_redraw already use server-side.
+  // Fractions are relative to the overlay box (kept pinned to the rendered <img> by
+  // syncRepairRegionOverlayGeometry), matching the [x0,y0,x1,y1] convention repair/masked_redraw use server-side.
   function attachRepairRegionDrawing(state, form) {
     var overlay = state.overlay;
     var drawing = null;
@@ -2289,9 +2245,8 @@ export const appJs = `
     });
   }
 
-  // --- Finalize (worker-protocol.md: GUI が積んでよいのは finalize だけ) ---
-  // Returns null when the form cannot be turned into options. In quiet mode (used by the
-  // preview) that happens silently; otherwise it alerts on a malformed backdrop colour.
+  // worker-protocol.md: GUI queues finalize only. Returns null when the form can't become
+  // options; quiet mode (used by the preview) silences the alert on a malformed backdrop colour.
   function finalizeOptionsFrom(form, quiet) {
     var recolor = qs('input[name="recolor"]', form);
     var backdropChecked = qs('input[name="backdrop"]:checked', form);
@@ -2322,9 +2277,9 @@ export const appJs = `
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
 
-    // repair (hands/feet + drawn regions) rides along in both deliver_only and redraw mode; only
-    // denoise/repair_lora/repair_seeds differ by mode below. A checked part with zero regions is
-    // fine (the worker auto-detects); nothing checked and no regions omits every repair* key.
+    // repair (hands/feet + regions) applies in both deliver_only and redraw mode; only
+    // denoise/repair_lora/repair_seeds differ by mode. A checked part with zero regions is fine
+    // (the worker auto-detects); nothing checked and no regions omits every repair* key.
     var repair = [];
     if (qs('input[name="repair_hands"]', form).checked) repair.push('hands');
     if (qs('input[name="repair_feet"]', form).checked) repair.push('feet');
@@ -2395,12 +2350,10 @@ export const appJs = `
     });
   }
 
-  // repair_hands/repair_feet stay usable in deliver_only mode (a masked-reroll delivery batch),
-  // so only denoise/keep_legwear/repair_lora are gated purely by deliver_only; repair_pad and the
-  // new repair_seeds are gated by whether a part is checked or a region is drawn (repairActive),
-  // with repair_seeds additionally requiring deliver_only (it's meaningless in redraw mode).
-  // initFinalizeRepairPad and initFinalizeDeliverOnly both funnel into this single sync so the
-  // three triggers (deliver_only change, repair_hands/feet change, region drawn/removed) agree.
+  // denoise/keep_legwear/repair_lora are gated purely by deliver_only; repair_pad/repair_lora also
+  // by repairActive (a checked part or drawn region); repair_seeds needs both, since it's meaningless
+  // in redraw mode. initFinalizeRepairPad and initFinalizeDeliverOnly both funnel into this one sync
+  // so the three triggers (deliver_only, repair_hands/feet, region drawn/removed) stay in agreement.
   function syncFinalizeDeliverOnly(form) {
     var box = qs('input[name="deliver_only"]', form);
     var deliverOnly = !!(box && box.checked);
@@ -2424,9 +2377,6 @@ export const appJs = `
       if (keepLegwearBox) keepLegwearBox.disabled = deliverOnly;
     }
 
-    // repair_pad/repair_lora mirror finalizeOptionsFrom's own gate (a checked part specifically,
-    // matching the single-part repair endpoint's contract); repair_seeds mirrors its broader gate
-    // (a checked part OR a drawn region — regions alone are enough to send repair_regions).
     var hands = qs('input[name="repair_hands"]', form);
     var feet = qs('input[name="repair_feet"]', form);
     var repairPartChecked = !!((hands && hands.checked) || (feet && feet.checked));
@@ -2546,8 +2496,7 @@ export const appJs = `
     return li;
   }
 
-  // 積んだ結果の queued 行はフォームの下に足されるので、長いページでは視界の外に出やすい。
-  // 押したことをボタン自身で返す: 送信中は disabled、積めたら少しの間 Queued 表示。
+  // queued 行はフォーム下に足され長いページでは視界外に出やすいため、ボタン自身で結果を返す
   function submitButtonFeedback(form) {
     var button = qs('button[type="submit"]', form);
     if (!button) return { sent: function () {}, failed: function () {} };
@@ -2572,8 +2521,8 @@ export const appJs = `
     };
   }
 
-  // Finalize submit は積んだ直後 (queued) の行をその場に足すだけで、以後の running/done は
-  // registerRequestElement 経由の initRequestLive が反映する (location.reload はしない)。
+  // queued 行をその場に足すだけで reload しない。以後の running/done は registerRequestElement
+  // 経由の initRequestLive が反映する。
   function initFinalize() {
     document.addEventListener('submit', async function (ev) {
       const form = ev.target.closest('.finalize-form');
@@ -2608,7 +2557,6 @@ export const appJs = `
     });
   }
 
-  // --- Finalize all arms (Batch Detail): 1 Generation につき1つのfinalize requestを順に積む ---
   function initFinalizeAll() {
     document.addEventListener('submit', async function (ev) {
       const form = ev.target.closest('.finalize-all-form');
@@ -2656,7 +2604,6 @@ export const appJs = `
     });
   }
 
-  // --- Promote a finalize result to a profile (worker-protocol.md「finalize profile」) ---
   function initPromoteToProfile() {
     document.addEventListener('submit', async function (ev) {
       var form = ev.target.closest('.promote-profile-form');
@@ -2682,10 +2629,8 @@ export const appJs = `
     });
   }
 
-  // --- 絵柄チェック (/check, docs/ui.md「絵柄チェック」): ボタン押下で代表ポーズ全件の
-  // plain render を積み、返ってきた request id をその場の右セルに挿すだけ (reload しない)。
-  // 以後の running/done は registerRequestElement 経由の initRequestLive が反映する
-  // (requestLiveApplyStatus はこの下で定義されるが、関数宣言は巻き上がるのでここから呼べる)。
+  // /check ボタン押下で代表ポーズ全件の plain render を積み、request id をその場の右セルに挿す
+  // だけ (reload しない)。以後は initRequestLive 経由で反映（requestLiveApplyStatus は下方定義だが関数宣言は巻き上がる）。
   function initStyleCheck() {
     document.addEventListener('click', async function (ev) {
       var button = ev.target.closest('[data-style-check-render]');
@@ -2720,10 +2665,8 @@ export const appJs = `
     });
   }
 
-  // --- Viewer WebSocket (段階3 WorkerHub, docs/worker-protocol.md): /api/v1/requests/ws への
-  // 接続を1本だけ共有する。requestLive (status/progress) と gallery live insertion
-  // (generation) はどちらもこの上に message type ごとのハンドラを登録するだけで、ソケットの
-  // 開閉・再接続 (1s→2s→4s…上限30s) は一箇所にまとめる。最初にどちらかが繋ぎに来た時点で開く。
+  // /api/v1/requests/ws への接続を1本だけ共有する (docs/worker-protocol.md)。requestLive と
+  // gallery live insertion はここに message type 別のハンドラを登録するだけ。再接続は 1s→2s→4s…上限30s。
   var viewerSocket = { ws: null, connecting: false, backoff: 1000, handlers: {} };
 
   function viewerSocketOn(type, handler) {
@@ -2771,11 +2714,9 @@ export const appJs = `
     });
   }
 
-  // --- Request live status: progress / status を受けて [data-request-id] 要素の表示を更新する
-  // ([data-request-id]は .request-status-list の <li> と GenerationCard の finalize 進捗ピルの
-  // 2種類。後者は setFinalizeBadgeText で組み立てを分ける)。ページ読み込み後に追加された要素
-  // (finalize submit の挿入、gallery live insertion で挿入したカード) も
-  // registerRequestElement が都度登録し、まだ繋がっていなければソケットを開く。
+  // [data-request-id] は .request-status-list の <li> と GenerationCard の finalize 進捗ピルの
+  // 2 種（後者は setFinalizeBadgeText が担当）。動的に追加された要素も registerRequestElement が
+  // 都度登録し、未接続ならソケットを開く。
   var requestLive = { byId: {} };
 
   function isFinalizeBadge(el) {
@@ -2869,7 +2810,6 @@ export const appJs = `
         el.appendChild(span);
       }
     } catch (e) {
-      // 詳細取得に失敗してもstatusクラス自体は反映済みなので諦める
     }
   }
 
@@ -2890,11 +2830,8 @@ export const appJs = `
     qsa('[data-request-id]').forEach(registerRequestElement);
   }
 
-  // --- Gallery pending changes (docs/ui.md「Gallery pending changes」) ---
-  // 新着 ('generation' メッセージ) と既定表示で bad にしたカードの非表示は、グリッドへ即座には
-  // 反映しない。操作中のカードが手元で動かないよう、件数をグリッド直前の帯 (帯が見えない間は
-  // ツールバー下に浮かぶピル) に出し、押したときにまとめて反映する。
-  // queue は到着順 (古い→新しい) の { shortId, html }。
+  // 新着/bad非表示はグリッドへ即座に反映しない（操作中のカードが手元で動かないよう件数を
+  // 帯/ピルに出し、押したときにまとめて反映する）。queue は到着順の { shortId, html }。
   var galleryPending = { queue: [] };
 
   function galleryGrid() {
@@ -3053,9 +2990,8 @@ export const appJs = `
 
   viewerSocketOn('generation', handleGenerationMessage);
 
-  // --- Nav queue pill (docs/ui.md「キュー状態」): GET /api/v1/requests/summary で初期表示し、
-  // 以後は共有 viewer WebSocket (status/snapshot) を合図に再取得する。操作は持たず、パネルの
-  // 行は Batch/Experiment 詳細への遷移リンクだけ。
+  // GET /api/v1/requests/summary で初期表示し、以後は共有 viewer WebSocket (status/snapshot) を
+  // 合図に再取得する (docs/ui.md「キュー状態」)。パネルの行は遷移リンクのみで操作は持たない。
   var navQueue = { fetching: false, pending: false, debounceTimer: null, lastSummary: null };
 
   function navQueueRelativeTime(iso) {
@@ -3267,9 +3203,8 @@ export const appJs = `
     });
   }
 
-  // --- Popover <details> (.nav-more / .nav-queue / .filter-panel) close on outside click / Escape ---
-  // Opening one closes the others without extra logic: this listener runs before the summary
-  // click's own toggle, so the popover being opened is still closed here and is skipped.
+  // Opening one closes the others with no extra logic: this listener fires before the <details>
+  // summary's own toggle, so the popover about to open is still closed here and is skipped.
   function popoverDetailsEls() {
     return qsa('details.nav-more, details.nav-queue, details.filter-panel');
   }
@@ -3297,11 +3232,9 @@ export const appJs = `
     window.addEventListener('scroll', updateGalleryPendingPill, { passive: true });
   }
 
-  // --- Compare selection bar ---
-  // Generation Detail の「比較に追加」ボタンが sessionStorage の compare set をトグルし、
-  // Layout が全ページに置く #compare-bar がこの set を描画する (docs/ui.md「Compare entry」)。
-  // 要素は { id, short_id }。short_id を持つのは、チップのサムネイルをカードと同じ画像 URL にして
-  // ブラウザキャッシュを共有するため。
+  // 「比較に追加」ボタンが sessionStorage の compare set をトグルし、#compare-bar がこの set を
+  // 描画する (docs/ui.md「Compare entry」)。要素は { id, short_id }: short_id を持つのはチップの
+  // サムネイルをカードと同じ画像 URL にしてブラウザキャッシュを共有するため。
   var COMPARE_SET_KEY = 'chimera-compare-set';
   var COMPARE_MAX = 9;
 
@@ -3424,7 +3357,6 @@ export const appJs = `
     updateCompareBar();
   }
 
-  // --- A/B judge page ---
   function initAbJudge() {
     const root = qs('.ab-root');
     if (!root) return;
@@ -3479,9 +3411,8 @@ export const appJs = `
       setButtonsDisabled(false);
     }
 
-    // reveal.render_diff の各行を "column: baseline → arm" として一行にまとめる（delta付きの
-    // エントリ、主に positive/negative は "column: <delta>" にする）。POST の 409（既に判定済み）
-    // は response body を持たないので、この整形は成功時のみ通る。
+    // reveal.render_diff の各行を "column: baseline → arm"（delta 付きは "column: <delta>"）に
+    // まとめる。POST の 409（既に判定済み）は response body を持たないため、成功時のみ通る整形。
     function formatReveal(reveal) {
       var line = 'A = #' + reveal.left.run_index + ' (' + reveal.left.role + ') · B = #' + reveal.right.run_index + ' (' + reveal.right.role + ')';
       if (reveal.render_diff && reveal.render_diff.length > 0) {
@@ -3573,9 +3504,7 @@ export const appJs = `
     renderCurrent();
   }
 
-  // --- Gallery filter form (src/ui/pages/Gallery.tsx .filter-form) ---
-  // Fires on submit, before the normal GET navigation happens -- preventDefault
-  // is intentionally not called.
+  // Fires on submit before the normal GET navigation happens; preventDefault is intentionally not called.
   function initGalleryFilter() {
     document.addEventListener('submit', function (ev) {
       const form = ev.target.closest('.filter-form');
@@ -3588,9 +3517,7 @@ export const appJs = `
     });
   }
 
-  // --- Gallery / Bookmarks view switch + bad toggle (src/ui/components/ViewSwitch.tsx,
-  // src/ui/pages/Gallery.tsx .bad-toggle) --- Fires on click, before the normal GET
-  // navigation happens -- preventDefault is intentionally not called.
+  // 同じ理由で preventDefault は呼ばない (src/ui/components/ViewSwitch.tsx, .bad-toggle)。
   function initGalleryView() {
     document.addEventListener('click', function (ev) {
       const viewLink = ev.target.closest ? ev.target.closest('.view-switch a') : null;
@@ -3608,9 +3535,8 @@ export const appJs = `
     });
   }
 
-  // --- Gallery infinite scroll (src/ui/pages/Gallery.tsx .load-more) ---
-  // Fetches the .load-more link's href with partial=1, appended as an HTML fragment
-  // (cards + the next .load-more link, or nothing).
+  // Fetches .load-more's href with partial=1, appended as an HTML fragment (cards + the next
+  // .load-more link, or nothing).
   var galleryLoadMoreInFlight = false;
   var galleryScrollObserver = null;
 
@@ -3701,8 +3627,7 @@ export const appJs = `
 })();
 `;
 
-// content hash (FNV-1a) — アセット URL の ?v= に使い、デプロイごとに
-// ブラウザキャッシュを確実に破棄する
+// content hash (FNV-1a): アセット URL の ?v= に使い、デプロイごとにキャッシュを破棄する
 function fnv1a(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {

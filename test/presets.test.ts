@@ -6,9 +6,7 @@ function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
 }
 
-// presets は recipe_ref ではなく (recipe, kind, name, version) で一意なので、recipe
-// 名自体をテストごとにユニークにしておかないと import の冪等スキップが別テストの
-// 行と衝突する。
+// presets は recipe_ref ではなく (recipe, kind, name, version) で一意なので、recipe 名自体をテストごとにユニークにしないと import の冪等スキップが別テストの行と衝突する。
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
 }

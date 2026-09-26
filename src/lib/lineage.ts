@@ -1,10 +1,6 @@
-// Generation の系譜 (lineage) を Batch 単位で辿る。MCP tool
-// `get_generation_lineage` (src/mcp.ts) 専用 — REST 側に同等のエンドポイントは無い。
-//
-// ancestors: このBatchが材料として使った側 (batch_references: このBatch →
-// source_generation_id が属するBatch) と、このBatchの直接の起点側
-// (batch_relations: source_batch_id → このBatch) を遡る。
-// descendants はどちらも逆方向。既に訪れたBatchは再訪しない (visited set)。
+// Generation の系譜 (lineage) を Batch 単位で辿る。MCP tool `get_generation_lineage` 専用
+// — REST 側に同等のエンドポイントは無い。ancestors は batch_references / batch_relations を
+// 遡り、descendants は逆方向。既に訪れたBatchは再訪しない (visited set)。
 
 import { chunk, D1_MAX_BOUND_PARAMS } from './db';
 import type { Rating } from '../types';

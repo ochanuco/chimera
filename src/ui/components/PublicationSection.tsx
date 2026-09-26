@@ -26,11 +26,8 @@ export function PublishIcon() {
   );
 }
 
-/**
- * `公開` section (docs/ui.md「Generation Detail」節): rating/bookmark 行の直後に置く、
- * Generation Detail のフルページが使うコンポーネント。JS側の書き換え
- * (initPublicationAdd 等, src/ui/static.ts) はこの markup と同じ形を組み立てる。
- */
+/** `公開` section (docs/ui.md「Generation Detail」節): rating/bookmark 行の直後に置く。JS側の書き換え
+ * (initPublicationAdd 等, src/ui/static.ts) はこの markup と同じ形を組み立てる。 */
 export function PublicationSection({ generationId, publications }: { generationId: string; publications: PublicationData[] }) {
   return (
     <details class="section publication-section" open data-generation-id={generationId}>

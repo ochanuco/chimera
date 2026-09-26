@@ -139,8 +139,8 @@ describe('Generation Search / detail: published', () => {
 });
 
 describe('tag "publish"', () => {
-  // migrations/0021 backfill below inserts its own 'publish' tags row directly and needs the name
-  // free beforehand (tags.name is UNIQUE, and D1 state carries across tests in this file).
+  // The migrations/0021 backfill test below inserts its own 'publish' tags row and needs the name
+  // free (tags.name is UNIQUE; D1 state carries across tests in this file).
   afterAll(async () => {
     await env.DB.prepare("DELETE FROM generation_tags WHERE tag_id IN (SELECT id FROM tags WHERE name = 'publish')").run();
     await env.DB.prepare("DELETE FROM tags WHERE name = 'publish'").run();
@@ -178,11 +178,9 @@ describe('tag "publish"', () => {
 });
 
 describe('migrations/0021 backfill (exercised directly: migrations run once per test DB, before any publish tag exists)', () => {
-  // これらの3文は migrations/0021_generation_publications.sql の `-- BACKFILL:` 以下と
-  // 同一内容を保つこと。マイグレーションは1テストDBにつき一度しか流れないため、ここでは
-  // 「移行前の publish タグ付き行」を直接組み立ててから同じ SQL を再実行し、変換結果を検証する。
-  // tags.name は UNIQUE なので、両シナリオは (前段が 'publish' 行を消してから) 1つの test 内で
-  // 順に走らせる — テスト間で D1 の状態がリセットされないため、'publish' 行を同時に2つ作れない。
+  // これらの3文は migrations/0021_generation_publications.sql の `-- BACKFILL:` 以下と同一内容を保つこと
+  // (マイグレーションは1テストDBにつき一度しか流れないため、ここでは移行前の行を組み立てて同じ SQL を再実行する)。
+  // tags.name は UNIQUE かつテスト間で D1 がリセットされないため、両シナリオを1 test 内で順に走らせる。
   async function runBackfill(): Promise<void> {
     await env.DB.prepare(
       `INSERT INTO generation_publications (id, generation_id, url, published_at, created_by, created_at, updated_at)
