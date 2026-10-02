@@ -1,6 +1,7 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
-import { consensusSegments, matchMask, tokenize, type DiffSeg } from '../diff';
+import type { Child } from 'hono/jsx';
+import { consensusSegments, matchMask, tokenize, twoWayDiff, type DiffSeg } from '../diff';
 import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFactColumn, type RenderFacts } from '../../lib/render-facts';
 
 const NOT_ANALYZED = '(not analyzed)';
@@ -26,6 +27,9 @@ export interface CompareItem extends GenerationCardData {
   batch_short_id: string | null;
   seed: number | null;
   created_at: string;
+  /** The Generation's Batch `raw_instruction` / `patches_json` (inherited patches included), for the 変更点 rows. */
+  raw_instruction: string | null;
+  patches: unknown[];
   semantic: CompareSemantic | null;
   render_facts: RenderFacts | null;
 }
@@ -37,6 +41,9 @@ interface CompareRow {
   /** Per-column diff segments vs. the row's other real-value lanes (no base column): undefined for basic rows;
    * null for a cell rendered plain (no value / only one real value in the row / nothing differs). */
   segments?: (DiffSeg[] | null)[];
+  /** 変更点 rows: custom cell content, never hidden as identical. */
+  cells?: Child[];
+  change?: boolean;
 }
 
 /** A row's per-item raw value ahead of diffing: null means "no value to diff" (not analyzed, or value itself absent). */
@@ -186,7 +193,120 @@ function buildBasicRow(label: string, items: CompareItem[], extract: (item: Comp
   return { label, values, diff };
 }
 
+/** Key-order-independent JSON, so two patches carrying the same fields compare equal. */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** Drops the `prompt.positive.` prefix (kept positive-implicit) and shortens `prompt.negative.` to `negative.`, so a part reads as e.g. `artist` / `negative.quality`. */
+function shortPatchTarget(target: string): string {
+  if (target === 'prompt.positive') return 'positive';
+  if (target === 'prompt.negative') return 'negative';
+  if (target.startsWith('prompt.positive.')) return target.slice('prompt.positive.'.length);
+  if (target.startsWith('prompt.negative.')) return `negative.${target.slice('prompt.negative.'.length)}`;
+  return target;
+}
+
+function PatchView({ patch }: { patch: unknown }) {
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
+    return <div class="cmp-patch">{itemText(patch)}</div>;
+  }
+  const p = patch as Record<string, unknown>;
+  const part = typeof p.target === 'string' ? shortPatchTarget(p.target) : '?';
+  const op = typeof p.op === 'string' ? p.op : '?';
+  const hasText = (v: unknown) => typeof v === 'string';
+  const isTextReplace = op === 'replace' && (hasText(p.value) || hasText(p.old));
+  let body: Child;
+  if (isTextReplace) {
+    const segs = twoWayDiff(typeof p.old === 'string' ? p.old : '', typeof p.value === 'string' ? p.value : '');
+    body = segs.map((seg) =>
+      seg.type === 'same' ? seg.text : <span class={seg.type === 'del' ? 'tok-del' : 'tok-add'}>{seg.text}</span>,
+    );
+  } else {
+    body = p.value === undefined ? op : `${op} ${itemText(p.value)}`;
+  }
+  return (
+    <div class="cmp-patch">
+      <span class="cmp-patch-part">{part}</span>: {body}
+      {typeof p.reason === 'string' && p.reason ? <span class="cmp-patch-reason"> {p.reason}</span> : null}
+    </div>
+  );
+}
+
+/** Patches not carried by every column, per column: patches shared by all columns are inherited from the common ancestor and omitted. */
+function uniquePatches(items: CompareItem[]): unknown[][] {
+  const keyed = items.map((item) => {
+    const seen = new Map<string, unknown>();
+    for (const patch of item.patches) seen.set(stableStringify(patch), patch);
+    return seen;
+  });
+  return keyed.map((own) => Array.from(own).filter(([key]) => !keyed.every((other) => other.has(key))).map(([, patch]) => patch));
+}
+
+function buildChangeRows(items: CompareItem[]): CompareRow[] {
+  const rows: CompareRow[] = [];
+  if (items.some((item) => item.raw_instruction)) {
+    const values = items.map((item) => item.raw_instruction || NO_VALUE);
+    rows.push({ label: 'instruction', values, diff: false, change: true, cells: values });
+  }
+  const unique = uniquePatches(items);
+  if (unique.some((patches) => patches.length > 0)) {
+    const cells = unique.map((patches) =>
+      patches.length === 0 ? '（変更なし）' : patches.map((patch) => <PatchView patch={patch} />),
+    );
+    rows.push({ label: 'patches', values: unique.map(() => ''), diff: false, change: true, cells });
+  }
+  return rows;
+}
+
 const CORE_FIELDS = ['pose', 'expression', 'outfit', 'style', 'composition'] as const;
+
+function CompareTable({ items, rows }: { items: CompareItem[]; rows: CompareRow[] }) {
+  return (
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th></th>
+          {items.map((item) => (
+            <th>{item.short_id}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr class={row.change ? 'compare-change' : !row.diff && !row.cells ? 'compare-same' : undefined}>
+            <td>{row.label}</td>
+            {row.values.map((v, i) => {
+              if (row.cells) return <td>{row.cells[i]}</td>;
+              const segs = row.segments?.[i] ?? null;
+              return (
+                <td class={row.diff ? 'diff' : undefined}>
+                  {segs
+                    ? segs.map((seg) =>
+                        seg.type === 'same' ? (
+                          seg.text
+                        ) : (
+                          <span class={seg.type === 'uniq' ? 'tok-uniq' : 'tok-partial'}>{seg.text}</span>
+                        ),
+                      )
+                    : v}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export function ComparePage({
   path,
@@ -199,8 +319,11 @@ export function ComparePage({
   missingIds: string[];
   warning?: string;
 }) {
+  const changeRows: CompareRow[] = [];
   const rows: CompareRow[] = [];
+  const promptRows: CompareRow[] = [];
   if (items.length >= 2) {
+    changeRows.push(...buildChangeRows(items));
     rows.push(buildBasicRow('batch', items, (i) => i.batch_short_id));
     rows.push(buildBasicRow('seed', items, (i) => (i.seed != null ? String(i.seed) : null)));
     rows.push(buildBasicRow('created', items, (i) => i.created_at.slice(0, 10)));
@@ -215,7 +338,7 @@ export function ComparePage({
     for (let passIndex = 0; passIndex < maxPasses; passIndex++) {
       for (const polarity of ['positive', 'negative'] as const) {
         const row = buildPromptRow(items, passIndex, polarity);
-        if (row) rows.push(row);
+        if (row) promptRows.push(row);
       }
     }
 
@@ -232,6 +355,8 @@ export function ComparePage({
         for (const key of Object.keys(item.semantic.attributes)) attributeKeys.add(key);
       }
     }
+    // The `patches` attribute duplicates the 変更点 patches row.
+    attributeKeys.delete('patches');
     for (const key of Array.from(attributeKeys).sort()) {
       const analyzedItems = items.filter((item) => item.semantic);
       const allValueLess = analyzedItems.every((item) => attributeText(item.semantic!.attributes[key]) === null);
@@ -240,7 +365,9 @@ export function ComparePage({
     }
   }
 
-  const showLegend = rows.some((row) => row.segments !== undefined);
+  const showLegend = rows.concat(promptRows).some((row) => row.segments !== undefined);
+  const sameLabels = rows.filter((row) => !row.diff).map((row) => row.label);
+  const mainRows = changeRows.concat(rows);
 
   return (
     <Layout title="Compare" path={path}>
@@ -281,41 +408,27 @@ export function ComparePage({
             </p>
           ) : null}
 
-          <div class="compare-table-wrap">
-            <table class="compare-table">
-              <thead>
-                <tr>
-                  <th></th>
-                  {items.map((item) => (
-                    <th>{item.short_id}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr>
-                    <td>{row.label}</td>
-                    {row.values.map((v, i) => {
-                      const segs = row.segments?.[i] ?? null;
-                      return (
-                        <td class={row.diff ? 'diff' : undefined}>
-                          {segs
-                            ? segs.map((seg) =>
-                                seg.type === 'same' ? (
-                                  seg.text
-                                ) : (
-                                  <span class={seg.type === 'uniq' ? 'tok-uniq' : 'tok-partial'}>{seg.text}</span>
-                                ),
-                              )
-                            : v}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {sameLabels.length > 0 ? (
+            <div class="compare-same-bar">
+              <span>全列同一: {sameLabels.join(', ')}</span>
+              <label>
+                <input type="checkbox" id="compare-show-same" /> 同一の行も表示
+              </label>
+            </div>
+          ) : null}
+
+          <div class="compare-table-wrap" id="compare-main-wrap">
+            <CompareTable items={items} rows={mainRows} />
           </div>
+
+          {promptRows.length > 0 ? (
+            <details class="compare-prompts">
+              <summary>プロンプト全文（差分）を表示</summary>
+              <div class="compare-table-wrap">
+                <CompareTable items={items} rows={promptRows} />
+              </div>
+            </details>
+          ) : null}
         </div>
       )}
     </Layout>
