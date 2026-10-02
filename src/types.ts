@@ -122,6 +122,8 @@ export interface BatchRow {
 export interface ComfyJobRow {
   id: string;
   batch_id: string;
+  /** migrations/0026 以降の Job は Request を指す。 */
+  request_id?: string | null;
   comfy_prompt_id: string | null;
   seed: number | null;
   job_index: number | null;
@@ -218,7 +220,7 @@ export interface BatchRelationRow {
   created_at: string;
 }
 
-export type RequestKind = 'generate' | 'finalize' | 'repair' | 'masked_redraw';
+export type RequestKind = 'generate' | 'finalize' | 'repair' | 'masked_redraw' | 'import';
 export type RequestStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export type RequestCreatedBy = 'brain' | 'mcp' | 'gui' | 'system';
 

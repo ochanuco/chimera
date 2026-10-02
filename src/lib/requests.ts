@@ -17,6 +17,7 @@ import { uuidv7 } from './uuidv7';
 import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
 import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
+import { presetVersionsStatement, runAttachStatement } from './batch-request-sync';
 import type {
   BatchRow,
   ExperimentRow,
@@ -572,8 +573,10 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     if (presetVersionsJson) {
       statements.push(
         db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
+        presetVersionsStatement(db, batch.id, presetVersionsJson),
       );
     }
+    statements.push(runAttachStatement(db, batch.id, run.id));
     await db.batch(statements);
     await touchExperiment(db, run.experiment_id, now);
   } else {
@@ -586,6 +589,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
           .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
           .bind('done', resultJson, now, now, row.id),
         db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
+        presetVersionsStatement(db, batch.id, presetVersionsJson),
       ]);
     } else {
       await db

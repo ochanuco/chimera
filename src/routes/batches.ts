@@ -23,6 +23,13 @@ import { serializeBatch, serializeGenerationLight } from '../lib/serialize';
 import { renderFactsForJob } from '../lib/render-facts';
 import { getExperimentRunFamily } from '../lib/experiments';
 import { refinesGenerationUpdateStatement } from '../lib/batch-refinement';
+import {
+  batchRequestStatements,
+  JOB_REQUEST_ID_SQL,
+  JOB_SOURCE_GENERATION_ID_SQL,
+  propagateRefinesStatements,
+  requestReferenceStatement,
+} from '../lib/batch-request-sync';
 import type {
   AppEnv,
   BatchRelationRow,
@@ -179,13 +186,26 @@ batches.post('/', async (c) => {
       ),
   ];
 
+  const requestReferenceStatements: D1PreparedStatement[] = [];
   for (const ref of resolvedReferences) {
+    const refId = uuidv7();
     statements.push(
       db
         .prepare(
           'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         )
-        .bind(uuidv7(), ref.generationId, id, ref.purpose ?? null, ref.aspect ?? null, ref.instruction ?? null, now),
+        .bind(refId, ref.generationId, id, ref.purpose ?? null, ref.aspect ?? null, ref.instruction ?? null, now),
+    );
+    requestReferenceStatements.push(
+      requestReferenceStatement(db, {
+        id: refId,
+        batchId: id,
+        generationId: ref.generationId,
+        purpose: ref.purpose ?? null,
+        aspect: ref.aspect ?? null,
+        instruction: ref.instruction ?? null,
+        createdAt: now,
+      }),
     );
   }
 
@@ -209,6 +229,7 @@ batches.post('/', async (c) => {
   }
 
   statements.push(refinesGenerationUpdateStatement(db, id));
+  statements.push(...batchRequestStatements(db, id), ...requestReferenceStatements);
 
   if (body.story) {
     for (const prevBatchId of resolvedStoryPreviousBatchIds) {
@@ -562,9 +583,10 @@ batches.post('/:batchId/jobs', async (c) => {
   const now = nowIso();
   const result = await db
     .prepare(
-      'INSERT INTO comfy_jobs (id, batch_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING',
+      `INSERT INTO comfy_jobs (id, batch_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at, request_id, source_generation_id)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ${JOB_REQUEST_ID_SQL}, ${JOB_SOURCE_GENERATION_ID_SQL}) ON CONFLICT (idempotency_key) DO NOTHING`,
     )
-    .bind(id, batch.id, body.seed, body.index, 'created', body.idempotency_key, now, now)
+    .bind(id, batch.id, body.seed, body.index, 'created', body.idempotency_key, now, now, batch.id, batch.id)
     .run();
 
   const created = result.meta.changes === 1;
@@ -639,7 +661,17 @@ batches.post('/:id/references', async (c) => {
         'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       .bind(id, generation.id, batch.id, body.purpose ?? null, body.aspect ?? null, body.instruction ?? null, now),
+    requestReferenceStatement(db, {
+      id,
+      batchId: batch.id,
+      generationId: generation.id,
+      purpose: body.purpose ?? null,
+      aspect: body.aspect ?? null,
+      instruction: body.instruction ?? null,
+      createdAt: now,
+    }),
     refinesGenerationUpdateStatement(db, batch.id),
+    ...propagateRefinesStatements(db, batch.id),
   ]);
 
   return c.json(
@@ -673,6 +705,7 @@ batches.post('/:targetBatchId/relations', async (c) => {
       )
       .bind(id, sourceBatch.id, targetBatch.id, body.type ?? null, body.actor, body.reason ?? null, body.raw_instruction ?? null, now),
     refinesGenerationUpdateStatement(db, targetBatch.id),
+    ...propagateRefinesStatements(db, targetBatch.id),
   ]);
 
   return c.json(
