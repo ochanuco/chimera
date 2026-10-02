@@ -1147,7 +1147,7 @@ details.section .section-body { margin-top: 0.6rem; }
    initCompareCols が grid-template-columns をインラインで上書きする */
 .compare-columns { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); gap: 1rem; }
 
-.compare-table-wrap { overflow-x: auto; margin-top: 1.25rem; }
+.compare-table-wrap { overflow: auto; max-height: 80vh; margin-top: 1.25rem; }
 .compare-table { border-collapse: collapse; width: 100%; min-width: 480px; }
 .compare-table th, .compare-table td {
   padding: 0.4rem 0.7rem;
@@ -1159,6 +1159,22 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .compare-table th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
 .compare-table td:first-child { color: var(--text-dim); white-space: nowrap; }
+/* 固定ヘッダ行・固定ラベル列。不透明背景がないとスクロール下のセルが透ける */
+.compare-table thead th { position: sticky; top: 0; z-index: 2; background: var(--bg); box-shadow: inset 0 -1px 0 var(--border); }
+.compare-table tbody td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: inset -1px 0 0 var(--border); }
+.compare-table thead th:first-child { left: 0; z-index: 3; }
+#compare-main-wrap:not(.show-same) .compare-table tr.compare-same { display: none; }
+.compare-change td { background: var(--bg-elevated); }
+.compare-change td:first-child { color: var(--text); background: var(--bg-elevated); }
+.compare-table .tok-del { background: rgba(212, 105, 95, 0.3); text-decoration: line-through; border-radius: 2px; }
+.compare-table .tok-add { background: rgba(95, 191, 123, 0.3); border-radius: 2px; }
+.cmp-patch + .cmp-patch { margin-top: 0.35rem; }
+.cmp-patch-part { font-weight: 600; }
+.cmp-patch-reason { color: var(--text-dim); font-size: 0.75rem; }
+.compare-same-bar { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-dim); }
+.compare-same-bar label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+.compare-prompts { margin-top: 1rem; }
+.compare-prompts summary { cursor: pointer; font-size: 0.85rem; color: var(--text-dim); }
 .compare-table td.diff {
   border-left: 3px solid var(--neutral);
   background: rgba(184, 171, 95, 0.07);
@@ -1456,6 +1472,24 @@ export const appJs = `
     select.addEventListener('change', function () {
       apply(select.value);
       try { localStorage.setItem(STORE_KEY, select.value); } catch (e) { /* localStorage unavailable */ }
+    });
+  }
+
+  function initCompareSame() {
+    const toggle = document.getElementById('compare-show-same');
+    const wrap = document.getElementById('compare-main-wrap');
+    if (!toggle || !wrap) return;
+    const STORE_KEY = 'chimera-compare-show-same';
+    function apply(show) {
+      toggle.checked = show;
+      wrap.classList.toggle('show-same', show);
+    }
+    let stored = null;
+    try { stored = localStorage.getItem(STORE_KEY); } catch (e) { /* localStorage unavailable */ }
+    apply(stored === '1');
+    toggle.addEventListener('change', function () {
+      apply(toggle.checked);
+      try { localStorage.setItem(STORE_KEY, toggle.checked ? '1' : '0'); } catch (e) { /* localStorage unavailable */ }
     });
   }
 
@@ -3632,6 +3666,7 @@ export const appJs = `
     initCompareBar();
     initCopyIdButtons();
     initCompareCols();
+    initCompareSame();
     initExperimentStatus();
     initAbJudge();
   });

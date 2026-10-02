@@ -901,10 +901,10 @@ describe('Web GUI pages', () => {
     expect(poseCells[1]).not.toContain('standing');
   });
 
-  it('GET /compare renders an attribute array of objects (e.g. patches) as JSON items, not [object Object]', async () => {
+  it('GET /compare renders an attribute array of objects (e.g. edits) as JSON items, not [object Object]', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
-    const semantic = (patches: unknown[]) => ({ schema_version: 1, summary: 's', core: {}, strengths: [], defects: [], attributes: { patches } });
+    const semantic = (patches: unknown[]) => ({ schema_version: 1, summary: 's', core: {}, strengths: [], defects: [], attributes: { edits: patches } });
     await postJson(
       `/api/v1/generations/${g1.id}/semantic`,
       semantic([{ target: 'prompt.positive.mouth', op: 'append', value: 'open mouth' }]),
@@ -913,7 +913,7 @@ describe('Web GUI pages', () => {
     await postJson(`/api/v1/generations/${g2.id}/semantic`, semantic([]), 'PUT');
 
     const body = await (await req(`/compare?ids=${g1.short_id},${g2.short_id}`)).text();
-    const row = body.match(/<tr><td>patches<\/td>(.*?)<\/tr>/s);
+    const row = body.match(/<tr><td>edits<\/td>(.*?)<\/tr>/s);
     expect(row).not.toBeNull();
     expect(row![1]).not.toContain('[object Object]');
     expect(row![1]).toContain('prompt.positive.mouth');
@@ -1050,6 +1050,94 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toContain('render.positive');
+  });
+
+  describe('変更点 rows and noise reduction', () => {
+    const shared = { target: 'prompt.positive.pose', op: 'replace', old: 'standing', value: 'sitting', reason: 'inherited' };
+    const own = {
+      target: 'prompt.positive.artist',
+      op: 'replace',
+      old: '(@oshiki hitoshi:0.85), ',
+      value: '(@oshiki hitoshi:1.2), ',
+      reason: '画家タグが弱い',
+    };
+    const graphFor = (text: string) => ({
+      '3': {
+        class_type: 'KSampler',
+        inputs: { seed: 1, steps: 20, cfg: 7, sampler_name: 'euler', scheduler: 'normal', denoise: 1, model: ['4', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['5', 0] },
+      },
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'model.safetensors' } },
+      '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512, batch_size: 1 } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text, clip: ['4', 1] } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'bad', clip: ['4', 1] } },
+    });
+
+    async function makePair() {
+      const base = await createGeneration({ batchOverrides: { patches: [shared], pose_fingerprint: 'fp' } });
+      const variant = await createGeneration({
+        batchOverrides: { raw_instruction: 'A: 画家タグ強め', patches: [shared, own], pose_fingerprint: 'fp' },
+      });
+      await postJson(`/api/v1/jobs/${base.job.id}`, { graph: graphFor('1girl, outdoors') }, 'PATCH');
+      await postJson(`/api/v1/jobs/${variant.job.id}`, { graph: graphFor('1girl, indoors') }, 'PATCH');
+      const body = await (await req(`/compare?ids=${base.generation.short_id},${variant.generation.short_id}`)).text();
+      return { body };
+    }
+
+    it('renders the instruction row with — for a Batch without one', async () => {
+      const { body } = await makePair();
+      const row = body.match(/<tr class="compare-change"><td>instruction<\/td>(.*?)<\/tr>/s);
+      expect(row).not.toBeNull();
+      const cells = [...row![1]!.matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map((m) => m[1]);
+      expect(cells).toEqual(['—', 'A: 画家タグ強め']);
+    });
+
+    it('omits patches shared by every column and shows the unique patch as an old/new inline diff with its reason', async () => {
+      const { body } = await makePair();
+      const row = body.match(/<tr class="compare-change"><td>patches<\/td>(.*?)<\/tr>/s);
+      expect(row).not.toBeNull();
+      expect(row![1]).not.toContain('inherited');
+      expect(row![1]).toContain('（変更なし）');
+      expect(row![1]).toContain('<span class="cmp-patch-part">artist</span>');
+      expect(row![1]).toMatch(/<span class="tok-del">0.85<\/span>/);
+      expect(row![1]).toMatch(/<span class="tok-add">1.2<\/span>/);
+      expect(row![1]).toContain('画家タグが弱い');
+    });
+
+    it('omits the 変更点 rows when no column has an instruction or a unique patch', async () => {
+      const { generation: g1 } = await createGeneration();
+      const { generation: g2 } = await createGeneration();
+      const body = await (await req(`/compare?ids=${g1.short_id},${g2.short_id}`)).text();
+      expect(body).not.toContain('<td>instruction</td>');
+      expect(body).not.toContain('<td>patches</td>');
+    });
+
+    it('hides identical rows, lists them in the 全列同一 summary, and offers the toggle', async () => {
+      const { body } = await makePair();
+      expect(body).toContain('<tr class="compare-same"><td>seed</td>');
+      expect(body).toMatch(/全列同一: [^<]*seed[^<]*render\.checkpoint/);
+      expect(body).toContain('id="compare-show-same"');
+      expect(body).not.toMatch(/<tr class="compare-same"><td>(instruction|patches)</);
+    });
+
+    it('puts render.positive / render.negative rows inside the collapsed prompt <details>', async () => {
+      const { body } = await makePair();
+      const details = body.match(/<details class="compare-prompts">(.*?)<\/details>/s);
+      expect(details).not.toBeNull();
+      expect(details![0]).not.toContain(' open');
+      expect(details![1]).toContain('プロンプト全文（差分）を表示');
+      expect(details![1]).toContain('<td>render.positive</td>');
+      expect(body.slice(0, body.indexOf('<details'))).not.toContain('<td>render.positive</td>');
+    });
+
+    it('does not duplicate a patches semantic attribute as an attribute row', async () => {
+      const { generation: g1 } = await createGeneration();
+      const { generation: g2 } = await createGeneration();
+      for (const g of [g1, g2]) {
+        await postJson(`/api/v1/generations/${g.id}/semantic`, { schema_version: 1, summary: 's', core: {}, strengths: [], defects: [], attributes: { patches: [{ target: 'x' }] } }, 'PUT');
+      }
+      const body = await (await req(`/compare?ids=${g1.short_id},${g2.short_id}`)).text();
+      expect(body).not.toContain('<td>patches</td>');
+    });
   });
 });
 

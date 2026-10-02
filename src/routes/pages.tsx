@@ -28,6 +28,7 @@ import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
 import { queryGenerations } from '../lib/generations';
+import { parseJsonArray } from '../lib/preset-references';
 import { renderFactsForJob } from '../lib/render-facts';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
@@ -536,6 +537,16 @@ pages.get('/compare', async (c) => {
     rows.map((row) => row.batch_id),
   );
 
+  const batchIds = Array.from(new Set(rows.map((row) => row.batch_id)));
+  const batchChangesById = new Map<string, { raw_instruction: string | null; patches_json: string | null }>();
+  if (batchIds.length > 0) {
+    const placeholders = batchIds.map(() => '?').join(', ');
+    const { results } = await c.env.DB.prepare(`SELECT id, raw_instruction, patches_json FROM batches WHERE id IN (${placeholders})`)
+      .bind(...batchIds)
+      .all<{ id: string; raw_instruction: string | null; patches_json: string | null }>();
+    for (const b of results ?? []) batchChangesById.set(b.id, b);
+  }
+
   const jobIds = Array.from(new Set(rows.map((row) => row.comfy_job_id)));
   const jobsById = new Map<string, ComfyJobRow>();
   if (jobIds.length > 0) {
@@ -567,6 +578,8 @@ pages.get('/compare', async (c) => {
       batch_short_id: batchShortIds.get(row.batch_id) ?? null,
       seed: row.seed,
       created_at: row.created_at,
+      raw_instruction: batchChangesById.get(row.batch_id)?.raw_instruction ?? null,
+      patches: parseJsonArray(batchChangesById.get(row.batch_id)?.patches_json ?? null),
       semantic: parseCompareSemantic(row),
       render_facts: renderFactsByGenerationId.get(row.id) ?? null,
     };
