@@ -62,6 +62,28 @@ describe('MCP get_generation', () => {
     expect(tool.data).toEqual(rest.body);
   });
 
+  it('exposes the pre-finalize source as refines_generation, and null for a raw Generation', async () => {
+    const { batch: sourceBatch, generation: source } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: source.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const rest = await getJson<{ refines_generation: unknown }>(`/api/v1/generations/${refined.generation.id}`);
+    expect(rest.body.refines_generation).toEqual({ id: source.id, short_id: source.short_id, rating: null });
+
+    const tool = await mcpToolCall<{ refines_generation: unknown }>('get_generation', {
+      generation_id: refined.generation.short_id,
+    });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.refines_generation).toEqual({ id: source.id, short_id: source.short_id, rating: null });
+
+    const raw = await getJson<{ refines_generation: unknown }>(`/api/v1/generations/${source.id}`);
+    expect(raw.body.refines_generation).toBeNull();
+  });
+
   it('404s as a tool error for an unknown id', async () => {
     const tool = await mcpToolCall('get_generation', { generation_id: 'does-not-exist' });
     expect(tool.isError).toBe(true);

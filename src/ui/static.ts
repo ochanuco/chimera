@@ -189,6 +189,7 @@ a.nav-queue-row:hover { background: var(--bg); text-decoration: none; }
 
 h1, h2, h3 { font-weight: 600; }
 h1 { font-size: 1.4rem; }
+h1 .detail-from { font-size: 0.8rem; font-weight: 400; color: var(--text-dim); }
 h2 { font-size: 1.1rem; margin-top: 2rem; }
 
 .filter-form {
@@ -294,6 +295,9 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   background: #402e21;
   color: var(--graph-relation);
 }
+.card-from-badge.copy-id-text { font-family: inherit; color: var(--graph-relation); padding: 0.05rem 0.4rem; }
+.card-from-badge.copy-id-text:hover { color: var(--graph-relation); opacity: 0.85; }
+.card-from-badge.copy-id-text.copied { color: var(--good); }
 .card-from-badge-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .card-from-badge-link { text-decoration: none; }
 .card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
@@ -1425,6 +1429,13 @@ export const appJs = `
           copyIdTextTimers.set(btn, setTimeout(function () { btn.classList.remove('copied'); }, 900));
         }).catch(function () {});
       } catch (e) {}
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      const el = ev.target.closest ? ev.target.closest('span.copy-id-btn[role="button"]') : null;
+      if (!el) return;
+      ev.preventDefault();
+      el.click();
     });
   }
 

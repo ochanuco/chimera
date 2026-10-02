@@ -1298,7 +1298,9 @@ ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 
 `GET /api/v1/generations/{id}` はこの内容に `batch`（`prompt` / `recipe` /
 `raw_instruction` / `preset_versions` / `drawn_pose` 込み）と `comfy_job`（`graph` / `render_facts`）、
-`original_filename`、`publications`（[Publication](#publication)の一覧、
+`original_filename`、`refines_generation`（Batchの`refines_generation_id`が指す
+finalize / repair / masked_redraw前のGeneration `{ "id", "short_id", "rating" }`、rawなら
+`null`）、`publications`（[Publication](#publication)の一覧、
 新しい順）、`pose_reference`（このGenerationが現行の pose 基準 render として pin
 されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
 [Pose Reference Pin](#pose-reference-pin)参照）を加えたフルの detail です。ロジックは

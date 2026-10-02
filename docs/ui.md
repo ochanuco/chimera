@@ -190,7 +190,10 @@ short_idは等幅の文字そのものがボタンで、クリックするとク
 `<a href="/g/{short_id}">`です。サムネイル左上には
 （上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
-橙文字、short_idは等幅）、このGenerationを対象にした最新のfinalize/repair/masked_redraw
+橙文字、short_idは等幅）。バッジはクリックで元のshort_idをコピーし（遷移しない）、コピー後は
+short_idのボタンと同じく0.9秒間`--good`色に変えて✓を出します。サムネイルのリンク内なので
+`<button>`ではなく`role="button"`・`tabindex="0"`の`<span>`で、Enter / Spaceでも動きます。
+このGenerationを対象にした最新のfinalize/repair/masked_redraw
 requestがあるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
 1件以上あるとき送信アイコン付きの`公開済み`ピルを、このGenerationがpose の基準 render として
 pin されているとき`基準 <pose名>`ピル（[domain-model.md](domain-model.md#基準-render-の-pin)）を、両方
@@ -414,6 +417,11 @@ Finalizeセクションと同じ仕組み、後述）。
 [ IMAGE ] | 公開 ...
 [ IMAGE ] | #pose-good ×  #outfit-good ×   [add tag] [+]
 ```
+
+見出しのshort_idとコピーボタンの隣には、このGenerationのBatchがfinalize / repair /
+masked_redrawで書き換えた元のraw Generationがあるとき、小さな`--text-dim`色の
+`from <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
+rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refines_generation`）。
 
 originalが保持期間ジョブでpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に

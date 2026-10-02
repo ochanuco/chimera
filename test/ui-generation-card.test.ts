@@ -90,6 +90,18 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
     expect(card).toContain('公開済み');
   });
 
+  it('the from-badge copies the source short_id without being a nested button', async () => {
+    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);
+
+    const html = await (await req('/gallery?view=all&limit=200')).text();
+    const card = cardHtml(html, refined.generation.short_id);
+
+    expect(card).toContain(
+      `<span class="card-from-badge copy-id-btn copy-id-text" role="button" tabindex="0" data-copy-id="${sourceGen.short_id}"`,
+    );
+  });
+
   it('Batch Detail generation cards carry the same from-badge and 公開済み pill', async () => {
     const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
     const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);
