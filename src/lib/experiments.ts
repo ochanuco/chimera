@@ -7,17 +7,19 @@ import {
   getExperimentByIdOrShortId,
   getGenerationByIdOrShortId,
   nowIso,
-  resolveBatchThumbnails,
+  resolveRequestThumbnails,
+  resolveRunRequests,
   touchExperiment,
 } from './db';
 import { parseJsonObjectOrNull, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { listTagsForTarget } from './tags';
 import { isUuid, uuidv7 } from './uuidv7';
-import { resolveBatchRenderFacts } from './render-facts';
+import { resolveRequestRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
 import { runAttachStatement } from './batch-request-sync';
+import { createUniqueRequestShortId } from './shortid';
 import {
   generationPreviewUrl,
   serializeExperiment,
@@ -104,20 +106,14 @@ export async function latestRunByExperiment(
   return map;
 }
 
-/** Run に紐づく Batch / Generation を1回のクエリずつで解決する。Generation 未 attach でも Batch のサムネイルは出す。 */
+/** Run に紐づく結果 Request / Generation を1回のクエリずつで解決する。Generation 未 attach でも Request のサムネイルは出す。 */
 export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org: string) {
-  const batchIds = runs.map((r) => r.batch_id).filter((id): id is string => id !== null);
   const generationIds = runs.map((r) => r.generation_id).filter((id): id is string => id !== null);
-
-  const batchMap = new Map<string, { id: string; short_id: string }>();
-  for (const part of chunk(batchIds, D1_MAX_BOUND_PARAMS)) {
-    const placeholders = part.map(() => '?').join(', ');
-    const { results } = await db
-      .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
-      .bind(...part)
-      .all<{ id: string; short_id: string }>();
-    for (const row of results ?? []) batchMap.set(row.id, row);
-  }
+  const requestByRunId = await resolveRunRequests(
+    db,
+    runs.map((r) => r.id),
+  );
+  const requestIds = Array.from(requestByRunId.values()).map((r) => r.id);
 
   const generationMap = new Map<string, GenerationRow>();
   for (const part of chunk(generationIds, D1_MAX_BOUND_PARAMS)) {
@@ -129,24 +125,25 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
     for (const row of results ?? []) generationMap.set(row.id, row);
   }
 
-  const batchThumbnails = await resolveBatchThumbnails(db, batchIds);
-  const renderFactsByBatch = await resolveBatchRenderFacts(db, batchIds);
+  const requestThumbnails = await resolveRequestThumbnails(db, requestIds);
+  const renderFactsByRequest = await resolveRequestRenderFacts(db, requestIds);
 
   return runs.map((run) => {
-    const batch = run.batch_id ? batchMap.get(run.batch_id) ?? null : null;
-    const thumbShortId = run.batch_id ? batchThumbnails.get(run.batch_id) ?? null : null;
+    const request = requestByRunId.get(run.id) ?? null;
+    const thumbShortId = request ? requestThumbnails.get(request.id) ?? null : null;
     const generation = run.generation_id ? generationMap.get(run.generation_id) ?? null : null;
     return {
       ...serializeExperimentRun(run),
-      batch: batch
+      request: request
         ? {
-            id: batch.id,
-            short_id: batch.short_id,
+            id: request.id,
+            short_id: request.short_id,
             thumbnail_url: thumbShortId ? generationPreviewUrl(org, thumbShortId) : null,
+            thumbnail_generation_short_id: thumbShortId,
           }
         : null,
       generation: generation ? serializeGenerationLight(generation, org) : null,
-      render_facts: run.batch_id ? renderFactsByBatch.get(run.batch_id) ?? null : null,
+      render_facts: request ? renderFactsByRequest.get(request.id) ?? null : null,
     };
   });
 }
@@ -187,7 +184,7 @@ async function assertBatchNotAttachedToAnotherRun(db: D1Database, batchId: strin
 export interface ExperimentRunFamilyMember {
   run_id: string;
   run_index: number;
-  batch_id: string;
+  request_id: string;
 }
 
 export interface ExperimentRunFamily {
@@ -199,21 +196,21 @@ export interface ExperimentRunFamily {
 }
 
 /**
- * GET /api/v1/batches/{id} 用の ExperimentRun 由来の 4 軸目 (`experiment`)。BatchReference /
- * BatchRelation / StoryRelation とは別の display-only な派生で、行は作らない。
- * batch_id の無い Run はリンク先が無いため親/子/兄弟から除外する。
+ * Generation Detail 用の ExperimentRun 由来の display-only な派生 (`experiment`)。素材参照 / 仕上げ元とは別で、行は作らない。
+ * 結果 Request の無い Run はリンク先が無いため親/子/兄弟から除外する。`requestId` がその Run の結果 Request でなければ null。
  */
-export async function getExperimentRunFamily(db: D1Database, batchId: string): Promise<ExperimentRunFamily | null> {
+export async function getExperimentRunFamily(db: D1Database, requestId: string): Promise<ExperimentRunFamily | null> {
   const run = await db
     .prepare(
       `SELECT r.id, r.run_index, r.parent_run_id, r.experiment_id,
          e.short_id AS experiment_short_id, e.name AS experiment_name
-       FROM experiment_runs r
+       FROM requests x
+       JOIN experiment_runs r ON r.id = x.run_id
        JOIN experiments e ON e.id = r.experiment_id
-       WHERE r.batch_id = ?
+       WHERE x.id = ? AND x.kind IN ('generate', 'import')
        LIMIT 1`,
     )
-    .bind(batchId)
+    .bind(requestId)
     .first<{
       id: string;
       run_index: number;
@@ -225,24 +222,30 @@ export async function getExperimentRunFamily(db: D1Database, batchId: string): P
   if (!run) return null;
 
   const { results } = await db
-    .prepare('SELECT id, run_index, parent_run_id, batch_id FROM experiment_runs WHERE experiment_id = ? ORDER BY run_index ASC')
+    .prepare('SELECT id, run_index, parent_run_id FROM experiment_runs WHERE experiment_id = ? ORDER BY run_index ASC')
     .bind(run.experiment_id)
-    .all<{ id: string; run_index: number; parent_run_id: string | null; batch_id: string | null }>();
+    .all<{ id: string; run_index: number; parent_run_id: string | null }>();
   const allRuns = results ?? [];
+  const resultByRun = await resolveRunRequests(db, allRuns.map((r) => r.id));
+  if (resultByRun.get(run.id)?.id !== requestId) return null;
+
+  const member = (r: { id: string; run_index: number }): ExperimentRunFamilyMember | null => {
+    const result = resultByRun.get(r.id);
+    return result ? { run_id: r.id, run_index: r.run_index, request_id: result.id } : null;
+  };
   const byId = new Map(allRuns.map((r) => [r.id, r]));
 
   const parentRow = run.parent_run_id ? byId.get(run.parent_run_id) : undefined;
-  const parent: ExperimentRunFamilyMember | null =
-    parentRow && parentRow.batch_id ? { run_id: parentRow.id, run_index: parentRow.run_index, batch_id: parentRow.batch_id } : null;
-
-  const children: ExperimentRunFamilyMember[] = allRuns
-    .filter((r) => r.parent_run_id === run.id && r.batch_id !== null)
-    .map((r) => ({ run_id: r.id, run_index: r.run_index, batch_id: r.batch_id! }));
-
+  const parent = parentRow ? member(parentRow) : null;
+  const children = allRuns
+    .filter((r) => r.parent_run_id === run.id)
+    .map(member)
+    .filter((m): m is ExperimentRunFamilyMember => m !== null);
   const excludedIds = new Set([run.id, parent?.run_id, ...children.map((c) => c.run_id)].filter((id): id is string => !!id));
-  const siblings: ExperimentRunFamilyMember[] = allRuns
-    .filter((r) => !excludedIds.has(r.id) && r.batch_id !== null)
-    .map((r) => ({ run_id: r.id, run_index: r.run_index, batch_id: r.batch_id! }));
+  const siblings = allRuns
+    .filter((r) => !excludedIds.has(r.id))
+    .map(member)
+    .filter((m): m is ExperimentRunFamilyMember => m !== null);
 
   return {
     experiment: { id: run.experiment_id, short_id: run.experiment_short_id, name: run.experiment_name },
@@ -308,11 +311,16 @@ export async function getRunWithExperimentContext(db: D1Database, run: Experimen
   return { decorated: decorated!, experiment };
 }
 
-/** Batch に属する Generation の軽量表現一覧（get_run MCP tool 用）。 */
-export async function listGenerationsLightForBatch(db: D1Database, batchId: string, org: string) {
+/** Run の結果 Request に属する Generation の軽量表現一覧（get_run MCP tool 用）。 */
+export async function listGenerationsLightForRun(db: D1Database, runId: string, org: string) {
   const { results } = await db
-    .prepare('SELECT * FROM generations WHERE batch_id = ? ORDER BY created_at ASC')
-    .bind(batchId)
+    .prepare(
+      `SELECT * FROM generations
+       WHERE request_id = (SELECT x.id FROM requests x WHERE x.run_id = ?1 AND x.status = 'done' AND x.kind IN ('generate', 'import')
+                           ORDER BY x.created_at DESC, x.id DESC LIMIT 1)
+       ORDER BY created_at ASC`,
+    )
+    .bind(runId)
     .all<GenerationRow>();
   return (results ?? []).map((g) => serializeGenerationLight(g, org));
 }
@@ -408,6 +416,7 @@ export async function createExperimentRun(
     batchId === null &&
     (experiment.status === 'active' || experiment.status === 'stabilized');
   let requestId: string | null = null;
+  let requestShortId: string | null = null;
   let requestPayloadJson: string | null = null;
   let requestPayloadHash: string | null = null;
   if (shouldAutoCreateRequest) {
@@ -437,6 +446,7 @@ export async function createExperimentRun(
     // pinPresets は payload_hash を取る前に適用する（docs/worker-protocol.md「preset の pin」、createRequest と同じ規則でないと同内容が別 hash になる）。
     const payload = await pinPresets(db, buildRunRequestPayload(experiment, approxRunForPayload));
     requestId = uuidv7();
+    requestShortId = await createUniqueRequestShortId(db);
     requestPayloadJson = JSON.stringify(payload);
     requestPayloadHash = await canonicalPayloadHash('generate', payload);
   }
@@ -476,10 +486,11 @@ export async function createExperimentRun(
         .prepare(
           `INSERT INTO requests (
              id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
-             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at
-           ) VALUES (?, 'generate', 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?)`,
+             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
+             short_id
+           ) VALUES (?, 'generate', 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?, ?)`,
         )
-        .bind(requestId, requestPayloadJson, requestPayloadHash, options.recipeRef ?? 'production', id, `run:${id}`, now, now),
+        .bind(requestId, requestPayloadJson, requestPayloadHash, options.recipeRef ?? 'production', id, `run:${id}`, now, now, requestShortId),
     );
   }
 
@@ -553,12 +564,25 @@ export async function updateExperimentRun(
     if (run.generation_id && run.generation_id !== generation.id) {
       throw conflict('run already has a generation attached');
     }
-    if (!effectiveBatchId) {
-      throw conflict('run has no batch attached; attach a batch before attaching a generation');
-    }
-    if (generation.batch_id !== effectiveBatchId) {
+    const requestRunId = generation.request_id
+      ? (
+          await db
+            .prepare('SELECT run_id FROM requests WHERE id = ?')
+            .bind(generation.request_id)
+            .first<{ run_id: string | null }>()
+        )?.run_id ?? null
+      : null;
+    const belongsToRunRequest = requestRunId === run.id;
+    const belongsToRunBatch = effectiveBatchId !== null && generation.batch_id === effectiveBatchId;
+    if (!belongsToRunRequest && !belongsToRunBatch) {
+      const resolved = await resolveRunRequests(db, [run.id]);
+      if (!effectiveBatchId && !resolved.has(run.id)) {
+        throw conflict('run has no batch attached; attach a batch or a request result before attaching a generation');
+      }
       throw conflict(
-        `generation belongs to batch ${generation.batch_id}, not the run's batch ${effectiveBatchId}`,
+        effectiveBatchId
+          ? `generation belongs to batch ${generation.batch_id}, not the run's batch ${effectiveBatchId}`
+          : `generation belongs to request ${generation.request_id}, not the run's request`,
       );
     }
     assign('generation_id', generation.id);

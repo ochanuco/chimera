@@ -1,4 +1,4 @@
-export type BookmarkableTable = 'generations' | 'batches' | 'stories' | 'experiments';
+export type BookmarkableTable = 'generations' | 'experiments';
 
 /** Sets bookmark on a row by primary key `id`. Returns false if no row matched. */
 export async function setBookmark(

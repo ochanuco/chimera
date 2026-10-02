@@ -119,7 +119,10 @@ worker は `import` を claim しません。
 
 ### 段階 3: worker を新しい契約へ移す
 
-- chimera に `PUT /requests/{id}/resolution` と `POST /requests/{id}/jobs` を追加
+- chimera に `PUT /requests/{id}/resolution` と `POST /requests/{id}/jobs` を追加する（契約は worker-protocol.md「Resolution」「Job」）
+  - Request は作成時に `short_id` を発行する。Request に紐づく Batch（`request:{id}`）はそれを引き継ぎ、Batch 側の書き込みは Request の `short_id` を上書きしない
+  - 段階 4 まで `comfy_jobs.batch_id` / `generations.batch_id` が Batch を指すので、resolution の報告時に Request と同じ値の影の Batch（id は Request の id、`idempotency_key = request:{id}`、`short_id` は Request のもの）を内部で作る。仕上げ元つきの Job は rebuild 参照と refinement 関係もそこへ足す。影の Batch は Request が done / failed になると completed / failed になり、Run つき Request の done では `experiment_runs.batch_id` へ attach される
+  - `kind = import` は `POST /api/v1/requests` に `status: "done"` と解決済みの値を渡して作る。claim も `PATCH` も受け付けない
 - comfyui-recipes の worker と CLI を切り替える
 - `kind = import` を受け付け、手加工・合成のスクリプトを切り替える
 - 本番で `POST /api/v1/batches` が一定期間呼ばれていないことを確認する

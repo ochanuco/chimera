@@ -12,9 +12,9 @@ Claude Code は prompt を構築し `request.json` を作成します。
 
 Python CLI:
 
-1.  Batchを作成
+1.  Requestの解決済みの値（recipe / parameters / 素材参照など）を報告
 2.  seedを9件生成
-3.  ComfyJobを9件作成
+3.  ComfyJobを9件作成（Requestに紐づく）
 4.  ComfyUIへ順にenqueue
 5.  各outputを取得
 6.  R2へ保存
@@ -24,7 +24,7 @@ Python CLI:
 結果:
 
 ``` text
-Batch B001
+Request R001
 ├─ Job J001 → G001
 ├─ Job J002 → G002
 ...
@@ -44,18 +44,18 @@ Claude は canonical URL / context から semantic 情報を取得し prompt
 
 ``` text
 G abc123 -- pose ----\
-                      > Batch B002
+                      > Request R002
 G xyz987 -- outfit --/
 ```
 
-B002には BatchReference が2件登録されます。
+R002には素材参照（request_references）が2件登録されます。
 
 ## UC-03: 3件以上をマッシュアップする
 
 ``` text
 A -- pose --------\
 B -- outfit -------+
-C -- expression ---+--> Batch X
+C -- expression ---+--> Request X
 D -- style --------/
 ```
 
@@ -65,11 +65,13 @@ Reference は `1..m` 件を許可します。親を2件に限定しません。
 
 Claude が生成結果を検品し、改善が必要と判断します。
 
+`derive_request` で前の Generation を素材参照にして、改善した Request を新しく積みます。
+
 ``` text
-B001 -- refinement(actor=claude) --> B002
+G001 -- 素材参照 --> Request R002
 ```
 
-B001とB002は別Batchです。
+R001とR002は別Requestです。再試行専用の関係は持たず、素材参照で辿れます。
 
 途中試行を削除せず、生成履歴として保持します。
 
@@ -81,11 +83,8 @@ B001とB002は別Batchです。
 もう少し表情を柔らかくして
 ```
 
-``` text
-B002 -- refinement(actor=human) --> B003
-```
-
-Claude自動再試行と同じ BatchRelation を使い、actor で区別します。
+Claude自動再試行と同じ経路で、改善した Request を新しく積みます。積んだのが人間の指示かClaudeの判断かは
+Request の `created_by` で区別します。
 
 ## UC-06: 古いGenerationを現在の絵柄へrebuildする
 
@@ -99,44 +98,14 @@ tag = outfit-good
 date = 2026-01..2026-05
 ```
 
-過去Experimentを再開せず、新しいBatchから過去Generationを参照します。
+過去Experimentを再開せず、新しいRequestから過去Generationを参照します。
 
 ``` text
-Old G123 -- purpose=rebuild / aspect=outfit --> New Batch
+Old G123 -- purpose=reference / aspect=outfit --> New Request
 ```
 
 現在の Python recipe / prompt
 とマッシュアップし、最新の絵柄へ更新します。
-
-## UC-07: Storyの続きを生成する
-
-過去のStoryに属するBatchの続きとして新しいシーンを生成します。
-
-ポーズ・表情・構図は大きく変えてよい一方、絵柄・服装・キャラクター等の根本的なidentityは維持します。
-
-StoryRelation:
-
-``` text
-B010 -- "夕方の海辺へ" --> B020
-```
-
-生成 provenance と Story continuity は独立して扱います。
-
-## UC-08: Storyを分岐させる
-
-``` text
-B010
-├─ "海へ行く" → B020
-└─ "帰宅する" → B021
-```
-
-StoryRelation は分岐を許可します。
-
-## UC-09: Storyを合流させる
-
-複数のStory上の流れを1 Batchへ合流可能とします。
-
-StoryはDAGとして扱います。
 
 ## UC-10: Generationを検索してClaudeへ渡す
 
@@ -186,7 +155,7 @@ ComfyUI JOB IDとの対応と生成履歴を維持します。
 
 ## UC-13: Bookmarkする
 
-Generation / Batch / Story / Experiment を Bookmark できます。
+Generation / Experiment を Bookmark できます。
 
 Bookmark は品質評価ではなく「後から素早く呼び出す」ための導線です。
 

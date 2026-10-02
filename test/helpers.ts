@@ -364,3 +364,20 @@ export async function createGeneration(overrides: {
   }
   return { batch: batch.body, job: job.body, generation: ingest.body };
 }
+
+/**
+ * Empties everything a Batch carries that a Request / Generation now owns (docs/batch-removal.md 段階 2): the
+ * Request-bearing columns, the refinement pointer, and the relation / reference tables. A reader that still
+ * passes after this call depends on Request / Generation columns alone.
+ */
+export async function stripBatchSide(): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE batches SET recipe = NULL, raw_instruction = NULL, prompt = NULL, negative_prompt = NULL,
+         parameters_json = NULL, patches_json = NULL, pose_fingerprint = NULL, preset_versions_json = NULL,
+         git_commit = NULL, refines_generation_id = NULL`,
+    ),
+    env.DB.prepare('DELETE FROM batch_relations'),
+    env.DB.prepare('DELETE FROM batch_references'),
+  ]);
+}

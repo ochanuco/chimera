@@ -123,7 +123,7 @@ describe('Web GUI pages', () => {
 
   it('every page carries exactly one compare bar from the Layout, and Generation Detail has the compare entry button', async () => {
     const { generation } = await createGeneration();
-    for (const path of ['/gallery', '/bookmarks', '/batches', '/experiments', `/g/${generation.short_id}`, '/compare?ids=']) {
+    for (const path of ['/gallery', '/bookmarks', '/experiments', `/g/${generation.short_id}`, '/compare?ids=']) {
       const body = await (await req(path)).text();
       expect(body.split('id="compare-bar"').length - 1, path).toBe(1);
       expect(body, path).toContain('id="compare-clear"');
@@ -168,13 +168,13 @@ describe('Web GUI pages', () => {
     expect(html).toContain('Raw graph');
   });
 
-  it('GET /g/{short_id} shows "(no graph)" and the request prompt chips for a Generation whose Job never got a graph', async () => {
+  it('GET /g/{short_id} shows "(no graph)" and no prompt chips for a Generation whose Job never got a graph (the request prompt comes from render_facts)', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}`);
     const html = await res.text();
     expect(html).toContain('Workflow');
     expect(html).toContain('(no graph)');
-    expect(html).toContain('class="prompt-chip"');
+    expect(html).not.toContain('class="prompt-chip"');
   });
 
   it('GET /g/{short_id} shows Pass 2 and "continues pass 1" for a chain (hires-fix) graph', async () => {
@@ -514,17 +514,36 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(404);
   });
 
-  it('GET /b/{short_id} returns 200 HTML', async () => {
+  it('GET /b/{short_id} redirects (302) to the first Generation of the Request: lowest job index, then output index', async () => {
     const batch = await createBatch({ raw_instruction: 'test instruction' });
-    const res = await req(`/b/${batch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(batch.body.short_id);
+    const laterJob = await createJob(batch.body.id, { index: 1 });
+    const laterGen = await ingestGeneration(laterJob.body.id, { seed: 1, original_filename: 'later.png', comfy_output_index: 0 });
+    const firstJob = await createJob(batch.body.id, { index: 0 });
+    const secondOutput = await ingestGeneration(firstJob.body.id, { seed: 2, original_filename: 'b.png', comfy_output_index: 1 });
+    const firstOutput = await ingestGeneration(firstJob.body.id, { seed: 2, original_filename: 'a.png', comfy_output_index: 0 });
+    expect([laterGen.status, secondOutput.status, firstOutput.status]).toEqual([201, 201, 201]);
+
+    const res = await req(`/b/${batch.body.short_id}`, { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`/g/${firstOutput.body.short_id}`);
   });
 
-  it('GET /b/{short_id} 404s for an unknown batch', async () => {
-    const res = await req('/b/xxxxxx');
-    expect(res.status).toBe(404);
+  it('GET /b/{short_id} 404s for an unknown short_id and for a Request that has no Generation', async () => {
+    const unknown = await req('/b/xxxxxx', { redirect: 'manual' });
+    expect(unknown.status).toBe(404);
+    expect(await unknown.text()).toContain('Request');
+
+    const empty = await createBatch();
+    const noGeneration = await req(`/b/${empty.body.short_id}`, { redirect: 'manual' });
+    expect(noGeneration.status).toBe(404);
+  });
+
+  it('GET /b/{short_id} resolves a short_id owned by a Request', async () => {
+    const { generation, batch } = await createGeneration();
+    await env.DB.prepare("UPDATE requests SET short_id = 'rq1234' WHERE id = ?").bind(batch.id).run();
+    const res = await req('/b/rq1234', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(`/g/${generation.short_id}`);
   });
 
   it('GET /g/{short_id} has the Finalize form, and shows queued after posting a finalize request', async () => {
@@ -547,46 +566,26 @@ describe('Web GUI pages', () => {
     expect(afterHtml).toContain('request-status-queued');
   });
 
-  it('GET /b/{short_id} has the Finalize all arms form and the status count line', async () => {
-    const { generation, batch } = await createGeneration();
-    await postJson('/api/v1/requests', {
-      kind: 'finalize',
-      payload: { generation_id: generation.id, options: { repin: true } },
-      idempotency_key: crypto.randomUUID(),
-      created_by: 'gui',
-    });
-
-    const res = await req(`/b/${batch.id}`);
-    const html = await res.text();
-    expect(html).toContain('Finalize all arms');
-    expect(html).toContain('finalize-all-form');
-    expect(html).toContain(`data-generation-short-ids="${generation.short_id}"`);
-    expect(html).toContain('finalize: 1 queued · 0 running · 0 done · 0 failed');
-  });
-
-  it('the Finalize forms offer the recolor checkbox regardless of recipe', async () => {
-    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari-il' } });
+  it('the Finalize form offer the recolor checkbox regardless of recipe', async () => {
+    const { generation } = await createGeneration({ batchOverrides: { recipe: 'yukari-il' } });
 
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('name="repin"');
     expect(genHtml).toContain('name="recolor"');
-
-    const batchHtml = await (await req(`/b/${batch.id}`)).text();
-    expect(batchHtml).toContain('name="repin"');
-    expect(batchHtml).toContain('name="recolor"');
+    expect(genHtml).not.toContain('finalize-all-form');
   });
 
-  it('the Finalize forms offer a deliver_only checkbox on both pages', async () => {
-    const { generation, batch } = await createGeneration();
-    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+  it('the Finalize form offers a deliver_only checkbox', async () => {
+    const { generation } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`]) {
       const html = await (await req(path)).text();
       expect(html).toContain('name="deliver_only"');
     }
   });
 
-  it('the Finalize forms offer backdrop and stroke light on both pages', async () => {
-    const { generation, batch } = await createGeneration();
-    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+  it('the Finalize form offers backdrop and stroke light', async () => {
+    const { generation } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`]) {
       const html = await (await req(path)).text();
       expect(html).toContain('name="backdrop"');
       expect(html).toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
@@ -598,9 +597,9 @@ describe('Web GUI pages', () => {
     }
   });
 
-  it('the Finalize forms group controls into three fieldsets', async () => {
-    const { generation, batch } = await createGeneration();
-    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+  it('the Finalize form group controls into three fieldsets', async () => {
+    const { generation } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`]) {
       const html = await (await req(path)).text();
       expect(html).toContain('<legend>描き直し</legend>');
       expect(html).toContain('<legend>納品の見た目</legend>');
@@ -609,47 +608,42 @@ describe('Web GUI pages', () => {
     }
   });
 
-  it('the Finalize forms show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
-    const { generation, batch } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
+  it('the Finalize form show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
+    const { generation } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(11);
-    const batchHtml = await (await req(`/b/${batch.id}`)).text();
-    expect((batchHtml.match(/class="finalize-help"/g) ?? []).length).toBe(11);
   });
 
-  it('the Finalize forms disable repair_pad/repair_lora until a repair region is checked', async () => {
-    const { generation, batch } = await createGeneration();
-    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+  it('the Finalize form disable repair_pad/repair_lora until a repair region is checked', async () => {
+    const { generation } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`]) {
       const html = await (await req(path)).text();
       expect(html).toMatch(/<input type="number" name="repair_pad"[^>]*disabled/);
       expect(html).toMatch(/<input type="number" name="repair_lora"[^>]*disabled/);
     }
   });
 
-  it('the Finalize forms render a disabled repair_seeds number input (1..8, default 4)', async () => {
-    const { generation, batch } = await createGeneration();
-    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+  it('the Finalize form render a disabled repair_seeds number input (1..8, default 4)', async () => {
+    const { generation } = await createGeneration();
+    for (const path of [`/g/${generation.short_id}`]) {
       const html = await (await req(path)).text();
       expect(html).toMatch(/<input type="number" name="repair_seeds"[^>]*min="1"[^>]*max="8"[^>]*placeholder="4"[^>]*disabled/);
     }
   });
 
-  it('only the Generation Detail Finalize form offers repair region drawing tools, not Finalize all arms', async () => {
-    const { generation, batch } = await createGeneration();
+  it('the Generation Detail Finalize form offers repair region drawing tools', async () => {
+    const { generation } = await createGeneration();
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('data-repair-region-tools');
     expect(genHtml).toContain('data-repair-region-clear');
     // Drawing is opt-in so a plain click / right-click on the image isn't captured by the overlay.
     expect(genHtml).toMatch(/data-repair-region-toggle[^>]*aria-pressed="false"/);
-
-    const batchHtml = await (await req(`/b/${batch.id}`)).text();
-    expect(batchHtml).not.toContain('data-repair-region-tools');
   });
 
-  it('the Finalize forms offer all 8 stroke light directions', async () => {
-    const { generation, batch } = await createGeneration();
+  it('the Finalize form offers all 8 stroke light directions', async () => {
+    const { generation } = await createGeneration();
     const directions = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
-    for (const path of [`/g/${generation.short_id}`, `/b/${batch.id}`]) {
+    for (const path of [`/g/${generation.short_id}`]) {
       const html = await (await req(path)).text();
       for (const dir of directions) {
         expect(html).toContain(`<option value="${dir}"`);
@@ -686,6 +680,15 @@ describe('Web GUI pages', () => {
     expect(html).not.toContain('href="/stories');
   });
 
+  it('GET /bookmarks has no Batches section even when a Batch row is bookmarked in the database', async () => {
+    const { batch } = await createGeneration();
+    await env.DB.prepare('UPDATE batches SET bookmark = 1 WHERE id = ?').bind(batch.id).run();
+    const html = await (await req('/bookmarks')).text();
+    expect(html).not.toContain('>Batches<');
+    expect(html).not.toContain('batch-row');
+    expect(html).toContain('>Experiments<');
+  });
+
   it('GET /bookmarks defaults the Generations section to view=refined, and view=all shows raw bookmarks too', async () => {
     const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
     await req(`/api/v1/generations/${sourceGen.short_id}/bookmark`, { method: 'PUT' });
@@ -710,10 +713,10 @@ describe('Web GUI pages', () => {
     expect(allHtml).toContain(refined.generation.short_id);
   });
 
-  it('GET /batches returns 200 HTML', async () => {
+  it('GET /batches 404s', async () => {
     await createBatch();
     const res = await req('/batches');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
   });
 
   it('GET /compare?ids= returns 200', async () => {
@@ -721,96 +724,40 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
   });
 
-  it('GET /b/{short_id} and /g/{short_id} show reference short_ids, not raw UUIDs', async () => {
+  it('GET /g/{short_id} shows reference short_ids, not raw UUIDs', async () => {
     const { generation: sourceGen } = await createGeneration();
-    const refBatch = await createBatch({
-      references: [{ source_generation_id: sourceGen.id, purpose: 'style' }],
+    const refGen = await createGeneration({
+      batchOverrides: { references: [{ source_generation_id: sourceGen.id, purpose: 'style' }] },
     });
 
-    const batchRes = await req(`/b/${refBatch.body.short_id}`);
-    expect(batchRes.status).toBe(200);
-    const batchHtml = await batchRes.text();
-    expect(batchHtml).toContain(sourceGen.short_id);
-    expect(batchHtml).not.toContain(sourceGen.id);
+    const refHtml = await (await req(`/g/${refGen.generation.short_id}`)).text();
+    expect(refHtml).toContain(sourceGen.short_id);
+    expect(refHtml).not.toContain(sourceGen.id);
+    expect(refHtml).toContain('親 (1)');
+    expect(refHtml).toContain('rel-badge rel-reference');
 
-    const genRes = await req(`/g/${sourceGen.short_id}`);
-    expect(genRes.status).toBe(200);
-    const genHtml = await genRes.text();
-    expect(genHtml).toContain(refBatch.body.short_id);
-    expect(genHtml).not.toContain(refBatch.body.id);
+    const sourceHtml = await (await req(`/g/${sourceGen.short_id}`)).text();
+    expect(sourceHtml).toContain(refGen.generation.short_id);
+    expect(sourceHtml).not.toContain(refGen.generation.id);
+    expect(sourceHtml).not.toContain(refGen.batch.id);
   });
 
-  it('GET /b/{short_id} shows 親/子/兄弟 sections with type badges', async () => {
-    const { generation: sourceGen } = await createGeneration();
-    const refBatch = await createBatch({
-      references: [{ source_generation_id: sourceGen.id, purpose: 'style' }],
-    });
-
-    const res = await req(`/b/${refBatch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('親 (1)');
-    expect(html).toContain('子 (0)');
-    expect(html).toContain('兄弟 (0)');
-    expect(html).toContain('rel-badge rel-reference');
-  });
-
-  it('GET /b/{short_id} shows prompt tokens as chips, including weight and lora badges', async () => {
-    const batch = await createBatch({ prompt: '1girl, (masterpiece:1.3), <lora:add_detail:0.8>' });
-
-    const res = await req(`/b/${batch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('prompt-chip');
-    expect(html).toContain('w-badge');
-    expect(html).toContain('chip-lora');
-    expect(html).not.toContain('prompt-raw');
-  });
-
-  it('GET /b/{short_id} shows a comma-less long prompt as raw text, not chips', async () => {
-    const longSentence = 'a'.repeat(90);
-    const batch = await createBatch({ prompt: longSentence });
-
-    const res = await req(`/b/${batch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('prompt-raw');
-    expect(html).not.toContain('prompt-chip');
-  });
-
-  it('GET /b/{short_id} highlights added/removed/weight-changed prompt tokens against the retry parent', async () => {
-    const parent = await createBatch({ prompt: '1girl, (outdoors:1.2), old_tag' });
-    const child = await createBatch({
-      prompt: '1girl, (outdoors:1.5), new_tag',
-      refinement: { source_batch_id: parent.body.id, actor: 'human', reason: 'retry' },
-    });
-
-    const res = await req(`/b/${child.body.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain(`diff base: `);
-    expect(html).toContain(parent.body.short_id);
-    expect(html).toContain('diff-added');
-    expect(html).toContain('diff-removed');
-    expect(html).toContain('diff-weight');
-  });
-
-  it('GET /g/{short_id} shows 親 (own Batch material) and 子 (downstream usage) separately', async () => {
+  it('GET /g/{short_id} shows 親 (own Request material) and 子 (downstream usage) separately', async () => {
     const { generation: material } = await createGeneration();
     const { generation: middleGen } = await createGeneration({
       batchOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition' }] },
     });
-    const consumer = await createBatch();
-    await postJson(`/api/v1/batches/${consumer.body.id}/references`, {
+    const { generation: consumerGen, batch: consumer } = await createGeneration();
+    await postJson(`/api/v1/batches/${consumer.id}/references`, {
       source_generation_id: middleGen.id,
       purpose: 'outfit',
     });
 
-    const res = await req(`/g/${middleGen.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain(material.short_id);
-    expect(html).toContain(consumer.body.short_id);
+    const html = await (await req(`/g/${middleGen.short_id}`)).text();
+    expect(html).toContain('親 (1)');
+    expect(html).toContain('子 (1)');
+    expect(html).toContain(`href="/g/${material.short_id}"`);
+    expect(html).toContain(`href="/g/${consumerGen.short_id}"`);
   });
 
   it('GET /compare?ids=a,b renders both generations as the same GenerationCard Gallery uses', async () => {
@@ -1241,7 +1188,6 @@ describe('Finalize profiles and word dials (GUI)', () => {
   /** Mirrors test/finalize-profiles.test.ts's createFinalizeResult: claims and completes a finalize request. */
   async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
     const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
-    const { batch: deliveredBatch, generation: delivered } = await createGeneration({ batchOverrides: { recipe } });
 
     const finalizeReq = await postJson<RequestBody>('/api/v1/requests', {
       kind: 'finalize',
@@ -1253,6 +1199,11 @@ describe('Finalize profiles and word dials (GUI)', () => {
 
     const claimRes = await postJson<RequestBody>('/api/v1/requests/claim', { worker_id: `worker-${crypto.randomUUID()}` }, 'POST');
     expect(claimRes.status).toBe(200);
+
+    // worker と同じく、納品物の Batch は idempotency_key `request:{id}` でこの finalize request に紐づく。
+    const { batch: deliveredBatch, generation: delivered } = await createGeneration({
+      batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+    });
 
     const done = await postJson(
       `/api/v1/requests/${finalizeReq.body.id}`,
@@ -1407,16 +1358,6 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(plainHtml).not.toContain('<form class="promote-profile-form"');
   });
 
-  it('/b/{short_id} also shows dial/profile markup inside finalize-all-form when the batch recipe has dials/profiles', async () => {
-    const recipe = uniqueRecipe();
-    await publishDenoiseDials(recipe);
-    const { batch } = await createGeneration({ batchOverrides: { recipe } });
-
-    const html = await (await req(`/b/${batch.id}`)).text();
-    expect(html).toContain('class="finalize-all-form"');
-    expect(html).toContain('data-dial-key="denoise"');
-    expect(html).toContain('data-dial-value="tidy"');
-  });
 });
 
 describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
@@ -1425,8 +1366,8 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     const { generation: middleGen } = await createGeneration({
       batchOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition', aspect: 'pose' }] },
     });
-    const consumer = await createBatch();
-    await postJson(`/api/v1/batches/${consumer.body.id}/references`, {
+    const { generation: consumerGen, batch: consumer } = await createGeneration();
+    await postJson(`/api/v1/batches/${consumer.id}/references`, {
       source_generation_id: middleGen.id,
       purpose: 'outfit',
     });
@@ -1438,54 +1379,79 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(html).toContain('class="family-strip"');
     expect(html).toContain(`src="/g/${material.short_id}/preview"`);
     expect(html).toContain(`href="/g/${material.short_id}"`);
-    expect(html).toContain(`href="/b/${consumer.body.short_id}"`);
+    expect(html).toContain('purpose: composition / aspect: pose');
+    // The consumer is a Request-level relation: it links to the Request's first Generation, annotated "via request".
+    expect(html).toContain(`href="/g/${consumerGen.short_id}"`);
+    expect(html).toContain('via request');
     expect(html).toContain('rel-badge rel-reference');
+    expect(html).not.toContain('/b/');
   });
 
-  it('GET /g/{short_id} shows retry (refinement) Batch cards for the owning Batch\'s incoming/outgoing relations', async () => {
-    const { batch: batchA } = await createGeneration();
-    const { generation: genB, batch: batchB } = await createGeneration({
-      batchOverrides: { refinement: { source_batch_id: batchA.id, actor: 'human', reason: 'retry composition' } },
+  it('GET /g/{short_id} shows the 仕上げ元 as a Refinement parent card and the refined output as a Refinement child card', async () => {
+    const { batch: rawBatch, generation: raw } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: rawBatch.id, actor: 'human', reason: 'finalize' },
+        references: [{ source_generation_id: raw.id, purpose: 'rebuild' }],
+      },
     });
-    const batchC = await createBatch({
-      refinement: { source_batch_id: batchB.id, actor: 'human', reason: 'retry lighting' },
-    });
 
-    const res = await req(`/g/${genB.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
+    const refinedHtml = await (await req(`/g/${refined.generation.short_id}`)).text();
+    expect(refinedHtml).toContain('親 (1)');
+    expect(refinedHtml).toContain('rel-badge rel-refinement');
+    expect(refinedHtml).toContain(`href="/g/${raw.short_id}"`);
+    expect(refinedHtml).not.toContain('rel-story');
+    expect(refinedHtml).not.toContain('via batch');
 
-    // batchA is a Batch-level retry relation, so its card is annotated "via batch" to distinguish
-    // it from the Generation-level material cards.
-    expect(html).toContain(`href="/b/${batchA.short_id}"`);
-    expect(html).toContain('via batch');
-    expect(html).toContain('reason: retry composition');
-    expect(html).toContain('rel-badge rel-refinement');
-
-    expect(html).toContain(`href="/b/${batchC.body.short_id}"`);
-    expect(html).toContain('reason: retry lighting');
+    const rawHtml = await (await req(`/g/${raw.short_id}`)).text();
+    expect(rawHtml).toContain('子 (1)');
+    expect(rawHtml).toContain(`href="/g/${refined.generation.short_id}"`);
   });
 
-  it('GET /b/{short_id} shows the representative (first-created) Generation as the thumbnail on parent/child Batch cards', async () => {
-    const { generation: firstGen, batch: parentBatch } = await createGeneration();
-    const parentJob = await createJob(parentBatch.id);
-    // Ingested after firstGen -- proves the card picks creation order, not this later Generation.
-    await ingestGeneration(parentJob.body.id, { seed: 2, original_filename: 'second-gen.png', comfy_output_index: 0 });
+  it('GET /g/{short_id} does not turn a retry Relation between Batches into family cards', async () => {
+    const { batch: batchA, generation: genA } = await createGeneration();
+    const { generation: genB, batch: batchB } = await createGeneration();
+    await postJson(`/api/v1/batches/${batchB.id}/relations`, { source_batch_id: batchA.id, type: 'retry', actor: 'human', reason: 'retry composition' });
 
-    const childBatch = await createBatch({
-      refinement: { source_batch_id: parentBatch.id, actor: 'human', reason: 'retry' },
-    });
-
-    const res = await req(`/b/${childBatch.body.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-
-    expect(html).toContain(`href="/b/${parentBatch.short_id}"`);
-    expect(html).toContain(`src="/g/${firstGen.short_id}/preview"`);
-    expect(html).toContain('rel-badge rel-refinement');
+    const html = await (await req(`/g/${genB.short_id}`)).text();
+    expect(html).toContain('親 (0)');
+    expect(html).not.toContain('retry composition');
+    expect(html).not.toContain(`href="/g/${genA.short_id}"`);
   });
 
-  it('GET /gallery nav has Gallery, Bookmarks, and a More menu with Batches/Experiments but no Stories/Graph links', async () => {
+  it('GET /g/{short_id} lists the other Generations of the same Request in a 同じ Request の Generation strip', async () => {
+    const { batch, job, generation: first } = await createGeneration();
+    const second = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00002_.png', comfy_output_index: 1 });
+    const third = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00003_.png', comfy_output_index: 2 });
+    const other = await createGeneration();
+    expect(batch.id).toBeTruthy();
+
+    const html = await (await req(`/g/${first.short_id}`)).text();
+    expect(html).toContain('同じ Request の Generation (2)');
+    expect(html).toContain('rel-badge rel-request');
+    expect(html).toContain(`href="/g/${second.body.short_id}"`);
+    expect(html).toContain(`href="/g/${third.body.short_id}"`);
+    expect(html).toContain('output 1');
+    expect(html).not.toContain(`href="/g/${other.generation.short_id}"`);
+    // The strip never lists the Generation being viewed.
+    const strip = html.slice(html.indexOf('同じ Request の Generation'), html.indexOf('Workflow'));
+    expect(strip).not.toContain(`href="/g/${first.short_id}"`);
+
+    const single = await (await req(`/g/${other.generation.short_id}`)).text();
+    expect(single).toContain('同じ Request の Generation (0)');
+  });
+
+  it('GET /g/{short_id} has no Map, Story, Batch, or /graph links', async () => {
+    const { generation } = await createGeneration();
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).not.toContain('class="mini-map"');
+    expect(html).not.toContain('>Map<');
+    expect(html).not.toContain('<summary>Story</summary>');
+    expect(html).not.toContain('/graph?');
+    expect(html).not.toContain('href="/b/');
+  });
+
+  it('GET /gallery nav has Gallery, Bookmarks, and a More menu with Experiments but no Batches/Stories/Graph links', async () => {
     const res = await req('/gallery');
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -1496,10 +1462,10 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(html).toContain('class="nav-more"');
     expect(html).toContain('<summary');
     expect(html).toContain('>More<');
-    expect(html).toContain('href="/batches"');
-    expect(html).toContain('>Batches<');
     expect(html).toContain('href="/experiments"');
     expect(html).toContain('>Experiments<');
+    expect(html).not.toContain('href="/batches"');
+    expect(html).not.toContain('>Batches<');
     expect(html).not.toContain('href="/stories"');
     expect(html).not.toContain('>Stories<');
     expect(html).not.toContain('href="/graph"');
@@ -1518,60 +1484,23 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
   });
 
-  it('GET /batches marks the More summary aria-current="page" (Batches lives inside it)', async () => {
-    const res = await req('/batches');
+  it('GET /experiments marks the More summary aria-current="page" (Experiments lives inside it)', async () => {
+    const res = await req('/experiments');
     const html = await res.text();
     expect(html).toMatch(/<summary aria-current="page">\s*More/);
-  });
-
-  it('GET /b/{short_id} and GET /g/{short_id} no longer link to /graph', async () => {
-    const { generation, batch } = await createGeneration();
-
-    const batchHtml = await (await req(`/b/${batch.short_id}`)).text();
-    expect(batchHtml).not.toContain('/graph?');
-
-    const genHtml = await (await req(`/g/${generation.short_id}`)).text();
-    expect(genHtml).not.toContain('/graph?');
   });
 });
 
 describe('Family panel: Experiment badge cards (ExperimentRun-derived, not a stored Relation)', () => {
-  it('GET /b/{short_id} shows an Experiment parent card for the parent run\'s batch', async () => {
-    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
-    const { batch: parentBatch } = await createGeneration();
-    const { batch: childBatch } = await createGeneration();
-
-    const parentRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
-      batch_id: parentBatch.id,
-    });
-    const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
-      parent_run_id: parentRun.body.id,
-      batch_id: childBatch.id,
-    });
-
-    const res = await req(`/b/${childBatch.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-
-    expect(html).toContain('rel-badge rel-experiment');
-    expect(html).toContain('>Experiment<');
-    expect(html).toContain(`href="/b/${parentBatch.short_id}"`);
-    expect(html).toContain(`run #${parentRun.body.run_index} → run #${childRun.body.run_index}`);
-  });
-
-  it('GET /g/{short_id} shows an Experiment child card ("via batch") and a 兄弟 section listing only ExperimentRun siblings', async () => {
+  it('GET /g/{short_id} shows an Experiment child card ("via request") and a 兄弟 section listing only ExperimentRun siblings', async () => {
     const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
     const { generation: parentGen, batch: parentBatch } = await createGeneration();
-    const { batch: childBatch } = await createGeneration();
-    const { batch: siblingBatch } = await createGeneration();
+    const { generation: childGen, batch: childBatch } = await createGeneration();
+    const { generation: siblingGen, batch: siblingBatch } = await createGeneration();
 
-    await postJson(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: parentBatch.id });
-    const parentRunList = await getJson<{ items: { id: string; batch_id: string | null }[] }>(
-      `/api/v1/experiments/${exp.body.id}/runs`,
-    );
-    const parentRunId = parentRunList.body.items.find((r) => r.batch_id === parentBatch.id)!.id;
+    const parentRun = await postJson<{ id: string }>(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: parentBatch.id });
     const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
-      parent_run_id: parentRunId,
+      parent_run_id: parentRun.body.id,
       batch_id: childBatch.id,
     });
     await postJson(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: siblingBatch.id });
@@ -1581,97 +1510,31 @@ describe('Family panel: Experiment badge cards (ExperimentRun-derived, not a sto
     const html = await res.text();
 
     expect(html).toContain('rel-badge rel-experiment');
-    expect(html).toContain('via batch');
-    expect(html).toContain(`href="/b/${childBatch.short_id}"`);
+    expect(html).toContain('via request');
+    expect(html).toContain(`href="/g/${childGen.short_id}"`);
     expect(html).toContain(`run #${childRun.body.run_index}`);
     expect(html).toContain('兄弟 (1)');
-    expect(html).toContain(`href="/b/${siblingBatch.short_id}"`);
+    expect(html).toContain(`href="/g/${siblingGen.short_id}"`);
+    expect(html).not.toContain('/b/');
   });
-});
 
-describe('系譜ミニマップ (MiniMap)', () => {
-  it('GET /g/{short_id} for the middle Batch of a 3-Batch retry chain lists each Batch as its representative Generation, current bracketed and unlinked', async () => {
-    const { generation: genA, batch: batchA } = await createGeneration();
-    const { generation: genB, batch: batchB } = await createGeneration({
-      batchOverrides: { refinement: { source_batch_id: batchA.id, actor: 'human', reason: 'retry' } },
+  it('GET /g/{short_id} shows an Experiment parent card for the parent run\'s result Request', async () => {
+    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
+    const { generation: parentGen, batch: parentBatch } = await createGeneration();
+    const { generation: childGen, batch: childBatch } = await createGeneration();
+
+    const parentRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      batch_id: parentBatch.id,
     });
-    const batchC = await createBatch({
-      refinement: { source_batch_id: batchB.id, actor: 'human', reason: 'retry again' },
-    });
-
-    const res = await req(`/g/${genB.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-
-    expect(html).toContain('class="mini-map"');
-    const chainStart = html.indexOf('mini-map-chain');
-    expect(chainStart).toBeGreaterThan(-1);
-    const idxA = html.indexOf(genA.short_id, chainStart);
-    const idxB = html.indexOf(`[${genB.short_id}]`, chainStart);
-    const idxC = html.indexOf(batchC.body.short_id, chainStart);
-    expect(idxA).toBeGreaterThan(-1);
-    expect(idxB).toBeGreaterThan(idxA);
-    expect(idxC).toBeGreaterThan(idxB);
-
-    const chain = html.slice(chainStart, html.indexOf('</div>', chainStart));
-    expect(chain).toContain(`href="/g/${genA.short_id}"`);
-    expect(chain).not.toContain(`href="/g/${genB.short_id}"`);
-    // batchC has no Generation yet, so it keeps its Batch link.
-    expect(chain).toContain(`href="/b/${batchC.body.short_id}"`);
-  });
-
-  it('GET /g/{short_id} shows a References row spanning material ancestors and descendants', async () => {
-    // Reference lineage A -> B -> C (B uses A's Generation as material, C uses B's).
-    const { generation: genA } = await createGeneration();
-    const { generation: genB, batch: batchB } = await createGeneration();
-    const { generation: genC, batch: batchC } = await createGeneration();
-    await postJson(`/api/v1/batches/${batchB.id}/references`, { source_generation_id: genA.id });
-    await postJson(`/api/v1/batches/${batchC.id}/references`, { source_generation_id: genB.id });
-
-    const res = await req(`/g/${genB.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-
-    expect(html).toContain('>References<');
-    const chainStart = html.indexOf('mini-map-chain');
-    const idxA = html.indexOf(genA.short_id, chainStart);
-    const idxB = html.indexOf(`[${genB.short_id}]`, chainStart);
-    const idxC = html.indexOf(genC.short_id, chainStart);
-    expect(idxA).toBeGreaterThan(-1);
-    expect(idxB).toBeGreaterThan(idxA);
-    expect(idxC).toBeGreaterThan(idxB);
-
-    const chain = html.slice(chainStart, html.indexOf('</div>', chainStart));
-    expect(chain).not.toContain('href="/b/');
-  });
-
-  it('GET /g/{short_id} shows no Map section for a Batch with no relation and no Story', async () => {
-    const { generation } = await createGeneration();
-    const res = await req(`/g/${generation.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).not.toContain('class="mini-map"');
-    expect(html).not.toContain('>Map<');
-  });
-
-  it('GET /b/{short_id} for a Batch in a Story shows a Story-labeled mini-map row', async () => {
-    const storyName = `mini-map-story-${crypto.randomUUID().slice(0, 8)}`;
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: storyName });
-    const { batch: batchX } = await createGeneration();
-    const batchY = await createBatch();
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: batchX.id,
-      target_batch_id: batchY.body.id,
+    const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
+      parent_run_id: parentRun.body.id,
+      batch_id: childBatch.id,
     });
 
-    const res = await req(`/b/${batchY.body.short_id}`);
-    expect(res.status).toBe(200);
-    const html = await res.text();
-
-    expect(html).toContain('class="mini-map"');
-    expect(html).toContain(`>${storyName}<`);
-    expect(html).toContain(`href="/b/${batchX.short_id}"`);
-    expect(html).toContain(`[${batchY.body.short_id}]`);
+    const html = await (await req(`/g/${childGen.short_id}`)).text();
+    expect(html).toContain('rel-badge rel-experiment');
+    expect(html).toContain(`href="/g/${parentGen.short_id}"`);
+    expect(html).toContain(`run #${parentRun.body.run_index} → run #${childRun.body.run_index}`);
   });
 });
 
@@ -1830,7 +1693,8 @@ describe('Experiments pages', () => {
     const res = await req(`/experiments/${experiment.id}`);
     const html = await res.text();
     expect(html).toContain(`https://chimera.test/g/${generation.short_id}/preview`);
-    expect(html).toContain(`/b/${batch.short_id}`);
+    expect(html).toContain(`href="/g/${generation.short_id}"`);
+    expect(html).not.toContain('/b/');
     expect(html).toContain('sock cuff is distinct');
     expect(html).toContain('stabilize');
     expect(html).toContain('comfyui-recipes / recipes/dq3.py');
@@ -2023,12 +1887,11 @@ describe('A/B judge page', () => {
   it('does not leak the checkpoint name before judgment, and carries the ab-reveal / ab-next skeleton', async () => {
     const ctx = await setupPair();
 
-    const baselineRunDetail = await getJson<{ batch_id: string }>(`/api/v1/experiment-runs/${ctx.baselineRun.id}`);
-    const baselineJobs = await getJson<{ jobs: { id: string; index: number }[] }>(
-      `/api/v1/batches/${baselineRunDetail.body.batch_id}`,
-    );
-    const firstJob = baselineJobs.body.jobs.find((j) => j.index === 0)!;
-    await setJobGraph(firstJob.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'secret-checkpoint.safetensors' } } });
+    const baselineRunDetail = await getJson<{ request: { id: string } }>(`/api/v1/experiment-runs/${ctx.baselineRun.id}`);
+    const firstJob = await env.DB.prepare('SELECT id FROM comfy_jobs WHERE request_id = ? ORDER BY job_index ASC LIMIT 1')
+      .bind(baselineRunDetail.body.request.id)
+      .first<{ id: string }>();
+    await setJobGraph(firstJob!.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'secret-checkpoint.safetensors' } } });
 
     const res = await req(
       `/experiments/${ctx.experiment.short_id}/ab?baseline=${ctx.baselineRun.id}&arm=${ctx.armRun.id}`,

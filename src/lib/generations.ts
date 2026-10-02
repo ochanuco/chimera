@@ -4,11 +4,11 @@ import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool 
 import { canonicalGenerationUrl, generationImageUrl, generationPreviewUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
-import { renderFactsForJob } from './render-facts';
+import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
-import type { BatchReferenceRow, BatchRow, CharacterRow, ComfyJobRow, GenerationRow, RequestStatus } from '../types';
+import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationRow, RequestRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
   if (!row.semantic_json) return null;
@@ -29,7 +29,7 @@ const PROMPT_NOT_REUSABLE_MESSAGES: Record<PromptNotReusable['reason'], string> 
     "this finalize also ran a masked hands/feet repair pass, whose render_facts prompt had face, hair and hood tags dropped. Do not reuse render_facts prompts as a generate prompt (e.g. a prompt.positive replace) — the character's eyes and hair would be lost. To generate from this image, call derive_request with this Generation; it resolves back to the raw source and carries its recipe forward.",
 };
 
-/** repair/masked_redraw/hires-chain+repair の Batch は render_facts prompt から face/hair/hood タグを落としている — そのまま generate に転用すると identity を失う。 */
+/** repair/masked_redraw/hires-chain+repair の Request は render_facts prompt から face/hair/hood タグを落としている — そのまま generate に転用すると identity を失う。 */
 export function promptNotReusable(parametersJson: string | null): PromptNotReusable | null {
   if (!parametersJson) return null;
   let parsed: unknown;
@@ -52,19 +52,68 @@ export function promptNotReusable(parametersJson: string | null): PromptNotReusa
   return null;
 }
 
-export async function buildContext(db: D1Database, org: string, generation: GenerationRow) {
-  const [character, tags, references] = await Promise.all([
+function parseJsonColumn(raw: string | null): unknown {
+  return raw ? (JSON.parse(raw) as unknown) : null;
+}
+
+/**
+ * Generation が属する Request の要約。prompt / negative_prompt は Request に持たず、Request の先頭 Job
+ * (job_index 最小で graph を持つもの) の render_facts の先頭 sampler から取る (docs/batch-removal.md「Request」)。
+ */
+async function buildRequestBlock(db: D1Database, request: RequestRow) {
+  const [drawnPose, factsByRequest] = await Promise.all([drawnPoseView(db, request), resolveRequestRenderFacts(db, [request.id])]);
+  const prompt = factsByRequest.get(request.id)?.samplers[0]?.prompt;
+  return {
+    id: request.id,
+    short_id: request.short_id,
+    kind: request.kind,
+    recipe: request.recipe,
+    raw_instruction: request.raw_instruction,
+    prompt: prompt?.positive ?? null,
+    negative_prompt: prompt?.negative ?? null,
+    parameters: parseJsonColumn(request.parameters_json),
+    patches: parseJsonColumn(request.patches_json),
+    preset_versions: parseJsonColumn(request.preset_versions_json),
+    git_commit: request.git_commit,
+    git_dirty: toBool(request.git_dirty),
+    drawn_pose: drawnPose,
+  };
+}
+
+interface RequestGenerationRow {
+  id: string;
+  short_id: string;
+  image_width: number | null;
+  image_height: number | null;
+  comfy_output_index: number | null;
+}
+
+async function loadBuiltContext(db: D1Database, org: string, generation: GenerationRow) {
+  const request = generation.request_id
+    ? await db.prepare('SELECT * FROM requests WHERE id = ?').bind(generation.request_id).first<RequestRow>()
+    : null;
+  const [character, tags, references, requestBlock, requestGenerations] = await Promise.all([
     generation.character_id
       ? db.prepare('SELECT * FROM characters WHERE id = ?').bind(generation.character_id).first<CharacterRow>()
       : Promise.resolve(null),
     listTagsForTarget(db, 'generation_tags', generation.id),
     db
-      .prepare('SELECT * FROM batch_references WHERE source_generation_id = ? ORDER BY created_at ASC')
+      .prepare('SELECT * FROM request_references WHERE source_generation_id = ? ORDER BY created_at ASC')
       .bind(generation.id)
-      .all<BatchReferenceRow>(),
+      .all<RequestReferenceRow>(),
+    request ? buildRequestBlock(db, request) : Promise.resolve(null),
+    generation.request_id
+      ? db
+          .prepare(
+            `SELECT id, short_id, image_width, image_height, comfy_output_index FROM generations
+             WHERE request_id = ? ORDER BY created_at ASC, id ASC`,
+          )
+          .bind(generation.request_id)
+          .all<RequestGenerationRow>()
+      : Promise.resolve(null),
   ]);
 
-  return {
+  const context = {
     id: generation.id,
     short_id: generation.short_id,
     canonical_url: canonicalGenerationUrl(org, generation.short_id),
@@ -79,66 +128,56 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
     summary: generation.summary,
     semantic: parseSemantic(generation),
     batch: { id: generation.batch_id },
+    request: requestBlock,
+    generations: (requestGenerations?.results ?? []) as RequestGenerationRow[],
     references: (references.results ?? []).map((r) => ({
       id: r.id,
-      target_batch_id: r.target_batch_id,
+      target_request_id: r.target_request_id,
       purpose: r.purpose,
       aspect: r.aspect,
       instruction: r.instruction,
       created_at: r.created_at,
     })),
-    // Batches that used this Generation as reference material. Same rows as `references`
+    // Requests that used this Generation as reference material. Same rows as `references`
     // above, kept as a separate field so "who used me as material" doesn't need inference.
     used_by: (references.results ?? []).map((r) => ({
       id: r.id,
-      batch_id: r.target_batch_id,
+      request_id: r.target_request_id,
       purpose: r.purpose,
       aspect: r.aspect,
       instruction: r.instruction,
       created_at: r.created_at,
     })),
   };
+  return { context, request };
+}
+
+export async function buildContext(db: D1Database, org: string, generation: GenerationRow) {
+  return (await loadBuiltContext(db, org, generation)).context;
 }
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const [context, batch, job, publications, poseReference] = await Promise.all([
-    buildContext(db, org, generation),
-    db.prepare('SELECT * FROM batches WHERE id = ?').bind(generation.batch_id).first<BatchRow>(),
+  const [{ context, request }, job, publications, poseReference] = await Promise.all([
+    loadBuiltContext(db, org, generation),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
     listPublicationsForGeneration(db, generation.id),
     getPoseReferenceOfGeneration(db, generation.id),
   ]);
-  const [renderFacts, drawnPose] = await Promise.all([
-    job ? renderFactsForJob(db, job) : Promise.resolve(null),
-    batch ? drawnPoseView(db, batch) : Promise.resolve(null),
-  ]);
-  const refinesGeneration = batch?.refines_generation_id
+  const renderFacts = job ? await renderFactsForJob(db, job) : null;
+  const refinesGeneration = generation.refines_generation_id
     ? await db
         .prepare('SELECT id, short_id, rating FROM generations WHERE id = ?')
-        .bind(batch.refines_generation_id)
+        .bind(generation.refines_generation_id)
         .first<Pick<GenerationRow, 'id' | 'short_id' | 'rating'>>()
     : null;
 
   return {
     ...context,
     refines_generation: refinesGeneration ?? null,
+    siblings: context.generations.filter((g) => g.id !== generation.id),
     publications: publications.map(serializePublication),
     pose_reference: poseReference,
-    batch: batch
-      ? {
-          id: batch.id,
-          short_id: batch.short_id,
-          prompt: batch.prompt,
-          negative_prompt: batch.negative_prompt,
-          recipe: batch.recipe,
-          raw_instruction: batch.raw_instruction,
-          git_commit: batch.git_commit,
-          git_dirty: toBool(batch.git_dirty),
-          preset_versions: batch.preset_versions_json ? (JSON.parse(batch.preset_versions_json) as unknown) : null,
-          drawn_pose: drawnPose,
-        }
-      : null,
     comfy_job: job
       ? {
           id: job.id,
@@ -147,7 +186,7 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
           status: job.status,
           graph: job.graph ? JSON.parse(job.graph) : null,
           render_facts: renderFacts,
-          prompt_not_reusable: promptNotReusable(batch?.parameters_json ?? null),
+          prompt_not_reusable: promptNotReusable(request?.parameters_json ?? null),
         }
       : null,
     original_filename: generation.original_filename,
@@ -166,12 +205,12 @@ export interface GenerationListItem {
   character: { id: string; name: string | null } | null;
   tags: string[];
   created_at: string;
-  batch_id: string;
+  request_id: string | null;
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
   original_purged_at: string | null;
-  /** short_id of the raw Generation this item's Batch refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
+  /** short_id of the raw Generation this item refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
   refines_generation_short_id: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published: boolean;
@@ -383,9 +422,9 @@ export async function queryGenerations(
   }
   if (query.origin) {
     if (query.origin === 'raw') {
-      conditions.push('b.refines_generation_id IS NULL');
+      conditions.push('g.refines_generation_id IS NULL');
     } else if (query.origin === 'refined') {
-      conditions.push('b.refines_generation_id IS NOT NULL');
+      conditions.push('g.refines_generation_id IS NOT NULL');
     } else {
       throw badRequest('origin must be "raw" or "refined"');
     }
@@ -405,7 +444,7 @@ export async function queryGenerations(
 
   const countWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const countRow = await db
-    .prepare(`SELECT COUNT(*) AS total FROM generations g LEFT JOIN batches b ON b.id = g.batch_id ${countWhere}`)
+    .prepare(`SELECT COUNT(*) AS total FROM generations g ${countWhere}`)
     .bind(...binds)
     .first<{ total: number }>();
 
@@ -430,8 +469,7 @@ export async function queryGenerations(
        LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
        LEFT JOIN tags t ON t.id = gt.tag_id
-       LEFT JOIN batches b ON b.id = g.batch_id
-       LEFT JOIN generations rg ON rg.id = b.refines_generation_id
+       LEFT JOIN generations rg ON rg.id = g.refines_generation_id
        ${where}
        GROUP BY g.id
        ORDER BY g.created_at DESC, g.id DESC
@@ -475,7 +513,7 @@ export async function queryGenerations(
       character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
       tags,
       created_at: r.created_at,
-      batch_id: r.batch_id,
+      request_id: r.request_id,
       image_width: r.image_width,
       image_height: r.image_height,
       image_size: r.image_size,

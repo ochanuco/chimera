@@ -13,7 +13,6 @@ const runSchema = z.looseObject({
   experiment_id: z.string(),
   run_index: z.number(),
   parent_run_id: z.string().nullable(),
-  batch_id: z.string().nullable(),
   generation_id: z.string().nullable(),
   overrides: jsonObject,
   objective: z.string().nullable(),
@@ -40,9 +39,14 @@ const generationLightSchema = z.looseObject({
   original_purged_at: z.string().nullable().optional(),
 });
 
-/** decorateRuns (lib/experiments.ts) — Run に batch / generation / render_facts を足したもの。 */
+/** decorateRuns (lib/experiments.ts) — Run に結果 request / generation / render_facts を足したもの。 */
 const decoratedRunSchema = runSchema.extend({
-  batch: z.looseObject({ id: z.string(), short_id: z.string(), thumbnail_url: z.string().nullable() }).nullable(),
+  request: z.looseObject({
+      id: z.string(),
+      short_id: z.string().nullable(),
+      thumbnail_url: z.string().nullable(),
+      thumbnail_generation_short_id: z.string().nullable(),
+    }).nullable(),
   generation: generationLightSchema.nullable(),
   render_facts: z.unknown().optional(),
 });
@@ -50,6 +54,7 @@ const decoratedRunSchema = runSchema.extend({
 /** serializeRequest (lib/serialize.ts)。payload_hash は含まない。 */
 const requestSchema = z.looseObject({
   id: z.string(),
+  short_id: z.string().nullable(),
   kind: z.string(),
   status: z.string(),
   payload: jsonObject,
@@ -74,7 +79,7 @@ const createdRequestSchema = z.looseObject({ created: z.boolean(), request: requ
 /** referenceView (lib/preset-references.ts) — the current basis-render pin for a (recipe, kind, name). */
 const presetReferenceSchema = z.looseObject({ generation_id: z.string(), short_id: z.string(), seed: z.number() });
 
-/** drawnPoseView (lib/preset-references.ts) — the pose a Batch drew and that pose's current pin. */
+/** drawnPoseView (lib/preset-references.ts) — the pose a Request drew and that pose's current pin. */
 const drawnPoseSchema = z.looseObject({ recipe: z.string(), pose: z.string(), reference: presetReferenceSchema.nullable() });
 
 /** summarizePreset (lib/presets.ts), plus attachReferences'/referenceView's `reference`. */
@@ -218,7 +223,7 @@ export const mcpOutputSchemas = {
         summary: z.string().nullable(),
         character: z.looseObject({ id: z.string(), name: z.string().nullable() }).nullable(),
         created_at: z.string(),
-        batch_id: z.string().nullable(),
+        request_id: z.string().nullable(),
         canonical_url: z.string(),
         original_purged_at: z.string().nullable().optional(),
       }),
@@ -238,7 +243,35 @@ export const mcpOutputSchemas = {
       .nullable()
       .optional(),
     semantic: z.unknown().optional(),
-    batch: z.looseObject({ drawn_pose: drawnPoseSchema.nullable().optional() }).nullable().optional(),
+    request: z
+      .looseObject({
+        id: z.string(),
+        short_id: z.string().nullable(),
+        kind: z.string(),
+        recipe: z.string().nullable(),
+        raw_instruction: z.string().nullable(),
+        prompt: z.string().nullable(),
+        negative_prompt: z.string().nullable(),
+        parameters: z.unknown(),
+        patches: z.unknown(),
+        preset_versions: z.unknown(),
+        git_commit: z.string().nullable(),
+        git_dirty: z.boolean(),
+        drawn_pose: drawnPoseSchema.nullable(),
+      })
+      .nullable()
+      .optional(),
+    siblings: z
+      .array(
+        z.looseObject({
+          id: z.string(),
+          short_id: z.string(),
+          image_width: z.number().nullable(),
+          image_height: z.number().nullable(),
+          comfy_output_index: z.number().nullable(),
+        }),
+      )
+      .optional(),
     comfy_job: z.unknown().optional(),
     references: z.unknown().optional(),
     publications: z.array(publicationSchema).optional(),
@@ -246,26 +279,8 @@ export const mcpOutputSchemas = {
     original_filename: z.string().nullable().optional(),
   }),
 
-  list_batch: z.looseObject({
-    batch: z.looseObject({ drawn_pose: drawnPoseSchema.nullable().optional() }).optional(),
-    id: z.string().optional(),
-    short_id: z.string().optional(),
-    recipe: z.string().nullable().optional(),
-    prompt: z.string().nullable().optional(),
-    negative_prompt: z.string().nullable().optional(),
-    parameters: z.unknown().optional(),
-    patches: z.unknown().optional(),
-    preset_versions: z.unknown().optional(),
-    jobs: z.array(z.unknown()).optional(),
-    generations: z.array(z.unknown()).optional(),
-    references: z.unknown().optional(),
-    relations: z.unknown().optional(),
-    experiment_run: z.unknown().optional(),
-  }),
-
   get_generation_lineage: z.looseObject({
     generation: z.unknown().optional(),
-    batch: z.unknown().optional(),
     ancestors: z.array(z.unknown()).optional(),
     descendants: z.array(z.unknown()).optional(),
   }),

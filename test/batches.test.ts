@@ -139,20 +139,14 @@ describe('Batch update / list / detail', () => {
     expect(res.body.id).toBe(batch.body.id);
   });
 
-  it('lists batches with generation_count and thumbnail', async () => {
-    const { batch } = await createGeneration();
-
-    const list = await getJson<{ items: { id: string; generation_count: number; thumbnail: unknown }[] }>(
-      '/api/v1/batches?limit=200',
-    );
-    expect(list.status).toBe(200);
-    const found = list.body.items.find((b) => b.id === batch.id);
-    expect(found).toBeTruthy();
-    expect(found?.generation_count).toBe(1);
-    expect(found?.thumbnail).toBeTruthy();
+  it('no longer serves the Batch list, tags, or bookmark endpoints', async () => {
+    const batch = await createBatch();
+    expect((await getJson('/api/v1/batches?limit=10')).status).toBe(404);
+    expect((await postJson(`/api/v1/batches/${batch.body.id}/tags`, { name: 'x' })).status).toBe(404);
+    expect((await req(`/api/v1/batches/${batch.body.id}/bookmark`, { method: 'PUT' })).status).toBe(404);
   });
 
-  it('returns batch detail with jobs, generations, and tags', async () => {
+  it('returns batch detail with jobs, generations, references, and relations', async () => {
     const { batch, job, generation } = await createGeneration();
 
     const detail = await getJson<{
@@ -160,7 +154,6 @@ describe('Batch update / list / detail', () => {
       generations: { id: string }[];
       references: unknown[];
       relations: { outgoing: unknown[]; incoming: unknown[] };
-      tags: string[];
     }>(`/api/v1/batches/${batch.id}`);
 
     expect(detail.status).toBe(200);
@@ -168,19 +161,9 @@ describe('Batch update / list / detail', () => {
     expect(detail.body.generations.map((g) => g.id)).toContain(generation.id);
     expect(detail.body.references).toEqual([]);
     expect(detail.body.relations.outgoing).toEqual([]);
-    expect(detail.body.tags).toEqual([]);
-  });
-
-  it('filters list by status and bookmark', async () => {
-    const batch = await createBatch();
-    await postJson(`/api/v1/batches/${batch.body.id}`, { status: 'completed' }, 'PATCH');
-    await req(`/api/v1/batches/${batch.body.id}/bookmark`, { method: 'PUT' });
-
-    const completed = await getJson<{ items: { id: string }[] }>('/api/v1/batches?status=completed&limit=200');
-    expect(completed.body.items.some((b) => b.id === batch.body.id)).toBe(true);
-
-    const bookmarked = await getJson<{ items: { id: string }[] }>('/api/v1/batches?bookmark=true&limit=200');
-    expect(bookmarked.body.items.some((b) => b.id === batch.body.id)).toBe(true);
+    for (const removed of ['tags', 'story_relations', 'siblings', 'reference_children', 'experiment_run']) {
+      expect(detail.body).not.toHaveProperty(removed);
+    }
   });
 });
 

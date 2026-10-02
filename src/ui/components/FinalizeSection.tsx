@@ -13,7 +13,7 @@ export interface FinalizeRequestStatusLine {
 }
 
 /** `Finalize` section (docs/ui.md「Generation Detail」「Finalize」節). `showCreatedAt` controls whether each request
- * row includes `· created_at` (Generation Detail does, Batch Detail's summarized list doesn't). */
+ * row includes `· created_at`. */
 export function FinalizeSection({
   shortId,
   requests,

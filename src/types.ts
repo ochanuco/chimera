@@ -124,6 +124,8 @@ export interface ComfyJobRow {
   batch_id: string;
   /** migrations/0026 以降の Job は Request を指す。 */
   request_id?: string | null;
+  /** finalize / repair / masked_redraw の Job が仕上げる元の Generation。 */
+  source_generation_id?: string | null;
   comfy_prompt_id: string | null;
   seed: number | null;
   job_index: number | null;
@@ -168,6 +170,10 @@ export interface GenerationRow {
   original_purged_at: string | null;
   /** 再圧縮ジョブが original を評価した時刻 (migrations/0024, src/lib/original-recompress.ts)。null なら未評価。lossless WebP に変換済みかは r2_object_key の拡張子で分かる。 */
   original_recompress_checked_at: string | null;
+  /** migrations/0026: 所属 Request。Request を持たない旧行は NULL。 */
+  request_id: string | null;
+  /** migrations/0026: 仕上げ元の Generation。raw Generation は NULL。 */
+  refines_generation_id: string | null;
 }
 
 export interface GenerationAssetRow {
@@ -182,15 +188,6 @@ export interface GenerationAssetRow {
   updated_at: string;
 }
 
-export interface StoryRow {
-  id: string;
-  name: string;
-  description: string | null;
-  note: string | null;
-  bookmark: number;
-  created_at: string;
-}
-
 export interface TagRow {
   id: string;
   name: string;
@@ -203,6 +200,16 @@ export interface BatchReferenceRow {
   id: string;
   source_generation_id: string;
   target_batch_id: string;
+  purpose: string | null;
+  aspect: string | null;
+  instruction: string | null;
+  created_at: string;
+}
+
+export interface RequestReferenceRow {
+  id: string;
+  source_generation_id: string;
+  target_request_id: string;
   purpose: string | null;
   aspect: string | null;
   instruction: string | null;
@@ -244,6 +251,16 @@ export interface RequestRow {
   created_by: RequestCreatedBy;
   created_at: string;
   updated_at: string;
+  /** migrations/0026 以降の Batch 由来の列。生成前に worker が報告するまで (queued の間) は NULL。 */
+  short_id: string | null;
+  recipe: string | null;
+  raw_instruction: string | null;
+  parameters_json: string | null;
+  patches_json: string | null;
+  pose_fingerprint: string | null;
+  preset_versions_json: string | null;
+  git_commit: string | null;
+  git_dirty: number | null;
 }
 
 export interface RecipeCatalogRow {
@@ -328,15 +345,3 @@ export interface ObservationRow {
   created_at: string;
 }
 
-export interface StoryRelationRow {
-  id: string;
-  story_id: string;
-  source_batch_id: string;
-  target_batch_id: string;
-  raw_instruction: string | null;
-  label: string | null;
-  description: string | null;
-  generated_by: string | null;
-  created_at: string;
-  updated_at: string;
-}

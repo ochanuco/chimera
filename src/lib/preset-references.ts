@@ -8,7 +8,7 @@ import { conflict, notFound } from './errors';
 import { getPresetRow } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
-import type { BatchRow, PresetCreatedBy, PresetKind, PresetReferenceRow } from '../types';
+import type { PresetCreatedBy, PresetKind, PresetReferenceRow, RequestRow } from '../types';
 
 /** Parses a stored JSON array column (`patches_json` / `preset_versions_json`); NULL や非配列は `[]`。 */
 export function parseJsonArray(raw: string | null): unknown[] {
@@ -27,10 +27,10 @@ export interface PresetReferenceView {
   seed: number;
 }
 
-/** Which pose a Batch drew: an explicit pose pin in `preset_versions_json` wins, else `parameters_json.pose`. undefined for neither (e.g. graph-mode). */
-export function drawnPoseOf(batch: BatchRow): string | undefined {
-  const parameters = parseJsonObjectOrNull(batch.parameters_json) ?? {};
-  const presetVersions = parseJsonArray(batch.preset_versions_json) as { kind?: unknown; name?: unknown }[];
+/** Which pose a Request drew: an explicit pose pin in `preset_versions_json` wins, else `parameters_json.pose`. undefined for neither (e.g. graph-mode). */
+export function drawnPoseOf(request: Pick<RequestRow, 'parameters_json' | 'preset_versions_json'>): string | undefined {
+  const parameters = parseJsonObjectOrNull(request.parameters_json) ?? {};
+  const presetVersions = parseJsonArray(request.preset_versions_json) as { kind?: unknown; name?: unknown }[];
   const posePin = presetVersions.find((p) => p && typeof p === 'object' && p.kind === 'pose');
   return typeof posePin?.name === 'string' ? posePin.name : typeof parameters.pose === 'string' ? parameters.pose : undefined;
 }
@@ -43,15 +43,18 @@ export interface DrawnPoseView {
 }
 
 /**
- * The pose a Batch drew plus that pose's current pin, for get_generation / list_batch. null when the Batch
+ * The pose a Request drew plus that pose's current pin, for get_generation. null when the Request
  * names no recipe or pose (graph-mode, finalize / repair payloads). Distinct from `pose_reference`, which
  * says whether a Generation is itself a pin.
  */
-export async function drawnPoseView(db: D1Database, batch: BatchRow): Promise<DrawnPoseView | null> {
-  const pose = drawnPoseOf(batch);
-  if (!batch.recipe || !pose) return null;
-  const reference = await referenceView(db, await getCurrentReference(db, batch.recipe, 'pose', pose));
-  return { recipe: batch.recipe, pose, reference };
+export async function drawnPoseView(
+  db: D1Database,
+  request: Pick<RequestRow, 'recipe' | 'parameters_json' | 'preset_versions_json'>,
+): Promise<DrawnPoseView | null> {
+  const pose = drawnPoseOf(request);
+  if (!request.recipe || !pose) return null;
+  const reference = await referenceView(db, await getCurrentReference(db, request.recipe, 'pose', pose));
+  return { recipe: request.recipe, pose, reference };
 }
 
 /** The current (not superseded) pin for one (recipe, kind, name), or null when none has ever been set. */
@@ -166,7 +169,7 @@ async function toResult(
  * Pins `generation_id` as the baseline render for `recipe`/`pose`. Checks, in order: idempotency replay
  * (same recipe/pose/generation returns the existing row, a different one 409s) → pose must already exist
  * as a Preset → generation must resolve with rating=good → finalize/repair outputs resolve to their raw
- * Generation (resolveDerivationSource, same as derive_request) → resolved Batch must be a *plain render*
+ * Generation (resolveDerivationSource, same as derive_request) → resolved Request must be a *plain render*
  * of recipe/pose (same recipe, drew this pose, no patches, request didn't override the prompt — every
  * failing rule collected into one 409) → seed comes from the resolved Generation's comfy_job.
  * Re-setting supersedes the previous row rather than overwriting it, keeping history.
@@ -195,28 +198,21 @@ export async function setPoseReference(db: D1Database, input: SetPoseReferenceIn
 
   if (generation.rating !== 'good') throw conflict('set_pose_reference requires rating good');
 
-  const { generation: source, batch } = await resolveDerivationSource(db, generation);
+  const { generation: source, request } = await resolveDerivationSource(db, generation);
 
   const reasons: string[] = [];
-  if (batch.recipe !== input.recipe) reasons.push(`recipe is '${batch.recipe ?? 'none (graph-mode)'}'`);
+  if (request.recipe !== input.recipe) reasons.push(`recipe is '${request.recipe ?? 'none (graph-mode)'}'`);
 
-  const drawnPose = drawnPoseOf(batch);
+  const drawnPose = drawnPoseOf(request);
   if (drawnPose !== input.pose) reasons.push(`pose is '${drawnPose ?? 'unset'}'`);
 
-  const patches = parseJsonArray(batch.patches_json);
-  if (patches.length > 0) reasons.push(`batch carries ${patches.length} patches`);
+  const patches = parseJsonArray(request.patches_json);
+  if (patches.length > 0) reasons.push(`request carries ${patches.length} patches`);
 
-  const buildingRequest = await db
-    .prepare(
-      `SELECT payload_json FROM requests WHERE kind = 'generate' AND json_extract(result_json, '$.batch_id') = ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .bind(batch.id)
-    .first<{ payload_json: string }>();
-  if (buildingRequest) {
+  if (request.kind === 'generate') {
     let payload: { generation?: { prompt?: unknown; negative_prompt?: unknown } } = {};
     try {
-      payload = JSON.parse(buildingRequest.payload_json) as typeof payload;
+      payload = JSON.parse(request.payload_json) as typeof payload;
     } catch {
       payload = {};
     }
@@ -227,7 +223,7 @@ export async function setPoseReference(db: D1Database, input: SetPoseReferenceIn
   }
 
   if (reasons.length > 0) {
-    throw conflict(`resolved batch '${batch.short_id}' is not a plain render of ${input.recipe}/${input.pose}: ${reasons.join('; ')}`);
+    throw conflict(`resolved request '${request.short_id ?? request.id}' is not a plain render of ${input.recipe}/${input.pose}: ${reasons.join('; ')}`);
   }
 
   const job = await db.prepare('SELECT seed FROM comfy_jobs WHERE id = ?').bind(source.comfy_job_id).first<{ seed: number | null }>();
@@ -272,7 +268,7 @@ export interface SetPoseReferenceForGenerationInput {
 
 /**
  * GUI 版 set_pose_reference (docs/domain-model.md「基準 render の pin」): recipe/pose を知らない呼び出し側
- * (Generation Detail) のため resolveDerivationSource で raw Batch から推測し、setPoseReference に委譲する。
+ * (Generation Detail) のため resolveDerivationSource で raw Request から推測し、setPoseReference に委譲する。
  * setPoseReference が内部で同じ解決をやり直すのは、409 の理由付けを1箇所にまとめるため。
  */
 export async function setPoseReferenceForGeneration(
@@ -282,12 +278,12 @@ export async function setPoseReferenceForGeneration(
   const generation = await getGenerationByIdOrShortId(db, input.generation_id);
   if (!generation) throw notFound('generation');
 
-  const { batch } = await resolveDerivationSource(db, generation);
-  const recipe = batch.recipe;
-  const pose = drawnPoseOf(batch);
+  const { request } = await resolveDerivationSource(db, generation);
+  const recipe = request.recipe;
+  const pose = drawnPoseOf(request);
   if (!recipe || !pose) {
     const missing = [!recipe ? 'recipe' : null, !pose ? 'pose' : null].filter(Boolean).join('/');
-    throw conflict(`resolved batch '${batch.short_id}' names no ${missing}; cannot infer which pose to pin`);
+    throw conflict(`resolved request '${request.short_id ?? request.id}' names no ${missing}; cannot infer which pose to pin`);
   }
 
   return setPoseReference(db, {

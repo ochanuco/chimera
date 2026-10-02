@@ -1,6 +1,6 @@
 # chimera — ComfyUI Generation Manager
 
-ComfyUI で生成した画像を、単なる置き場ではなく生成探索の provenance・Story・評価・semantic 情報つきで永続管理する Web GUI / Management API。Cloudflare Workers + D1 + R2、Hono + TypeScript。
+ComfyUI で生成した画像を、単なる置き場ではなく生成探索の provenance・評価・semantic 情報つきで永続管理する Web GUI / Management API。Cloudflare Workers + D1 + R2、Hono + TypeScript。
 
 MCP には、既存 Generation を変更せず任意の矩形を garment / local inpaint する
 `masked_redraw_generation` もあります。これは `repair_generation`（hands / feet 専用）とは

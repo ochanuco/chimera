@@ -606,25 +606,25 @@ export async function renderFactsForJob(db: D1Database, job: ComfyJobRow): Promi
   return facts;
 }
 
-/** Batch ごとに job_index が最小で graph を持つ Job から render_facts を解決する。 */
-export async function resolveBatchRenderFacts(db: D1Database, batchIds: string[]): Promise<Map<string, RenderFacts>> {
-  const unique = Array.from(new Set(batchIds));
+/** Request ごとに job_index が最小で graph を持つ Job から render_facts を解決する。 */
+export async function resolveRequestRenderFacts(db: D1Database, requestIds: string[]): Promise<Map<string, RenderFacts>> {
+  const unique = Array.from(new Set(requestIds));
   const map = new Map<string, RenderFacts>();
   for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
       .prepare(
         `SELECT * FROM (
-           SELECT *, ROW_NUMBER() OVER (PARTITION BY batch_id ORDER BY job_index ASC) AS rn
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY request_id ORDER BY job_index ASC) AS rn
            FROM comfy_jobs
-           WHERE batch_id IN (${placeholders}) AND graph IS NOT NULL
+           WHERE request_id IN (${placeholders}) AND graph IS NOT NULL
          ) WHERE rn = 1`,
       )
       .bind(...part)
-      .all<ComfyJobRow>();
+      .all<ComfyJobRow & { request_id: string }>();
     for (const job of results ?? []) {
       const facts = await renderFactsForJob(db, job);
-      if (facts) map.set(job.batch_id, facts);
+      if (facts) map.set(job.request_id, facts);
     }
   }
   return map;

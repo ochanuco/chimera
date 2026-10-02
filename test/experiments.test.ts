@@ -33,7 +33,6 @@ interface ExperimentRun {
   experiment_id: string;
   run_index: number;
   parent_run_id: string | null;
-  batch_id: string | null;
   generation_id: string | null;
   overrides: Record<string, unknown>;
   objective: string | null;
@@ -514,7 +513,7 @@ describe('Generation / Batch linkage', () => {
     const decoratedRun = detail.body.runs.find((r: any) => r.id === run.body.id) as any;
     expect(decoratedRun.generation).toMatchObject({ id: generation.id });
     expect(decoratedRun.generation.thumbnail_url).toBeTruthy();
-    expect(decoratedRun.batch).toMatchObject({ short_id: batch.short_id });
+    expect(decoratedRun.request).toMatchObject({ short_id: batch.short_id });
   });
 
   it('409s when attaching a batch that another run already owns (create and PATCH)', async () => {
@@ -610,7 +609,7 @@ describe('Generation / Batch linkage', () => {
       'PATCH',
     );
     expect(res.status).toBe(200);
-    expect(res.body.batch_id).toBe(batch.id);
+    expect(res.body).not.toHaveProperty('batch_id');
     expect(res.body.generation_id).toBe(generation.id);
   });
 

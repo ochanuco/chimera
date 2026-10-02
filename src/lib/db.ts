@@ -64,21 +64,6 @@ export async function getExperimentByIdOrShortId(
     .first<ExperimentRow>();
 }
 
-/** Resolves short_ids for a set of Batch UUIDs, for display in reference links. Missing ids are simply absent from the result. */
-export async function resolveBatchShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
-  const unique = Array.from(new Set(ids));
-  const map = new Map<string, string>();
-  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
-    const placeholders = part.map(() => '?').join(', ');
-    const { results } = await db
-      .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
-      .bind(...part)
-      .all<{ id: string; short_id: string }>();
-    for (const r of results ?? []) map.set(r.id, r.short_id);
-  }
-  return map;
-}
-
 export async function resolveGenerationShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(ids));
   const map = new Map<string, string>();
@@ -93,134 +78,83 @@ export async function resolveGenerationShortIds(db: D1Database, ids: string[]): 
   return map;
 }
 
-/**
- * Batch id -> representative Generation's short_id (family-card thumbnail). No per-Batch
- * "designated thumbnail" column exists; this mirrors the first-created Generation, the same
- * ROW_NUMBER pattern graph.ts and stories.ts use for the same purpose.
- */
-export async function resolveBatchThumbnails(db: D1Database, batchIds: string[]): Promise<Map<string, string>> {
-  const unique = Array.from(new Set(batchIds));
+/** Resolves short_ids for a set of Request ids. Requests without a short_id are simply absent from the result. */
+export async function resolveRequestShortIds(db: D1Database, ids: string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(ids));
   const map = new Map<string, string>();
-  // ROW_NUMBER() は batch_id ごとに独立して振られるため、チャンク分割しても結果は変わらない。
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(`SELECT id, short_id FROM requests WHERE id IN (${placeholders})`)
+      .bind(...part)
+      .all<{ id: string; short_id: string | null }>();
+    for (const r of results ?? []) if (r.short_id) map.set(r.id, r.short_id);
+  }
+  return map;
+}
+
+/**
+ * Request id -> representative Generation's short_id: the first one by Job index, then output index
+ * (created_at / id break ties). `/b/{short_id}` redirects here too.
+ */
+export async function resolveRequestThumbnails(db: D1Database, requestIds: string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(requestIds));
+  const map = new Map<string, string>();
   for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
       .prepare(
-        `SELECT batch_id, short_id FROM (
-           SELECT batch_id, short_id,
-             ROW_NUMBER() OVER (PARTITION BY batch_id ORDER BY created_at ASC, id ASC) AS rn
-           FROM generations
-           WHERE batch_id IN (${placeholders})
+        `SELECT request_id, short_id FROM (
+           SELECT g.request_id, g.short_id,
+             ROW_NUMBER() OVER (
+               PARTITION BY g.request_id
+               ORDER BY j.job_index ASC, g.comfy_output_index ASC, g.created_at ASC, g.id ASC
+             ) AS rn
+           FROM generations g
+           JOIN comfy_jobs j ON j.id = g.comfy_job_id
+           WHERE g.request_id IN (${placeholders})
          ) WHERE rn = 1`,
       )
       .bind(...part)
-      .all<{ batch_id: string; short_id: string }>();
-    for (const r of results ?? []) map.set(r.batch_id, r.short_id);
+      .all<{ request_id: string; short_id: string }>();
+    for (const r of results ?? []) map.set(r.request_id, r.short_id);
   }
   return map;
 }
 
-export interface ChainBatch {
-  id: string;
-  short_id: string;
-  created_at: string;
+/**
+ * `experiment_runs <alias>` の結果 Request の id を返す副問い合わせ。Run の結果は done の generate/import
+ * Request (docs/batch-removal.md「Experiment」: 1 Run に done の generate Request は高々 1 件)。
+ */
+export function runRequestIdSql(alias: string): string {
+  return `(SELECT x.id FROM requests x WHERE x.run_id = ${alias}.id AND x.status = 'done' AND x.kind IN ('generate', 'import') ORDER BY x.created_at DESC, x.id DESC LIMIT 1)`;
 }
 
-/** Resolves prompt / negative_prompt for a set of Batch UUIDs (retry-parent diff base lookup). Missing ids are simply absent from the result. */
-export async function resolveBatchPrompts(
-  db: D1Database,
-  ids: string[],
-): Promise<Map<string, { prompt: string | null; negative_prompt: string | null }>> {
-  const unique = Array.from(new Set(ids));
-  const map = new Map<string, { prompt: string | null; negative_prompt: string | null }>();
+export interface RunRequestRef {
+  id: string;
+  short_id: string | null;
+}
+
+/** Run id -> その結果 Request (runRequestIdSql と同じ規則)。結果の無い Run は含まれない。 */
+export async function resolveRunRequests(db: D1Database, runIds: string[]): Promise<Map<string, RunRequestRef>> {
+  const unique = Array.from(new Set(runIds));
+  const map = new Map<string, RunRequestRef>();
   for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
-      .prepare(`SELECT id, prompt, negative_prompt FROM batches WHERE id IN (${placeholders})`)
+      .prepare(
+        `SELECT run_id, id, short_id FROM (
+           SELECT x.run_id, x.id, x.short_id,
+             ROW_NUMBER() OVER (PARTITION BY x.run_id ORDER BY x.created_at DESC, x.id DESC) AS rn
+           FROM requests x
+           WHERE x.run_id IN (${placeholders}) AND x.status = 'done' AND x.kind IN ('generate', 'import')
+         ) WHERE rn = 1`,
+      )
       .bind(...part)
-      .all<{ id: string; prompt: string | null; negative_prompt: string | null }>();
-    for (const r of results ?? []) map.set(r.id, { prompt: r.prompt, negative_prompt: r.negative_prompt });
+      .all<{ run_id: string; id: string; short_id: string | null }>();
+    for (const r of results ?? []) map.set(r.run_id, { id: r.id, short_id: r.short_id });
   }
   return map;
-}
-
-/**
- * Retry-chain connected component containing `batchId` (undirected walk over BatchRelation
- * edges), including `batchId` itself even with no edges. Capped at 100 as a recursion safety net.
- */
-export async function getRelationChainBatches(db: D1Database, batchId: string): Promise<ChainBatch[]> {
-  const { results } = await db
-    .prepare(
-      `WITH RECURSIVE chain(id) AS (
-         SELECT ?
-         UNION
-         SELECT br.target_batch_id FROM chain JOIN batch_relations br ON br.source_batch_id = chain.id
-         UNION
-         SELECT br.source_batch_id FROM chain JOIN batch_relations br ON br.target_batch_id = chain.id
-       )
-       SELECT b.id, b.short_id, b.created_at
-       FROM batches b
-       JOIN chain c ON c.id = b.id
-       ORDER BY b.created_at ASC, b.id ASC
-       LIMIT 100`,
-    )
-    .bind(batchId)
-    .all<ChainBatch>();
-  return results ?? [];
-}
-
-/** Every Batch in `storyId`'s StoryRelation rows. Unlike getRelationChainBatches this isn't a graph walk -- the rows already name every Batch on the timeline directly. */
-export async function getStoryChainBatches(db: D1Database, storyId: string): Promise<ChainBatch[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT DISTINCT b.id, b.short_id, b.created_at
-       FROM batches b
-       WHERE b.id IN (
-         SELECT source_batch_id FROM story_relations WHERE story_id = ?
-         UNION
-         SELECT target_batch_id FROM story_relations WHERE story_id = ?
-       )
-       ORDER BY b.created_at ASC, b.id ASC
-       LIMIT 100`,
-    )
-    .bind(storyId, storyId)
-    .all<ChainBatch>();
-  return results ?? [];
-}
-
-/**
- * Reference (material) lineage of `batchId`: ancestors + descendants via generations.batch_id,
- * plus `batchId` itself. Directed reachability only, so unrelated branches of a shared ancestor
- * stay out. Capped at 100 as a recursion safety net.
- */
-export async function getReferenceLineageBatches(db: D1Database, batchId: string): Promise<ChainBatch[]> {
-  const { results } = await db
-    .prepare(
-      `WITH RECURSIVE up(id) AS (
-         SELECT ?
-         UNION
-         SELECT g.batch_id
-         FROM up
-         JOIN batch_references br ON br.target_batch_id = up.id
-         JOIN generations g ON g.id = br.source_generation_id
-       ),
-       down(id) AS (
-         SELECT ?
-         UNION
-         SELECT br.target_batch_id
-         FROM down
-         JOIN generations g ON g.batch_id = down.id
-         JOIN batch_references br ON br.source_generation_id = g.id
-       )
-       SELECT b.id, b.short_id, b.created_at
-       FROM batches b
-       JOIN (SELECT id FROM up UNION SELECT id FROM down) c ON c.id = b.id
-       ORDER BY b.created_at ASC, b.id ASC
-       LIMIT 100`,
-    )
-    .bind(batchId, batchId)
-    .all<ChainBatch>();
-  return results ?? [];
 }
 
 export interface Pagination {

@@ -40,7 +40,7 @@ interface NotifyBody {
   generation?: {
     generation_id: string;
     short_id: string;
-    batch_id: string;
+    request_id: string | null;
     refines_generation_short_id: string | null;
     created_at: string;
   };
@@ -244,7 +244,7 @@ export class WorkerHub extends DurableObject<Bindings> {
           type: 'generation',
           generation_id: g.generation_id,
           short_id: g.short_id,
-          batch_id: g.batch_id,
+          request_id: g.request_id,
           refines_generation_short_id: g.refines_generation_short_id,
           created_at: g.created_at,
         });

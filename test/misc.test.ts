@@ -55,22 +55,6 @@ describe('Experiments', () => {
   });
 });
 
-describe('Stories list', () => {
-  it('reports batch_count for a story', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `count-story-${crypto.randomUUID().slice(0, 8)}` });
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-    await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-    });
-
-    const list = await getJson<{ items: { id: string; batch_count: number }[] }>('/api/v1/stories');
-    const found = list.body.items.find((s) => s.id === story.body.id);
-    expect(found?.batch_count).toBe(2);
-  });
-});
-
 describe('Canonical /g/{short_id} page', () => {
   it('renders the HTML Generation Detail page by default', async () => {
     const { generation } = await createGeneration();

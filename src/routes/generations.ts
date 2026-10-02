@@ -161,7 +161,7 @@ generations.post('/:id/publications', async (c) => {
 });
 
 // GUI の「基準にする」窓口 (docs/domain-model.md「基準 render の pin」)。MCP set_pose_reference と違い
-// 呼び出し側は recipe/pose を知らないため raw Batch から推測する (lib/preset-references.ts)。created_by は 'gui' 固定。
+// 呼び出し側は recipe/pose を知らないため raw Request から推測する (lib/preset-references.ts)。created_by は 'gui' 固定。
 generations.post('/:id/pose-reference', async (c) => {
   const body = setPoseReferenceForGenerationSchema.parse(await c.req.json());
   const db = c.env.DB;
