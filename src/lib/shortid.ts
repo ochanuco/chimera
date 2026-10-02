@@ -19,17 +19,26 @@ export function isShortId(value: string): boolean {
 }
 
 /**
- * Generates a short ID guaranteed unique in `table`, retrying on collision.
- * `table` must be a trusted, statically-known identifier (never user input).
+ * Generates a short ID guaranteed unique in `table` (and in each of `alsoAvoid`), retrying on collision.
+ * `table` / `alsoAvoid` must be trusted, statically-known identifiers (never user input).
  */
-export async function createUniqueShortId(db: D1Database, table: string): Promise<string> {
+export async function createUniqueShortId(db: D1Database, table: string, alsoAvoid: string[] = []): Promise<string> {
+  const tables = [table, ...alsoAvoid];
   for (let attempt = 0; attempt < 10; attempt++) {
     const candidate = generateShortId();
-    const existing = await db
-      .prepare(`SELECT 1 FROM ${table} WHERE short_id = ?`)
-      .bind(candidate)
-      .first();
-    if (!existing) return candidate;
+    let taken = false;
+    for (const t of tables) {
+      if (await db.prepare(`SELECT 1 FROM ${t} WHERE short_id = ?`).bind(candidate).first()) {
+        taken = true;
+        break;
+      }
+    }
+    if (!taken) return candidate;
   }
   throw new Error(`failed to generate unique short_id for ${table} after 10 attempts`);
+}
+
+/** requests と batches は /b/{short_id} の同じ名前空間を共有する (docs/batch-removal.md)。互いに衝突させない。 */
+export function createUniqueRequestShortId(db: D1Database): Promise<string> {
+  return createUniqueShortId(db, 'requests', ['batches']);
 }

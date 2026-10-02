@@ -18,6 +18,8 @@ import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
 import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import { presetVersionsStatement, runAttachStatement } from './batch-request-sync';
+import { createUniqueRequestShortId } from './shortid';
+import { findShadowBatch, normalizeResolution, resolutionStatements, type ResolutionInput } from './request-resolution';
 import type {
   BatchRow,
   ExperimentRow,
@@ -223,7 +225,10 @@ export function defaultRecipeRef(env: { REQUESTS_DEFAULT_RECIPE_REF?: string }):
 
 export interface CreateRequestInput {
   kind: RequestKind;
-  payload: JsonObject;
+  /** import だけは省略でき、省略時は {schema_version: 1, request: {instruction}} を保存する。 */
+  payload?: JsonObject;
+  /** kind=import の解決済みの値。import は done で作られ、worker は claim しない。 */
+  resolution?: ResolutionInput;
   recipe_ref?: string;
   idempotency_key: string;
   created_by: RequestCreatedBy;
@@ -251,6 +256,8 @@ export async function createRequest(
   options: CreateRequestOptions = {},
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
+  if (input.kind === 'import') return createImportRequest(db, input, options);
+  if (input.payload === undefined) throw badRequest('payload is required');
   // masked_redraw のエイリアス正規化、generate の preset pin (worker-protocol.md「preset の pin」)、
   // finalize profile の展開 (worker-protocol.md「finalize profile」) は payload をハッシュする前にここで行う
   // — 内部呼び出しや idempotency 再送もこの正規化を通す。
@@ -315,8 +322,9 @@ export async function createRequest(
       .prepare(
         `INSERT INTO requests (
            id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
-           claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at
-         ) VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`,
+           claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
+           short_id
+         ) VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -329,6 +337,7 @@ export async function createRequest(
         input.created_by,
         now,
         now,
+        await createUniqueRequestShortId(db),
       )
       .run();
   } catch (err) {
@@ -341,6 +350,63 @@ export async function createRequest(
     return replayOrConflict(raced, input.kind, payloadHash);
   }
 
+  return { row: await getRequestOr404(db, id), created: true };
+}
+
+/**
+ * kind=import: 手加工・合成などキューを通らない画像の登録枠。done で作り、同じ Request に Job と Generation を ingest する。
+ * 再送の一致は payload と解決済みの値の両方で見る。
+ */
+async function createImportRequest(
+  db: D1Database,
+  input: CreateRequestInput,
+  options: CreateRequestOptions,
+): Promise<CreateRequestResult> {
+  const resolutionInput = input.resolution;
+  if (!resolutionInput) throw badRequest('parameters is required for kind import');
+  const payload: JsonObject = input.payload ?? {
+    schema_version: 1,
+    request: { instruction: resolutionInput.raw_instruction ?? null },
+  };
+  const payloadHash = await canonicalPayloadHash('import', { payload, resolution: resolutionInput });
+
+  const find = () => db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(input.idempotency_key).first<RequestRow>();
+  const existing = await find();
+  if (existing) return replayOrConflict(existing, 'import', payloadHash);
+
+  const resolution = await normalizeResolution(db, resolutionInput, null);
+  const id = uuidv7();
+  const now = nowIso();
+  const shortId = await createUniqueRequestShortId(db);
+  try {
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO requests (
+             id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
+             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
+             short_id
+           ) VALUES (?, 'import', 'done', ?, ?, ?, NULL, NULL, 0, 3, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          id,
+          JSON.stringify(payload),
+          payloadHash,
+          input.recipe_ref ?? options.defaultRecipeRef ?? 'production',
+          now,
+          input.idempotency_key,
+          input.created_by,
+          now,
+          now,
+          shortId,
+        ),
+      ...(await resolutionStatements(db, { requestId: id, shortId, resolution, shadow: null, batchStatus: 'completed' })),
+    ]);
+  } catch (err) {
+    const raced = await find();
+    if (!raced) throw err;
+    return replayOrConflict(raced, 'import', payloadHash);
+  }
   return { row: await getRequestOr404(db, id), created: true };
 }
 
@@ -478,6 +544,14 @@ export interface UpdateRequestInput {
   error?: string;
 }
 
+/** resolution が内部に作った影の Batch (status = running) の終端状態を Request に合わせる。互換の Batch 経路で作られた Batch には触れない。 */
+async function markShadowBatch(db: D1Database, requestId: string, status: 'completed' | 'failed', now: string): Promise<void> {
+  await db
+    .prepare("UPDATE batches SET status = ?, updated_at = ? WHERE idempotency_key = ? AND status = 'running'")
+    .bind(status, now, `request:${requestId}`)
+    .run();
+}
+
 const TERMINAL_STATUSES: RequestStatus[] = ['done', 'failed', 'cancelled'];
 
 export async function updateRequest(db: D1Database, row: RequestRow, body: UpdateRequestInput): Promise<RequestRow> {
@@ -518,6 +592,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       )
       .bind(...(exhausted ? ['released after max attempts', now, now, row.id] : [now, row.id]))
       .run();
+    if (exhausted) await markShadowBatch(db, row.id, 'failed', now);
     return getRequestOr404(db, row.id);
   }
 
@@ -526,6 +601,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       .prepare('UPDATE requests SET status = ?, error = ?, finished_at = ?, updated_at = ? WHERE id = ?')
       .bind('failed', body.error ?? null, now, now, row.id)
       .run();
+    await markShadowBatch(db, row.id, 'failed', now);
     return getRequestOr404(db, row.id);
   }
 
@@ -545,17 +621,21 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     )
     .bind('done', resultJson, now, now, presetVersionsJson, row.id);
 
+  // 結果の Batch は、worker が互換のため result.batch_id を渡せばそれ、無ければ resolution で内部に作った影の Batch。
+  const shadow = await findShadowBatch(db, row.id);
+
   if (row.run_id) {
     const run = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(row.run_id).first<ExperimentRunRow>();
     if (!run) throw notFound('experiment run');
 
-    // 結果の Run への紐づけは requests.run_id が持つ。batch_id は Batch 廃止まで experiment_runs.batch_id への attach 用に受理する。
-    if (result.batch_id) {
-      const batch = await getBatchByIdOrShortId(db, result.batch_id);
-      if (!batch) throw notFound(`batch '${result.batch_id}'`);
+    // 結果の Run への紐づけは requests.run_id が持つ。experiment_runs.batch_id は Batch 廃止まで GUI の Run カード用に attach する。
+    const batch = result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : shadow;
+    if (result.batch_id && !batch) throw notFound(`batch '${result.batch_id}'`);
 
-      // Run に既に別の batch が付いていれば409で、request 行も done になりません (worker-protocol.md「Update Request」)。
-      if (run.batch_id && run.batch_id !== batch.id) {
+    if (batch) {
+      // Run に既に別の batch が付いていれば、result.batch_id 指定なら409で request 行も done になりません (worker-protocol.md「Update Request」)。
+      // 影の Batch は Run の既存の attach を壊さないよう、付いていれば黙って付けない。
+      if (run.batch_id && run.batch_id !== batch.id && result.batch_id) {
         throw conflict('run already has a different batch attached');
       }
 
@@ -581,7 +661,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   } else {
     // pin の記録は付随的なもの: result.batch_id が解決できなければ request の完了は妨げず、
     // Batch 側の preset_versions_json の書き込みだけ飛ばす。
-    const batch = presetVersionsJson && result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : null;
+    const batch = presetVersionsJson ? (result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : shadow) : null;
     if (presetVersionsJson && batch) {
       await db.batch([
         doneStatement,
@@ -592,6 +672,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       await doneStatement.run();
     }
   }
+  await markShadowBatch(db, row.id, 'completed', now);
 
   return getRequestOr404(db, row.id);
 }

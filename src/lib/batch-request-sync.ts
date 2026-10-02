@@ -24,7 +24,7 @@ export function batchRequestStatements(db: D1Database, batchId: string): D1Prepa
     db
       .prepare(
         `UPDATE requests
-         SET short_id = b.short_id, recipe = b.recipe, raw_instruction = b.raw_instruction,
+         SET short_id = COALESCE(requests.short_id, b.short_id), recipe = b.recipe, raw_instruction = b.raw_instruction,
              parameters_json = b.parameters_json, patches_json = b.patches_json,
              pose_fingerprint = b.pose_fingerprint, preset_versions_json = b.preset_versions_json,
              git_commit = b.git_commit, git_dirty = b.git_dirty

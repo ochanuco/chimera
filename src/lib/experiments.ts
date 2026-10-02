@@ -19,6 +19,7 @@ import { resolveRequestRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
 import { runAttachStatement } from './batch-request-sync';
+import { createUniqueRequestShortId } from './shortid';
 import {
   generationPreviewUrl,
   serializeExperiment,
@@ -408,6 +409,7 @@ export async function createExperimentRun(
     batchId === null &&
     (experiment.status === 'active' || experiment.status === 'stabilized');
   let requestId: string | null = null;
+  let requestShortId: string | null = null;
   let requestPayloadJson: string | null = null;
   let requestPayloadHash: string | null = null;
   if (shouldAutoCreateRequest) {
@@ -437,6 +439,7 @@ export async function createExperimentRun(
     // pinPresets は payload_hash を取る前に適用する（docs/worker-protocol.md「preset の pin」、createRequest と同じ規則でないと同内容が別 hash になる）。
     const payload = await pinPresets(db, buildRunRequestPayload(experiment, approxRunForPayload));
     requestId = uuidv7();
+    requestShortId = await createUniqueRequestShortId(db);
     requestPayloadJson = JSON.stringify(payload);
     requestPayloadHash = await canonicalPayloadHash('generate', payload);
   }
@@ -476,10 +479,11 @@ export async function createExperimentRun(
         .prepare(
           `INSERT INTO requests (
              id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
-             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at
-           ) VALUES (?, 'generate', 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?)`,
+             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
+             short_id
+           ) VALUES (?, 'generate', 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, 'system', ?, ?, ?)`,
         )
-        .bind(requestId, requestPayloadJson, requestPayloadHash, options.recipeRef ?? 'production', id, `run:${id}`, now, now),
+        .bind(requestId, requestPayloadJson, requestPayloadHash, options.recipeRef ?? 'production', id, `run:${id}`, now, now, requestShortId),
     );
   }
 
