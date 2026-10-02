@@ -1083,6 +1083,14 @@ describe('Web GUI pages', () => {
       return { body };
     }
 
+    it('makes each header short_id a hover-preview link to the Generation', async () => {
+      const { body } = await makePair();
+      const head = body.match(/<thead>(.*?)<\/thead>/s)![1]!;
+      const links = [...head.matchAll(/<a class="thumb-link compare-head-link" href="\/g\/(\w+)">\1<img class="thumb-fg" src="([^"]+)"/g)];
+      expect(links).toHaveLength(2);
+      expect(links[0]![2]).toContain(links[0]![1]);
+    });
+
     it('renders the instruction row with — for a Batch without one', async () => {
       const { body } = await makePair();
       const row = body.match(/<tr class="compare-change"><td>instruction<\/td>(.*?)<\/tr>/s);
