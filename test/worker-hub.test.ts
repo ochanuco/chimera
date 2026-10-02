@@ -352,7 +352,8 @@ describe('WorkerHub generation broadcast (docs/worker-protocol.md「hub → view
 
     const msg = await viewerT.waitFor((m) => m.type === 'generation' && m.short_id === ingest.body.short_id);
     expect(msg.generation_id).toBe(ingest.body.id);
-    expect(msg.batch_id).toBe(batch.body.id);
+    expect(msg.request_id).toBe(batch.body.id);
+    expect(msg).not.toHaveProperty('batch_id');
     expect(msg.refines_generation_short_id).toBeNull();
     expect(typeof msg.created_at).toBe('string');
 

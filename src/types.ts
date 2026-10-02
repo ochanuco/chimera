@@ -188,15 +188,6 @@ export interface GenerationAssetRow {
   updated_at: string;
 }
 
-export interface StoryRow {
-  id: string;
-  name: string;
-  description: string | null;
-  note: string | null;
-  bookmark: number;
-  created_at: string;
-}
-
 export interface TagRow {
   id: string;
   name: string;
@@ -209,6 +200,16 @@ export interface BatchReferenceRow {
   id: string;
   source_generation_id: string;
   target_batch_id: string;
+  purpose: string | null;
+  aspect: string | null;
+  instruction: string | null;
+  created_at: string;
+}
+
+export interface RequestReferenceRow {
+  id: string;
+  source_generation_id: string;
+  target_request_id: string;
   purpose: string | null;
   aspect: string | null;
   instruction: string | null;
@@ -344,15 +345,3 @@ export interface ObservationRow {
   created_at: string;
 }
 
-export interface StoryRelationRow {
-  id: string;
-  story_id: string;
-  source_batch_id: string;
-  target_batch_id: string;
-  raw_instruction: string | null;
-  label: string | null;
-  description: string | null;
-  generated_by: string | null;
-  created_at: string;
-  updated_at: string;
-}

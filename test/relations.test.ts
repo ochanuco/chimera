@@ -162,74 +162,36 @@ describe('Batch refines_generation_id', () => {
   });
 });
 
-describe('Story relations', () => {
-  it('creates a story, links batches, and lists them on the story', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `summer arc-${crypto.randomUUID().slice(0, 8)}` });
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-
-    const rel = await postJson(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'move to the beach',
-      description: 'evening beach scene',
-    });
-    expect(rel.status).toBe(201);
-
-    const detail = await getJson<{
-      relations: { source_batch_id: string; target_batch_id: string; label: string }[];
-      batches: { id: string }[];
-    }>(`/api/v1/stories/${story.body.id}`);
-    expect(detail.body.relations).toHaveLength(1);
-    expect(detail.body.relations[0]).toMatchObject({
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'move to the beach',
-    });
-    expect(detail.body.batches.map((b) => b.id).sort()).toEqual([b1.body.id, b2.body.id].sort());
+describe('Story and graph are gone', () => {
+  it('serves no /stories or /graph routes', async () => {
+    expect((await getJson('/api/v1/stories')).status).toBe(404);
+    expect((await postJson('/api/v1/stories', { name: 'x' })).status).toBe(404);
+    expect((await getJson('/api/v1/graph')).status).toBe(404);
   });
 
-  it('nested story on batch create links previous batches via StoryRelation', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `branching arc-${crypto.randomUUID().slice(0, 8)}` });
-    const prev = await createBatch();
-
-    const created = await postJson<{ id: string }>('/api/v1/batches', {
+  it('accepts and ignores a story key on batch create, whatever its shape', async () => {
+    const first = await postJson<{ id: string }>('/api/v1/batches', {
       idempotency_key: crypto.randomUUID(),
       story: {
-        story_id: story.body.id,
-        previous_batch_ids: [prev.body.id],
-        transition: { label: 'continue', description: 'next scene' },
+        story_id: 'does-not-exist',
+        previous_batch_ids: ['also-missing'],
+        transition: { label: 'continue' },
       },
     });
-    expect(created.status).toBe(201);
+    expect(first.status).toBe(201);
 
-    const storyDetail = await getJson<{ relations: { source_batch_id: string; target_batch_id: string }[] }>(
-      `/api/v1/stories/${story.body.id}`,
-    );
-    expect(storyDetail.body.relations).toHaveLength(1);
-    expect(storyDetail.body.relations[0]).toMatchObject({
-      source_batch_id: prev.body.id,
-      target_batch_id: created.body.id,
-    });
+    const nullStory = await postJson('/api/v1/batches', { idempotency_key: crypto.randomUUID(), story: null });
+    expect(nullStory.status).toBe(201);
   });
 
-  it('PATCH updates relation label/description', async () => {
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: `edit arc-${crypto.randomUUID().slice(0, 8)}` });
-    const b1 = await createBatch();
-    const b2 = await createBatch();
-    const rel = await postJson<{ id: string }>(`/api/v1/stories/${story.body.id}/relations`, {
-      source_batch_id: b1.body.id,
-      target_batch_id: b2.body.id,
-      label: 'first label',
+  it('keeps accepting a non-refinement relation type without deriving anything', async () => {
+    const a = await createBatch();
+    const b = await createBatch();
+    const res = await postJson(`/api/v1/batches/${b.body.id}/relations`, {
+      source_batch_id: a.body.id,
+      type: 'retry',
+      actor: 'claude',
     });
-    expect(rel.status).toBe(201);
-
-    const patched = await postJson<{ label: string }>(
-      `/api/v1/stories/${story.body.id}/relations/${rel.body.id}`,
-      { label: 'updated label' },
-      'PATCH',
-    );
-    expect(patched.status).toBe(200);
-    expect(patched.body.label).toBe('updated label');
+    expect(res.status).toBe(201);
   });
 });

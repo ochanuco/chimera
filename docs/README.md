@@ -2,7 +2,7 @@
 
 Claude Code + Python + ComfyUI
 で生成した画像について、単なる画像置き場ではなく、生成探索の
-provenance（来歴）、Story、評価、再利用可能な semantic
+provenance（来歴）、評価、再利用可能な semantic
 情報を永続管理するための Web GUI / Management API の設計です。
 
 ## 目的
@@ -12,8 +12,7 @@ provenance（来歴）、Story、評価、再利用可能な semantic
 で生成し、結果を chimera へ ingest する形です（[worker-protocol.md](worker-protocol.md)「配置と責務」）。
 
 人間は Web GUI / Discord 上の画像を見ながら Claude
-と対話し、良い画像にはタグを付けています。しかし、過去に何が良かったか、どの画像のどの要素を次の生成へ継承したか、どの
-Story の続きなのかを体系的に追跡しにくい問題があります。
+と対話し、良い画像にはタグを付けています。しかし、過去に何が良かったか、どの画像のどの要素を次の生成へ継承したかを体系的に追跡しにくい問題があります。
 
 本システムはこの問題を解決します。
 
@@ -22,7 +21,7 @@ Story の続きなのかを体系的に追跡しにくい問題があります�
 1.  画像が主役。メタデータや系譜は必要なときだけ段階的に表示する。
 2.  Generation は永続的な資産。ComfyUI output を削除しても R2
     上で保持する。
-3.  生成上の因果関係と Story 上の連続性を混同しない。
+3.  素材参照と仕上げ元を混同しない。
 4.  chimera は Generation Experiment Orchestrator である。semantic
     な判断主体は Claude Code / Agent / Human のいずれでもよく、worker
     は実行と記録を担当する。

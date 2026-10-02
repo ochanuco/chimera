@@ -189,7 +189,7 @@ jobs.post('/:jobId/generations', async (c) => {
     notifyHubGeneration(c.env, {
       generation_id: id,
       short_id: shortId,
-      batch_id: job.batch_id,
+      request_id: job.request_id ?? null,
       refines_generation_short_id: refinesGenerationShortId,
       created_at: now,
     }),

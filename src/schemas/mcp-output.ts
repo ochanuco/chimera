@@ -13,7 +13,6 @@ const runSchema = z.looseObject({
   experiment_id: z.string(),
   run_index: z.number(),
   parent_run_id: z.string().nullable(),
-  batch_id: z.string().nullable(),
   generation_id: z.string().nullable(),
   overrides: jsonObject,
   objective: z.string().nullable(),
@@ -42,7 +41,12 @@ const generationLightSchema = z.looseObject({
 
 /** decorateRuns (lib/experiments.ts) — Run に結果 request / generation / render_facts を足したもの。 */
 const decoratedRunSchema = runSchema.extend({
-  request: z.looseObject({ id: z.string(), short_id: z.string().nullable(), thumbnail_url: z.string().nullable() }).nullable(),
+  request: z.looseObject({
+      id: z.string(),
+      short_id: z.string().nullable(),
+      thumbnail_url: z.string().nullable(),
+      thumbnail_generation_short_id: z.string().nullable(),
+    }).nullable(),
   generation: generationLightSchema.nullable(),
   render_facts: z.unknown().optional(),
 });

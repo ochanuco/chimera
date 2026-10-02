@@ -1,15 +1,8 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import {
-  getGenerationByIdOrShortId,
-  getReferenceLineageBatches,
-  getRelationChainBatches,
-  getStoryChainBatches,
-  resolveBatchShortIds,
-  resolveBatchThumbnails,
-  resolveGenerationShortIds,
-} from '../lib/db';
-import type { MiniMapRow } from '../ui/components/MiniMap';
+import { getGenerationByIdOrShortId, resolveGenerationShortIds } from '../lib/db';
+import { getExperimentRunFamily } from '../lib/experiments';
+import { getGenerationFamily } from '../lib/generation-family';
 import { listTagsForTarget } from '../lib/tags';
 import { gone, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
@@ -24,7 +17,6 @@ import {
   GenerationDetailPage,
   type GenerationDetailData,
   type FinalizeRequestSummary,
-  type ExperimentRunFamily,
   type ProducedByOptions,
 } from '../ui/pages/GenerationDetail';
 import { GenerationCard } from '../ui/components/GenerationCard';
@@ -158,120 +150,15 @@ images.get('/:shortId', async (c) => {
 
   const producedByOptions = await findProducedByOptions(db, generation.id);
 
-  // "親" material is the owning Batch's own reference material (batch_references,
-  // target_batch_id = this Batch) — not `data.references`, which is the reverse: downstream
-  // Batches that used this Generation as material (this Generation's "子", see `used_by` below).
-  let parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[] = [];
-  // Batch-level relations (retries / Story continuation), surfaced as "via batch" family cards
-  // alongside the Generation-level material relations above.
-  let relationsIncoming: { source_batch_id: string; reason: string | null }[] = [];
-  let relationsOutgoing: { target_batch_id: string; reason: string | null }[] = [];
-  let storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[] =
-    [];
-  let experimentRun: ExperimentRunFamily | null = null;
-  if (data.batch) {
-    const batchRes = await internalApiRequest(c, `/api/v1/batches/${data.batch.id}`);
-    if (batchRes.ok) {
-      const batchData = (await batchRes.json()) as {
-        references: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
-        relations: {
-          outgoing: { target_batch_id: string; reason: string | null }[];
-          incoming: { source_batch_id: string; reason: string | null }[];
-        };
-        story_relations: { story_id: string; label: string | null; source_batch_id: string; target_batch_id: string }[];
-        experiment_run: ExperimentRunFamily | null;
-      };
-      parentReferences = batchData.references;
-      relationsIncoming = batchData.relations.incoming;
-      relationsOutgoing = batchData.relations.outgoing;
-      experimentRun = batchData.experiment_run;
-
-      const storyIds = Array.from(new Set(batchData.story_relations.map((r) => r.story_id)));
-      const storyNames = new Map<string, string>();
-      await Promise.all(
-        storyIds.map(async (sid) => {
-          const sRes = await internalApiRequest(c, `/api/v1/stories/${sid}`);
-          if (sRes.ok) {
-            const sData = (await sRes.json()) as { name: string };
-            storyNames.set(sid, sData.name);
-          }
-        }),
-      );
-      storyLinks = batchData.story_relations.map((r) => ({
-        story_id: r.story_id,
-        story_name: storyNames.get(r.story_id) ?? r.story_id,
-        label: r.label,
-        source_batch_id: r.source_batch_id,
-        target_batch_id: r.target_batch_id,
-      }));
-    }
-  }
-
-  const ownBatchId = data.batch?.id;
-  const miniMapStoryIds = Array.from(new Set(storyLinks.map((s) => s.story_id)));
-  const [referenceLineageBatches, relationChainBatches, storyChainBatchesList] = await Promise.all([
-    ownBatchId ? getReferenceLineageBatches(db, ownBatchId) : Promise.resolve([]),
-    ownBatchId ? getRelationChainBatches(db, ownBatchId) : Promise.resolve([]),
-    Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(db, sid))),
-  ]);
-  // Each Batch is stood in for by its representative Generation (owning Batch by this
-  // Generation itself); a Batch with no Generations yet keeps its /b/ link instead.
-  const mapThumbnails = await resolveBatchThumbnails(
-    db,
-    [referenceLineageBatches, relationChainBatches, ...storyChainBatchesList].flat().map((b) => b.id),
-  );
-  const generationMapItem = (b: { id: string; short_id: string }) => {
-    if (b.id === ownBatchId) return { short_id: data.short_id, href: `/g/${data.short_id}`, is_current: true };
-    const representative = mapThumbnails.get(b.id);
-    return representative
-      ? { short_id: representative, href: `/g/${representative}`, is_current: false }
-      : { short_id: b.short_id, href: `/b/${b.short_id}`, is_current: false };
-  };
-  const miniMapRows: MiniMapRow[] = ownBatchId
-    ? [
-        { label: 'References', items: referenceLineageBatches.map(generationMapItem) },
-        { label: 'Retries', items: relationChainBatches.map(generationMapItem) },
-        ...miniMapStoryIds.map((sid, i) => ({
-          label: storyLinks.find((s) => s.story_id === sid)?.story_name ?? sid,
-          items: storyChainBatchesList[i]!.map(generationMapItem),
-        })),
-      ]
-    : [];
-
-  const relatedBatchIds = [
-    ...data.used_by.map((r) => r.batch_id),
-    ...relationsIncoming.map((r) => r.source_batch_id),
-    ...relationsOutgoing.map((r) => r.target_batch_id),
-    ...storyLinks.map((r) => r.source_batch_id),
-    ...storyLinks.map((r) => r.target_batch_id),
-    ...(experimentRun?.parent ? [experimentRun.parent.batch_id] : []),
-    ...(experimentRun?.children.map((ch) => ch.batch_id) ?? []),
-    ...(experimentRun?.siblings.map((s) => s.batch_id) ?? []),
-  ];
-
-  const [batchShortIds, generationShortIds, batchThumbnails] = await Promise.all([
-    resolveBatchShortIds(db, relatedBatchIds),
-    resolveGenerationShortIds(
-      db,
-      parentReferences.map((r) => r.source_generation_id),
-    ),
-    resolveBatchThumbnails(db, relatedBatchIds),
-  ]);
+  const experimentRun = generation.request_id ? await getExperimentRunFamily(db, generation.request_id) : null;
+  const family = await getGenerationFamily(db, generation, experimentRun);
 
   return c.html(
     <GenerationDetailPage
       path={c.req.path}
       data={data}
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
-      storyLinks={storyLinks}
-      miniMapRows={miniMapRows}
-      batchShortIds={batchShortIds}
-      generationShortIds={generationShortIds}
-      batchThumbnails={batchThumbnails}
-      parentReferences={parentReferences}
-      relationsIncoming={relationsIncoming}
-      relationsOutgoing={relationsOutgoing}
-      experimentRun={experimentRun}
+      family={family}
       imageMeta={imageMeta}
       finalizeRequests={finalizeRequests}
       finalizeDials={finalizeDials}

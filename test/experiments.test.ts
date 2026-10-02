@@ -33,7 +33,6 @@ interface ExperimentRun {
   experiment_id: string;
   run_index: number;
   parent_run_id: string | null;
-  batch_id: string | null;
   generation_id: string | null;
   overrides: Record<string, unknown>;
   objective: string | null;
@@ -610,7 +609,7 @@ describe('Generation / Batch linkage', () => {
       'PATCH',
     );
     expect(res.status).toBe(200);
-    expect(res.body.batch_id).toBe(batch.id);
+    expect(res.body).not.toHaveProperty('batch_id');
     expect(res.body.generation_id).toBe(generation.id);
   });
 

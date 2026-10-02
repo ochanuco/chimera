@@ -139,6 +139,7 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
             id: request.id,
             short_id: request.short_id,
             thumbnail_url: thumbShortId ? generationPreviewUrl(org, thumbShortId) : null,
+            thumbnail_generation_short_id: thumbShortId,
           }
         : null,
       generation: generation ? serializeGenerationLight(generation, org) : null,
@@ -183,7 +184,7 @@ async function assertBatchNotAttachedToAnotherRun(db: D1Database, batchId: strin
 export interface ExperimentRunFamilyMember {
   run_id: string;
   run_index: number;
-  batch_id: string;
+  request_id: string;
 }
 
 export interface ExperimentRunFamily {
@@ -195,21 +196,21 @@ export interface ExperimentRunFamily {
 }
 
 /**
- * GET /api/v1/batches/{id} 用の ExperimentRun 由来の 4 軸目 (`experiment`)。BatchReference /
- * BatchRelation / StoryRelation とは別の display-only な派生で、行は作らない。
- * batch_id の無い Run はリンク先が無いため親/子/兄弟から除外する。
+ * Generation Detail 用の ExperimentRun 由来の display-only な派生 (`experiment`)。素材参照 / 仕上げ元とは別で、行は作らない。
+ * 結果 Request の無い Run はリンク先が無いため親/子/兄弟から除外する。`requestId` がその Run の結果 Request でなければ null。
  */
-export async function getExperimentRunFamily(db: D1Database, batchId: string): Promise<ExperimentRunFamily | null> {
+export async function getExperimentRunFamily(db: D1Database, requestId: string): Promise<ExperimentRunFamily | null> {
   const run = await db
     .prepare(
       `SELECT r.id, r.run_index, r.parent_run_id, r.experiment_id,
          e.short_id AS experiment_short_id, e.name AS experiment_name
-       FROM experiment_runs r
+       FROM requests x
+       JOIN experiment_runs r ON r.id = x.run_id
        JOIN experiments e ON e.id = r.experiment_id
-       WHERE r.batch_id = ?
+       WHERE x.id = ? AND x.kind IN ('generate', 'import')
        LIMIT 1`,
     )
-    .bind(batchId)
+    .bind(requestId)
     .first<{
       id: string;
       run_index: number;
@@ -221,24 +222,30 @@ export async function getExperimentRunFamily(db: D1Database, batchId: string): P
   if (!run) return null;
 
   const { results } = await db
-    .prepare('SELECT id, run_index, parent_run_id, batch_id FROM experiment_runs WHERE experiment_id = ? ORDER BY run_index ASC')
+    .prepare('SELECT id, run_index, parent_run_id FROM experiment_runs WHERE experiment_id = ? ORDER BY run_index ASC')
     .bind(run.experiment_id)
-    .all<{ id: string; run_index: number; parent_run_id: string | null; batch_id: string | null }>();
+    .all<{ id: string; run_index: number; parent_run_id: string | null }>();
   const allRuns = results ?? [];
+  const resultByRun = await resolveRunRequests(db, allRuns.map((r) => r.id));
+  if (resultByRun.get(run.id)?.id !== requestId) return null;
+
+  const member = (r: { id: string; run_index: number }): ExperimentRunFamilyMember | null => {
+    const result = resultByRun.get(r.id);
+    return result ? { run_id: r.id, run_index: r.run_index, request_id: result.id } : null;
+  };
   const byId = new Map(allRuns.map((r) => [r.id, r]));
 
   const parentRow = run.parent_run_id ? byId.get(run.parent_run_id) : undefined;
-  const parent: ExperimentRunFamilyMember | null =
-    parentRow && parentRow.batch_id ? { run_id: parentRow.id, run_index: parentRow.run_index, batch_id: parentRow.batch_id } : null;
-
-  const children: ExperimentRunFamilyMember[] = allRuns
-    .filter((r) => r.parent_run_id === run.id && r.batch_id !== null)
-    .map((r) => ({ run_id: r.id, run_index: r.run_index, batch_id: r.batch_id! }));
-
+  const parent = parentRow ? member(parentRow) : null;
+  const children = allRuns
+    .filter((r) => r.parent_run_id === run.id)
+    .map(member)
+    .filter((m): m is ExperimentRunFamilyMember => m !== null);
   const excludedIds = new Set([run.id, parent?.run_id, ...children.map((c) => c.run_id)].filter((id): id is string => !!id));
-  const siblings: ExperimentRunFamilyMember[] = allRuns
-    .filter((r) => !excludedIds.has(r.id) && r.batch_id !== null)
-    .map((r) => ({ run_id: r.id, run_index: r.run_index, batch_id: r.batch_id! }));
+  const siblings = allRuns
+    .filter((r) => !excludedIds.has(r.id))
+    .map(member)
+    .filter((m): m is ExperimentRunFamilyMember => m !== null);
 
   return {
     experiment: { id: run.experiment_id, short_id: run.experiment_short_id, name: run.experiment_name },

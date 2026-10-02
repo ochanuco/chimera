@@ -124,7 +124,7 @@ function DenoiseField({ dials }: { dials: FinalizeDials | null }) {
   );
 }
 
-/** Shared body of the Finalize form (GenerationDetail / BatchDetail), rendered inside the caller's own `<form>`.
+/** Shared body of the Finalize form (GenerationDetail), rendered inside the caller's own `<form>`.
  * `dialsEnabled` gates the UI-level dial/profile treatment (denoise's word buttons still separately require catalog words — see DenoiseField). */
 export function FinalizeFields({
   submitLabel,
@@ -146,7 +146,7 @@ export function FinalizeFields({
   recipeRef?: string | null;
   /** The published catalog's updated_at — cache-busts the otherwise-immutable thumbnail URL. */
   catalogVersion?: string | null;
-  /** True only where this form sits beside a single Generation's image (Generation Detail) — the batch "finalize all arms" form has no single image to draw regions on. */
+  /** True only where this form sits beside a single Generation's image (Generation Detail). */
   regionDrawing?: boolean;
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;

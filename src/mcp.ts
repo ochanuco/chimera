@@ -508,8 +508,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputSchemas.attach_generation,
       description:
-        "Non-destructive: records which Generation represents a Run; it does not modify or delete the Generation or the Batch. " +
-        'Attach a Generation (the representative result) to a Run. The Run must already have a Batch attached, and the Generation must belong to that Batch. 409s if the Run already has a different Generation attached, if no Batch is attached yet, or if the Generation belongs to a different Batch.',
+        "Non-destructive: records which Generation represents a Run; it does not modify or delete the Generation or the Run's request. " +
+        'Attach a Generation (the representative result) to a Run. The Run must already have a result request, and the Generation must belong to that request. 409s if the Run already has a different Generation attached, if the Run has no result request yet, or if the Generation belongs to a different request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: z.object({ run_id: z.string().min(1), generation_id: z.string().min(1) }),
     },
@@ -1060,7 +1060,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'no pin, pass base_version explicitly — chimera never guesses a base. kind defaults to "pose". If ' +
         'generation_id is a finalized/repaired Generation, it is resolved back to the raw Generation the same way ' +
         'derive_request does, and recipe/base/patches are taken from there — but rating is read from generation_id ' +
-        'itself. 409s when rating is not good, when the resolved source Batch has no recipe (graph-mode), or when ' +
+        'itself. 409s when rating is not good, when the resolved source request has no recipe (graph-mode), or when ' +
         'neither a pin nor base_version is available. idempotency_key replay returns the already-created version ' +
         'unchanged.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1091,11 +1091,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "pose's recipe-default look. The pin belongs to the (recipe, pose) name, not a version: a Preset version carries " +
         'patches, the pin says which render is the baseline the pose should look like. ' +
         'generation_id must carry rating=good. If it is a finalized/repaired Generation, it is resolved back to the raw ' +
-        'Generation the same way derive_request does — but rating is read from generation_id itself. The resolved Batch ' +
+        'Generation the same way derive_request does — but rating is read from generation_id itself. The resolved request ' +
         'must then be a *plain render* of recipe/pose: same recipe, drew this pose, no patches, and the queued generate ' +
         'request (when one exists) did not override prompt/negative_prompt — every failing rule is named in one 409, not ' +
         'just the first. 404s when recipe/pose has no Preset yet, or generation_id does not resolve. 409s when rating is ' +
-        "not good, the resolved Batch isn't a plain render, or the resolved Generation has no recorded seed. " +
+        "not good, the resolved request isn't a plain render, or the resolved Generation has no recorded seed. " +
         'Re-setting supersedes the previous pin rather than replacing it in place — every pin ever set stays in the ' +
         'history (superseded_at), never deleted; the response returns it as superseded. idempotency_key replay with the ' +
         'same recipe/pose/generation_id returns the existing pin (created: false, superseded: null); reused with ' +
@@ -1155,7 +1155,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Turn a rating=good finalize-kind Generation into a new kind="finalize" Preset version (a reusable profile of ' +
         'finalize options, docs/worker-protocol.md「finalize profile」). generation_id must be a Generation produced by a ' +
         'finalize request (the delivered Generation or, if it also carried a repair, either sibling) — found via the ' +
-        "finalize request whose result attached this Generation's Batch. 409s when rating is not good or when " +
+        "finalize request whose result includes this Generation. 409s when rating is not good or when " +
         'generation_id was not produced by a finalize request. The new version\'s body is that request\'s queued ' +
         'options verbatim (dial words preserved). Never rewrites an existing version — pass an existing name for a new ' +
         'version of it, or a new name to start it at version 1. idempotency_key replay returns the already-created ' +

@@ -8,7 +8,7 @@ import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
-import type { BatchReferenceRow, CharacterRow, ComfyJobRow, GenerationRow, RequestRow, RequestStatus } from '../types';
+import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationRow, RequestRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
   if (!row.semantic_json) return null;
@@ -98,9 +98,9 @@ async function loadBuiltContext(db: D1Database, org: string, generation: Generat
       : Promise.resolve(null),
     listTagsForTarget(db, 'generation_tags', generation.id),
     db
-      .prepare('SELECT * FROM batch_references WHERE source_generation_id = ? ORDER BY created_at ASC')
+      .prepare('SELECT * FROM request_references WHERE source_generation_id = ? ORDER BY created_at ASC')
       .bind(generation.id)
-      .all<BatchReferenceRow>(),
+      .all<RequestReferenceRow>(),
     request ? buildRequestBlock(db, request) : Promise.resolve(null),
     generation.request_id
       ? db
@@ -132,17 +132,17 @@ async function loadBuiltContext(db: D1Database, org: string, generation: Generat
     generations: (requestGenerations?.results ?? []) as RequestGenerationRow[],
     references: (references.results ?? []).map((r) => ({
       id: r.id,
-      target_batch_id: r.target_batch_id,
+      target_request_id: r.target_request_id,
       purpose: r.purpose,
       aspect: r.aspect,
       instruction: r.instruction,
       created_at: r.created_at,
     })),
-    // Batches that used this Generation as reference material. Same rows as `references`
+    // Requests that used this Generation as reference material. Same rows as `references`
     // above, kept as a separate field so "who used me as material" doesn't need inference.
     used_by: (references.results ?? []).map((r) => ({
       id: r.id,
-      batch_id: r.target_batch_id,
+      request_id: r.target_request_id,
       purpose: r.purpose,
       aspect: r.aspect,
       instruction: r.instruction,
@@ -205,7 +205,6 @@ export interface GenerationListItem {
   character: { id: string; name: string | null } | null;
   tags: string[];
   created_at: string;
-  batch_id: string;
   request_id: string | null;
   image_width: number | null;
   image_height: number | null;
@@ -514,7 +513,6 @@ export async function queryGenerations(
       character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
       tags,
       created_at: r.created_at,
-      batch_id: r.batch_id,
       request_id: r.request_id,
       image_width: r.image_width,
       image_height: r.image_height,

@@ -789,9 +789,7 @@ worker は requests だけを見ます。
   `denoise` / `seeds` / `pad`（空 = worker 既定）、`regions`（1行1矩形のテキスト入力、
   空 = worker 自動検出）を持ち、同じく `POST /api/v1/requests`（`kind = repair`,
   `created_by = gui`）を積む。ボタン横の status 表示は Finalize と同じ。
-- Batch Detail: `Finalize all arms`。その Batch の全 Generation について同じ options で
-  requests 行を積む（1 Generation 1 行）。repair に「all arms」相当は無い（Generation 単位
-  でしか積めない）。
+- finalize / repair はどちらも Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`
   の `STYLE_CHECK_POSES`) の pin を、今のカタログ既定でもう一度描く。`POST
@@ -863,7 +861,7 @@ hub → viewer:
 {"type":"snapshot","progress":[...],"workers":[{"worker_id":...,"kinds":...,"connected_at":...}]}   接続直後
 {"type":"progress","request_id":"...","worker_id":"...","phase":"...","step":...,"total":...,"message":...,"at":"<ISO>"}
 {"type":"status","request_id":"...","status":"queued|running|done|failed|cancelled","kind":"..."}
-{"type":"generation","generation_id":"...","short_id":"...","batch_id":"...","refines_generation_short_id":"..."|null,"created_at":"<ISO>"}
+{"type":"generation","generation_id":"...","short_id":"...","request_id":"...","refines_generation_short_id":"..."|null,"created_at":"<ISO>"}
 ```
 
 `generation` は Generation ingest (`POST /api/v1/jobs/{job_id}/generations`, worker-protocol.md
