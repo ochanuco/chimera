@@ -184,8 +184,9 @@ describe('Run creation auto-provisions a requests row (worker-protocol.md)', () 
     });
     expect(run.status).toBe(201);
     expect(run.body.request_id).toBeNull();
-    const requests = await getJson<{ items: unknown[] }>(`/api/v1/requests?run_id=${run.body.id}`);
-    expect(requests.body.items).toHaveLength(0);
+    // 起票はされないが、Batch に対応する (補われた) Request に run_id が付く (docs/batch-removal.md 段階 1)。
+    const requests = await getJson<{ items: { id: string; idempotency_key: string }[] }>(`/api/v1/requests?run_id=${run.body.id}`);
+    expect(requests.body.items.map((r) => r.idempotency_key)).toEqual([`batch:${batch.id}`]);
   });
 
   it('without base_recipe: request_id is null and the run is pending', async () => {

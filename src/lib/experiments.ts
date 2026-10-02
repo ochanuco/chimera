@@ -17,6 +17,7 @@ import { isUuid, uuidv7 } from './uuidv7';
 import { resolveBatchRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
+import { runAttachStatement } from './batch-request-sync';
 import {
   generationPreviewUrl,
   serializeExperiment,
@@ -468,6 +469,7 @@ export async function createExperimentRun(
     );
 
   const statements = [runInsertStatement];
+  if (batchId) statements.push(runAttachStatement(db, batchId, id));
   if (shouldAutoCreateRequest && requestId && requestPayloadJson && requestPayloadHash) {
     statements.push(
       db
@@ -578,7 +580,12 @@ export async function updateExperimentRun(
   const now = nowIso();
   assign('updated_at', now);
   binds.push(run.id);
-  await db.prepare(`UPDATE experiment_runs SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
+  const updateStatement = db.prepare(`UPDATE experiment_runs SET ${sets.join(', ')} WHERE id = ?`).bind(...binds);
+  if (body.batch_id !== undefined && effectiveBatchId) {
+    await db.batch([updateStatement, runAttachStatement(db, effectiveBatchId, run.id)]);
+  } else {
+    await updateStatement.run();
+  }
   await touchExperiment(db, run.experiment_id, now);
 
   return getRunOr404(db, run.id);
