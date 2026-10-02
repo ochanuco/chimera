@@ -259,7 +259,10 @@ purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを�
 render_facts、summary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全
 Generationのattributesキーの和集合（`patches` キーは変更点の `patches` 行と重複するため
-除きます）。列は各Generationです。
+除きます）。列は各Generationです。値がオブジェクトのattributeは1段だけ展開し、
+全列のサブキーの和集合を `palette.sat` のような `key.subkey` 行として並べます
+（各行は他のattributes行と同じ扱い）。同じキーが列によってオブジェクトとスカラー
+／配列に分かれる場合は展開せず、従来どおり1行で表示します。
 
 ``` text
               abc123          xyz987
@@ -320,12 +323,16 @@ Generationが2pass以上を持つ場合は、存在するpass indexごとに
 #### 同一の行の省略
 
 変更点の行を除き、全列の値が同一の行（`—` や `(not analyzed)` が全列に並ぶ
-semantic行を含む）は既定で非表示です。テーブルの上に「全列同一: seed,
-render.checkpoint, …」と省略した行名を1行で示し、「同一の行も表示」チェックで
-表示に切り替えます。チェックの状態はlocalStorage（`chimera-compare-show-same`）
+semantic行を含む）は既定で非表示です。テーブルの上に「全列同一:」として省略した行を
+`seed=123` のように `行名=値` のチップで並べ（折り返しはチップの間）、「同一の行も
+表示」チェックで表示に切り替えます。値は60文字を超えると `…` で切り詰め、全文は
+`title` 属性に入れます。全列が値なし（`—` / `(not analyzed)` / `(no graph)`）の行は
+末尾に「値なし:」として行名だけをまとめます。チェックの状態はlocalStorage（`chimera-compare-show-same`）
 に保存します。
 
 #### 固定表示
+
+セルは長い値（JSONや長文のverdictなど）でも列幅を押し広げないよう、語の途中でも折り返します。
 
 テーブルは縦横にスクロールできるコンテナに収め、ヘッダ行（short_id）とラベル列を
 sticky固定します。固定セルは両テーマで不透明な背景色を持ち、スクロール中のセルが
