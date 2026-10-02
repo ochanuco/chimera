@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createJob, getJson, ingestGeneration, postJson, setJobGraph } from './helpers';
+import { createRequest, createJob, getJson, ingestGeneration, postJson, setJobGraph } from './helpers';
 
 interface Experiment {
   id: string;
@@ -38,7 +38,6 @@ interface SummaryBody {
   runs: {
     run_id: string;
     run_index: number;
-    batch_id: string | null;
     generation_count: number;
     rating: { good: number; neutral: number; bad: number; unrated: number };
   }[];
@@ -56,12 +55,14 @@ async function createRun(experimentId: string, overrides: Record<string, unknown
   return postJson<Run>(`/api/v1/experiments/${experimentId}/runs`, overrides);
 }
 
-/** A batch with one ingested Generation per seed, each in its own job (so comfy_output_index=0 never collides). */
-async function createBatchWithSeeds(seeds: number[]) {
-  const batch = await createBatch();
+/** A Request (carrying `runId` when given) with one ingested Generation per seed, each in its own job (so comfy_output_index=0 never collides). */
+async function createRequestWithSeeds(seeds: number[], runId?: string) {
+  const request = await createRequest({ run_id: runId ?? null });
   const generations: Record<number, { id: string; short_id: string }> = {};
+  const jobs: { id: string; index: number }[] = [];
   for (const seed of seeds) {
-    const job = await createJob(batch.body.id, { seed });
+    const job = await createJob(request.body.id, { seed });
+    jobs.push({ id: job.body.id, index: job.body.index });
     const ingest = await ingestGeneration(job.body.id, {
       seed,
       original_filename: `out_${seed}_${crypto.randomUUID().slice(0, 8)}.png`,
@@ -69,26 +70,26 @@ async function createBatchWithSeeds(seeds: number[]) {
     });
     generations[seed] = { id: ingest.body.id, short_id: ingest.body.short_id };
   }
-  return { batch: batch.body, generations };
+  return { request: request.body, generations, jobs };
 }
 
-/** baseline / arm run, each attached to its own batch with Generations at seed 11 and 22. */
+/** baseline / arm run, each with its own result Request holding Generations at seed 11 and 22. */
 async function setupPair(experimentOverrides: Record<string, unknown> = {}) {
   const experiment = await createExperiment(experimentOverrides);
   const baselineRun = await createRun(experiment.body.id);
   const armRun = await createRun(experiment.body.id);
-  const { batch: baselineBatch, generations: baselineGens } = await createBatchWithSeeds([11, 22]);
-  const { batch: armBatch, generations: armGens } = await createBatchWithSeeds([11, 22]);
-  await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: baselineBatch.id }, 'PATCH');
-  await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { batch_id: armBatch.id }, 'PATCH');
+  const { request: baselineRequest, generations: baselineGens, jobs: baselineJobs } = await createRequestWithSeeds([11, 22], baselineRun.body.id);
+  const { request: armRequest, generations: armGens, jobs: armJobs } = await createRequestWithSeeds([11, 22], armRun.body.id);
   return {
     experiment: experiment.body,
     baselineRun: baselineRun.body,
     armRun: armRun.body,
-    baselineBatch,
-    armBatch,
+    baselineRequest,
+    armRequest,
     baselineGens,
     armGens,
+    baselineJobs,
+    armJobs,
   };
 }
 
@@ -181,12 +182,11 @@ describe('Create PairwiseJudgment validation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('409s when a run has no batch attached', async () => {
+  it('409s when a run has no result request', async () => {
     const experiment = await createExperiment();
     const baselineRun = await createRun(experiment.body.id);
     const armRun = await createRun(experiment.body.id);
-    const { batch: baselineBatch, generations: baselineGens } = await createBatchWithSeeds([11]);
-    await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: baselineBatch.id }, 'PATCH');
+    const { generations: baselineGens } = await createRequestWithSeeds([11], baselineRun.body.id);
 
     const res = await postJson(`/api/v1/experiments/${experiment.body.id}/judgments`, {
       baseline_run_id: baselineRun.body.id,
@@ -199,18 +199,7 @@ describe('Create PairwiseJudgment validation', () => {
     expect(res.status).toBe(409);
   });
 
-  it('baseline and arm runs cannot share a batch: the second attach is rejected upstream', async () => {
-    const experiment = await createExperiment();
-    const baselineRun = await createRun(experiment.body.id);
-    const armRun = await createRun(experiment.body.id);
-    const { batch } = await createBatchWithSeeds([11]);
-    const first = await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: batch.id }, 'PATCH');
-    expect(first.status).toBe(200);
-    const second = await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { batch_id: batch.id }, 'PATCH');
-    expect(second.status).toBe(409);
-  });
-
-  it('400s when both generations come from the same batch', async () => {
+  it('400s when both generations come from the same request', async () => {
     const ctx = await setupPair();
     const res = await postJson(`/api/v1/experiments/${ctx.experiment.id}/judgments`, {
       baseline_run_id: ctx.baselineRun.id,
@@ -313,14 +302,14 @@ describe('List / Summary PairwiseJudgment', () => {
 
     const baselineRunSummary = summary.body.runs.find((r) => r.run_id === ctx.baselineRun.id);
     expect(baselineRunSummary).toMatchObject({
-      request_id: ctx.baselineBatch.id,
+      request_id: ctx.baselineRequest.id,
       generation_count: 2,
       rating: { good: 1, neutral: 0, bad: 0, unrated: 1 },
     });
 
     const armRunSummary = summary.body.runs.find((r) => r.run_id === ctx.armRun.id);
     expect(armRunSummary).toMatchObject({
-      request_id: ctx.armBatch.id,
+      request_id: ctx.armRequest.id,
       generation_count: 2,
       rating: { good: 0, neutral: 0, bad: 1, unrated: 1 },
     });
@@ -365,12 +354,8 @@ describe('PairwiseJudgment render_facts reveal', () => {
   it('POST response carries reveal.left/right (role matching the generation orientation) and a render_diff covering checkpoint + variables, matching the same-shaped summary.pairs[].render_diff', async () => {
     const ctx = await setupPair();
 
-    const [baselineJobs, armJobs] = await Promise.all([
-      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.baselineBatch.id}`),
-      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.armBatch.id}`),
-    ]);
-    const baselineFirstJob = baselineJobs.body.jobs.find((j) => j.index === 0)!;
-    const armFirstJob = armJobs.body.jobs.find((j) => j.index === 0)!;
+    const baselineFirstJob = ctx.baselineJobs.find((j) => j.index === 0)!;
+    const armFirstJob = ctx.armJobs.find((j) => j.index === 0)!;
 
     await setJobGraph(baselineFirstJob.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'base.safetensors' } } });
     await setJobGraph(armFirstJob.id, { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'arm.safetensors' } } });
@@ -401,12 +386,8 @@ describe('PairwiseJudgment render_facts reveal', () => {
   it('render_diff carries a positive entry with a delta starting with "+" when the arm run added a prompt token', async () => {
     const ctx = await setupPair();
 
-    const [baselineJobs, armJobs] = await Promise.all([
-      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.baselineBatch.id}`),
-      getJson<{ jobs: { id: string; index: number }[] }>(`/api/v1/batches/${ctx.armBatch.id}`),
-    ]);
-    const baselineFirstJob = baselineJobs.body.jobs.find((j) => j.index === 0)!;
-    const armFirstJob = armJobs.body.jobs.find((j) => j.index === 0)!;
+    const baselineFirstJob = ctx.baselineJobs.find((j) => j.index === 0)!;
+    const armFirstJob = ctx.armJobs.find((j) => j.index === 0)!;
 
     const graphFor = (text: string) => ({
       '3': {

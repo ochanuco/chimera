@@ -164,7 +164,7 @@ describe('foldGenerationDetailPrompts', () => {
 describe('MCP tool prompt folding', () => {
   it('get_generation folds request prompts and sampler prompts and omits the graph by default; include_prompts: true returns originals', async () => {
     const { job, generation } = await createGeneration({
-      batchOverrides: { parameters: { prompt_patch: 'inpaint the sleeve' } },
+      requestOverrides: { parameters: { prompt_patch: 'inpaint the sleeve' } },
     });
     await setJobGraph(job.id, GRAPH_WITH_PROMPTS);
 

@@ -23,7 +23,7 @@ chimera = control plane
 worker（GPU 機）
   comfy-recipes watch
   ├── ComfyUI localhost      ← worker からしか到達できない
-  └── Management API         Batch / Job / ingest / semantic
+  └── Management API         resolution / Job / ingest / semantic
 
 Management API
   ↓ canonical URL
@@ -70,7 +70,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   requests 行を claim し、`request.json` を検証する。
 -   `recipe_ref` の recipe を checkout する。
 -   pin された Preset の版を chimera から解決し、patches を畳んで受領時 lint をかける。
--   Management API に Batch を作成する。
+-   Management API に解決済みの値（resolution）を報告し、Job を作成する。
 -   seed を生成する（明示 override がなければ）。
 -   ComfyUI に Job を enqueue する。
 -   ComfyUI Job ID、seed、output を記録する。
@@ -109,7 +109,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
 判断を伴わない再実行（finalize / repair）と、pin の再描画（絵柄チェック）だけで、GUI が
 触るのは自分の D1 の requests 行のみです。masked_redraw は MCP からのみ積み、worker が
-source Generation を変更せず refinement Batch / rebuild Reference を作ります。
+source Generation を変更せず、Job の `source_generation_id` で仕上げ元を指す新しい Generation を作ります。
 
 ## Storage
 

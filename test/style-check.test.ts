@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createGeneration, getJson, mcpToolCall, postJson, req } from './helpers';
+import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
 // STYLE_CHECK_RECIPE/POSES (src/lib/style-check.ts) hardcode 'yukari', and defaultRecipeRef
 // falls back to 'production' when REQUESTS_DEFAULT_RECIPE_REF is unset — so both are fixed
@@ -59,7 +59,7 @@ async function setRatingGood(generationId: string): Promise<void> {
 
 /** Builds a raw rating=good Generation for `pose` and pins it (set_pose_reference). */
 async function pinPose(pose: string): Promise<{ generationId: string; shortId: string }> {
-  const { generation } = await createGeneration({ batchOverrides: { recipe: RECIPE, parameters: { pose } } });
+  const { generation } = await createGeneration({ requestOverrides: { recipe: RECIPE, parameters: { pose } } });
   await setRatingGood(generation.id);
   const pin = await mcpToolCall<{ reference: { short_id: string } }>('set_pose_reference', {
     recipe: RECIPE,
@@ -82,7 +82,7 @@ interface StyleCheckPostItem {
 
 describe('POST /api/v1/style-check/:recipe', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
@@ -124,7 +124,7 @@ describe('POST /api/v1/style-check/:recipe', () => {
 
 describe('GET /check', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
@@ -160,13 +160,13 @@ describe('GET /check', () => {
     expect(claimed.status).toBe(200);
     expect(claimed.body!.id).toBe(bustResult.request_id);
 
-    const resultGen = await createGeneration({ batchOverrides: { recipe: RECIPE, parameters: { pose: 'bust' } } });
+    const resultGen = await createGeneration({ requestOverrides: { recipe: RECIPE, parameters: { pose: 'bust' } } });
     const doneRes = await postJson(
       `/api/v1/requests/${bustResult.request_id}`,
       {
         status: 'done',
         worker_id: claimed.body!.worker_id,
-        result: { batch_id: resultGen.batch.id, generation_ids: [resultGen.generation.id] },
+        result: { generation_ids: [resultGen.generation.id] },
       },
       'PATCH',
     );

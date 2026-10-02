@@ -1,7 +1,6 @@
 import { toBool } from './db';
 import { parseJsonObject, parseJsonObjectOrNull } from './overrides';
 import type {
-  BatchRow,
   ComfyJobRow,
   ExperimentPromotionRow,
   ExperimentRow,
@@ -26,30 +25,6 @@ export function generationPreviewUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}/preview`;
 }
 
-export function serializeBatch(row: BatchRow) {
-  return {
-    id: row.id,
-    short_id: row.short_id,
-    experiment_id: row.experiment_id,
-    raw_instruction: row.raw_instruction,
-    recipe: row.recipe,
-    prompt: row.prompt,
-    negative_prompt: row.negative_prompt,
-    parameters: row.parameters_json ? JSON.parse(row.parameters_json) : null,
-    git_commit: row.git_commit,
-    git_dirty: toBool(row.git_dirty),
-    note: row.note,
-    bookmark: toBool(row.bookmark),
-    status: row.status,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    patches: row.patches_json ? JSON.parse(row.patches_json) : null,
-    pose_fingerprint: row.pose_fingerprint,
-    preset_versions: row.preset_versions_json ? JSON.parse(row.preset_versions_json) : null,
-    refines_generation_id: row.refines_generation_id,
-  };
-}
-
 export type GenerationLightSource = Pick<
   GenerationRow,
   | 'id'
@@ -64,7 +39,7 @@ export type GenerationLightSource = Pick<
   | 'original_purged_at'
 >;
 
-/** Lightweight Generation representation embedded in Batch responses. */
+/** Lightweight Generation representation. */
 export function serializeGenerationLight(row: GenerationLightSource, origin: string) {
   return {
     id: row.id,
@@ -106,7 +81,6 @@ export function serializeGenerationAsset(row: GenerationAssetRow, origin: string
 export function serializeJob(row: ComfyJobRow) {
   return {
     id: row.id,
-    batch_id: row.batch_id,
     comfy_prompt_id: row.comfy_prompt_id,
     seed: row.seed,
     index: row.job_index,

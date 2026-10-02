@@ -76,7 +76,7 @@ evaluation の `overall` が文字列なら、`list_experiments` の各 Experime
 
 ### 未実行 Run
 
-Run は作られた時点で「まだ実行されていない」状態で、`batch_id` が付いた時点で実行済みになります。
+Run は作られた時点で「まだ実行されていない」状態で、`requests.run_id` がその Run を指す Request が done になった時点で実行済みになります。
 この2状態のために別のカラムは持ちません。
 実行の待機、実行中、失敗は Run ではなく requests 行の status が表します。
 
@@ -88,7 +88,7 @@ GET /api/v1/experiment-runs?pending=true
 ```
 
 これは「requests 行が付かなかった Run」（base_recipe の無い Experiment の Run など）を見つけるための読み取りです。
-status が active / stabilized の Experiment を横断して、`batch_id` が null で、かつ requests 行（status を問わない）を持たない Run を返します。
+status が active / stabilized の Experiment を横断して、requests 行（status を問わない）を持たない Run を返します。
 
 ## tool 一覧
 
@@ -411,7 +411,7 @@ Agent     list_experiments → get_experiment で過去 Run を読む
           override を決めて create_run
               ↓ chimera が requests 行を自動起票
 worker    requests 行を claim → request.json → ComfyUI
-              ↓ done を PATCH、chimera が batch_id を Run へ紐付ける
+              ↓ done を PATCH（Run の結果は Request の run_id で引く）
 Agent     get_run で生成物を見る
           get_generation_image で画像を確認
           attach_generation で代表を選ぶ

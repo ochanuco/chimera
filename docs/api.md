@@ -19,13 +19,14 @@ Web GUI     → Read / user mutation
     ヘッダーを送ること。
 -   `references` / `refinement` / `story` は request.json
     と同様、キー省略と明示的な `null` のどちらも「該当なし」として受理する。
-    `story` は値の形を問わず受理して無視する（Story は廃止済み）。
+    `refinement` と `story` は値の形を問わず受理して無視する（Story と再試行の関係は廃止済み）。
 
 代表的な流れ:
 
 ``` text
-POST /api/v1/batches                      # 生成リクエスト登録（idempotency_key 必須）
-POST /api/v1/batches/{id}/jobs            # ComfyJob 登録
+POST /api/v1/requests                     # 生成リクエスト登録（idempotency_key 必須）
+PUT  /api/v1/requests/{id}/resolution     # worker が解決済みの値を報告
+POST /api/v1/requests/{id}/jobs           # ComfyJob 登録
 POST /api/v1/jobs/{id}/generations        # 画像 ingest（multipart: metadata + image）
 GET  /api/v1/generations?character=...    # 検索
 GET  /api/v1/generations/{id}/context     # Claude 向け軽量 context
@@ -34,73 +35,19 @@ POST /api/v1/experiments/{id}/runs        # 検証試行の記録（overrides / 
 POST /api/v1/experiments/{id}/promotions  # 安定条件を comfyui-recipes へ昇格する記録
 ```
 
-Batch / Job 作成と ingest は冪等で、同一 idempotency_key / 同一 (job, output_index)
+Request / Job 作成と ingest は冪等で、同一 idempotency_key / 同一 (job, output_index)
 の再送は既存を返します。この Write / ingest を呼ぶのは、chimera の requests
 キューから request を claim した worker（GPU 機の `comfy-recipes watch`）が起動する
 comfyui-recipes の `comfy-recipes generate` CLI（`comfyui_recipes` パッケージ、
 `request.json` 契約は [generation-request.md](generation-request.md)、requests
 キューとの関係は [worker-protocol.md](worker-protocol.md) 参照）です。
 
-## Batch
-
-### Create Batch
-
-``` text
-POST /api/v1/batches
-```
-
-request.json の内容、Git metadata、idempotency key を送ります。
-
-同一 idempotency key の再送は既存Batchを返し、重複作成しません。再送のレスポンスは
-新規作成時と同じ形に加え、worker が再開に使う `jobs[]` を含みます
-（[worker-protocol.md](worker-protocol.md#再送レスポンスに含めるもの)）。
-
-``` json
-{
-  "id": "...", "short_id": "...", "status": "running",
-  "jobs": [
-    { "id": "...", "index": 0, "seed": 123, "status": "ingested", "comfy_prompt_id": "...",
-      "generations": [{ "id": "...", "comfy_output_index": 0 }] }
-  ]
-}
-```
-
-### Update Batch
-
-``` text
-PATCH /api/v1/batches/{id}
-```
-
-主にstatus更新に使用します。
-
-status:
-
-``` text
-created
-running
-completed
-partial
-failed
-```
-
-### Get Batch
-
-``` text
-GET /api/v1/batches/{id-or-short-id}
-```
-
-Batch の列に加え、`jobs[]`（`graph` / `render_facts` 付き）、`generations[]`（軽量表現と
-`refines_generation_short_id`）、`references[]`（このBatchが素材に使ったGeneration）、
-`relations.outgoing` / `relations.incoming`（`type = refinement` の Relation）を返します。
-現行の comfyui-recipes（finalize / repair / masked_redraw / work）が仕上げ元を読むために
-使う互換の読み取りで、GUI は使いません。Batch の一覧、tag、bookmark の API はありません。
-
 ## ComfyJob
 
 ### Create Job
 
 ``` text
-POST /api/v1/batches/{batch_id}/jobs
+POST /api/v1/requests/{request_id}/jobs
 ```
 
 例:
@@ -113,7 +60,10 @@ POST /api/v1/batches/{batch_id}/jobs
 }
 ```
 
-201（新規作成）は `{ id, batch_id, seed, index, status, comfy_prompt_id: null, generations: [] }`
+finalize / repair / masked_redraw の Request では、仕上げ元の Generation を
+`source_generation_id` に渡します（[Request](#request)）。
+
+201（新規作成）は `{ id, request_id, seed, index, status, comfy_prompt_id: null, source_generation_id, generations: [] }`
 を返します。同一 idempotency key の再送は200で、当該 Job の `comfy_prompt_id` /
 ingest 済み `generations[]` を含みます（[worker-protocol.md](worker-protocol.md#再送レスポンスに含めるもの)）。
 
@@ -210,7 +160,6 @@ PNG が持つ `prompt` text chunk から `comfy_job.graph` を救出済みなの
     `comfy_job.graph` は投稿された prompt グラフ全体、`request.negative_prompt`
     は所属 Request の先頭 Job の negative prompt — どちらも `/g/` の Workflow セクション
     が「グラフから再現できる形」を組み立てる材料）
--   `GET /api/v1/batches/{id}` の各 `jobs[].render_facts`（互換の読み取り）
 -   ExperimentRun（`GET /api/v1/experiments/{id}` の `runs[]` /
     `GET /api/v1/experiments/{id}/runs` / `GET /api/v1/experiment-runs/{id}` /
     MCP `get_experiment` / `get_run`）の `render_facts`。Run の結果 Request に
@@ -411,9 +360,9 @@ POST /api/v1/experiments/{id}/runs
 }
 ```
 
-`generation_id` はUUID / short_idのどちらでも受けます（互換のため `batch_id` も受け、Run の結果の
-Request は `requests.run_id` で引くので出力には含めません）。`run_index`
-は Experiment 内で自動採番されます。
+`run_index` は Experiment 内で自動採番されます。Run の結果の Request は `requests.run_id` で引きます。
+`batch_id` は受け付けず、渡すと 400 です（`batch_id is no longer supported; runs link to requests via run_id`）。
+作成時点の Run にはまだ結果の Request が無いので、`generation_id` を渡すと 409 です。
 
 `idempotency_key` は省略可能です。渡した場合、同じキーの再送は新規作成せず既存
 Run を返します（新規作成は201、再送は200）。同じキーを別の Experiment へ渡すと
@@ -430,7 +379,7 @@ PATCH /api/v1/experiment-runs/{id} と Promotion の `promoted_overrides`
 `variables` は省略可能な、キー文字列 → `string | number` のフラットな
 マップです（ネストしたオブジェクト・配列・真偽値・null は400）。プロンプトの
 バリアント名など、グラフからは読み取れない要因を CLI / 人間が書き添えるための
-注記で、`overrides` と違い Batch / Generation を attach した後でも
+注記で、`overrides` と違い結果が付いた後でも
 PATCH /api/v1/experiment-runs/{run_id} で変更できます（`variables: null`
 でクリア）。Experiment View の facts テーブルでは `variables.<key>` という
 追加列として表示されます。
@@ -491,13 +440,14 @@ PATCH /api/v1/experiment-runs/{run_id}
 }
 ```
 
-`generation_id`（と互換の `batch_id`）はattach専用でnullを受けません。`evaluation`
+`generation_id` はUUID / short_idのどちらでも受け、attach専用でnullを受けません。`batch_id` は受け付けず400です。`evaluation`
 / `decision` / `variables` は明示nullでクリアできます。
 
 409のケース:
 
--   Generation がattach済みのRunで `overrides` を変更しようとした
+-   結果の Request が付いた、または Generation がattach済みのRunで `overrides` を変更しようとした
 -   既にattach済みの `generation_id` を別のものへ付け替えようとした
+-   結果の Request が無い Run、または結果の Request に属さない Generation へ `generation_id` を付けようとした
 
 ## ExperimentPromotion
 
@@ -847,7 +797,7 @@ chimera が `{ path, line, record }` を正規化して SHA-256 を取り、そ�
 "lost a sweep" を含み、該当レコードの `reason` もすべて「同じ seed で別のアームが
 選ばれた」であるため）。
 
-実験のアーム（Batch と seed の組を持つ形）は Observation ではなく Experiment /
+実験のアーム（生成単位と seed の組を持つ形）は Observation ではなく Experiment /
 ExperimentRun に入ります。`sync` はそれらを `skipped` として返します。
 
 `POST /api/v1/observations` は `idempotency_key` を必須にします。`id` はそこから作り、
@@ -1220,9 +1170,6 @@ GET /api/v1/generations/{id-or-short-id}/context
     "defects": [],
     "attributes": {}
   },
-  "batch": {
-    "id": "..."
-  },
   "request": {
     "id": "...",
     "short_id": "...",
@@ -1252,12 +1199,9 @@ GET /api/v1/generations/{id-or-short-id}/context
 `prompt` / `negative_prompt` は Request の先頭 Job（`job_index` が最小で graph を持つもの）の
 `render_facts` の先頭 sampler から取ります。Job に graph が無ければ `null` です。
 `generations` は同じ Request に属する全 Generation（この Generation 自身を含む）で、
-`comfy_output_index` 順ではなく作成順です。worker は GET /batches/{id} の代わりに、ここから
+`comfy_output_index` 順ではなく作成順です。worker は仕上げ元の
 recipe と parameters（`kind` / `base_generation` を含む）と各 Generation の
 `short_id` / `image_width` / `image_height` を読みます。
-
-`batch` は現行の comfyui-recipes が仕上げ元の Batch を引くために残している互換のフィールドです
-（`GET /api/v1/batches/{id}`）。
 
 `references` はこのGenerationを素材として使った Request への素材参照（`request_references`）で、
 `{ id, target_request_id, purpose, aspect, instruction, created_at }` を返します。`used_by` は同じ行を
@@ -1354,7 +1298,7 @@ WebP に変換していることがあり、その場合 `image_url` は `Conten
 （[domain-model.md](domain-model.md#original-の保持)）。null なら未削除で、`image_url`
 がそのまま使えます。非 null な Generation を `image_url` で読むと 410 です — `thumbnail_url`
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation
-表現（Generation Search / Context / Batch 埋め込み / MCP の対応する出力）に付きます。
+表現（Generation Search / Context / MCP の対応する出力）に付きます。
 
 `finalize_request` は、この Generation を対象にした最新の finalize / repair /
 masked_redraw [Request](#request)（`payload.generation_id` がこの Generation の UUID /
@@ -1422,43 +1366,6 @@ Management API自身はLLM APIを呼びません。
   }
 }
 ```
-
-## Batch Reference
-
-``` text
-POST /api/v1/batches/{id}/references
-```
-
-``` json
-{
-  "source_generation_id": "abc123",
-  "purpose": "composition",
-  "aspect": "pose",
-  "instruction": "..."
-}
-```
-
-現行の comfyui-recipes が使う互換の書き込みで、Batch と同時にその Request の素材参照
-（`request_references`、`purpose = rebuild` を除く）へも写します。
-
-## Batch Relation
-
-``` text
-POST /api/v1/batches/{target_batch_id}/relations
-```
-
-``` json
-{
-  "source_batch_id": "B001",
-  "type": "refinement",
-  "actor": "claude",
-  "reason": "..."
-}
-```
-
-現行の comfyui-recipes が使う互換の書き込みです。効くのは `type = refinement` だけで、
-`purpose = rebuild` の Batch Reference と対になったとき、その Batch の Generation の
-`refines_generation_id` を導出します。他の `type` は受理しますが何も導出しません。
 
 ## Publication
 
@@ -1590,7 +1497,6 @@ APIへ解決可能な設計とします。
 
 以下は必須です。
 
--   Batch create（互換の書き込み）
 -   ComfyJob create
 -   Generation ingest
 -   Request create（同じキーで `kind` / payload が異なれば409。
@@ -1605,7 +1511,7 @@ ExperimentRun create の `idempotency_key` は任意です。Run
 は物理削除できないため、Agent
 がレスポンスを失って作成の成否が分からなくなった場合の再送手段として使います。
 人間がGUIから作る場合や一回限りのcurlなど、再送保護を必要としない経路も
-引き続きキーなしで使えるようにするため、他の3つと異なり必須にはしません。
+引き続きキーなしで使えるようにするため、他の必須の経路と異なりキーを必須にはしません。
 
 Publication create（`POST /api/v1/generations/{id}/publications`、MCP
 `record_publication`）の `idempotency_key` も同じ理由で任意です。

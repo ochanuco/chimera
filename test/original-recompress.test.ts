@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createGeneration, ingestGeneration, makePngWithChunks, req, setJobGraph, textChunkData } from './helpers';
+import { clearGenerationData, createGeneration, ingestGeneration, makePngWithChunks, req, setJobGraph, textChunkData } from './helpers';
 import { recompressRetainedOriginals } from '../src/lib/original-recompress';
 import type { GenerationRow } from '../src/types';
 
@@ -54,25 +54,7 @@ async function putOriginal(generationId: string, bytes: Uint8Array): Promise<voi
 }
 
 beforeEach(async () => {
-  // Same reasoning as test/original-purge.test.ts's beforeEach: scans every candidate row, so
-  // leftover rows from an earlier test would pollute "oldest first" / global-count assertions.
-  await env.DB.batch([
-    env.DB.prepare('UPDATE batches SET refines_generation_id = NULL'),
-    env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
-    env.DB.prepare('DELETE FROM generation_assets'),
-    env.DB.prepare('DELETE FROM pairwise_judgments'),
-    env.DB.prepare('DELETE FROM experiment_promotions'),
-    env.DB.prepare('DELETE FROM experiment_runs'),
-    env.DB.prepare('DELETE FROM generation_publications'),
-    env.DB.prepare('DELETE FROM preset_references'),
-    env.DB.prepare('DELETE FROM presets'),
-    env.DB.prepare('DELETE FROM batch_references'),
-    env.DB.prepare('DELETE FROM requests'),
-    env.DB.prepare('DELETE FROM generations'),
-    env.DB.prepare('DELETE FROM comfy_jobs'),
-    env.DB.prepare('DELETE FROM batches'),
-    env.DB.prepare('DELETE FROM experiments'),
-  ]);
+  await clearGenerationData();
 });
 
 describe('recompressRetainedOriginals', () => {

@@ -20,7 +20,6 @@ export interface Bindings {
 
 export type AppEnv = { Bindings: Bindings };
 
-export type BatchStatus = 'created' | 'running' | 'completed' | 'partial' | 'failed';
 export type JobStatus = 'created' | 'queued' | 'running' | 'completed' | 'ingested' | 'failed';
 export type Rating = 'bad' | 'neutral' | 'good';
 export type Actor = 'human' | 'claude';
@@ -51,7 +50,6 @@ export interface ExperimentRunRow {
   experiment_id: string;
   run_index: number;
   parent_run_id: string | null;
-  batch_id: string | null;
   generation_id: string | null;
   overrides_json: string;
   objective: string | null;
@@ -95,37 +93,11 @@ export interface ExperimentPromotionRow {
   completed_at: string | null;
 }
 
-export interface BatchRow {
-  id: string;
-  short_id: string;
-  experiment_id: string | null;
-  raw_instruction: string | null;
-  recipe: string | null;
-  prompt: string | null;
-  negative_prompt: string | null;
-  parameters_json: string | null;
-  git_commit: string | null;
-  git_dirty: number;
-  note: string | null;
-  bookmark: number;
-  status: BatchStatus;
-  idempotency_key: string;
-  created_at: string;
-  updated_at: string;
-  patches_json: string | null;
-  pose_fingerprint: string | null;
-  preset_versions_json: string | null;
-  /** finalize/repair/masked_redraw で仕上げた元の raw Generation (migrations/0020, src/lib/batch-refinement.ts が計算)。 */
-  refines_generation_id: string | null;
-}
-
 export interface ComfyJobRow {
   id: string;
-  batch_id: string;
-  /** migrations/0026 以降の Job は Request を指す。 */
-  request_id?: string | null;
+  request_id: string;
   /** finalize / repair / masked_redraw の Job が仕上げる元の Generation。 */
-  source_generation_id?: string | null;
+  source_generation_id: string | null;
   comfy_prompt_id: string | null;
   seed: number | null;
   job_index: number | null;
@@ -146,7 +118,6 @@ export interface CharacterRow {
 export interface GenerationRow {
   id: string;
   short_id: string;
-  batch_id: string;
   comfy_job_id: string;
   character_id: string | null;
   seed: number | null;
@@ -170,9 +141,8 @@ export interface GenerationRow {
   original_purged_at: string | null;
   /** 再圧縮ジョブが original を評価した時刻 (migrations/0024, src/lib/original-recompress.ts)。null なら未評価。lossless WebP に変換済みかは r2_object_key の拡張子で分かる。 */
   original_recompress_checked_at: string | null;
-  /** migrations/0026: 所属 Request。Request を持たない旧行は NULL。 */
-  request_id: string | null;
-  /** migrations/0026: 仕上げ元の Generation。raw Generation は NULL。 */
+  request_id: string;
+  /** 仕上げ元の Generation。raw Generation は NULL。 */
   refines_generation_id: string | null;
 }
 
@@ -196,16 +166,6 @@ export interface TagRow {
   updated_at: string;
 }
 
-export interface BatchReferenceRow {
-  id: string;
-  source_generation_id: string;
-  target_batch_id: string;
-  purpose: string | null;
-  aspect: string | null;
-  instruction: string | null;
-  created_at: string;
-}
-
 export interface RequestReferenceRow {
   id: string;
   source_generation_id: string;
@@ -213,17 +173,6 @@ export interface RequestReferenceRow {
   purpose: string | null;
   aspect: string | null;
   instruction: string | null;
-  created_at: string;
-}
-
-export interface BatchRelationRow {
-  id: string;
-  source_batch_id: string;
-  target_batch_id: string;
-  type: string | null;
-  actor: Actor;
-  reason: string | null;
-  raw_instruction: string | null;
   created_at: string;
 }
 
@@ -251,7 +200,7 @@ export interface RequestRow {
   created_by: RequestCreatedBy;
   created_at: string;
   updated_at: string;
-  /** migrations/0026 以降の Batch 由来の列。生成前に worker が報告するまで (queued の間) は NULL。 */
+  /** 生成前に worker が resolution を報告するまで (queued の間) は NULL。 */
   short_id: string | null;
   recipe: string | null;
   raw_instruction: string | null;

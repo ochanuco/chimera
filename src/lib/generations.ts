@@ -58,7 +58,7 @@ function parseJsonColumn(raw: string | null): unknown {
 
 /**
  * Generation が属する Request の要約。prompt / negative_prompt は Request に持たず、Request の先頭 Job
- * (job_index 最小で graph を持つもの) の render_facts の先頭 sampler から取る (docs/batch-removal.md「Request」)。
+ * (job_index 最小で graph を持つもの) の render_facts の先頭 sampler から取る。
  */
 async function buildRequestBlock(db: D1Database, request: RequestRow) {
   const [drawnPose, factsByRequest] = await Promise.all([drawnPoseView(db, request), resolveRequestRenderFacts(db, [request.id])]);
@@ -127,7 +127,6 @@ async function loadBuiltContext(db: D1Database, org: string, generation: Generat
     note: generation.note,
     summary: generation.summary,
     semantic: parseSemantic(generation),
-    batch: { id: generation.batch_id },
     request: requestBlock,
     generations: (requestGenerations?.results ?? []) as RequestGenerationRow[],
     references: (references.results ?? []).map((r) => ({

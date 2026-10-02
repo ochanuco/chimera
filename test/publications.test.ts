@@ -194,8 +194,6 @@ describe('migrations/0021 backfill (exercised directly: migrations run once per 
     await env.DB.prepare(
       `DELETE FROM tags WHERE name = 'publish'
          AND id NOT IN (SELECT tag_id FROM generation_tags)
-         AND id NOT IN (SELECT tag_id FROM batch_tags)
-         AND id NOT IN (SELECT tag_id FROM story_tags)
          AND id NOT IN (SELECT tag_id FROM experiment_tags)`,
     ).run();
   }
@@ -228,7 +226,7 @@ describe('migrations/0021 backfill (exercised directly: migrations run once per 
     expect(await env.DB.prepare('SELECT 1 FROM generation_tags WHERE tag_id = ?').bind(tag1Id).first()).toBeNull();
 
     // Phase 2: a fresh 'publish' tag (the name is free again after phase 1's delete), this time
-    // also referenced by batch_tags -> the generation_tags link is still removed, but the tag row survives.
+    // also referenced by experiment_tags -> the generation_tags link is still removed, but the tag row survives.
     const { generation: g2 } = await createGeneration();
     const tag2Id = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -240,9 +238,9 @@ describe('migrations/0021 backfill (exercised directly: migrations run once per 
     )
       .bind(crypto.randomUUID(), g2.id, tag2Id, now)
       .run();
-    const batch = await postJson<{ id: string }>('/api/v1/batches', { idempotency_key: crypto.randomUUID(), prompt: 'x' });
-    await env.DB.prepare("INSERT INTO batch_tags (id, batch_id, tag_id, created_by, created_at) VALUES (?, ?, ?, 'claude', ?)")
-      .bind(crypto.randomUUID(), batch.body.id, tag2Id, now)
+    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: `publish-tag-${crypto.randomUUID().slice(0, 8)}` });
+    await env.DB.prepare("INSERT INTO experiment_tags (id, experiment_id, tag_id, created_by, created_at) VALUES (?, ?, ?, 'claude', ?)")
+      .bind(crypto.randomUUID(), experiment.body.id, tag2Id, now)
       .run();
 
     await runBackfill();

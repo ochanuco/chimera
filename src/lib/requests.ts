@@ -4,7 +4,6 @@
 import {
   chunk,
   D1_MAX_BOUND_PARAMS,
-  getBatchByIdOrShortId,
   getGenerationByIdOrShortId,
   nowIso,
   resolveRequestShortIds,
@@ -17,11 +16,9 @@ import { uuidv7 } from './uuidv7';
 import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
 import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
-import { presetVersionsStatement, runAttachStatement } from './batch-request-sync';
 import { createUniqueRequestShortId } from './shortid';
-import { findShadowBatch, normalizeResolution, resolutionStatements, type ResolutionInput } from './request-resolution';
+import { normalizeResolution, resolutionStatements, type ResolutionInput } from './request-resolution';
 import type {
-  BatchRow,
   ExperimentRow,
   ExperimentRunRow,
   GenerationRow,
@@ -400,7 +397,7 @@ async function createImportRequest(
           now,
           shortId,
         ),
-      ...(await resolutionStatements(db, { requestId: id, shortId, resolution, shadow: null, batchStatus: 'completed' })),
+      ...resolutionStatements(db, { requestId: id, shortId, resolution }),
     ]);
   } catch (err) {
     const raced = await find();
@@ -522,16 +519,8 @@ export async function claimRequest(
 export interface UpdateRequestInput {
   status: 'running' | 'queued' | 'done' | 'failed' | 'cancelled';
   worker_id?: string;
-  result?: { batch_id?: string; generation_ids: string[]; recipe_commit?: string };
+  result?: { generation_ids: string[]; recipe_commit?: string };
   error?: string;
-}
-
-/** resolution が内部に作った影の Batch (status = running) の終端状態を Request に合わせる。互換の Batch 経路で作られた Batch には触れない。 */
-async function markShadowBatch(db: D1Database, requestId: string, status: 'completed' | 'failed', now: string): Promise<void> {
-  await db
-    .prepare("UPDATE batches SET status = ?, updated_at = ? WHERE idempotency_key = ? AND status = 'running'")
-    .bind(status, now, `request:${requestId}`)
-    .run();
 }
 
 const TERMINAL_STATUSES: RequestStatus[] = ['done', 'failed', 'cancelled'];
@@ -574,7 +563,6 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       )
       .bind(...(exhausted ? ['released after max attempts', now, now, row.id] : [now, row.id]))
       .run();
-    if (exhausted) await markShadowBatch(db, row.id, 'failed', now);
     return getRequestOr404(db, row.id);
   }
 
@@ -583,7 +571,6 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       .prepare('UPDATE requests SET status = ?, error = ?, finished_at = ?, updated_at = ? WHERE id = ?')
       .bind('failed', body.error ?? null, now, now, row.id)
       .run();
-    await markShadowBatch(db, row.id, 'failed', now);
     return getRequestOr404(db, row.id);
   }
 
@@ -603,58 +590,12 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     )
     .bind('done', resultJson, now, now, presetVersionsJson, row.id);
 
-  // 結果の Batch は、worker が互換のため result.batch_id を渡せばそれ、無ければ resolution で内部に作った影の Batch。
-  const shadow = await findShadowBatch(db, row.id);
-
-  if (row.run_id) {
-    const run = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(row.run_id).first<ExperimentRunRow>();
-    if (!run) throw notFound('experiment run');
-
-    // 結果の Run への紐づけは requests.run_id が持つ。experiment_runs.batch_id は Batch 廃止まで GUI の Run カード用に attach する。
-    const batch = result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : shadow;
-    if (result.batch_id && !batch) throw notFound(`batch '${result.batch_id}'`);
-
-    if (batch) {
-      // Run に既に別の batch が付いていれば、result.batch_id 指定なら409で request 行も done になりません (worker-protocol.md「Update Request」)。
-      // 影の Batch は Run の既存の attach を壊さないよう、付いていれば黙って付けない。
-      if (run.batch_id && run.batch_id !== batch.id && result.batch_id) {
-        throw conflict('run already has a different batch attached');
-      }
-
-      // request の done と experiment_runs.batch_id の attach を単一トランザクションにする（片方だけの状態を作らない）。
-      const statements = [
-        doneStatement,
-        db
-          .prepare('UPDATE experiment_runs SET batch_id = ?, updated_at = ? WHERE id = ? AND (batch_id IS NULL OR batch_id = ?)')
-          .bind(batch.id, now, run.id, batch.id),
-      ];
-      if (presetVersionsJson) {
-        statements.push(
-          db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
-          presetVersionsStatement(db, batch.id, presetVersionsJson),
-        );
-      }
-      statements.push(runAttachStatement(db, batch.id, run.id));
-      await db.batch(statements);
-    } else {
-      await doneStatement.run();
-    }
-    await touchExperiment(db, run.experiment_id, now);
-  } else {
-    // pin の記録は付随的なもの: result.batch_id が解決できなければ request の完了は妨げず、
-    // Batch 側の preset_versions_json の書き込みだけ飛ばす。
-    const batch = presetVersionsJson ? (result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : shadow) : null;
-    if (presetVersionsJson && batch) {
-      await db.batch([
-        doneStatement,
-        db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
-        presetVersionsStatement(db, batch.id, presetVersionsJson),
-      ]);
-    } else {
-      await doneStatement.run();
-    }
-  }
-  await markShadowBatch(db, row.id, 'completed', now);
+  const run = row.run_id
+    ? await db.prepare('SELECT experiment_id FROM experiment_runs WHERE id = ?').bind(row.run_id).first<{ experiment_id: string }>()
+    : null;
+  if (row.run_id && !run) throw notFound('experiment run');
+  await doneStatement.run();
+  if (run) await touchExperiment(db, run.experiment_id, now);
 
   return getRequestOr404(db, row.id);
 }

@@ -28,15 +28,10 @@ interface SearchResult {
   next_cursor: string | null;
 }
 
-/** Builds a "refined" Generation: a Batch whose refines_generation_id resolves to a raw Generation's source. */
+/** Builds a "refined" Generation: its Job carries a source_generation_id, so refines_generation_id points at a raw Generation. */
 async function createRefinedGeneration() {
-  const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
-  const refined = await createGeneration({
-    batchOverrides: {
-      refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-      references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-    },
-  });
+  const { generation: sourceGen } = await createGeneration();
+  const refined = await createGeneration({ jobOverrides: { source_generation_id: sourceGen.id } });
   return { sourceGen, refined };
 }
 
@@ -294,7 +289,7 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
 
   it('result_short_id resolves once the request is done, and stays null for every other status', async () => {
     const { generation } = await createGeneration();
-    const { batch: resultBatch, generation: resultGen } = await createGeneration();
+    const { generation: resultGen } = await createGeneration();
     const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
 
     const queuedRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
@@ -306,7 +301,7 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
     expect(runningRes.body.items[0]?.finalize_request?.result_short_id).toBeNull();
 
     await env.DB.prepare('UPDATE requests SET status = ?, result_json = ? WHERE id = ?')
-      .bind('done', JSON.stringify({ batch_id: resultBatch.id, generation_ids: [resultGen.id] }), requestId)
+      .bind('done', JSON.stringify({ generation_ids: [resultGen.id] }), requestId)
       .run();
     const doneRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
     expect(doneRes.body.items[0]?.finalize_request).toEqual({
@@ -371,8 +366,8 @@ describe('POST /api/v1/generations/{id}/pose-reference + reference filter (docs/
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
 
-    const { generation: pinned } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
-    const { generation: other } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: pinned } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: other } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
     await setRatingGood(pinned.id);
 
     const pin = await postJson<PoseReferenceResult>(`/api/v1/generations/${pinned.id}/pose-reference`, {});
@@ -398,14 +393,14 @@ describe('POST /api/v1/generations/{id}/pose-reference + reference filter (docs/
   it('409s when rating is not good', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
 
     const res = await postJson<{ error: { message: string } }>(`/api/v1/generations/${generation.id}/pose-reference`, {});
     expect(res.status).toBe(409);
     expect(res.body.error.message).toContain('requires rating good');
   });
 
-  it('409s with "cannot infer" for a graph-mode batch (no recipe)', async () => {
+  it('409s with "cannot infer" for a graph-mode request (no recipe)', async () => {
     const { generation } = await createGeneration();
     await setRatingGood(generation.id);
 

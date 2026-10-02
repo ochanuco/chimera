@@ -23,7 +23,7 @@ async function createFinalizeLikeRequest(
 
 /**
  * Slices out one card's markup so assertions don't leak into sibling cards or, when a card is
- * the only one in its grid (e.g. Batch Detail), into the unrelated sections that follow it.
+ * the only one in its grid (e.g. a Generation detail page), into the unrelated sections that follow it.
  */
 function cardHtml(html: string, shortId: string): string {
   const marker = html.indexOf(`data-short-id="${shortId}"`);
@@ -38,13 +38,11 @@ function cardHtml(html: string, shortId: string): string {
   return html.slice(cardStart, closeIdx + closeMarker.length);
 }
 
-/** Creates a Generation whose Batch refines `sourceGen` (batches.refines_generation_id, src/lib/batch-refinement.ts). */
-async function createRefinedGeneration(sourceBatchId: string, sourceGenerationId: string) {
+/** Creates a Generation refined from `sourceGenerationId` (its Job's source_generation_id feeds generations.refines_generation_id). */
+async function createRefinedGeneration(sourceGenerationId: string) {
   return createGeneration({
-    batchOverrides: {
-      refinement: { source_batch_id: sourceBatchId, actor: 'claude', reason: 'finalize' },
-      references: [{ source_generation_id: sourceGenerationId, purpose: 'rebuild' }],
-    },
+    requestOverrides: { kind: 'finalize' },
+    jobOverrides: { source_generation_id: sourceGenerationId },
   });
 }
 
@@ -78,8 +76,8 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
   });
 
   it('Gallery card shows the from-badge for a refined output and the 公開済み pill once published', async () => {
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
-    const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);
+    const { generation: sourceGen } = await createGeneration();
+    const refined = await createRefinedGeneration(sourceGen.id);
     await postJson(`/api/v1/generations/${refined.generation.id}/publications`, {});
 
     const res = await req('/gallery?view=all&limit=200');
@@ -91,8 +89,8 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
   });
 
   it('the from-badge copies the source short_id without being a nested button', async () => {
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
-    const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);
+    const { generation: sourceGen } = await createGeneration();
+    const refined = await createRefinedGeneration(sourceGen.id);
 
     const html = await (await req('/gallery?view=all&limit=200')).text();
     const card = cardHtml(html, refined.generation.short_id);
@@ -103,8 +101,8 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
   });
 
   it('Bookmarks generation cards carry the same from-badge and 公開済み pill', async () => {
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
-    const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);
+    const { generation: sourceGen } = await createGeneration();
+    const refined = await createRefinedGeneration(sourceGen.id);
     await postJson(`/api/v1/generations/${refined.generation.id}/publications`, {});
     await req(`/api/v1/generations/${refined.generation.short_id}/bookmark`, { method: 'PUT' });
 
@@ -188,7 +186,7 @@ describe('GenerationCard 基準 pill (docs/domain-model.md「基準 render の p
   it('shows the pill only once the render is pinned as the pose basis render', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
 
     const before = cardHtml(await (await req('/gallery?limit=200')).text(), generation.short_id);
     expect(before).not.toContain('card-reference-pill');
@@ -206,7 +204,7 @@ describe('GenerationCard 基準 pill (docs/domain-model.md「基準 render の p
 describe('GenerationCard finalize badge (docs/ui.md「Gallery」進捗ピル)', () => {
   it('renders queued / running / done (→ result short_id) / failed as the request transitions', async () => {
     const { generation } = await createGeneration();
-    const { batch: resultBatch, generation: resultGen } = await createGeneration();
+    const { generation: resultGen } = await createGeneration();
     const requestId = await createFinalizeLikeRequest(generation.id, 'repair');
 
     let card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
@@ -217,7 +215,7 @@ describe('GenerationCard finalize badge (docs/ui.md「Gallery」進捗ピル)', 
     expect(card).toContain('repair · running');
 
     await env.DB.prepare('UPDATE requests SET status = ?, result_json = ? WHERE id = ?')
-      .bind('done', JSON.stringify({ batch_id: resultBatch.id, generation_ids: [resultGen.id] }), requestId)
+      .bind('done', JSON.stringify({ generation_ids: [resultGen.id] }), requestId)
       .run();
     card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
     expect(card).toContain('repair · done → ');

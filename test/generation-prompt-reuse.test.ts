@@ -6,8 +6,8 @@ interface GenerationDetail {
 }
 
 describe('render_facts prompt reuse warning (comfy_job.prompt_not_reusable)', () => {
-  it('flags a repair batch', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { parameters: { kind: 'repair' } } });
+  it('flags a repair request', async () => {
+    const { generation } = await createGeneration({ requestOverrides: { parameters: { kind: 'repair' } } });
 
     const res = await getJson<GenerationDetail>(`/api/v1/generations/${generation.id}`);
     expect(res.status).toBe(200);
@@ -15,8 +15,8 @@ describe('render_facts prompt reuse warning (comfy_job.prompt_not_reusable)', ()
     expect(res.body.comfy_job?.prompt_not_reusable?.message).toContain('masked hands/feet repair');
   });
 
-  it('flags a masked_redraw batch', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { parameters: { kind: 'masked_redraw' } } });
+  it('flags a masked_redraw request', async () => {
+    const { generation } = await createGeneration({ requestOverrides: { parameters: { kind: 'masked_redraw' } } });
 
     const res = await getJson<GenerationDetail>(`/api/v1/generations/${generation.id}`);
     expect(res.status).toBe(200);
@@ -24,9 +24,9 @@ describe('render_facts prompt reuse warning (comfy_job.prompt_not_reusable)', ()
     expect(res.body.comfy_job?.prompt_not_reusable?.message).toContain('masked region redraw');
   });
 
-  it('flags a hires-chain batch that also ran a repair pass as finalize_repair', async () => {
+  it('flags a hires-chain request that also ran a repair pass as finalize_repair', async () => {
     const { generation } = await createGeneration({
-      batchOverrides: {
+      requestOverrides: {
         parameters: {
           kind: 'hires-chain',
           repair: { parts: ['hand'], regions: ['left_hand'], denoise: 0.4, pad: 32, size: 512, mask_bbox: [0, 0, 10, 10] },
@@ -40,9 +40,9 @@ describe('render_facts prompt reuse warning (comfy_job.prompt_not_reusable)', ()
     expect(res.body.comfy_job?.prompt_not_reusable?.message).toContain('masked hands/feet repair pass');
   });
 
-  it('does not flag a hires-chain batch without a repair pass', async () => {
+  it('does not flag a hires-chain request without a repair pass', async () => {
     const { generation } = await createGeneration({
-      batchOverrides: { parameters: { kind: 'hires-chain', size: 2560 } },
+      requestOverrides: { parameters: { kind: 'hires-chain', size: 2560 } },
     });
 
     const res = await getJson<GenerationDetail>(`/api/v1/generations/${generation.id}`);
@@ -50,7 +50,7 @@ describe('render_facts prompt reuse warning (comfy_job.prompt_not_reusable)', ()
     expect(res.body.comfy_job?.prompt_not_reusable).toBeNull();
   });
 
-  it('does not flag a plain generate batch', async () => {
+  it('does not flag a plain generate request', async () => {
     const { generation } = await createGeneration();
 
     const res = await getJson<GenerationDetail>(`/api/v1/generations/${generation.id}`);
@@ -59,7 +59,7 @@ describe('render_facts prompt reuse warning (comfy_job.prompt_not_reusable)', ()
   });
 
   it('MCP get_generation reports the same field', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { parameters: { kind: 'repair' } } });
+    const { generation } = await createGeneration({ requestOverrides: { parameters: { kind: 'repair' } } });
 
     const tool = await mcpToolCall<GenerationDetail>('get_generation', { generation_id: generation.id });
     expect(tool.isError).toBe(false);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, getJson, postJson, req, del } from './helpers';
+import { createRequest, createGeneration, getJson, postJson, req, del } from './helpers';
 
 describe('Tags', () => {
   it('assigns a tag to a generation, reuses it by name, and is idempotent', async () => {
@@ -68,8 +68,8 @@ describe('Tags', () => {
 });
 
 describe('Bookmark', () => {
-  it('toggles bookmark on generations and experiments; batches and stories have none', async () => {
-    const { generation, batch } = await createGeneration();
+  it('toggles bookmark on generations and experiments', async () => {
+    const { generation } = await createGeneration();
     const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: 'bookmark experiment' });
 
     for (const path of [
@@ -85,7 +85,6 @@ describe('Bookmark', () => {
       expect(await delRes.json()).toEqual({ bookmark: false });
     }
 
-    expect((await req(`/api/v1/batches/${batch.id}/bookmark`, { method: 'PUT' })).status).toBe(404);
   });
 });
 

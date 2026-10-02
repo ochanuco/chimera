@@ -1,4 +1,4 @@
-// Batch 廃止の段階 3 (docs/batch-removal.md): worker が /api/v1/batches を呼ばずに Request へ直接書く契約の検証。
+// worker が Request へ直接書く契約 (resolution -> job -> ingest -> done) の検証。
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, getJson, ingestGeneration, postJson } from './helpers';
@@ -68,10 +68,6 @@ async function postJob(id: string, body: Record<string, unknown>) {
   return postJson<{ id: string; status: string; generations: unknown[]; source_generation_id: string | null }>(`/api/v1/requests/${id}/jobs`, body);
 }
 
-async function batchCount(): Promise<number> {
-  return (await env.DB.prepare('SELECT COUNT(*) AS c FROM batches').first<{ c: number }>())!.c;
-}
-
 async function runToDone(id: string, jobBody: Record<string, unknown>) {
   const job = await postJob(id, jobBody);
   expect(job.status).toBe(201);
@@ -92,18 +88,6 @@ describe('short_id issuance', () => {
     expect(r.short_id).toMatch(/^[a-z0-9]{6}$/);
     expect((await getJson<Req>(`/api/v1/requests/${r.id}`)).body.short_id).toBe(r.short_id);
     expect((await claim(r.id)).short_id).toBe(r.short_id);
-  });
-
-  it('a request-linked batch reuses the request short_id and the sync does not overwrite it', async () => {
-    const r = await queue('generate', generatePayload());
-    const batch = await postJson<{ short_id: string }>('/api/v1/batches', {
-      idempotency_key: `request:${r.id}`,
-      prompt: 'p',
-      recipe: 'yukari',
-    });
-    expect(batch.status).toBe(201);
-    expect(batch.body.short_id).toBe(r.short_id);
-    expect((await getJson<Req>(`/api/v1/requests/${r.id}`)).body.short_id).toBe(r.short_id);
   });
 });
 
@@ -167,9 +151,8 @@ describe('PUT /requests/{id}/resolution', () => {
   });
 });
 
-describe('worker flow without /api/v1/batches', () => {
+describe('worker flow', () => {
   it('generate: claim -> resolution -> job -> ingest -> done', async () => {
-    const before = await batchCount();
     const r = await queue('generate', generatePayload());
     await claim(r.id);
 
@@ -179,23 +162,14 @@ describe('worker flow without /api/v1/batches', () => {
     const { job, generation, done } = await runToDone(r.id, { idempotency_key: `request:${r.id}:job:0`, seed: 1, index: 0 });
     expect(done.status).toBe('done');
 
-    const gen = await env.DB.prepare('SELECT request_id, refines_generation_id, batch_id FROM generations WHERE id = ?')
+    const gen = await env.DB.prepare('SELECT request_id, refines_generation_id FROM generations WHERE id = ?')
       .bind(generation.id)
-      .first<{ request_id: string; refines_generation_id: string | null; batch_id: string }>();
+      .first<{ request_id: string; refines_generation_id: string | null }>();
     expect(gen).toMatchObject({ request_id: r.id, refines_generation_id: null });
-    const shadow = await env.DB.prepare('SELECT id, short_id, status, idempotency_key FROM batches WHERE id = ?')
-      .bind(gen!.batch_id)
-      .first<{ id: string; short_id: string; status: string; idempotency_key: string }>();
-    expect(shadow).toMatchObject({ short_id: r.short_id, status: 'completed', idempotency_key: `request:${r.id}` });
-    expect(await batchCount()).toBe(before + 1);
     expect(job.id).toBeTruthy();
-
-    // 同期が補う Request を二重に作らない。
-    const linked = await env.DB.prepare("SELECT COUNT(*) AS c FROM requests WHERE idempotency_key LIKE 'batch:%' AND id = ?").bind(gen!.batch_id).first<{ c: number }>();
-    expect(linked!.c).toBe(0);
   });
 
-  it('finalize: source_generation_id is required, sets refines and the legacy rebuild reference', async () => {
+  it('finalize: source_generation_id is required and sets refines', async () => {
     const { generation: source } = await createGeneration();
     const r = await queue('finalize', { generation_id: source.id });
     await claim(r.id);
@@ -205,14 +179,10 @@ describe('worker flow without /api/v1/batches', () => {
     expect((await postJob(r.id, { idempotency_key: `request:${r.id}:job:0`, seed: 1, index: 0, source_generation_id: 'nope00' })).status).toBe(404);
 
     const { generation } = await runToDone(r.id, { idempotency_key: `request:${r.id}:job:0`, seed: 1, index: 0, source_generation_id: source.short_id });
-    const gen = await env.DB.prepare('SELECT refines_generation_id, batch_id FROM generations WHERE id = ?')
+    const gen = await env.DB.prepare('SELECT refines_generation_id FROM generations WHERE id = ?')
       .bind(generation.id)
-      .first<{ refines_generation_id: string; batch_id: string }>();
+      .first<{ refines_generation_id: string }>();
     expect(gen!.refines_generation_id).toBe(source.id);
-    const batch = await env.DB.prepare('SELECT refines_generation_id FROM batches WHERE id = ?').bind(gen!.batch_id).first<{ refines_generation_id: string }>();
-    expect(batch!.refines_generation_id).toBe(source.id);
-    const rel = await env.DB.prepare("SELECT COUNT(*) AS c FROM batch_relations WHERE target_batch_id = ? AND type = 'refinement'").bind(gen!.batch_id).first<{ c: number }>();
-    expect(rel!.c).toBe(1);
 
     const detail = await getJson<{ refines_generation: { id: string } | null }>(`/api/v1/generations/${generation.id}`);
     expect(detail.body.refines_generation?.id).toBe(source.id);
@@ -264,28 +234,6 @@ describe('worker flow without /api/v1/batches', () => {
     expect(again.body.status).toBe('ingested');
     expect(again.body.generations).toHaveLength(1);
   });
-
-  it('failed request marks the shadow batch failed', async () => {
-    const r = await queue('generate', generatePayload());
-    await claim(r.id);
-    await putResolution(r.id, resolution());
-    await postJson(`/api/v1/requests/${r.id}`, { status: 'failed', worker_id: WORKER, error: 'boom' }, 'PATCH');
-    const b = await env.DB.prepare('SELECT status FROM batches WHERE idempotency_key = ?').bind(`request:${r.id}`).first<{ status: string }>();
-    expect(b!.status).toBe('failed');
-  });
-
-  it('attaches the shadow batch to the run on done', async () => {
-    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID()}`, base_recipe: 'yukari' });
-    expect(exp.status).toBe(201);
-    const run = await postJson<{ id: string; request_id: string }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
-    expect(run.status).toBe(201);
-    const id = run.body.request_id;
-    await claim(id);
-    await putResolution(id, resolution());
-    await runToDone(id, { idempotency_key: `request:${id}:job:0`, seed: 1, index: 0 });
-    const runRow = await env.DB.prepare('SELECT batch_id FROM experiment_runs WHERE id = ?').bind(run.body.id).first<{ batch_id: string | null }>();
-    expect(runRow!.batch_id).toBe(id);
-  });
 });
 
 describe('kind import', () => {
@@ -321,8 +269,9 @@ describe('kind import', () => {
     const row = await env.DB.prepare('SELECT request_id FROM generations WHERE id = ?').bind(g.body.id).first<{ request_id: string }>();
     expect(row!.request_id).toBe(created.body.id);
 
-    const detail = await getJson<{ batch_id?: string }>(`/api/v1/generations/${g.body.id}`);
+    const detail = await getJson<Record<string, unknown>>(`/api/v1/generations/${g.body.id}`);
     expect(detail.status).toBe(200);
+    expect(detail.body).not.toHaveProperty('batch');
   });
 
   it('validates the import envelope', async () => {

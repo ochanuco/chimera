@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const requestKindSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw']);
-/** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request (docs/batch-removal.md) で、生成要求の入力には使えない。 */
+/** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
 export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
@@ -281,7 +281,6 @@ export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
  * 素の z.object が黙って落とさないため。chimera は不透明な JSON として保存するだけ。 */
 export const updateRequestResultSchema = z
   .object({
-    batch_id: z.string().min(1).optional(),
     generation_ids: z.array(z.string().min(1)),
     recipe_commit: z.string().optional(),
   })
