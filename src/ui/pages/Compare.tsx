@@ -60,6 +60,18 @@ function itemText(item: unknown): string {
   return item !== null && typeof item === 'object' ? JSON.stringify(item) : String(item);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Sorted union of subkeys when an attribute is an object in some columns and absent in the rest, so it can be split into `key.subkey` rows;
+ * null when no column holds an object or any column holds a non-object value (scalar/array), which keeps the single unflattened row. */
+function flattenSubkeys(values: unknown[]): string[] | null {
+  const present = values.filter((v) => v !== null && v !== undefined);
+  if (present.length === 0 || !present.every(isPlainObject)) return null;
+  return Array.from(new Set(present.flatMap((v) => Object.keys(v)))).sort();
+}
+
 /** Normalizes an arbitrary attribute value to a display string, or null if it carries no value. */
 function attributeText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -267,6 +279,15 @@ function buildChangeRows(items: CompareItem[]): CompareRow[] {
   return rows;
 }
 
+const SAME_VALUE_MAX = 60;
+
+/** A 全列同一 bar entry `label=value`: whitespace collapsed, long values cut with the full text in `title`. */
+function sameChip(label: string, value: string): { text: string; title?: string } {
+  const flat = value.replace(/\s+/g, ' ').trim();
+  const long = flat.length > SAME_VALUE_MAX;
+  return { text: `${label}=${long ? `${flat.slice(0, SAME_VALUE_MAX)}…` : flat}`, title: long ? flat : undefined };
+}
+
 const CORE_FIELDS = ['pose', 'expression', 'outfit', 'style', 'composition'] as const;
 
 function CompareTable({ items, rows }: { items: CompareItem[]; rows: CompareRow[] }) {
@@ -357,16 +378,25 @@ export function ComparePage({
     }
     // The `patches` attribute duplicates the 変更点 patches row.
     attributeKeys.delete('patches');
+    const analyzedItems = items.filter((item) => item.semantic);
     for (const key of Array.from(attributeKeys).sort()) {
-      const analyzedItems = items.filter((item) => item.semantic);
-      const allValueLess = analyzedItems.every((item) => attributeText(item.semantic!.attributes[key]) === null);
-      if (allValueLess) continue;
-      rows.push(buildSemanticRow(key, items, (s) => attributeRaw(s.attributes[key])));
+      const values = analyzedItems.map((item) => item.semantic!.attributes[key]);
+      const subkeys = flattenSubkeys(values);
+      const targets = subkeys
+        ? subkeys.map((sub) => ({ label: `${key}.${sub}`, pick: (v: unknown) => (isPlainObject(v) ? v[sub] : undefined) }))
+        : [{ label: key, pick: (v: unknown) => v }];
+      for (const { label, pick } of targets) {
+        if (values.every((v) => attributeText(pick(v)) === null)) continue;
+        rows.push(buildSemanticRow(label, items, (s) => attributeRaw(pick(s.attributes[key]))));
+      }
     }
   }
 
   const showLegend = rows.concat(promptRows).some((row) => row.segments !== undefined);
-  const sameLabels = rows.filter((row) => !row.diff).map((row) => row.label);
+  const sameRows = rows.filter((row) => !row.diff);
+  const isEmptyValue = (v: string) => v === NO_VALUE || v === NOT_ANALYZED || v === NO_GRAPH;
+  const sameChips = sameRows.filter((row) => !isEmptyValue(row.values[0]!)).map((row) => sameChip(row.label, row.values[0]!));
+  const sameEmptyLabels = sameRows.filter((row) => isEmptyValue(row.values[0]!)).map((row) => row.label);
   const mainRows = changeRows.concat(rows);
 
   return (
@@ -408,9 +438,17 @@ export function ComparePage({
             </p>
           ) : null}
 
-          {sameLabels.length > 0 ? (
+          {sameRows.length > 0 ? (
             <div class="compare-same-bar">
-              <span>全列同一: {sameLabels.join(', ')}</span>
+              <span class="compare-same-items">
+                <span>全列同一:</span>
+                {sameChips.map((chip) => (
+                  <span class="compare-same-chip" title={chip.title}>
+                    {chip.text}
+                  </span>
+                ))}
+                {sameEmptyLabels.length > 0 ? <span class="compare-same-empty">値なし: {sameEmptyLabels.join(', ')}</span> : null}
+              </span>
               <label>
                 <input type="checkbox" id="compare-show-same" /> 同一の行も表示
               </label>
