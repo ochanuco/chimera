@@ -51,6 +51,7 @@ export interface GenerationDetailData {
   used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   publications: PublicationData[];
   pose_reference: PoseReferenceData | null;
+  refines_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null } | null;
   comfy_job: {
     id: string;
     seed: number | null;
@@ -352,6 +353,12 @@ export function GenerationDetailPage({
         <div class="detail-right">
           <h1>
             {data.short_id} <CopyIdButton value={data.short_id} />{' '}
+            {data.refines_generation ? (
+              <span class="detail-from">
+                from <a href={`/g/${data.refines_generation.short_id}`}>{data.refines_generation.short_id}</a>{' '}
+                <CopyIdButton value={data.refines_generation.short_id} />
+              </span>
+            ) : null}{' '}
             <button type="button" class="compare-add-btn" data-generation-id={data.id} data-short-id={data.short_id}>
               比較に追加
             </button>

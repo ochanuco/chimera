@@ -77,7 +77,14 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
         {hasTopBadges ? (
           <div class="thumb-badges-top">
             {g.refines_generation_short_id ? (
-              <span class="card-from-badge">
+              <span
+                class="card-from-badge copy-id-btn copy-id-text"
+                role="button"
+                tabindex={0}
+                data-copy-id={g.refines_generation_short_id}
+                title={`Copy ${g.refines_generation_short_id}`}
+                aria-label={`Copy ${g.refines_generation_short_id}`}
+              >
                 from <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
               </span>
             ) : null}
