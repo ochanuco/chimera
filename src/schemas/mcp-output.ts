@@ -233,6 +233,10 @@ export const mcpOutputSchemas = {
     bookmark: z.boolean().optional(),
     tags: z.array(z.string()).optional(),
     original_purged_at: z.string().nullable().optional(),
+    refines_generation: z
+      .object({ id: z.string(), short_id: z.string(), rating: z.string().nullable() })
+      .nullable()
+      .optional(),
     semantic: z.unknown().optional(),
     batch: z.looseObject({ drawn_pose: drawnPoseSchema.nullable().optional() }).nullable().optional(),
     comfy_job: z.unknown().optional(),

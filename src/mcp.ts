@@ -302,7 +302,9 @@ const MCP_INSTRUCTIONS =
   'derive_request from it. A rating=good Generation found via list_generations may predate the pin — prefer the pin. ' +
   'get_generation / list_batch report which pose a Generation drew and that pose\'s current pin as batch.drawn_pose.\n' +
   '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
-  'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.';
+  'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
+  '5. A finalized / repaired / masked_redraw Generation exposes its pre-finalize source as `refines_generation` ' +
+  '({id, short_id, rating}) in get_generation; it is null for a raw Generation.';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;

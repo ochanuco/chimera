@@ -113,9 +113,16 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
     job ? renderFactsForJob(db, job) : Promise.resolve(null),
     batch ? drawnPoseView(db, batch) : Promise.resolve(null),
   ]);
+  const refinesGeneration = batch?.refines_generation_id
+    ? await db
+        .prepare('SELECT id, short_id, rating FROM generations WHERE id = ?')
+        .bind(batch.refines_generation_id)
+        .first<Pick<GenerationRow, 'id' | 'short_id' | 'rating'>>()
+    : null;
 
   return {
     ...context,
+    refines_generation: refinesGeneration ?? null,
     publications: publications.map(serializePublication),
     pose_reference: poseReference,
     batch: batch

@@ -346,6 +346,23 @@ describe('Web GUI pages', () => {
     expect(detailHtml).toContain(`${png.byteLength} B`);
   });
 
+  it('GET /g/:short_id links and copies the refined-from source only for a refined Generation', async () => {
+    const { batch: sourceBatch, generation: source } = await createGeneration();
+    const refined = await createGeneration({
+      batchOverrides: {
+        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
+        references: [{ source_generation_id: source.id, purpose: 'rebuild' }],
+      },
+    });
+
+    const refinedHtml = await (await req(`/g/${refined.generation.short_id}`)).text();
+    expect(refinedHtml).toContain(`from <a href="/g/${source.short_id}">${source.short_id}</a>`);
+    expect(refinedHtml).toContain(`data-copy-id="${source.short_id}"`);
+
+    const rawHtml = await (await req(`/g/${source.short_id}`)).text();
+    expect(rawHtml).not.toContain('detail-from');
+  });
+
   it('GET /g/:short_id?partial=lightbox no longer returns a fragment -- the lightbox was dropped, so it renders the normal full page', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}?partial=lightbox`);

@@ -112,7 +112,7 @@ status が active / stabilized の Experiment を横断して、`batch_id` が n
 | `repair_generation` | `generation_id, options?, idempotency_key` | 追記 | hands / feet の repair request を積む |
 | `masked_redraw_generation` | `generation_id, options, idempotency_key` | 追記 | 任意矩形の garment / local inpaint request を積む。source は不変 |
 | `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
-| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（publications / pose_reference / batch.drawn_pose 込み） |
+| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（publications / pose_reference / refines_generation / batch.drawn_pose 込み） |
 | `list_batch` | `batch_id, include_prompts?` | 読み取り | Batch（drawn_pose 込み）/ jobs / generations（rating、bookmark、tags、semantic、seed 込み）/ references / relations / ExperimentRun |
 | `get_generation_lineage` | `generation_id, depth?` | 読み取り | Batch 単位の祖先と子孫。depth 既定 5、上限 10 |
 | `get_generation_image` | `short_id, width?` | 読み取り | 縮小した JPEG 画像。載らなければ canonical URL |
@@ -207,6 +207,9 @@ rating は人間の判定として読むもので、Agent が書くものでは�
 `batch.drawn_pose`（`{recipe, pose, reference}`）は、その Generation / Batch が描いた pose と、その pose の現行の pin です。
 `reference` は `get_catalog_pose` と同じ形（pin が無ければ `null`）で、Batch が pose を持たなければ `drawn_pose` 自体が `null` です。
 `get_generation` の `pose_reference`（この Generation 自身が pin か）とは別物です。
+
+`refines_generation`（`{id, short_id, rating}`）は、finalize / repair / masked_redraw の出力 Generation について、その Batch の `refines_generation_id` が指す仕上げ前の Generation です。
+raw Generation では `null` なので、仕上げ済みの ID だけ渡されても `get_generation` で元の Generation を引けます。
 
 `get_generation` の `comfy_job.prompt_not_reusable` が null でない Generation（repair / masked_redraw / repair 付き finalize の出力）は、render_facts の prompt が mask 領域用に削られています。
 これを generate の prompt として使わず、その Generation から `derive_request` を起こします（[api.md](api.md#generation-context)）。
