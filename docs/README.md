@@ -41,6 +41,7 @@ Story の続きなのかを体系的に追跡しにくい問題があります�
 -   `docs/use-cases.md` --- 主要ユースケース
 -   `docs/generation-request.md` --- request.json 契約（brain → chimera requests キュー → worker）
 -   `docs/worker-protocol.md` --- requests キューと worker の契約
+-   `docs/batch-removal.md` --- Batch 廃止の設計と移行手順（移行中）
 -   `docs/experiment-agent.md` --- MCP 経由の Experiment agent 運用
 -   `docs/api.md` --- Management API
 -   `docs/ui.md` --- Web GUI
