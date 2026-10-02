@@ -11,7 +11,7 @@ import { uuidv7 } from './uuidv7';
 import type { BatchRow, PresetCreatedBy, PresetKind, PresetReferenceRow } from '../types';
 
 /** Parses a stored JSON array column (`patches_json` / `preset_versions_json`); NULL や非配列は `[]`。 */
-function parseJsonArray(raw: string | null): unknown[] {
+export function parseJsonArray(raw: string | null): unknown[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;

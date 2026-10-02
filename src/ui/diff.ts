@@ -6,9 +6,9 @@ export type DiffSeg = { text: string; type: 'same' | 'uniq' | 'partial' };
 /** Above this base.length * target.length, the O(n·m) LCS DP is skipped in favor of a coarse whole-value diff. */
 const DP_PRODUCT_LIMIT = 200_000;
 
-const TOKEN_RE = /\s+|[A-Za-z0-9_'-]+|./gsu;
+const TOKEN_RE = /\s+|\d+(?:\.\d+)+|[A-Za-z0-9_'-]+|./gsu;
 
-/** Splits text into diff tokens: whitespace runs, word runs (ASCII alnum/_/'/-), or single characters (CJK etc). */
+/** Splits text into diff tokens: whitespace runs, decimals (so a weight like 0.85 diffs as one token), word runs (ASCII alnum/_/'/-), or single characters (CJK etc). */
 export function tokenize(s: string): string[] {
   return s.match(TOKEN_RE) ?? [];
 }
@@ -78,6 +78,32 @@ export function consensusSegments(tokens: string[], matchCounts: number[], other
     } else {
       segs.push({ text: tokens[i]!, type });
     }
+  }
+  return segs;
+}
+
+export type TwoWaySeg = { text: string; type: 'same' | 'del' | 'add' };
+
+/** Two-way token diff old -> next for inline display: removed tokens 'del', inserted tokens 'add', adjacent same-type tokens merged.
+ * Above DP_PRODUCT_LIMIT it degrades to one whole-value del + add. */
+export function twoWayDiff(old: string, next: string): TwoWaySeg[] {
+  const a = tokenize(old);
+  const b = tokenize(next);
+  let ops: Op[];
+  if (a.length * b.length > DP_PRODUCT_LIMIT) {
+    ops = [];
+    if (old !== next) {
+      if (old) ops.push({ type: 'del', text: old });
+      if (next) ops.push({ type: 'add', text: next });
+    } else if (old) ops.push({ type: 'same', text: old });
+  } else {
+    ops = lcsOps(a, b);
+  }
+  const segs: TwoWaySeg[] = [];
+  for (const op of ops) {
+    const last = segs[segs.length - 1];
+    if (last && last.type === op.type) last.text += op.text;
+    else segs.push({ text: op.text, type: op.type });
   }
   return segs;
 }

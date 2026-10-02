@@ -255,9 +255,11 @@ Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[Gener
 `/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
 purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
 
-その下にsemantic比較テーブルを表示します。行はsummary、core 5項目（pose /
+その下にsemantic比較テーブルを表示します。行は変更点（後述）、batch / seed / created、
+render_facts、summary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全
-Generationのattributesキーの和集合。列は各Generationです。
+Generationのattributesキーの和集合（`patches` キーは変更点の `patches` 行と重複するため
+除きます）。列は各Generationです。
 
 ``` text
               abc123          xyz987
@@ -289,8 +291,6 @@ defects / 配列形式のattributesは項目単位で同じ3段階の扱いを�
 無いセルはdiff装飾なしのプレーン表示です。テーブル上部にはこの3段階ハイライト
 を説明する凡例を表示します。
 
-テーブルは横スクロール可能なコンテナに収め、列数が多くても崩れないようにします。
-
 `created` 行の直後・`summary` 行の直前には、各GenerationのComfyJobから抽出した
 render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.checkpoint` /
 `render.sampler` / `render.steps` / `render.cfg` / `render.denoise` / `render.canvas` /
@@ -299,11 +299,37 @@ render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.c
 その行を黄系ハイライト（diff）します。ComfyJobにgraphが無いGenerationはそのカラムに
 `(no graph)` を表示し、全カラムが値なしの列（render_facts行）はその行ごと表示しません。
 
-続けて `render.positive` / `render.negative` 行（各Generationのpass 1の
+#### 変更点
+
+テーブルの先頭（batch行の前）に、各列が何を変えたかを示す行を置きます。
+いずれもBatchに保存済みの値を表示するだけで、Compareが文面を生成することはありません。
+
+- `instruction` 行: 各GenerationのBatchの `raw_instruction` をそのまま表示します（無ければ `—`）。全列がnullなら行ごと表示しません
+- `patches` 行: 各Batchの `patches_json` のうち、全列には含まれないpatchだけを列ごとに並べます。全列が持つpatchは親から継承されたものなので省きます（patchの同一判定はキー順に依存しないJSON比較）。patchは `target`（`prompt.positive.` は省略、`prompt.negative.` は `negative.` に短縮。例: `artist` / `negative.quality`）に続けて内容を表示します。`replace` で `old` / `value` が文字列なら old→value のトークン単位の差分（削除は赤の取り消し線、追加は緑）、それ以外のopは op と value を簡潔に表示します。`reason` があれば薄い色で後ろに付けます。固有patchの無い列は `（変更なし）`。どの列にも固有patchが無ければ行ごと表示しません
+
+#### プロンプト全文
+
+`render.positive` / `render.negative` 行（各Generationのpass 1の
 positive/negativeプロンプト、値の表現はsemantic行と同じコンセンサス方式の
-トークンハイライト）を並べます。いずれかのGenerationが2pass以上を持つ場合は、
-存在するpass indexごとに `render.positive (pass 2)` / `render.negative (pass 2)`
-のように追加します（全カラムが値なしの行は表示しません）。
+トークンハイライト）は、メインのテーブルには含めず、その下の既定で閉じた
+`<details>`「プロンプト全文（差分）を表示」の中の別テーブルに並べます。いずれかの
+Generationが2pass以上を持つ場合は、存在するpass indexごとに
+`render.positive (pass 2)` / `render.negative (pass 2)` のように追加します
+（全カラムが値なしの行は表示しません）。
+
+#### 同一の行の省略
+
+変更点の行を除き、全列の値が同一の行（`—` や `(not analyzed)` が全列に並ぶ
+semantic行を含む）は既定で非表示です。テーブルの上に「全列同一: seed,
+render.checkpoint, …」と省略した行名を1行で示し、「同一の行も表示」チェックで
+表示に切り替えます。チェックの状態はlocalStorage（`chimera-compare-show-same`）
+に保存します。
+
+#### 固定表示
+
+テーブルは縦横にスクロールできるコンテナに収め、ヘッダ行（short_id）とラベル列を
+sticky固定します。固定セルは両テーマで不透明な背景色を持ち、スクロール中のセルが
+透けません。
 
 Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求も指示テキストの生成も行いません。
 

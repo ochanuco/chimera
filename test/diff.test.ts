@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consensusSegments, matchMask, tokenize } from '../src/ui/diff';
+import { consensusSegments, matchMask, tokenize, twoWayDiff } from '../src/ui/diff';
 
 describe('tokenize', () => {
   it('splits English text into word tokens with whitespace runs preserved', () => {
@@ -84,5 +84,29 @@ describe('consensusSegments', () => {
     const tokens = tokenize('a girl standing');
     const segs = consensusSegments(tokens, tokens.map(() => 2), 2);
     expect(segs).toEqual([{ text: 'a girl standing', type: 'same' }]);
+  });
+});
+
+describe('twoWayDiff', () => {
+  it('marks removed tokens del and inserted tokens add, merging adjacent runs', () => {
+    expect(twoWayDiff('a cat b', 'a dog b')).toEqual([
+      { text: 'a ', type: 'same' },
+      { text: 'cat', type: 'del' },
+      { text: 'dog', type: 'add' },
+      { text: ' b', type: 'same' },
+    ]);
+  });
+
+  it('diffs a decimal weight as one token', () => {
+    expect(twoWayDiff('(oshiki:0.85)', '(oshiki:1.2)')).toEqual([
+      { text: '(oshiki:', type: 'same' },
+      { text: '0.85', type: 'del' },
+      { text: '1.2', type: 'add' },
+      { text: ')', type: 'same' },
+    ]);
+  });
+
+  it('treats an empty old as a pure addition', () => {
+    expect(twoWayDiff('', 'x')).toEqual([{ text: 'x', type: 'add' }]);
   });
 });
