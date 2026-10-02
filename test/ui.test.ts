@@ -1114,7 +1114,7 @@ describe('Web GUI pages', () => {
     it('hides identical rows, lists them in the 全列同一 summary, and offers the toggle', async () => {
       const { body } = await makePair();
       expect(body).toContain('<tr class="compare-same"><td>seed</td>');
-      expect(body).toMatch(/全列同一: [^<]*seed[^<]*render\.checkpoint/);
+      expect(body).toMatch(/全列同一:.*?compare-same-chip[^>]*>seed=.*?compare-same-chip[^>]*>render\.checkpoint=model\.safetensors/s);
       expect(body).toContain('id="compare-show-same"');
       expect(body).not.toMatch(/<tr class="compare-same"><td>(instruction|patches)</);
     });
@@ -1127,6 +1127,45 @@ describe('Web GUI pages', () => {
       expect(details![1]).toContain('プロンプト全文（差分）を表示');
       expect(details![1]).toContain('<td>render.positive</td>');
       expect(body.slice(0, body.indexOf('<details'))).not.toContain('<td>render.positive</td>');
+    });
+
+    describe('object-valued attributes', () => {
+      async function compareWithAttributes(a: Record<string, unknown>, b: Record<string, unknown>) {
+        const { generation: g1 } = await createGeneration();
+        const { generation: g2 } = await createGeneration();
+        for (const [g, attributes] of [[g1, a], [g2, b]] as const) {
+          await postJson(`/api/v1/generations/${g.id}/semantic`, { schema_version: 1, summary: 's', core: {}, strengths: [], defects: [], attributes }, 'PUT');
+        }
+        return (await req(`/compare?ids=${g1.short_id},${g2.short_id}`)).text();
+      }
+
+      it('flattens an object attribute into dotted rows, hiding identical subkeys and listing them as label=value', async () => {
+        const body = await compareWithAttributes(
+          { palette: { sat: 88.6, norm_factor: 0.5 } },
+          { palette: { sat: 70.1, norm_factor: 0.5 } },
+        );
+        expect(body).toContain('<td>palette.sat</td>');
+        expect(body).not.toContain('<tr class="compare-same"><td>palette.sat</td>');
+        expect(body).toContain('<tr class="compare-same"><td>palette.norm_factor</td>');
+        expect(body).toMatch(/<span class="compare-same-chip"[^>]*>palette\.norm_factor=0\.5<\/span>/);
+        expect(body).not.toContain('<td>palette</td>');
+      });
+
+      it('falls back to a single row when a key is an object in one column and a scalar in another', async () => {
+        const body = await compareWithAttributes({ palette: { sat: 1 } }, { palette: 'muted' });
+        expect(body).toContain('<td>palette</td>');
+        expect(body).not.toContain('<td>palette.sat</td>');
+      });
+
+      it('truncates long values in the 全列同一 bar and keeps the full text in title', async () => {
+        const verdict = `FAIL: ${'background saturation '.repeat(6)}end`;
+        const body = await compareWithAttributes({ palette: { verdict } }, { palette: { verdict } });
+        const chip = body.match(/<span class="compare-same-chip"([^>]*)>palette\.verdict=([^<]*)<\/span>/);
+        expect(chip).not.toBeNull();
+        expect(chip![2]).toMatch(/…$/);
+        expect(chip![2]!.length).toBeLessThan(verdict.length);
+        expect(chip![1]).toContain(`title="${verdict.trim()}"`);
+      });
     });
 
     it('does not duplicate a patches semantic attribute as an attribute row', async () => {

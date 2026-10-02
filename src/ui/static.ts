@@ -1156,6 +1156,8 @@ details.section .section-body { margin-top: 0.6rem; }
   text-align: left;
   vertical-align: top;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 .compare-table th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
 .compare-table td:first-child { color: var(--text-dim); white-space: nowrap; }
@@ -1172,6 +1174,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .cmp-patch-part { font-weight: 600; }
 .cmp-patch-reason { color: var(--text-dim); font-size: 0.75rem; }
 .compare-same-bar { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-dim); }
+.compare-same-items { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; align-items: baseline; }
+.compare-same-chip { font-family: ui-monospace, monospace; font-size: 0.75rem; white-space: nowrap; }
 .compare-same-bar label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
 .compare-prompts { margin-top: 1rem; }
 .compare-prompts summary { cursor: pointer; font-size: 0.85rem; color: var(--text-dim); }
