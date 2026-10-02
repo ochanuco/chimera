@@ -106,15 +106,14 @@ status が active / stabilized の Experiment を横断して、`batch_id` が n
 | `set_decision` | `run_id, decision` | 追記 | Run の decision を書く（`null` でクリア） |
 | `create_request` | `kind, payload, recipe_ref?, idempotency_key` | 追記 | requests 行を手組みの payload で積む |
 | `get_request` | `id, include_prompts?` | 読み取り | requests 行1件（payload、done / failed 後は result / error） |
-| `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧。claim はしない |
+| `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧（`kind` は `import` も指定できる）。claim はしない |
 | `derive_request` | `from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?` | 追記 | 既存 Generation を起点にした generate request を積む |
 | `finalize_generation` | `generation_id, options?, profile?, idempotency_key` | 追記 | finalize request を積む |
 | `repair_generation` | `generation_id, options?, idempotency_key` | 追記 | hands / feet の repair request を積む |
 | `masked_redraw_generation` | `generation_id, options, idempotency_key` | 追記 | 任意矩形の garment / local inpaint request を積む。source は不変 |
 | `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
-| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（publications / pose_reference / refines_generation / batch.drawn_pose 込み） |
-| `list_batch` | `batch_id, include_prompts?` | 読み取り | Batch（drawn_pose 込み）/ jobs / generations（rating、bookmark、tags、semantic、seed 込み）/ references / relations / ExperimentRun |
-| `get_generation_lineage` | `generation_id, depth?` | 読み取り | Batch 単位の祖先と子孫。depth 既定 5、上限 10 |
+| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / pose_reference / refines_generation 込み） |
+| `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
 | `get_generation_image` | `short_id, width?` | 読み取り | 縮小した JPEG 画像。載らなければ canonical URL |
 | `list_catalog` | `recipe_ref?` | 読み取り | 公開済み recipe catalog の要約（既定 `"production"`） |
 | `get_catalog_pose` | `recipe, pose, recipe_ref?` | 読み取り | 単一 pose のフルレコードと現行の pin |
@@ -201,22 +200,26 @@ Rating を書けるのは人間だけなので、Agent が単独で preset を�
 `reference=true` は `set_pose_reference` で現在 pin されている Generation の索引です。
 rating は人間の判定として読むもので、Agent が書くものではありません。
 
-`get_generation` / `list_batch` は、REST の `GET /api/v1/generations/{id}` / `GET /api/v1/batches/{id}` と同じ `src/lib/generations.ts` / `src/lib/batches.ts` を呼ぶ別窓口です。
-`list_batch` は UI 向けの siblings などを持たない subset です。
+`get_generation` は、REST の `GET /api/v1/generations/{id}` と同じ `src/lib/generations.ts` を呼ぶ別窓口です。
 
-`batch.drawn_pose`（`{recipe, pose, reference}`）は、その Generation / Batch が描いた pose と、その pose の現行の pin です。
-`reference` は `get_catalog_pose` と同じ形（pin が無ければ `null`）で、Batch が pose を持たなければ `drawn_pose` 自体が `null` です。
+`request` は、その Generation が属する Request です（`{id, short_id, kind, recipe, raw_instruction, prompt, negative_prompt, parameters, patches, preset_versions, git_commit, git_dirty, drawn_pose}`）。
+`prompt` / `negative_prompt` は Request の先頭 Job の render_facts から取ります。
+`siblings`（`{id, short_id, image_width, image_height, comfy_output_index}` の配列）は、同じ Request の他の Generation です。
+
+`request.drawn_pose`（`{recipe, pose, reference}`）は、その Generation が描いた pose と、その pose の現行の pin です。
+`reference` は `get_catalog_pose` と同じ形（pin が無ければ `null`）で、Request が pose を持たなければ `drawn_pose` 自体が `null` です。
 `get_generation` の `pose_reference`（この Generation 自身が pin か）とは別物です。
 
-`refines_generation`（`{id, short_id, rating}`）は、finalize / repair / masked_redraw の出力 Generation について、その Batch の `refines_generation_id` が指す仕上げ前の Generation です。
+`refines_generation`（`{id, short_id, rating}`）は、finalize / repair / masked_redraw の出力 Generation について、その `refines_generation_id` が指す仕上げ前の Generation です。
 raw Generation では `null` なので、仕上げ済みの ID だけ渡されても `get_generation` で元の Generation を引けます。
 
 `get_generation` の `comfy_job.prompt_not_reusable` が null でない Generation（repair / masked_redraw / repair 付き finalize の出力）は、render_facts の prompt が mask 領域用に削られています。
 これを generate の prompt として使わず、その Generation から `derive_request` を起こします（[api.md](api.md#generation-context)）。
 
-`get_generation_lineage` は Batch 単位で祖先と子孫を辿ります。
-祖先は「この Batch が材料に使った Generation の Batch」（`via: "reference"`、`purpose_or_kind` は Reference の purpose）と「この Batch の直接の起点 Batch」（`via: "relation"`、`purpose_or_kind` は BatchRelation の type、例えば `refinement`）の両方を含み、子孫はその逆方向です。
-同じ Batch を二度訪れず、`depth` 段目で止まります。
+`get_generation_lineage` は Request 単位で祖先と子孫を辿ります。
+各ノードは `{depth, via, purpose_or_kind, request: {id, short_id, recipe, raw_instruction, created_at}, generations}` です。
+祖先は「この Request が材料に使った Generation の Request」（`via: "reference"`、`purpose_or_kind` は素材参照の purpose）と「この Request の Generation が仕上げ元にした Generation の Request」（`via: "refinement"`、`purpose_or_kind` は仕上げた Request の kind、例えば `finalize`）の両方を含み、子孫はその逆方向です。
+同じ Request を二度訪れず、`depth` 段目で止まります。
 
 ### derive_request
 
@@ -276,7 +279,7 @@ options に同じキーがあればそちらが勝ち、明示の `null` も上�
 
 ### Experiment サイクルの tool
 
-Run の代表 Generation を選んだあと、その Generation を見て次の一手を決める段になったら `get_generation` / `list_batch` / `get_generation_lineage` を使います。
+Run の代表 Generation を選んだあと、その Generation を見て次の一手を決める段になったら `get_generation` / `get_generation_lineage` を使います。
 
 `create_run` の `overrides` は `{}` か `{"patches": [...]}` 形の diff だけを受け付けます。
 各 patch は `{target, op, reason, ...}` で、`reason` は必須です。
@@ -361,8 +364,8 @@ schema と serializer のずれは、実際に呼ばれるまで表に出ませ�
 
 ### prompt の折り畳み
 
-`get_request` / `list_requests` / `get_generation` / `list_batch` は、既定で prompt 本文を長さマーカーに畳んで返します。
-畳む対象は、requests の payload では prompt override と prompt patch、`get_generation` では batch の prompt / negative_prompt と render_facts の sampler prompt、`list_batch` ではそれに加えて `batch.parameters.prompt_patch` です。
+`get_request` / `list_requests` / `get_generation` は、既定で prompt 本文を長さマーカーに畳んで返します。
+畳む対象は、requests の payload では prompt override と prompt patch、`get_generation` では `request` の prompt / negative_prompt / `parameters.prompt_patch` / prompt を対象にする patch と、render_facts の sampler prompt です。
 `get_generation` はさらに `comfy_job.graph` を省き、`null` にして `comfy_job.graph_omitted: true` を付けます。
 
 ChatGPT の MCP client は tool 結果にコンテンツ分類器をかけており、一度でも prompt のタグに引っかかると、そのセッションでコネクタごと無効化されるためです。

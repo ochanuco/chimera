@@ -1,15 +1,15 @@
 // resolveDerivationSource (lib/requests.ts) と getPresetRow / resolvePreset (lib/presets.ts) の両方に
 // 依存するため独立ファイル — presets.ts が requests.ts を import しない片方向依存を保つため。
 
-import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso } from './db';
-import { resolveDerivationSource } from './requests';
+import { getGenerationByIdOrShortId, nowIso } from './db';
+import { requestOfGeneration, resolveDerivationSource } from './requests';
 import { conflict, notFound } from './errors';
 import { getPresetRow, resolvePreset, serializeResolvedPreset } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
 import { finalizeOptionsSchema } from '../schemas/requests';
 import { presetBodyFinalizeSchema } from '../schemas/presets';
-import type { PresetCreatedBy, PresetKind, PresetRow } from '../types';
+import type { GenerationRow, PresetCreatedBy, PresetKind, PresetRow } from '../types';
 
 export interface PromoteGenerationToPresetInput {
   generation_id: string;
@@ -62,31 +62,24 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
 
   if (generation.rating !== 'good') throw conflict('promote requires rating good');
 
-  const { batch: sourceBatch } = await resolveDerivationSource(db, generation);
-  const recipe = sourceBatch.recipe;
-  if (!recipe) throw conflict('promote requires a recipe-mode batch');
+  const { request: sourceRequest } = await resolveDerivationSource(db, generation);
+  const recipe = sourceRequest.recipe;
+  if (!recipe) throw conflict('promote requires a recipe-mode request');
 
-  // その Batch を作った generate request が pin していた版。段階 B より前の Generation にはこの行が無く、undefined のまま base_version へ落ちる。
-  const buildingRequest = await db
-    .prepare(
-      `SELECT payload_json FROM requests WHERE kind = 'generate' AND json_extract(result_json, '$.batch_id') = ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .bind(sourceBatch.id)
-    .first<{ payload_json: string }>();
-  const pin = buildingRequest ? findPin(buildingRequest.payload_json, input.kind) : undefined;
+  // その Generation を作った generate request が pin していた版。pin を持たない Request では undefined のまま base_version へ落ちる。
+  const pin = sourceRequest.kind === 'generate' ? findPin(sourceRequest.payload_json, input.kind) : undefined;
 
   const baseVersion = input.base_version ?? pin?.version;
   if (baseVersion === undefined) {
     throw conflict('no pinned preset for this generation; pass base_version');
   }
 
-  const batchParameters = parseJsonObjectOrNull(sourceBatch.parameters_json) ?? {};
-  const parameterName = batchParameters[input.kind];
+  const requestParameters = parseJsonObjectOrNull(sourceRequest.parameters_json) ?? {};
+  const parameterName = requestParameters[input.kind];
   const baseName = pin?.name ?? (typeof parameterName === 'string' ? parameterName : undefined);
   if (baseName === undefined) {
     // base_version を渡しても名前が決まらないので、そちらを促すメッセージにはしない。
-    throw conflict(`the source batch names no ${input.kind}; nothing to promote from`);
+    throw conflict(`the source request names no ${input.kind}; nothing to promote from`);
   }
 
   const baseRow = await getPresetRow(db, recipe, input.kind, baseName, baseVersion);
@@ -94,20 +87,20 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
     throw conflict(`preset base missing: ${recipe}/${input.kind}/${baseName}@${baseVersion}`);
   }
 
-  // patches は Batch 行から取る。semantic.attributes.patches は生成後に書き換わりうるので正本になれない
+  // patches は Request 行から取る。semantic.attributes.patches は生成後に書き換わりうるので正本になれない
   // (docs/domain-model.md「Preset」不変条件)。全文上書きと finalize/repair/masked_redraw の出力は patches
   // を持たないのでここで弾かれる。
   let patches: unknown[] = [];
-  if (sourceBatch.patches_json) {
+  if (sourceRequest.patches_json) {
     try {
-      const parsed = JSON.parse(sourceBatch.patches_json) as unknown;
+      const parsed = JSON.parse(sourceRequest.patches_json) as unknown;
       if (Array.isArray(parsed)) patches = parsed;
     } catch {
       patches = [];
     }
   }
   if (patches.length === 0) {
-    throw conflict('promote requires a batch with patches');
+    throw conflict('promote requires a request with patches');
   }
 
   const bodyJson = JSON.stringify({
@@ -138,7 +131,7 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
         input.created_by,
         now,
         input.idempotency_key,
-        sourceBatch.pose_fingerprint,
+        sourceRequest.pose_fingerprint,
         recipe,
         input.kind,
         input.name,
@@ -158,15 +151,11 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   return serializeResolvedPreset(row, await resolvePreset(db, row));
 }
 
-/** The most recent `finalize` request whose `result.batch_id` is `batchId` — i.e. the request that produced it. */
-export async function findFinalizeRequestForBatch(db: D1Database, batchId: string): Promise<{ payload_json: string } | null> {
-  return db
-    .prepare(
-      `SELECT payload_json FROM requests WHERE kind = 'finalize' AND json_extract(result_json, '$.batch_id') = ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .bind(batchId)
-    .first<{ payload_json: string }>();
+/** この Generation が finalize Request の納品物か (promote-profile を出す条件)。 */
+export async function isFinalizeResult(db: D1Database, generation: Pick<GenerationRow, 'request_id'>): Promise<boolean> {
+  if (!generation.request_id) return false;
+  const row = await db.prepare('SELECT kind FROM requests WHERE id = ?').bind(generation.request_id).first<{ kind: string }>();
+  return row?.kind === 'finalize';
 }
 
 export interface PromoteGenerationToProfileInput {
@@ -197,11 +186,9 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
 
   if (generation.rating !== 'good') throw conflict('promote requires rating good');
 
-  const batch = await getBatchByIdOrShortId(db, generation.batch_id);
-  if (!batch || !batch.recipe) throw conflict('promote requires a recipe-mode batch');
-
-  const finalizeRequest = await findFinalizeRequestForBatch(db, batch.id);
-  if (!finalizeRequest) throw conflict('generation is not a finalize-kind result; nothing to promote from');
+  const finalizeRequest = await requestOfGeneration(db, generation);
+  if (!finalizeRequest.recipe) throw conflict('promote requires a recipe-mode request');
+  if (finalizeRequest.kind !== 'finalize') throw conflict('generation is not a finalize-kind result; nothing to promote from');
 
   const payload = JSON.parse(finalizeRequest.payload_json) as { options?: unknown };
   const options = finalizeOptionsSchema.parse(payload.options ?? {});
@@ -218,7 +205,19 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
          SELECT ?, ?, 'finalize', ?, COALESCE(MAX(version), 0) + 1, ?, 'active', 'promote', ?, ?, ?, ?, ?, NULL
          FROM presets WHERE recipe = ? AND kind = 'finalize' AND name = ?`,
       )
-      .bind(id, batch.recipe, input.name, bodyJson, generation.id, input.note ?? null, input.created_by, now, input.idempotency_key, batch.recipe, input.name)
+      .bind(
+        id,
+        finalizeRequest.recipe,
+        input.name,
+        bodyJson,
+        generation.id,
+        input.note ?? null,
+        input.created_by,
+        now,
+        input.idempotency_key,
+        finalizeRequest.recipe,
+        input.name,
+      )
       .run();
   } catch (err) {
     // 同時 promote が UNIQUE (idempotency_key) に落ちるレース (promoteGenerationToPreset と同じ)。

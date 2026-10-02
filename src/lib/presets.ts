@@ -1,7 +1,7 @@
 // Preset のクエリ。読み取り・catalog からの取り込みに加え、版の pin (docs/worker-protocol.md「preset の pin」)
 // もここに置く。promote は resolveDerivationSource (lib/requests.ts) を要るため、循環 import を避けて lib/promote.ts に分けている。
 
-import { getBatchByIdOrShortId, getGenerationByIdOrShortId, nowIso } from './db';
+import { getGenerationByIdOrShortId, nowIso } from './db';
 import { getCatalog } from './catalogs';
 import { badRequest, conflict, notFound } from './errors';
 import { presetBodySchema, presetBodyFinalizeSchema, type PresetBody } from '../schemas/presets';
@@ -391,11 +391,13 @@ export async function applyFinalizeProfile(db: D1Database, payload: JsonObject):
 
   const generation = await getGenerationByIdOrShortId(db, generationId);
   if (!generation) throw notFound('generation');
-  const batch = await getBatchByIdOrShortId(db, generation.batch_id);
-  if (!batch || !batch.recipe) throw notFound('finalize profile');
+  const owner = generation.request_id
+    ? await db.prepare('SELECT recipe FROM requests WHERE id = ?').bind(generation.request_id).first<{ recipe: string | null }>()
+    : null;
+  if (!owner?.recipe) throw notFound('finalize profile');
 
   const version = typeof profile.version === 'number' ? profile.version : undefined;
-  const row = await getPresetRow(db, batch.recipe, 'finalize', profile.name, version);
+  const row = await getPresetRow(db, owner.recipe, 'finalize', profile.name, version);
   if (!row) throw notFound('finalize profile');
 
   const body = presetBodyFinalizeSchema.parse(JSON.parse(row.body_json));

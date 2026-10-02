@@ -37,9 +37,11 @@ export interface GenerationDetailData {
     defects: string[];
     attributes: Record<string, unknown>;
   } | null;
-  batch: {
+  batch: { id: string } | null;
+  request: {
     id: string;
-    short_id: string;
+    short_id: string | null;
+    kind: string;
     prompt: string | null;
     negative_prompt: string | null;
     recipe: string | null;
@@ -47,6 +49,7 @@ export interface GenerationDetailData {
     git_commit: string | null;
     git_dirty: boolean;
   } | null;
+  siblings: { id: string; short_id: string; image_width: number | null; image_height: number | null; comfy_output_index: number | null }[];
   references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   publications: PublicationData[];
@@ -490,8 +493,8 @@ export function GenerationDetailPage({
                 {(() => {
                   const facts = data.comfy_job?.render_facts ?? null;
                   const graph = data.comfy_job?.graph ?? null;
-                  const batchPrompt = data.batch?.prompt ?? null;
-                  const batchNegative = data.batch?.negative_prompt ?? null;
+                  const batchPrompt = data.request?.prompt ?? null;
+                  const batchNegative = data.request?.negative_prompt ?? null;
 
                   if (!facts) {
                     return (
@@ -618,11 +621,11 @@ export function GenerationDetailPage({
               <table class="kv-table">
                 <tr>
                   <td>commit</td>
-                  <td>{data.batch?.git_commit ?? '-'}</td>
+                  <td>{data.request?.git_commit ?? '-'}</td>
                 </tr>
                 <tr>
                   <td>dirty</td>
-                  <td>{data.batch?.git_dirty ? 'yes' : 'no'}</td>
+                  <td>{data.request?.git_dirty ? 'yes' : 'no'}</td>
                 </tr>
               </table>
             </div>

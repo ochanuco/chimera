@@ -1,12 +1,12 @@
 // PairwiseJudgment のクエリと作成ロジック。左右の向き (left/right) は表示時にランダムに割り当てられる
-// ため、baseline / arm のどちらが勝ったかは verdict と各 Generation の batch_id を突き合わせて導く。
+// ため、baseline / arm のどちらが勝ったかは verdict と各 Generation の request_id (Run の結果 Request) を突き合わせて導く。
 
-import { chunk, D1_MAX_BOUND_PARAMS, nowIso } from './db';
+import { chunk, D1_MAX_BOUND_PARAMS, nowIso, resolveRunRequests, runRequestIdSql } from './db';
 import { badRequest, conflict } from './errors';
 import { getRunOr404, listRuns, resolveGenerationOr404, touchExperiment } from './experiments';
 import { uuidv7 } from './uuidv7';
 import { parseJsonObjectOrNull } from './overrides';
-import { diffFactSummaries, resolveBatchRenderFacts, summarizeRenderFacts, type FactDiffEntry } from './render-facts';
+import { diffFactSummaries, resolveRequestRenderFacts, summarizeRenderFacts, type FactDiffEntry } from './render-facts';
 import type { ExperimentRow, ExperimentRunRow, JudgmentVerdict, JudgmentWinner, PairwiseJudgmentRow } from '../types';
 
 /** Run ごとの render_facts サマリに variables を `variables.<key>` として合流させる。A/B の reveal と judgments/summary の render_diff は同じこのマップから作る。 */
@@ -14,12 +14,19 @@ export async function runFactSummary(
   db: D1Database,
   runs: ExperimentRunRow[],
 ): Promise<Map<string, Record<string, string | null>>> {
-  const batchIds = runs.map((r) => r.batch_id).filter((id): id is string => id !== null);
-  const factsByBatch = await resolveBatchRenderFacts(db, batchIds);
+  const requestByRunId = await resolveRunRequests(
+    db,
+    runs.map((r) => r.id),
+  );
+  const factsByRequest = await resolveRequestRenderFacts(
+    db,
+    Array.from(requestByRunId.values()).map((r) => r.id),
+  );
 
   const map = new Map<string, Record<string, string | null>>();
   for (const run of runs) {
-    const facts = run.batch_id ? factsByBatch.get(run.batch_id) ?? null : null;
+    const requestId = requestByRunId.get(run.id)?.id;
+    const facts = requestId ? factsByRequest.get(requestId) ?? null : null;
     const summary: Record<string, string | null> = summarizeRenderFacts(facts);
     summary.positive = facts?.samplers[0]?.prompt.positive ?? null;
     summary.negative = facts?.samplers[0]?.prompt.negative ?? null;
@@ -43,7 +50,7 @@ export interface CreateJudgmentInput {
   verdict: JudgmentVerdict;
 }
 
-/** `leftIsArm` = 左側の Generation が arm run の batch から出たものか。 */
+/** `leftIsArm` = 左側の Generation が arm run の Request から出たものか。 */
 function computeWinner(verdict: JudgmentVerdict, leftIsArm: boolean): JudgmentWinner {
   if (verdict === 'tie') return 'tie';
   const chosenIsArm = verdict === 'left' ? leftIsArm : !leftIsArm;
@@ -78,12 +85,15 @@ export async function createJudgment(
   if (baseline.experiment_id !== experiment.id || arm.experiment_id !== experiment.id) {
     throw badRequest('baseline_run_id / arm_run_id belongs to a different experiment');
   }
-  if (!baseline.batch_id || !arm.batch_id) {
-    throw conflict('run has no batch attached');
+  const requestByRunId = await resolveRunRequests(db, [baseline.id, arm.id]);
+  const baselineRequestId = requestByRunId.get(baseline.id)?.id;
+  const armRequestId = requestByRunId.get(arm.id)?.id;
+  if (!baselineRequestId || !armRequestId) {
+    throw conflict('run has no request attached');
   }
-  // 同じ Batch を指す 2 つの Run では、どちらの Generation も両方の Run のものになり勝者を導けない。
-  if (baseline.batch_id === arm.batch_id) {
-    throw badRequest('baseline and arm runs share the same batch');
+  // 同じ Request を指す 2 つの Run では、どちらの Generation も両方の Run のものになり勝者を導けない。
+  if (baselineRequestId === armRequestId) {
+    throw badRequest('baseline and arm runs share the same request');
   }
 
   const [leftGeneration, rightGeneration] = await Promise.all([
@@ -91,14 +101,14 @@ export async function createJudgment(
     resolveGenerationOr404(db, body.right_generation_id),
   ]);
 
-  const leftIsBaseline = leftGeneration.batch_id === baseline.batch_id;
-  const leftIsArm = leftGeneration.batch_id === arm.batch_id;
-  const rightIsBaseline = rightGeneration.batch_id === baseline.batch_id;
-  const rightIsArm = rightGeneration.batch_id === arm.batch_id;
+  const leftIsBaseline = leftGeneration.request_id === baselineRequestId;
+  const leftIsArm = leftGeneration.request_id === armRequestId;
+  const rightIsBaseline = rightGeneration.request_id === baselineRequestId;
+  const rightIsArm = rightGeneration.request_id === armRequestId;
   const validOrientation = (leftIsBaseline && rightIsArm) || (leftIsArm && rightIsBaseline);
   if (!validOrientation) {
     throw badRequest(
-      'left/right generations must be one from the baseline run batch and one from the arm run batch',
+      'left/right generations must be one from the baseline run request and one from the arm run request',
     );
   }
 
@@ -161,7 +171,7 @@ export async function listJudgments(
 ): Promise<{ row: PairwiseJudgmentRow; winner: JudgmentWinner }[]> {
   const { results } = await db
     .prepare(
-      `SELECT j.*, (g.batch_id = a.batch_id) AS left_is_arm
+      `SELECT j.*, (g.request_id = ${runRequestIdSql('a')}) AS left_is_arm
        FROM pairwise_judgments j
        JOIN experiment_runs a ON a.id = j.arm_run_id
        JOIN generations g ON g.id = j.left_generation_id
@@ -200,12 +210,12 @@ export interface JudgmentPairSummary {
 export interface JudgmentRunSummary {
   run_id: string;
   run_index: number;
-  batch_id: string | null;
+  request_id: string | null;
   generation_count: number;
   rating: { good: number; neutral: number; bad: number; unrated: number };
 }
 
-/** Experiment 全体の A/B 集計。runs は Experiment の全 Run (batch 未 attach でも 0 件で含む)。 */
+/** Experiment 全体の A/B 集計。runs は Experiment の全 Run (結果 Request が無くても 0 件で含む)。 */
 export async function judgmentSummary(
   db: D1Database,
   experiment: ExperimentRow,
@@ -217,14 +227,14 @@ export async function judgmentSummary(
            COUNT(*) AS total,
            SUM(CASE
                  WHEN j.verdict = 'tie' THEN 0
-                 WHEN j.verdict = 'left' AND g.batch_id = a.batch_id THEN 1
-                 WHEN j.verdict = 'right' AND g.batch_id != a.batch_id THEN 1
+                 WHEN j.verdict = 'left' AND g.request_id = ${runRequestIdSql('a')} THEN 1
+                 WHEN j.verdict = 'right' AND g.request_id IS NOT ${runRequestIdSql('a')} THEN 1
                  ELSE 0
                END) AS win,
            SUM(CASE
                  WHEN j.verdict = 'tie' THEN 0
-                 WHEN j.verdict = 'left' AND g.batch_id != a.batch_id THEN 1
-                 WHEN j.verdict = 'right' AND g.batch_id = a.batch_id THEN 1
+                 WHEN j.verdict = 'left' AND g.request_id IS NOT ${runRequestIdSql('a')} THEN 1
+                 WHEN j.verdict = 'right' AND g.request_id = ${runRequestIdSql('a')} THEN 1
                  ELSE 0
                END) AS loss,
            SUM(CASE WHEN j.verdict = 'tie' THEN 1 ELSE 0 END) AS tie
@@ -250,30 +260,34 @@ export async function judgmentSummary(
     listRuns(db, experiment.id),
   ]);
 
-  const batchIds = runs.map((r) => r.batch_id).filter((id): id is string => id !== null);
-  const ratingByBatch = new Map<
+  const requestByRunId = await resolveRunRequests(
+    db,
+    runs.map((r) => r.id),
+  );
+  const requestIds = Array.from(requestByRunId.values()).map((r) => r.id);
+  const ratingByRequest = new Map<
     string,
     { good: number; neutral: number; bad: number; unrated: number; total: number }
   >();
-  for (const part of chunk(batchIds, D1_MAX_BOUND_PARAMS)) {
+  for (const part of chunk(requestIds, D1_MAX_BOUND_PARAMS)) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
       .prepare(
-        `SELECT batch_id, rating, COUNT(*) AS n
+        `SELECT request_id, rating, COUNT(*) AS n
          FROM generations
-         WHERE batch_id IN (${placeholders})
-         GROUP BY batch_id, rating`,
+         WHERE request_id IN (${placeholders})
+         GROUP BY request_id, rating`,
       )
       .bind(...part)
-      .all<{ batch_id: string; rating: string | null; n: number }>();
+      .all<{ request_id: string; rating: string | null; n: number }>();
     for (const row of results ?? []) {
-      const entry = ratingByBatch.get(row.batch_id) ?? { good: 0, neutral: 0, bad: 0, unrated: 0, total: 0 };
+      const entry = ratingByRequest.get(row.request_id) ?? { good: 0, neutral: 0, bad: 0, unrated: 0, total: 0 };
       if (row.rating === 'good') entry.good += row.n;
       else if (row.rating === 'neutral') entry.neutral += row.n;
       else if (row.rating === 'bad') entry.bad += row.n;
       else entry.unrated += row.n;
       entry.total += row.n;
-      ratingByBatch.set(row.batch_id, entry);
+      ratingByRequest.set(row.request_id, entry);
     }
   }
 
@@ -295,11 +309,12 @@ export async function judgmentSummary(
       ),
     })),
     runs: runs.map((r) => {
-      const counts = r.batch_id ? ratingByBatch.get(r.batch_id) : undefined;
+      const requestId = requestByRunId.get(r.id)?.id ?? null;
+      const counts = requestId ? ratingByRequest.get(requestId) : undefined;
       return {
         run_id: r.id,
         run_index: r.run_index,
-        batch_id: r.batch_id,
+        request_id: requestId,
         generation_count: counts?.total ?? 0,
         rating: {
           good: counts?.good ?? 0,

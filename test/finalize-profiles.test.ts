@@ -77,7 +77,6 @@ async function setRatingGood(generationId: string): Promise<void> {
  */
 async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
   const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
-  const { batch: deliveredBatch, generation: delivered } = await createGeneration({ batchOverrides: { recipe } });
 
   const finalizeReq = await postJson<RequestBody>('/api/v1/requests', {
     kind: 'finalize',
@@ -90,6 +89,11 @@ async function createFinalizeResult(recipe: string, options: Record<string, unkn
   const claimed = await claim(`worker-${crypto.randomUUID()}`);
   expect(claimed.status).toBe(200);
   expect(claimed.body!.id).toBe(finalizeReq.body.id);
+
+  // worker と同じく、納品物の Batch は idempotency_key `request:{id}` でこの finalize request に紐づく。
+  const { batch: deliveredBatch, generation: delivered } = await createGeneration({
+    batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+  });
 
   const done = await postJson(
     `/api/v1/requests/${finalizeReq.body.id}`,
@@ -518,7 +522,6 @@ describe('result.resolved_options (worker-written, opaque)', () => {
   it('/g/{short_id} of the delivered row renders requested vs resolved options when the worker wrote resolved_options', async () => {
     const recipe = uniqueRecipe();
     const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
-    const { batch: deliveredBatch, generation: delivered } = await createGeneration({ batchOverrides: { recipe } });
 
     const finalizeReq = await postJson<{ id: string }>('/api/v1/requests', {
       kind: 'finalize',
@@ -534,6 +537,9 @@ describe('result.resolved_options (worker-written, opaque)', () => {
       body: JSON.stringify({ worker_id: `worker-${crypto.randomUUID()}` }),
     });
     const claimedBody = (await claimed.json()) as { worker_id: string };
+    const { batch: deliveredBatch, generation: delivered } = await createGeneration({
+      batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+    });
 
     const done = await postJson(
       `/api/v1/requests/${finalizeReq.body.id}`,

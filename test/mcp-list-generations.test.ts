@@ -107,16 +107,16 @@ describe('MCP list_generations', () => {
     expect(call.data?.pose_reference).toEqual({ recipe, pose: 'lounge' });
   });
 
-  it('get_generation and list_batch report the drawn pose with its current pin', async () => {
+  it('get_generation reports the drawn pose with its current pin', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { generation: pinned, batch } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: pinned } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
     const { generation: older } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
 
     // Before any pin: the drawn pose is known, its reference is null.
     const unpinned = await mcpToolCall<GenerationWithDrawnPose>('get_generation', { generation_id: older.short_id });
     expect(unpinned.isError).toBe(false);
-    expect(unpinned.data?.batch.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: null });
+    expect(unpinned.data?.request?.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: null });
     expect(unpinned.data?.pose_reference).toBeNull();
 
     await postJson(`/api/v1/generations/${pinned.id}/rating`, { rating: 'good' }, 'PUT');
@@ -126,28 +126,24 @@ describe('MCP list_generations', () => {
 
     // The pinned Generation sees itself as the reference and as pose_reference.
     const self = await mcpToolCall<GenerationWithDrawnPose>('get_generation', { generation_id: pinned.short_id });
-    expect(self.data?.batch.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: expectedReference });
+    expect(self.data?.request?.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: expectedReference });
     expect(self.data?.pose_reference).toEqual({ recipe, pose: 'lounge' });
 
     // A sibling that drew the same pose but is not the pin still learns where the pin is.
     const sibling = await mcpToolCall<GenerationWithDrawnPose>('get_generation', { generation_id: older.short_id });
-    expect(sibling.data?.batch.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: expectedReference });
+    expect(sibling.data?.request?.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: expectedReference });
     expect(sibling.data?.pose_reference).toBeNull();
-
-    const digest = await mcpToolCall<{ batch: { drawn_pose: unknown } }>('list_batch', { batch_id: batch.short_id });
-    expect(digest.isError).toBe(false);
-    expect(digest.data?.batch.drawn_pose).toEqual({ recipe, pose: 'lounge', reference: expectedReference });
   });
 
-  it('drawn_pose is null when the Batch names no pose', async () => {
+  it('drawn_pose is null when the request names no pose', async () => {
     const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe(), parameters: { kind: 'hires-chain' } } });
     const call = await mcpToolCall<GenerationWithDrawnPose>('get_generation', { generation_id: generation.short_id });
     expect(call.isError).toBe(false);
-    expect(call.data?.batch.drawn_pose).toBeNull();
+    expect(call.data?.request?.drawn_pose).toBeNull();
   });
 });
 
 interface GenerationWithDrawnPose {
   pose_reference: { recipe: string; pose: string } | null;
-  batch: { drawn_pose: { recipe: string; pose: string; reference: unknown } | null };
+  request: { drawn_pose: { recipe: string; pose: string; reference: unknown } | null } | null;
 }

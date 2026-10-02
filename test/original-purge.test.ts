@@ -50,6 +50,8 @@ beforeEach(async () => {
     // while generations.batch_id points at batches — a genuine FK cycle, so back-references must
     // be cleared before either table's rows can be deleted.
     env.DB.prepare('UPDATE batches SET refines_generation_id = NULL'),
+    env.DB.prepare('UPDATE generations SET refines_generation_id = NULL'),
+    env.DB.prepare('UPDATE comfy_jobs SET source_generation_id = NULL'),
     env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
     env.DB.prepare('DELETE FROM generation_assets'),
     env.DB.prepare('DELETE FROM pairwise_judgments'),
@@ -59,6 +61,7 @@ beforeEach(async () => {
     env.DB.prepare('DELETE FROM preset_references'),
     env.DB.prepare('DELETE FROM presets'),
     env.DB.prepare('DELETE FROM batch_references'),
+    env.DB.prepare('DELETE FROM request_references'),
     env.DB.prepare('DELETE FROM requests'),
     env.DB.prepare('DELETE FROM generations'),
     env.DB.prepare('DELETE FROM comfy_jobs'),
@@ -175,30 +178,32 @@ describe('purgeOldOriginals', () => {
     expect(await originalPurgedAt(generation.id)).toBeNull();
   });
 
-  it('keeps a Generation used as another Batch\'s reference material (batch_references)', async () => {
+  it('keeps a Generation used as another Request\'s reference material (request_references)', async () => {
     const { generation } = await createGeneration();
     await putRealOriginal(generation.id);
     await ageGeneration(generation.id, 31);
-    const otherBatch = await createGeneration();
+    const other = await createGeneration();
     await env.DB.prepare(
-      `INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at)
+      `INSERT INTO request_references (id, source_generation_id, target_request_id, purpose, aspect, instruction, created_at)
        VALUES (?, ?, ?, 'composition', NULL, NULL, ?)`,
     )
-      .bind(crypto.randomUUID(), generation.id, otherBatch.batch.id, NOW)
+      .bind(crypto.randomUUID(), generation.id, other.batch.id, NOW)
       .run();
 
     await purgeOldOriginals(env, NOW, 10);
     expect(await originalPurgedAt(generation.id)).toBeNull();
   });
 
-  it('keeps a Generation another Batch refines (refines_generation_id)', async () => {
+  it('keeps a Generation another Generation refines (generations.refines_generation_id)', async () => {
     const { generation } = await createGeneration();
     await putRealOriginal(generation.id);
     await ageGeneration(generation.id, 31);
-    const refinedBatch = await createGeneration();
-    await env.DB.prepare('UPDATE batches SET refines_generation_id = ? WHERE id = ?')
-      .bind(generation.id, refinedBatch.batch.id)
+    const refined = await createGeneration();
+    await env.DB.prepare('UPDATE generations SET refines_generation_id = ? WHERE id = ?')
+      .bind(generation.id, refined.generation.id)
       .run();
+    // Batch 側に何も無くても、Generation 間の仕上げ元参照だけで保護される。
+    await env.DB.prepare('UPDATE batches SET refines_generation_id = NULL').run();
 
     await purgeOldOriginals(env, NOW, 10);
     expect(await originalPurgedAt(generation.id)).toBeNull();

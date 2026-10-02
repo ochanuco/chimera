@@ -59,69 +59,59 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
   return payload;
 }
 
-/** `resolveDerivationSource` が遡れる refinement Batch の連鎖の上限。循環データに対する安全弁。 */
+/** `resolveDerivationSource` が遡れる仕上げ連鎖の上限。循環データに対する安全弁。 */
 const MAX_DERIVATION_HOPS = 10;
 
 export interface DerivationSource {
   generation: GenerationRow;
-  batch: BatchRow;
+  request: RequestRow;
 }
 
 /**
- * `derive_request` の起点解決。finalize/repair が積む refinement Batch は `parameters_json` が
+ * `derive_request` の起点解決。finalize/repair が積む Request は `parameters_json` が
  * 仕上げ payload で generate parameters ではないため、そのまま親にすると worker のバリデーションに落ちる。
- * incoming `batch_relations(type='refinement')` を遡り、対になる `batch_references(purpose='rebuild')` が
- * 指す raw Generation/Batch まで戻す (lib/lineage.ts の祖先探索と同じ2テーブル)。
+ * `generations.refines_generation_id` を遡り、仕上げ元の無い raw Generation とその Request まで戻す。
  */
 export async function resolveDerivationSource(db: D1Database, generation: GenerationRow): Promise<DerivationSource> {
-  let currentGeneration = generation;
-  let currentBatch = await getBatchByIdOrShortId(db, generation.batch_id);
-  if (!currentBatch) throw notFound(`batch '${generation.batch_id}'`);
+  let current = generation;
 
   for (let hop = 0; hop < MAX_DERIVATION_HOPS; hop++) {
-    const relation = await db
-      .prepare(`SELECT source_batch_id FROM batch_relations WHERE target_batch_id = ? AND type = 'refinement' LIMIT 1`)
-      .bind(currentBatch.id)
-      .first<{ source_batch_id: string }>();
-    if (!relation) return { generation: currentGeneration, batch: currentBatch };
-
-    const rebuild = await db
-      .prepare(
-        `SELECT br.source_generation_id AS generation_id
-         FROM batch_references br
-         JOIN generations g ON g.id = br.source_generation_id
-         WHERE br.target_batch_id = ? AND br.purpose = 'rebuild' AND g.batch_id = ?
-         LIMIT 1`,
-      )
-      .bind(currentBatch.id, relation.source_batch_id)
-      .first<{ generation_id: string }>();
-    if (!rebuild) {
-      throw conflict(`refinement batch '${currentBatch.short_id}' has no rebuild reference; cannot resolve a derivation source`);
+    if (!current.refines_generation_id) {
+      const request = await requestOfGeneration(db, current);
+      if (request.kind === 'finalize' || request.kind === 'repair' || request.kind === 'masked_redraw') {
+        throw conflict(`refinement request '${request.short_id ?? request.id}' has no source generation; cannot resolve a derivation source`);
+      }
+      return { generation: current, request };
     }
-
-    const nextGeneration = await getGenerationByIdOrShortId(db, rebuild.generation_id);
-    const nextBatch = await getBatchByIdOrShortId(db, relation.source_batch_id);
-    if (!nextGeneration || !nextBatch) {
-      throw conflict(`refinement batch '${currentBatch.short_id}' has no rebuild reference; cannot resolve a derivation source`);
+    const next = await getGenerationByIdOrShortId(db, current.refines_generation_id);
+    if (!next) {
+      throw conflict(`refinement generation '${current.short_id}' has no source generation; cannot resolve a derivation source`);
     }
-
-    currentGeneration = nextGeneration;
-    currentBatch = nextBatch;
+    current = next;
   }
 
-  throw conflict(`refinement batch '${currentBatch.short_id}' derivation chain exceeds ${MAX_DERIVATION_HOPS} hops`);
+  throw conflict(`refinement generation '${current.short_id}' derivation chain exceeds ${MAX_DERIVATION_HOPS} hops`);
+}
+
+/** Generation が属する Request。所属が無い (request_id が NULL か行が無い) Generation は 404。 */
+export async function requestOfGeneration(db: D1Database, generation: Pick<GenerationRow, 'request_id' | 'short_id'>): Promise<RequestRow> {
+  const row = generation.request_id
+    ? await db.prepare('SELECT * FROM requests WHERE id = ?').bind(generation.request_id).first<RequestRow>()
+    : null;
+  if (!row) throw notFound(`request of generation '${generation.short_id}'`);
+  return row;
 }
 
 export interface BuildDerivedRequestPayloadInput {
   parentGenerationId: string;
   /** Set only when the caller (derive_request) resolved a different Generation than the one requested — the finalized/repaired pick the agent looked at. Adds a second purpose="derive" reference. */
   requestedGenerationId?: string;
-  /** null/empty means the parent Batch is graph-mode (no single recipe) and cannot be derived. */
+  /** null/empty means the parent Request is graph-mode (no single recipe) and cannot be derived. */
   parentRecipe: string | null;
   parentParameters: JsonObject;
-  /** Parent Batch's `patches_json` (the request's own patch layer; the pinned preset's patches are not included), or `[]` if absent. */
+  /** Parent Request's `patches_json` (the request's own patch layer; the pinned preset's patches are not included), or `[]` if absent. */
   parentPatches: unknown[];
-  /** Parent Batch's `preset_versions_json` pins, or `[]` if absent (docs/worker-protocol.md「preset の pin」). */
+  /** Parent Request's `preset_versions_json` pins, or `[]` if absent (docs/worker-protocol.md「preset の pin」). */
   parentPresets: { kind: string; name: string; version: number }[];
   /** Whether the parent recipe has any Preset row at all (`recipeHasPresets` in ./presets) — a recipe with none has no preset body that can drift, so replaying its patches without a pin stays safe. */
   parentRecipeHasPresets: boolean;
@@ -144,14 +134,14 @@ export interface BuildDerivedRequestPayloadInput {
  */
 export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInput): JsonObject {
   if (!input.parentRecipe) {
-    throw conflict('parent batch has no recipe; a graph-mode batch cannot be derived');
+    throw conflict('parent request has no recipe; a graph-mode request cannot be derived');
   }
   // patches は書かれた時点の preset 本文への差分。pin が無いと worker が現行版を解決し、差分の宛先がずれて
   // text op が needle 不在で落ちる (docs/worker-protocol.md「preset の pin」)。
   if (!input.replacePatches && input.parentPatches.length > 0 && input.parentPresets.length === 0 && input.parentRecipeHasPresets) {
     throw conflict(
-      'parent batch carries patches but no pinned preset version, so the preset body those patches target may have moved since; ' +
-        'pass replace_patches: true with patches restated against the current preset, or derive from a batch that has pins',
+      'parent request carries patches but no pinned preset version, so the preset body those patches target may have moved since; ' +
+        'pass replace_patches: true with patches restated against the current preset, or derive from a request that has pins',
     );
   }
 
@@ -160,7 +150,7 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
     ? (input.patches ?? [])
     : [...input.parentPatches, ...(input.patches ?? [])];
 
-  // A pin carries forward only for a kind the caller didn't override. Batch's `parameters_json` holds the
+  // A pin carries forward only for a kind the caller didn't override. The parent Request's `parameters_json` holds the
   // worker-resolved `recipe_pose`, not the preset name, so the carried pin's `name` overwrites
   // `mergedParameters[kind]` to keep the two in sync (docs/worker-protocol.md「preset の pin」).
   const overriddenKinds = new Set(Object.keys(input.parameters ?? {}));
@@ -484,7 +474,7 @@ export async function claimRequest(
 export interface UpdateRequestInput {
   status: 'running' | 'queued' | 'done' | 'failed' | 'cancelled';
   worker_id?: string;
-  result?: { batch_id: string; generation_ids: string[]; recipe_commit?: string };
+  result?: { batch_id?: string; generation_ids: string[]; recipe_commit?: string };
   error?: string;
 }
 
@@ -549,53 +539,57 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   const pins = extractPins(JSON.parse(row.payload_json));
   const presetVersionsJson = pins && pins.length > 0 ? JSON.stringify(pins) : null;
 
+  const doneStatement = db
+    .prepare(
+      'UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ?, preset_versions_json = COALESCE(?, preset_versions_json) WHERE id = ?',
+    )
+    .bind('done', resultJson, now, now, presetVersionsJson, row.id);
+
   if (row.run_id) {
     const run = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(row.run_id).first<ExperimentRunRow>();
     if (!run) throw notFound('experiment run');
 
-    const batch = await getBatchByIdOrShortId(db, result.batch_id);
-    if (!batch) throw notFound(`batch '${result.batch_id}'`);
+    // 結果の Run への紐づけは requests.run_id が持つ。batch_id は Batch 廃止まで experiment_runs.batch_id への attach 用に受理する。
+    if (result.batch_id) {
+      const batch = await getBatchByIdOrShortId(db, result.batch_id);
+      if (!batch) throw notFound(`batch '${result.batch_id}'`);
 
-    // Run に既に別の batch が付いていれば409で、request 行も done になりません (worker-protocol.md「Update Request」)。
-    if (run.batch_id && run.batch_id !== batch.id) {
-      throw conflict('run already has a different batch attached');
-    }
+      // Run に既に別の batch が付いていれば409で、request 行も done になりません (worker-protocol.md「Update Request」)。
+      if (run.batch_id && run.batch_id !== batch.id) {
+        throw conflict('run already has a different batch attached');
+      }
 
-    // request の done と experiment_runs.batch_id の attach を単一トランザクションにする（片方だけの状態を作らない）。
-    const statements = [
-      db
-        .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-        .bind('done', resultJson, now, now, row.id),
-      db
-        .prepare('UPDATE experiment_runs SET batch_id = ?, updated_at = ? WHERE id = ? AND (batch_id IS NULL OR batch_id = ?)')
-        .bind(batch.id, now, run.id, batch.id),
-    ];
-    if (presetVersionsJson) {
-      statements.push(
-        db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
-        presetVersionsStatement(db, batch.id, presetVersionsJson),
-      );
+      // request の done と experiment_runs.batch_id の attach を単一トランザクションにする（片方だけの状態を作らない）。
+      const statements = [
+        doneStatement,
+        db
+          .prepare('UPDATE experiment_runs SET batch_id = ?, updated_at = ? WHERE id = ? AND (batch_id IS NULL OR batch_id = ?)')
+          .bind(batch.id, now, run.id, batch.id),
+      ];
+      if (presetVersionsJson) {
+        statements.push(
+          db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
+          presetVersionsStatement(db, batch.id, presetVersionsJson),
+        );
+      }
+      statements.push(runAttachStatement(db, batch.id, run.id));
+      await db.batch(statements);
+    } else {
+      await doneStatement.run();
     }
-    statements.push(runAttachStatement(db, batch.id, run.id));
-    await db.batch(statements);
     await touchExperiment(db, run.experiment_id, now);
   } else {
     // pin の記録は付随的なもの: result.batch_id が解決できなければ request の完了は妨げず、
-    // preset_versions_json の書き込みだけ飛ばす（run_id 経路は batch 未解決を 409/404 で拒む契約のまま）。
-    const batch = presetVersionsJson ? await getBatchByIdOrShortId(db, result.batch_id) : null;
+    // Batch 側の preset_versions_json の書き込みだけ飛ばす。
+    const batch = presetVersionsJson && result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : null;
     if (presetVersionsJson && batch) {
       await db.batch([
-        db
-          .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-          .bind('done', resultJson, now, now, row.id),
+        doneStatement,
         db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
         presetVersionsStatement(db, batch.id, presetVersionsJson),
       ]);
     } else {
-      await db
-        .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-        .bind('done', resultJson, now, now, row.id)
-        .run();
+      await doneStatement.run();
     }
   }
 

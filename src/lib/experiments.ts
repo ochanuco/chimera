@@ -7,14 +7,15 @@ import {
   getExperimentByIdOrShortId,
   getGenerationByIdOrShortId,
   nowIso,
-  resolveBatchThumbnails,
+  resolveRequestThumbnails,
+  resolveRunRequests,
   touchExperiment,
 } from './db';
 import { parseJsonObjectOrNull, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { listTagsForTarget } from './tags';
 import { isUuid, uuidv7 } from './uuidv7';
-import { resolveBatchRenderFacts } from './render-facts';
+import { resolveRequestRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
 import { runAttachStatement } from './batch-request-sync';
@@ -104,20 +105,14 @@ export async function latestRunByExperiment(
   return map;
 }
 
-/** Run に紐づく Batch / Generation を1回のクエリずつで解決する。Generation 未 attach でも Batch のサムネイルは出す。 */
+/** Run に紐づく結果 Request / Generation を1回のクエリずつで解決する。Generation 未 attach でも Request のサムネイルは出す。 */
 export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org: string) {
-  const batchIds = runs.map((r) => r.batch_id).filter((id): id is string => id !== null);
   const generationIds = runs.map((r) => r.generation_id).filter((id): id is string => id !== null);
-
-  const batchMap = new Map<string, { id: string; short_id: string }>();
-  for (const part of chunk(batchIds, D1_MAX_BOUND_PARAMS)) {
-    const placeholders = part.map(() => '?').join(', ');
-    const { results } = await db
-      .prepare(`SELECT id, short_id FROM batches WHERE id IN (${placeholders})`)
-      .bind(...part)
-      .all<{ id: string; short_id: string }>();
-    for (const row of results ?? []) batchMap.set(row.id, row);
-  }
+  const requestByRunId = await resolveRunRequests(
+    db,
+    runs.map((r) => r.id),
+  );
+  const requestIds = Array.from(requestByRunId.values()).map((r) => r.id);
 
   const generationMap = new Map<string, GenerationRow>();
   for (const part of chunk(generationIds, D1_MAX_BOUND_PARAMS)) {
@@ -129,24 +124,24 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
     for (const row of results ?? []) generationMap.set(row.id, row);
   }
 
-  const batchThumbnails = await resolveBatchThumbnails(db, batchIds);
-  const renderFactsByBatch = await resolveBatchRenderFacts(db, batchIds);
+  const requestThumbnails = await resolveRequestThumbnails(db, requestIds);
+  const renderFactsByRequest = await resolveRequestRenderFacts(db, requestIds);
 
   return runs.map((run) => {
-    const batch = run.batch_id ? batchMap.get(run.batch_id) ?? null : null;
-    const thumbShortId = run.batch_id ? batchThumbnails.get(run.batch_id) ?? null : null;
+    const request = requestByRunId.get(run.id) ?? null;
+    const thumbShortId = request ? requestThumbnails.get(request.id) ?? null : null;
     const generation = run.generation_id ? generationMap.get(run.generation_id) ?? null : null;
     return {
       ...serializeExperimentRun(run),
-      batch: batch
+      request: request
         ? {
-            id: batch.id,
-            short_id: batch.short_id,
+            id: request.id,
+            short_id: request.short_id,
             thumbnail_url: thumbShortId ? generationPreviewUrl(org, thumbShortId) : null,
           }
         : null,
       generation: generation ? serializeGenerationLight(generation, org) : null,
-      render_facts: run.batch_id ? renderFactsByBatch.get(run.batch_id) ?? null : null,
+      render_facts: request ? renderFactsByRequest.get(request.id) ?? null : null,
     };
   });
 }
@@ -308,11 +303,16 @@ export async function getRunWithExperimentContext(db: D1Database, run: Experimen
   return { decorated: decorated!, experiment };
 }
 
-/** Batch に属する Generation の軽量表現一覧（get_run MCP tool 用）。 */
-export async function listGenerationsLightForBatch(db: D1Database, batchId: string, org: string) {
+/** Run の結果 Request に属する Generation の軽量表現一覧（get_run MCP tool 用）。 */
+export async function listGenerationsLightForRun(db: D1Database, runId: string, org: string) {
   const { results } = await db
-    .prepare('SELECT * FROM generations WHERE batch_id = ? ORDER BY created_at ASC')
-    .bind(batchId)
+    .prepare(
+      `SELECT * FROM generations
+       WHERE request_id = (SELECT x.id FROM requests x WHERE x.run_id = ?1 AND x.status = 'done' AND x.kind IN ('generate', 'import')
+                           ORDER BY x.created_at DESC, x.id DESC LIMIT 1)
+       ORDER BY created_at ASC`,
+    )
+    .bind(runId)
     .all<GenerationRow>();
   return (results ?? []).map((g) => serializeGenerationLight(g, org));
 }
@@ -553,12 +553,25 @@ export async function updateExperimentRun(
     if (run.generation_id && run.generation_id !== generation.id) {
       throw conflict('run already has a generation attached');
     }
-    if (!effectiveBatchId) {
-      throw conflict('run has no batch attached; attach a batch before attaching a generation');
-    }
-    if (generation.batch_id !== effectiveBatchId) {
+    const requestRunId = generation.request_id
+      ? (
+          await db
+            .prepare('SELECT run_id FROM requests WHERE id = ?')
+            .bind(generation.request_id)
+            .first<{ run_id: string | null }>()
+        )?.run_id ?? null
+      : null;
+    const belongsToRunRequest = requestRunId === run.id;
+    const belongsToRunBatch = effectiveBatchId !== null && generation.batch_id === effectiveBatchId;
+    if (!belongsToRunRequest && !belongsToRunBatch) {
+      const resolved = await resolveRunRequests(db, [run.id]);
+      if (!effectiveBatchId && !resolved.has(run.id)) {
+        throw conflict('run has no batch attached; attach a batch or a request result before attaching a generation');
+      }
       throw conflict(
-        `generation belongs to batch ${generation.batch_id}, not the run's batch ${effectiveBatchId}`,
+        effectiveBatchId
+          ? `generation belongs to batch ${generation.batch_id}, not the run's batch ${effectiveBatchId}`
+          : `generation belongs to request ${generation.request_id}, not the run's request`,
       );
     }
     assign('generation_id', generation.id);

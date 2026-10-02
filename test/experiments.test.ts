@@ -514,7 +514,7 @@ describe('Generation / Batch linkage', () => {
     const decoratedRun = detail.body.runs.find((r: any) => r.id === run.body.id) as any;
     expect(decoratedRun.generation).toMatchObject({ id: generation.id });
     expect(decoratedRun.generation.thumbnail_url).toBeTruthy();
-    expect(decoratedRun.batch).toMatchObject({ short_id: batch.short_id });
+    expect(decoratedRun.request).toMatchObject({ short_id: batch.short_id });
   });
 
   it('409s when attaching a batch that another run already owns (create and PATCH)', async () => {

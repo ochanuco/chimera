@@ -7,9 +7,9 @@ import { PromptChips } from '../components/PromptChips';
 import type { ExperimentStatus } from '../../types';
 import { StatusBadge } from './Experiments';
 
-export interface ExperimentDetailRunBatch {
+export interface ExperimentDetailRunRequest {
   id: string;
-  short_id: string;
+  short_id: string | null;
   thumbnail_url: string | null;
 }
 
@@ -33,7 +33,6 @@ export interface ExperimentDetailRun {
   experiment_id: string;
   run_index: number;
   parent_run_id: string | null;
-  batch_id: string | null;
   generation_id: string | null;
   overrides: JsonObject;
   objective: string | null;
@@ -42,7 +41,7 @@ export interface ExperimentDetailRun {
   note: string | null;
   created_at: string;
   updated_at: string;
-  batch: ExperimentDetailRunBatch | null;
+  request: ExperimentDetailRunRequest | null;
   generation: ExperimentDetailRunGeneration | null;
   render_facts: RenderFacts | null;
   variables: Record<string, string | number> | null;
@@ -78,7 +77,7 @@ export interface ExperimentJudgmentPairSummary {
 export interface ExperimentJudgmentRunSummary {
   run_id: string;
   run_index: number;
-  batch_id: string | null;
+  request_id: string | null;
   generation_count: number;
   rating: { good: number; neutral: number; bad: number; unrated: number };
 }
@@ -247,21 +246,21 @@ function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
 }
 
 function renderRunThumbnail(run: ExperimentDetailRun) {
-  if (!run.generation && !run.batch) return null;
+  if (!run.generation && !run.request) return null;
   return (
     <div class="exp-run-thumb">
       {run.generation ? (
         <a href={run.generation.canonical_url}>
           <img src={run.generation.thumbnail_url} alt="" />
         </a>
-      ) : run.batch && run.batch.thumbnail_url ? (
-        <a href={`/b/${run.batch.short_id}`}>
-          <img src={run.batch.thumbnail_url} alt="" />
+      ) : run.request && run.request.short_id && run.request.thumbnail_url ? (
+        <a href={`/b/${run.request.short_id}`}>
+          <img src={run.request.thumbnail_url} alt="" />
         </a>
       ) : null}
-      {run.batch ? (
-        <a class="exp-run-batch-link" href={`/b/${run.batch.short_id}`}>
-          batch {run.batch.short_id}
+      {run.request && run.request.short_id ? (
+        <a class="exp-run-batch-link" href={`/b/${run.request.short_id}`}>
+          batch {run.request.short_id}
         </a>
       ) : null}
     </div>
@@ -340,7 +339,7 @@ function renderDecision(decision: JsonObject | null) {
 
 function renderRun(run: ExperimentDetailRun, runs: ExperimentDetailRun[], experimentShortId: string, baseline: ExperimentDetailRun | null) {
   const overall = run.evaluation && typeof run.evaluation.overall === 'string' ? run.evaluation.overall : null;
-  const showAbLink = baseline !== null && run.id !== baseline.id && run.batch_id !== null && baseline.batch_id !== null;
+  const showAbLink = baseline !== null && run.id !== baseline.id && run.request !== null && baseline.request !== null;
   return (
     <section class="exp-run" id={`run-${run.id}`}>
       <div class="exp-run-head">

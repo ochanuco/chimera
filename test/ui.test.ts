@@ -168,13 +168,13 @@ describe('Web GUI pages', () => {
     expect(html).toContain('Raw graph');
   });
 
-  it('GET /g/{short_id} shows "(no graph)" and the request prompt chips for a Generation whose Job never got a graph', async () => {
+  it('GET /g/{short_id} shows "(no graph)" and no prompt chips for a Generation whose Job never got a graph (the request prompt comes from render_facts)', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}`);
     const html = await res.text();
     expect(html).toContain('Workflow');
     expect(html).toContain('(no graph)');
-    expect(html).toContain('class="prompt-chip"');
+    expect(html).not.toContain('class="prompt-chip"');
   });
 
   it('GET /g/{short_id} shows Pass 2 and "continues pass 1" for a chain (hires-fix) graph', async () => {
@@ -1241,7 +1241,6 @@ describe('Finalize profiles and word dials (GUI)', () => {
   /** Mirrors test/finalize-profiles.test.ts's createFinalizeResult: claims and completes a finalize request. */
   async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
     const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
-    const { batch: deliveredBatch, generation: delivered } = await createGeneration({ batchOverrides: { recipe } });
 
     const finalizeReq = await postJson<RequestBody>('/api/v1/requests', {
       kind: 'finalize',
@@ -1253,6 +1252,11 @@ describe('Finalize profiles and word dials (GUI)', () => {
 
     const claimRes = await postJson<RequestBody>('/api/v1/requests/claim', { worker_id: `worker-${crypto.randomUUID()}` }, 'POST');
     expect(claimRes.status).toBe(200);
+
+    // worker と同じく、納品物の Batch は idempotency_key `request:{id}` でこの finalize request に紐づく。
+    const { batch: deliveredBatch, generation: delivered } = await createGeneration({
+      batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+    });
 
     const done = await postJson(
       `/api/v1/requests/${finalizeReq.body.id}`,

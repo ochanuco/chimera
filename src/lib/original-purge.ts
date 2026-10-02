@@ -27,8 +27,8 @@ export const PURGE_ELIGIBLE_SQL = `(g.rating IS NULL OR g.rating = 'bad')
     AND NOT EXISTS (SELECT 1 FROM preset_references pr WHERE pr.generation_id = g.id OR pr.source_generation_id = g.id)
     AND NOT EXISTS (SELECT 1 FROM presets p WHERE p.source_generation_id = g.id)
     AND NOT EXISTS (SELECT 1 FROM experiments e WHERE e.base_generation_id = g.id)
-    AND NOT EXISTS (SELECT 1 FROM batch_references br WHERE br.source_generation_id = g.id)
-    AND NOT EXISTS (SELECT 1 FROM batches b WHERE b.refines_generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM request_references rr WHERE rr.source_generation_id = g.id)
+    AND NOT EXISTS (SELECT 1 FROM generations rg WHERE rg.refines_generation_id = g.id)
     AND NOT EXISTS (
       SELECT 1 FROM requests r
       WHERE r.kind IN ('finalize', 'repair', 'masked_redraw')
