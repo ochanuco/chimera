@@ -297,7 +297,12 @@ function CompareTable({ items, rows }: { items: CompareItem[]; rows: CompareRow[
         <tr>
           <th></th>
           {items.map((item) => (
-            <th>{item.short_id}</th>
+            <th>
+              <a class="thumb-link compare-head-link" href={`/g/${item.short_id}`}>
+                {item.short_id}
+                <img class="thumb-fg" src={item.thumbnail_url} alt="" hidden loading="lazy" />
+              </a>
+            </th>
           ))}
         </tr>
       </thead>
