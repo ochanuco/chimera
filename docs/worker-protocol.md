@@ -90,8 +90,8 @@ release は worker が自分から手放す遷移で、途絶の判定を待た�
 attempt の扱いは途絶と同じ規則です。
 
 戻す先を queued にするのは、途絶の大半が worker の再起動・回線断で、生成自体は
-やり直せるためです。ただし再実行が重複 Batch を作ってはいけないので、worker
-は Batch / Job の `idempotency_key` を requests 行の `id` から導出します（後述）。
+やり直せるためです。ただし再実行が重複 Job を作ってはいけないので、worker
+は Job の `idempotency_key` を requests 行の `id` から導出します（後述）。
 
 ## API
 
@@ -114,9 +114,11 @@ POST /api/v1/requests
 }
 ```
 
-201 で行を返します。`idempotency_key` の再送は、`kind` と payload の正規化ハッシュが
+201 で行を返します。行には作成時に `short_id`（6 文字の英数小文字）を発行します。`short_id` は
+requests と batches の間で重複せず、Claim の応答と `GET /requests/{id}` にも含まれます。
+`idempotency_key` の再送は、`kind` と payload の正規化ハッシュが
 一致するときだけ既存行を 200 で返し、同じキーで別の `kind` / payload が来たら 409 です
-（`requests.payload_hash` に保存）。Batch / Job の「同じ要求の再送は 200」と同じ契約で、
+（`requests.payload_hash` に保存）。Job の「同じ要求の再送は 200」と同じ契約で、
 「同じキーで別の要求」を弾く点だけ厳しくしています。
 
 `run_id` は `kind = generate` かつ `payload.experiment.run_id` があるときに chimera が
@@ -140,6 +142,31 @@ form しか持たないことで保っており、API が `created_by`
 省略時の既定は wrangler の var `REQUESTS_DEFAULT_RECIPE_REF`（`production`）で、Run
 自動起票、`POST /requests`、MCP `create_request` の全てに効きます。
 存在しない ref は worker 側で `failed`（error に checkout 失敗）になります。
+
+#### kind = import
+
+手加工・合成・poster などキューを通らない画像を登録する枠です。worker は claim しません。
+登録する側が `status: "done"` を付けて作り、解決済みの値を同じボディに平置きで渡します
+（[Resolution](#resolution) の PUT と同じ項目。`parameters` は必須）。
+
+``` json
+{
+  "kind": "import",
+  "status": "done",
+  "idempotency_key": "import:…",
+  "created_by": "brain",
+  "recipe": null,
+  "raw_instruction": "手加工",
+  "parameters": { "kind": "hand-edit" },
+  "git_commit": "abc1234",
+  "git_dirty": false
+}
+```
+
+`payload` は任意で、省略時は `{"schema_version": 1, "request": {"instruction": <raw_instruction>}}` を
+保存します。再送の一致は payload と解決済みの値の両方で見ます（`idempotency_key` が同じで内容が
+違えば 409）。`finished_at` は作成時刻で、claim も `PATCH`（cancelled を含む）も受け付けません（409）。
+作成後は `POST /requests/{id}/jobs` で Job を作り、通常どおり ingest します。
 
 ### List Requests
 
@@ -234,14 +261,12 @@ GET /api/v1/requests/{id}
 ### result
 
 ``` json
-{ "batch_id": "...", "generation_ids": ["...", "..."] }
+{ "generation_ids": ["...", "..."] }
 ```
 
-generate は作った Batch と ingest した Generation。finalize は納品 Batch（source
-Generation への `rebuild` Reference と source Batch への Refinement を持つ、現行
-`finalize.py` と同じ）と、その Generation です。repair も同じ形（納品 Batch と
-その Generation）で、finalize と同じ Refinement 系譜を持ちます。masked_redraw も
-同じ形ですが、元 Generation を変更せず、明示したマスク領域だけを worker が
+ingest した Generation の id です。finalize / repair / masked_redraw の Generation は、
+Job の `source_generation_id` を `refines_generation_id` として持ちます。`batch_id` は
+互換のため受理しますが、不要です。masked_redraw は元 Generation を変更せず、明示したマスク領域だけを worker が
 `comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
 
 finalize / repair / masked_redraw の done はこれに加えて `resolved_options`
@@ -323,13 +348,13 @@ preset が patches を持つので、patch の入口は preset・`generation.pat
 `generation.patches` / `experiment.overrides.patches` です。この順は派生の意味そのもの
 （派生 = 派生元 + α）なので、preset と `generation.patches` の併用は禁止しません。
 
-worker が Batch に記録する `patches` は request 自身の分（α）だけで、preset 側の分は
+worker が resolution に記録する `patches` は request 自身の分（α）だけで、preset 側の分は
 含みません。preset の分は `preset_versions_json` の版を解決すれば出るので、両方書くと
 昇格と派生がそれを二重に取り込みます。
 
-`POST /api/v1/batches` は `patches` が空でないとき `pose_fingerprint` を必須にします
-（無ければ 400）。patches を持つ Batch は昇格の材料なので、fingerprint を欠くとその
-preset だけ base の drift を検出できなくなります。graph モードの Batch はどちらも
+`PUT /requests/{id}/resolution` は `patches` が空でないとき `pose_fingerprint` を必須にします
+（無ければ 400）。patches を持つ Request は昇格の材料なので、fingerprint を欠くとその
+preset だけ base の drift を検出できなくなります。graph モードの Request はどちらも
 持たないので、両方省けば通ります。
 
 `generation.prompt` / `negative_prompt` による全文上書きと preset の併用は、今まで通り
@@ -446,7 +471,7 @@ LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも fi
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
   repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。Anima の絵を deliver_only で使うときは worker が無視する。redraw と組み合わせるときは効く）
   repair_seeds        null | integer (1-8)      `--repair-seeds N`（`deliver_only` と `repair` / `repair_regions` を組み合わせた時だけ効く。seed ごとに1候補を作る数、worker 既定 4）
-  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / keep_regions / upscale との併用を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Batch として記録する（raw + delivered を seed ごとに1組）。Anima 以外の絵は `deliver_only` でしか finalize できない）
+  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / keep_regions / upscale との併用を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Job として記録する（raw + delivered を seed ごとに1組）。Anima 以外の絵は `deliver_only` でしか finalize できない）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
 妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
@@ -492,7 +517,7 @@ profile は finalize options をまとめて一発で選ぶための、chimera �
 組み合わせるか」という、良かった結果から人間が育てる chimera 側の再利用単位です。
 
 `payload.profile` は `{ name, version? }`。chimera は requests 行を作るときに、source
-Generation の Batch が持つ `recipe` でその profile を解決し（`version` 省略は最新
+Generation の Request が持つ `recipe` でその profile を解決し（`version` 省略は最新
 `active` 版）、`payload.options = { ...profile.options, ...payload.options }`
 （`payload.options` の同じキーが勝つ。明示 `null` も含めて勝つ）と展開してから hash・
 保存します。`profile` 自身も解決した版で `{ name, version }` に書き換えて保存します。
@@ -602,18 +627,14 @@ worker 既定です。chimera は prompt の意味や recipe の graph を解釈
 
 worker の永続化は次の形を必須とします。
 
-1. source Generation は更新せず、request id から `Batch` / `ComfyJob` の idempotency key
-   を導出して新しい refinement Batch を作る。
-2. target Batch に `refinement` (`source_batch_id` = source Batch、`type` = `refinement`)
-   と `references` (`source_generation_id` = source Generation、`purpose` = `rebuild`)
-   を同じ作成リクエストで渡す。`aspect` は `masked_redraw`、`instruction` と
-   `raw_instruction` は `prompt_patch` とする。
-3. `parameters` / `prompt` に resolved source と masked-redraw options（regions、prompt
-   patch、denoise、padding、feather、size、seeds）を保存し、後から request と Batch の
-   両方だけで再現できるようにする。
-4. 新しい Generation を target Batch に ingest し、`PATCH /requests/{id}` の `done.result`
-   に target `batch_id` と ingest 済み `generation_ids` を返す。source の id を result に
-   入れたり、source の画像を差し替えたりしてはいけない。
+1. source Generation は更新せず、request id から `ComfyJob` の idempotency key を導出する。
+2. `PUT /requests/{id}/resolution` の `raw_instruction` に `prompt_patch` を、`parameters` に
+   resolved source と masked-redraw options（regions、prompt patch、denoise、padding、
+   feather、size、seeds）を保存し、後から request だけで再現できるようにする。
+3. `POST /requests/{id}/jobs` に `source_generation_id`（source Generation）を渡す。
+4. 新しい Generation を ingest し、`PATCH /requests/{id}` の `done.result` に ingest 済み
+   `generation_ids` を返す。source の id を result に入れたり、source の画像を差し替えたり
+   してはいけない。
 
 これは chimera 内に ComfyUI graph を複製する契約ではなく、comfyui-recipes 側の
 inpaint/masked-img2img adapter に渡す narrow boundary です。worker は source Generation
@@ -628,11 +649,10 @@ inpaint/masked-img2img adapter に渡す narrow boundary です。worker は sou
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
   requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
-  Batch           `request:{request_id}`                             worker が導出
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
 
-worker は Batch / Job / Generation のいずれにも uuid4 を持ち込まず、requests 行の
+worker は Job / Generation のいずれにも uuid4 を持ち込まず、requests 行の
 `id` から全部を導出します。state.json はキャッシュであって正本ではなく、失っても
 chimera への再送だけで同じ行に戻れます。
 
@@ -642,10 +662,37 @@ UUID です。ComfyUI の prompt_id は `comfy_jobs.comfy_prompt_id` に別途�
 ComfyUI 実行が走り、同じ `comfy_output_index` を ingest すれば既存 Generation を 200 で
 返します（画像は差し替えません）。
 
-### 再送レスポンスに含めるもの
+### Resolution
 
-Batch / Job の `idempotency_key` 再送で 200 が返るとき、レスポンスは新規作成時と
-同じ形に加えて再開に必要な情報を含めます。
+claim した worker は、生成の前に解決済みの値を Request へ報告します。
+
+``` text
+PUT /api/v1/requests/{id}/resolution
+```
+
+``` json
+{
+  "recipe": "yukari",
+  "raw_instruction": "…",
+  "parameters": { "pose": "lounge" },
+  "patches": [{ "target": "prompt.positive.pose", "op": "append", "reason": "…" }],
+  "pose_fingerprint": "…",
+  "preset_versions": [{ "kind": "pose", "name": "lounge", "version": 3 }],
+  "git_commit": "abc1234",
+  "git_dirty": false,
+  "references": [{ "source_generation_id": "…", "purpose": "pose", "aspect": "composition", "instruction": "…" }],
+  "worker_id": "…"
+}
+```
+
+- 必須は `parameters` だけで、他は省略 / null 可（graph-mode の `recipe` は null）。`patches` が空でないとき `pose_fingerprint` は必須で、無ければ 400。`preset_versions` の省略は「触らない」
+- `references[].source_generation_id` は `generation_id` でも受理し、UUID / short_id のどちらでも渡せる。無い Generation は 404。`purpose = rebuild` は保存しない（仕上げ元は Job の `source_generation_id` で表す）
+- Job がまだ無い間は何度でも上書きできる。Job が 1 件でもあるときは、同じ値の再送だけが 200 で、違う値は 409
+- `worker_id` が claim と違えば 409。cancelled の Request は 409
+- Request の status は変えない（claim と `PATCH` が持つ）
+
+応答は `{ "id", "short_id", "status", "jobs": [...] }` です。`jobs[]` は再開に必要な情報で、
+各 Job の `index` / `seed` / `status` / `comfy_prompt_id` と ingest 済み `generations[]` を含みます。
 
 ``` json
 {
@@ -659,24 +706,38 @@ Batch / Job の `idempotency_key` 再送で 200 が返るとき、レスポン�
 }
 ```
 
-`POST /api/v1/batches` の再送は `jobs[]`（各 Job の `seed` / `status` /
-`comfy_prompt_id` / ingest 済み `generations[]`）を含み、`POST /api/v1/batches/{id}/jobs`
-の再送は当該 Job の同じ形を返します。worker は `status = ingested` の Job を飛ばし、
-それ以外を記録済み `seed` で再実行します。`graph` は再送レスポンスに含めません
-（recipe と seed から再構築でき、同じ graph に戻るのは snapshot test が担保します）。
+`graph` は含めません（recipe と seed から再構築でき、同じ graph に戻るのは snapshot test が担保します）。
+
+### Job
+
+``` text
+POST /api/v1/requests/{id}/jobs
+{ "idempotency_key": "request:{request_id}:job:{index}", "seed": 123, "index": 0, "source_generation_id": "…" }
+```
+
+- resolution を報告する前は 409
+- `kind` が finalize / repair / masked_redraw のとき `source_generation_id` は必須（無ければ 400、無い Generation は 404）。generate / import では指定できない（400）。UUID / short_id のどちらでも渡せる。1 Request に source の違う Job を持てる
+- 新規は 201 で `{ id, request_id, seed, index, status: "created", comfy_prompt_id: null, source_generation_id, generations: [] }`。同じ `idempotency_key` の再送は 200 で同じ形に現在の `status` と ingest 済み `generations[]` を載せる
+- ingest は `POST /api/v1/jobs/{jobId}/generations`。Generation は Job の Request と `source_generation_id`（`refines_generation_id`）を引き継ぐ
+
+worker は `status = ingested` の Job を飛ばし、それ以外を記録済み `seed` で再実行します。
 
 ### 再開の手順
 
 worker が claim した requests 行（`attempt >= 2`）に対して:
 
-1. `POST /api/v1/batches` を `request:{request_id}` で再送し、`jobs[]` を得る
+1. `PUT /api/v1/requests/{id}/resolution` を同じ値で再送し、`jobs[]` を得る
 2. `status = ingested` の Job は飛ばす
-3. 残りの Job について `POST /batches/{id}/jobs` を同じキーで再送し、返った `seed` で生成
+3. 残りの Job について `POST /requests/{id}/jobs` を同じキーで再送し、返った `seed` で生成
 4. ingest は通常通り。既存 `(comfy_job_id, comfy_output_index)` は 200 で戻る
 5. 全 Job が ingested になったら `PATCH /requests/{id}` に `done`
 
-finalize / repair / masked_redraw の再実行も同じ規則です。source Generation ごとに新しい納品 Batch を
-作るのは仕様で、同じ requests 行の再実行だけが同じ Batch に戻ります。
+finalize / repair / masked_redraw の再実行も同じ規則です。
+
+`/api/v1/batches` は段階 4 で撤去するまで互換のために受理しますが、worker は使いません。
+chimera は内部に、Request と同じ値を持つ互換用の Batch（`id` は Request の `id`、
+`idempotency_key` は `request:{id}`、`short_id` は Request のもの）を保ち、Request が done /
+failed になれば completed / failed にします。
 
 ## ExperimentRun 由来の generate
 
@@ -862,7 +923,7 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
     comfyui-recipes 側の動作は何も変わりません。
 -   段階 B、pin と昇格。chimera が request に版を pin し、worker が pin された preset を
     解決して patches を `generation.patches` の前に畳みます。受領時 lint と
-    `promote_to_pose` をここで入れ、worker は Batch 作成時に patches と pose レコードの
+    `promote_to_pose` をここで入れ、worker は resolution の報告時に patches と pose レコードの
     fingerprint を送るようになります。
 -   段階 C、記録の集約。experiments JSONL を chimera に寄せます。ただし粒度が揃って
     いません。JSONL は「1 観測 1 レコード、append-only、反証されたら古いレコードを
@@ -924,8 +985,8 @@ chimera が patch を検証するのにこれが要ります。
 -   agent が preset を壊す。promote は非破壊で新しい版を足すだけです。既存の版は残り、
     request 側が版を指名します。
 -   base が動いて patches が当たらなくなる。text op は needle 不在で落ちますが、worker の
-    claim 直後の probe が Batch を作る前に落とし、request が `failed` になります。
-    `derive_request` は pin の無い Batch の patches を引き継がないので、この経路では
+    claim 直後の probe が resolution を報告する前に落とし、request が `failed` になります。
+    `derive_request` は pin の無い Request の patches を引き継がないので、この経路では
     request を積む前に 409 になります。`base_fingerprint` の突き合わせで、使う前に
     気付けるようにします。
 -   chimera が落ちると preset を引けない。claim 自体 chimera を要するので、cache が効く窓は
@@ -937,7 +998,7 @@ chimera が patch を検証するのにこれが要ります。
   書き手を自分のエージェント以外に広げる場合は、graph モードを worker 側で許可制にし、
   chimera 側でも `created_by` ごとに `generation.graph` の受理可否を設ける。
 - `recipe_ref` は preset が chimera に移った後は「何が描かれたか」を特定しません。特定するのは
-  `(git_commit, 解決済みの preset の版)` の組で、worker は Batch を作るときに解決した版を
+  `(git_commit, 解決済みの preset の版)` の組で、worker は resolution を報告するときに解決した版を
   記録します。`recipe_ref` が指すのはコードのブランチだけになります。
 - `recipe_ref` は origin のブランチ名に限ります。段階 2 の worker は自分の checkout
   のブランチと一致する `recipe_ref` だけを受け、違えば `failed`

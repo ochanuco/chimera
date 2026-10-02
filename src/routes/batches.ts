@@ -130,7 +130,12 @@ batches.post('/', async (c) => {
   }
 
   const id = uuidv7();
-  const shortId = await createUniqueShortId(db, 'batches');
+  // Request に作成時に発行した short_id がある Request 紐づきの Batch は、それを引き継ぐ (/b/{short_id} を 1 つに保つ)。
+  const linkedRequestId = body.idempotency_key.startsWith('request:') ? body.idempotency_key.slice('request:'.length) : null;
+  const linkedShortId = linkedRequestId
+    ? ((await db.prepare('SELECT short_id FROM requests WHERE id = ?').bind(linkedRequestId).first<{ short_id: string | null }>())?.short_id ?? null)
+    : null;
+  const shortId = linkedShortId ?? (await createUniqueShortId(db, 'batches', ['requests']));
   const now = nowIso();
   const row: BatchRow = {
     id,
