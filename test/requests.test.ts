@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createGeneration, getJson, postJson, req } from './helpers';
+import { createGeneration, getJson, ingestGeneration, postJson, req } from './helpers';
 
 // claim() grabs the globally oldest queued row with no way to scope it to this test's
 // own rows, so FIFO / kinds / stale-requeue assertions need an empty table to start from.
@@ -696,8 +696,12 @@ describe('PATCH /api/v1/requests/{id}', () => {
     expect(done.body.status).toBe('done');
     expect(done.body.result).toEqual({ batch_id: batch.id, generation_ids: [] });
 
-    const updatedRun = await getJson<{ batch_id: string | null }>(`/api/v1/experiment-runs/${run.body.id}`);
-    expect(updatedRun.body.batch_id).toBe(batch.id);
+    const attached = await env.DB.prepare('SELECT batch_id FROM experiment_runs WHERE id = ?')
+      .bind(run.body.id)
+      .first<{ batch_id: string | null }>();
+    expect(attached?.batch_id).toBe(batch.id);
+    const updatedRun = await getJson<Record<string, unknown>>(`/api/v1/experiment-runs/${run.body.id}`);
+    expect(updatedRun.body).not.toHaveProperty('batch_id');
   });
 
   it('done: 409s when the run already has a different batch attached, and the request stays running', async () => {
@@ -752,7 +756,7 @@ describe('PATCH /api/v1/requests/{id}', () => {
 });
 
 describe('GET /api/v1/requests', () => {
-  it('filters by status, kind, run_id, generation_id (short_id), batch_id, and pending=true', async () => {
+  it('filters by status, kind, run_id, generation_id (short_id), and pending=true', async () => {
     const exp = await createExperiment();
     const run = await createRun(exp.body.id);
     const generateReq = await postJson<RequestBody>(
@@ -805,35 +809,32 @@ describe('GET /api/v1/requests', () => {
     const byShortId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${gA.short_id}`);
     expect(byShortId.body.items.map((r) => r.id)).toEqual([finalizeA.body.id]);
 
-    // batch_id: both generations belong to the same batch
-    const byBatch = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${batch.id}`);
-    expect(byBatch.body.items.map((r) => r.id).sort()).toEqual([finalizeA.body.id, finalizeB.body.id].sort());
+    // batch_id is no longer a filter: it is ignored rather than narrowing the list.
+    const ignoredBatchFilter = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${batch.id}&limit=200`);
+    expect(ignoredBatchFilter.body.items.map((r) => r.id)).toEqual(
+      expect.arrayContaining([generateReq.body.id, finalizeA.body.id, finalizeB.body.id]),
+    );
   });
 
-  it('generation_id / batch_id also return repair rows alongside finalize rows', async () => {
-    const { batch, generation } = await createGeneration();
+  it('generation_id also returns repair rows alongside finalize rows', async () => {
+    const { generation } = await createGeneration();
     const finalizeReq = await createFinalizeRequest(generation.id);
     const repairReq = await createRepairRequest(generation.id);
 
     const byGenerationId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}`);
     expect(byGenerationId.body.items.map((r) => r.id).sort()).toEqual([finalizeReq.body.id, repairReq.body.id].sort());
 
-    const byBatchId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${batch.id}`);
-    expect(byBatchId.body.items.map((r) => r.id).sort()).toEqual([finalizeReq.body.id, repairReq.body.id].sort());
-
-    // kind narrows within the generation_id / batch_id set as usual.
+    // kind narrows within the generation_id set as usual.
     const repairOnly = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=repair`);
     expect(repairOnly.body.items.map((r) => r.id)).toEqual([repairReq.body.id]);
   });
 
-  it('generation_id / batch_id include masked_redraw rows', async () => {
-    const { batch, generation } = await createGeneration();
+  it('generation_id includes masked_redraw rows', async () => {
+    const { generation } = await createGeneration();
     const masked = await createMaskedRedrawRequest(generation.id);
 
     const byGeneration = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}`);
     expect(byGeneration.body.items.map((r) => r.id)).toEqual([masked.body.id]);
-    const byBatch = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${batch.id}`);
-    expect(byBatch.body.items.map((r) => r.id)).toEqual([masked.body.id]);
   });
 });
 
@@ -842,7 +843,7 @@ interface RequestSummaryBody {
   workers: unknown[];
   groups: {
     key: string;
-    batch: { id: string; short_id: string; thumbnail_generation_short_id: string | null } | null;
+    request: { id: string; short_id: string | null; thumbnail_generation_short_id: string | null } | null;
     experiment: { id: string; short_id: string } | null;
     href: string | null;
     kinds: Record<string, number>;
@@ -864,7 +865,7 @@ describe('GET /api/v1/requests/summary', () => {
     expect(Array.isArray(res.body.workers)).toBe(true);
   });
 
-  it('tracks a finalize request through queued -> running -> failed, grouped by its source batch', async () => {
+  it('tracks a finalize request through queued -> running -> failed, grouped by its source request', async () => {
     const { batch, generation } = await createGeneration();
     const created = await createFinalizeRequest(generation.id);
     expect(created.status).toBe(201);
@@ -873,8 +874,9 @@ describe('GET /api/v1/requests/summary', () => {
     expect(afterCreate.body.counts.queued).toBe(1);
     expect(afterCreate.body.groups).toHaveLength(1);
     const group = afterCreate.body.groups[0]!;
-    expect(group.batch?.short_id).toBe(batch.short_id);
-    expect(group.href).toBe(`/b/${batch.short_id}`);
+    expect(group.key).toBe(`request:${batch.id}`);
+    expect(group.request).toEqual({ id: batch.id, short_id: batch.short_id, thumbnail_generation_short_id: generation.short_id });
+    expect(group.href).toBe(`/g/${generation.short_id}`);
     expect(group.kinds.finalize).toBe(1);
     expect(group.counts).toEqual({ queued: 1, running: 0, failed: 0 });
 
@@ -897,6 +899,26 @@ describe('GET /api/v1/requests/summary', () => {
     expect(afterFail.body.counts).toEqual({ queued: 0, running: 0, failed_24h: 1 });
     expect(afterFail.body.groups).toHaveLength(1);
     expect(afterFail.body.groups[0]!.counts).toEqual({ queued: 0, running: 0, failed: 1 });
+  });
+
+  it('groups finalize requests of every Generation of one Request into a single row linking to its first Generation', async () => {
+    const { batch, job, generation: first } = await createGeneration();
+    const second = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00002_.png', comfy_output_index: 1 });
+    expect(second.status).toBe(201);
+    const other = await createGeneration();
+
+    await createFinalizeRequest(first.id);
+    await createFinalizeRequest(second.body.short_id);
+    await createFinalizeRequest(other.generation.id);
+
+    const res = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
+    expect(res.body.groups).toHaveLength(2);
+    const shared = res.body.groups.find((g) => g.request?.id === batch.id)!;
+    expect(shared.kinds.finalize).toBe(2);
+    expect(shared.counts.queued).toBe(2);
+    expect(shared.href).toBe(`/g/${first.short_id}`);
+    const alone = res.body.groups.find((g) => g.request?.id === other.batch.id)!;
+    expect(alone.kinds.finalize).toBe(1);
   });
 
   it('groups generate requests with a run_id by their experiment', async () => {

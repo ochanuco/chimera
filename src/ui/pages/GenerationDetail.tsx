@@ -1,12 +1,12 @@
 import { Layout } from '../layout';
 import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
+import type { GenerationFamily } from '../../lib/generation-family';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { FinalizeSection } from '../components/FinalizeSection';
 import type { BackdropOption } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
-import { MiniMap, hasMiniMapContent, type MiniMapRow } from '../components/MiniMap';
 import { NoteSection } from '../components/NoteSection';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
@@ -37,7 +37,6 @@ export interface GenerationDetailData {
     defects: string[];
     attributes: Record<string, unknown>;
   } | null;
-  batch: { id: string } | null;
   request: {
     id: string;
     short_id: string | null;
@@ -50,8 +49,6 @@ export interface GenerationDetailData {
     git_dirty: boolean;
   } | null;
   siblings: { id: string; short_id: string; image_width: number | null; image_height: number | null; comfy_output_index: number | null }[];
-  references: { id: string; target_batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
-  used_by: { id: string; batch_id: string; purpose: string | null; aspect: string | null; instruction: string | null; created_at: string }[];
   publications: PublicationData[];
   pose_reference: PoseReferenceData | null;
   refines_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null } | null;
@@ -64,15 +61,6 @@ export interface GenerationDetailData {
     render_facts: RenderFacts | null;
   } | null;
   original_filename: string | null;
-}
-
-/** ExperimentRun 由来の 4 軸目 (docs/domain-model.md「Experiment」節)。BatchReference / BatchRelation / StoryRelation とは別物。 */
-export interface ExperimentRunFamily {
-  experiment: { id: string; short_id: string; name: string };
-  run: { id: string; run_index: number };
-  parent: { run_id: string; run_index: number; batch_id: string } | null;
-  children: { run_id: string; run_index: number; batch_id: string }[];
-  siblings: { run_id: string; run_index: number; batch_id: string }[];
 }
 
 /** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
@@ -91,11 +79,6 @@ export interface FinalizeRequestSummary {
 export interface ProducedByOptions {
   requested: Record<string, unknown> | null;
   resolved: Record<string, unknown>;
-}
-
-function refLink(prefix: '/b/' | '/g/', id: string, shortIds: Map<string, string>) {
-  const shortId = shortIds.get(id);
-  return { href: `${prefix}${shortId ?? id}`, label: shortId ?? id };
 }
 
 /** `LoRA name @strength_model (clip strength_clip)`, omitting the clip part when absent or equal to strength_model. */
@@ -172,15 +155,7 @@ export function GenerationDetailPage({
   path,
   data,
   tags,
-  storyLinks,
-  miniMapRows,
-  batchShortIds,
-  generationShortIds,
-  batchThumbnails,
-  parentReferences,
-  relationsIncoming,
-  relationsOutgoing,
-  experimentRun,
+  family,
   imageMeta,
   finalizeRequests,
   finalizeDials,
@@ -195,22 +170,8 @@ export function GenerationDetailPage({
   path: string;
   data: GenerationDetailData;
   tags: { id: string; name: string }[];
-  /** Story neighbors of the owning Batch (both directions; filtered by data.batch.id below). */
-  storyLinks: { story_id: string; story_name: string; label: string | null; source_batch_id: string; target_batch_id: string }[];
-  /** 系譜ミニマップ: 所属Batchの再試行連結成分 + 所属Batchが属する各Storyの全Batch。 */
-  miniMapRows: MiniMapRow[];
-  batchShortIds: Map<string, string>;
-  generationShortIds: Map<string, string>;
-  /** Batch id -> representative Generation short_id, for family-card thumbnails of Batch-level relations. */
-  batchThumbnails: Map<string, string>;
-  /** The owning Batch's own reference material (its "parents"), fetched from that Batch's detail. */
-  parentReferences: { source_generation_id: string; purpose: string | null; aspect: string | null }[];
-  /** Retry relations of the owning Batch (source_batch_id = the Batch that was refined into this one). */
-  relationsIncoming: { source_batch_id: string; reason: string | null }[];
-  /** Retry relations of the owning Batch (target_batch_id = the Batch this one was refined into). */
-  relationsOutgoing: { target_batch_id: string; reason: string | null }[];
-  /** owning Batch が Experiment に属さなければ null。 */
-  experimentRun: ExperimentRunFamily | null;
+  /** 親 / 子 / 兄弟カード (素材参照・仕上げ元・Experiment Run)。 */
+  family: GenerationFamily;
   imageMeta: ImageMeta | null;
   /** 最新の finalize request 一覧 (最大5件、新しい順)。GUI はここに積むだけで進捗もここで見る。 */
   finalizeRequests: FinalizeRequestSummary[];
@@ -224,124 +185,18 @@ export function GenerationDetailPage({
   /** このGeneration自身を産んだ finalize/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
 }) {
-  const ownBatchId = data.batch?.id;
-
-  const parentCards: FamilyCardData[] = [
-    ...parentReferences.map((r): FamilyCardData => {
-      const link = refLink('/g/', r.source_generation_id, generationShortIds);
-      return {
-        kind: 'reference',
-        href: link.href,
-        shortId: link.label,
-        imageUrl: `/g/${link.label}/preview`,
-        detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
-      };
+  const parentCards = family.parents;
+  const childCards = family.children;
+  const siblingCards = family.siblings;
+  const requestGenerationCards: FamilyCardData[] = data.siblings.map(
+    (g): FamilyCardData => ({
+      kind: 'request',
+      href: `/g/${g.short_id}`,
+      shortId: g.short_id,
+      imageUrl: `/g/${g.short_id}/preview`,
+      detail: g.comfy_output_index !== null ? `output ${g.comfy_output_index}` : null,
     }),
-    ...relationsIncoming.map((r): FamilyCardData => {
-      const link = refLink('/b/', r.source_batch_id, batchShortIds);
-      const genShortId = batchThumbnails.get(r.source_batch_id);
-      return {
-        kind: 'refinement',
-        href: link.href,
-        shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-        caption: 'via batch',
-        detail: `reason: ${r.reason ?? '-'}`,
-      };
-    }),
-    ...storyLinks
-      .filter((s) => s.target_batch_id === ownBatchId)
-      .map((s): FamilyCardData => {
-        const link = refLink('/b/', s.source_batch_id, batchShortIds);
-        const genShortId = batchThumbnails.get(s.source_batch_id);
-        return {
-          kind: 'story',
-          href: link.href,
-          shortId: link.label,
-          imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-          caption: 'via batch',
-          detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
-        };
-      }),
-    ...(experimentRun?.parent ? [experimentRun.parent] : []).map((p): FamilyCardData => {
-      const link = refLink('/b/', p.batch_id, batchShortIds);
-      const genShortId = batchThumbnails.get(p.batch_id);
-      return {
-        kind: 'experiment',
-        href: link.href,
-        shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-        caption: 'via batch',
-        detail: `run #${p.run_index} → run #${experimentRun!.run.run_index}`,
-      };
-    }),
-  ];
-
-  const childCards: FamilyCardData[] = [
-    ...data.used_by.map((r): FamilyCardData => {
-      const link = refLink('/b/', r.batch_id, batchShortIds);
-      const genShortId = batchThumbnails.get(r.batch_id);
-      return {
-        kind: 'reference',
-        href: link.href,
-        shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-        detail: `purpose: ${r.purpose ?? '-'} / aspect: ${r.aspect ?? '-'}`,
-      };
-    }),
-    ...relationsOutgoing.map((r): FamilyCardData => {
-      const link = refLink('/b/', r.target_batch_id, batchShortIds);
-      const genShortId = batchThumbnails.get(r.target_batch_id);
-      return {
-        kind: 'refinement',
-        href: link.href,
-        shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-        caption: 'via batch',
-        detail: `reason: ${r.reason ?? '-'}`,
-      };
-    }),
-    ...storyLinks
-      .filter((s) => s.source_batch_id === ownBatchId)
-      .map((s): FamilyCardData => {
-        const link = refLink('/b/', s.target_batch_id, batchShortIds);
-        const genShortId = batchThumbnails.get(s.target_batch_id);
-        return {
-          kind: 'story',
-          href: link.href,
-          shortId: link.label,
-          imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-          caption: 'via batch',
-          detail: `${s.story_name}${s.label ? ` — ${s.label}` : ''}`,
-        };
-      }),
-    ...(experimentRun?.children ?? []).map((ch): FamilyCardData => {
-      const link = refLink('/b/', ch.batch_id, batchShortIds);
-      const genShortId = batchThumbnails.get(ch.batch_id);
-      return {
-        kind: 'experiment',
-        href: link.href,
-        shortId: link.label,
-        imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-        caption: 'via batch',
-        detail: `run #${experimentRun!.run.run_index} → run #${ch.run_index}`,
-      };
-    }),
-  ];
-
-  // BatchReference 由来の兄弟は所属 Batch の「他の Generation」と実質同じなのでここには出さない (docs/ui.md)。
-  const siblingCards: FamilyCardData[] = (experimentRun?.siblings ?? []).map((s): FamilyCardData => {
-    const link = refLink('/b/', s.batch_id, batchShortIds);
-    const genShortId = batchThumbnails.get(s.batch_id);
-    return {
-      kind: 'experiment',
-      href: link.href,
-      shortId: link.label,
-      imageUrl: genShortId ? `/g/${genShortId}/preview` : null,
-      caption: 'via batch',
-      detail: `run #${s.run_index} of ${experimentRun!.experiment.short_id}`,
-    };
-  });
+  );
 
   return (
     <Layout title={`Generation ${data.short_id}`} fullBleed path={path}>
@@ -438,15 +293,6 @@ export function GenerationDetailPage({
             </div>
           </details>
 
-          {hasMiniMapContent(miniMapRows) ? (
-            <details class="section" open>
-              <summary>Map</summary>
-              <div class="section-body">
-                <MiniMap rows={miniMapRows} />
-              </div>
-            </details>
-          ) : null}
-
           <details class="section" open>
             <summary>親 ({parentCards.length})</summary>
             <div class="section-body">
@@ -469,20 +315,9 @@ export function GenerationDetailPage({
           </details>
 
           <details class="section" open>
-            <summary>Story</summary>
+            <summary>同じ Request の Generation ({requestGenerationCards.length})</summary>
             <div class="section-body">
-              {storyLinks.length === 0 ? (
-                <p>Not part of a story.</p>
-              ) : (
-                <ul>
-                  {storyLinks.map((s) => (
-                    <li>
-                      {s.story_name}
-                      {s.label ? ` — ${s.label}` : ''}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <FamilyStrip items={requestGenerationCards} />
             </div>
           </details>
 
@@ -493,15 +328,15 @@ export function GenerationDetailPage({
                 {(() => {
                   const facts = data.comfy_job?.render_facts ?? null;
                   const graph = data.comfy_job?.graph ?? null;
-                  const batchPrompt = data.request?.prompt ?? null;
-                  const batchNegative = data.request?.negative_prompt ?? null;
+                  const requestPrompt = data.request?.prompt ?? null;
+                  const requestNegative = data.request?.negative_prompt ?? null;
 
                   if (!facts) {
                     return (
                       <>
                         <p>(no graph)</p>
-                        {renderPromptField('positive', batchPrompt, null, 'positive')}
-                        {renderPromptField('negative', batchNegative, null, 'negative')}
+                        {renderPromptField('positive', requestPrompt, null, 'positive')}
+                        {renderPromptField('negative', requestNegative, null, 'negative')}
                         <table class="kv-table">
                           <tr>
                             <td>seed</td>
@@ -535,7 +370,7 @@ export function GenerationDetailPage({
 
                   const pass1 = facts.samplers[0] ?? null;
                   const requestDiffers =
-                    pass1 !== null && batchPrompt !== null && batchPrompt.trim() !== (pass1.prompt.positive ?? '').trim();
+                    pass1 !== null && requestPrompt !== null && requestPrompt.trim() !== (pass1.prompt.positive ?? '').trim();
 
                   return (
                     <>
@@ -578,7 +413,7 @@ export function GenerationDetailPage({
                           <details class="section-sub">
                             <summary>Request prompt</summary>
                             <div class="section-body">
-                              {renderPromptField('positive', batchPrompt, pass1!.prompt.positive, 'positive')}
+                              {renderPromptField('positive', requestPrompt, pass1!.prompt.positive, 'positive')}
                             </div>
                           </details>
                         </>

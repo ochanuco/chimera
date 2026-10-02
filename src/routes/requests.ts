@@ -63,7 +63,7 @@ requests.get('/', async (c) => {
 
   const rows = await listRequests(
     db,
-    { status, kind, run_id: query.run_id, worker_id: query.worker_id, generation_id: query.generation_id, batch_id: query.batch_id },
+    { status, kind, run_id: query.run_id, worker_id: query.worker_id, generation_id: query.generation_id },
     limit,
     offset,
   );

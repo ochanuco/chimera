@@ -50,7 +50,7 @@ semantic な判断を担当します。
 -   Generation canonical URL / context API を参照する。
 -   過去 Generation の pose / outfit / style 等を選択する。
 -   prompt を組み立てる。
--   Story transition、Batch refinement、Reference の意味を決定する。
+-   素材参照（Reference）と仕上げ元の意味を決定する。
 -   必要に応じて生成画像を検品する。
 -   `request.json` を組み立て、chimera の requests キューに積む。
 -   後から Generation の semantic metadata を生成・更新する。
@@ -83,7 +83,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 
 -   D1 の整合性を管理する。
 -   R2 へ画像を保存する。
--   Generation / Batch / Story / Tag 等を永続化する。
+-   Request / Generation / Tag 等を永続化する。
 -   Experiment / ExperimentRun / Promotion を永続化し、提供する。
 -   requests キュー（claim / heartbeat / 状態遷移）を提供する。判断はしない。
 -   Preset（承認済み Generation から昇格した派生）の正本を持ち、版を管理する。base の
@@ -94,10 +94,10 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 
 ### Web GUI
 
--   Gallery / Batch / Generation を画像中心で閲覧する。
+-   Gallery / Generation を画像中心で閲覧する。
 -   Character / Tag / Date / Rating / Bookmark で検索する。
 -   Tag / Rating / Bookmark / Note を編集する。
--   Story / Provenance を必要なときだけ表示する。
+-   Provenance（親・子・兄弟）を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
 -   Experiment 一覧・詳細を閲覧する。
 -   semantic 判断を伴わない再実行（finalize / repair）を requests 行として積む。任意領域の
@@ -123,15 +123,11 @@ source Generation を変更せず refinement Batch / rebuild Reference を作り
 -   ExperimentRun
 -   ExperimentPromotion
 -   Request（worker キュー）
--   Batch
 -   ComfyJob
 -   Generation
 -   Character
 -   Tag
--   BatchReference
--   BatchRelation
--   Story
--   StoryRelation
+-   素材参照（request_references）
 -   Rating / Bookmark / Note / Semantic metadata
 
 ### R2
@@ -188,10 +184,9 @@ R2 と D1 は単一トランザクションにはできないため、Generation
 内部 ID は UUIDv7 を使用します。
 
 ``` text
-Batch       UUIDv7
+Request     UUIDv7
 ComfyJob    UUIDv7
 Generation  UUIDv7
-Story       UUIDv7
 Experiment  UUIDv7
 ```
 
@@ -200,7 +195,7 @@ UI / Discord / Claude で扱いやすい short ID を別途持ち、canonical UR
 
 ``` text
 /g/abc123
-/b/def456
+/b/def456    # Request の short_id。最初の Generation の /g/ へリダイレクト
 ```
 
 Experiment の short ID は `/experiments/{short_id}` の形で使います。

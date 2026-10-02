@@ -15,7 +15,6 @@ export const styleCss = `
   --bad: #d4695f;
   --graph-reference: #6fa8fd;
   --graph-relation: #e2914f;
-  --graph-story: #4fd8a4;
   --graph-experiment: #c77dff;
   --nav-h: 3.25rem;
   --compare-bar-h: 3.75rem;
@@ -259,7 +258,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 1rem;
 }
-/* Gallery / Bookmarks は 1 行 6 枚。Batch Detail は左ペインが狭いので auto-fill のまま */
+/* Gallery / Bookmarks は 1 行 6 枚 */
 .grid.grid-gallery { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 @media (max-width: 1100px) {
   .grid.grid-gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -456,7 +455,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .rel-badge.rel-reference { background: color-mix(in srgb, var(--graph-reference) 22%, transparent); color: var(--graph-reference); }
 .rel-badge.rel-refinement { background: color-mix(in srgb, var(--graph-relation) 22%, transparent); color: var(--graph-relation); }
-.rel-badge.rel-story { background: color-mix(in srgb, var(--graph-story) 22%, transparent); color: var(--graph-story); }
+.rel-badge.rel-request { background: color-mix(in srgb, var(--text-dim) 22%, transparent); color: var(--text-dim); }
 .rel-badge.rel-experiment { background: color-mix(in srgb, var(--graph-experiment) 22%, transparent); color: var(--graph-experiment); }
 
 /* FamilyCard: GenerationCard/.card より軽量で横並びに畳められる */
@@ -488,16 +487,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* 系譜ミニマップ（MiniMap）。画像なし・short_idのみの一列表示で「今どこにいるか」を一目で示す。 */
-.mini-map { display: flex; flex-direction: column; gap: 0.4rem; }
-.mini-map-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; font-size: 0.78rem; }
-.mini-map-label { color: var(--text-dim); flex: none; }
-.mini-map-chain { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.mini-map-sep { color: var(--text-dim); }
-.mini-map-item { color: var(--text-dim); }
-.mini-map-item:hover { color: var(--accent); }
-.mini-map-current { color: var(--accent); font-weight: 600; }
 
 .tag-add-form { display: flex; gap: 0.3rem; }
 .tag-add-form input {
@@ -918,10 +907,10 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
-.finalize-form, .finalize-all-form { display: flex; flex-direction: column; gap: 0.7rem; }
-.finalize-form input[type="number"], .finalize-all-form input[type="number"] { width: 5rem; }
+.finalize-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.finalize-form input[type="number"] { width: 5rem; }
 /* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial/profile ボタン全部がアクセント色で塗られ選択中が見えなくなる */
-.finalize-form button[type="submit"], .finalize-all-form button[type="submit"] {
+.finalize-form button[type="submit"] {
   align-self: flex-start;
   background: var(--accent);
   color: #10131c;
@@ -931,18 +920,13 @@ details.section .section-body { margin-top: 0.6rem; }
   cursor: pointer;
   transition: filter 0.1s, transform 0.05s, background-color 0.15s;
 }
-.finalize-form button[type="submit"]:hover:not(:disabled),
-.finalize-all-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
-.finalize-form button[type="submit"]:active:not(:disabled),
-.finalize-all-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
-.finalize-form button[type="submit"]:focus-visible,
-.finalize-all-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.finalize-form button[type="submit"]:disabled,
-.finalize-all-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
-.finalize-form button[type="submit"].is-sent,
-.finalize-all-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
-.finalize-form select, .finalize-all-form select,
-.finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] {
+.finalize-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
+.finalize-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
+.finalize-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.finalize-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
+.finalize-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
+.finalize-form select,
+.finalize-form input[name="backdrop_color"] {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -950,8 +934,8 @@ details.section .section-body { margin-top: 0.6rem; }
   padding: 0.25rem 0.4rem;
   font-size: 0.85rem;
 }
-.finalize-form input[name="backdrop_color"], .finalize-all-form input[name="backdrop_color"] { width: 6.5rem; }
-.finalize-form input:disabled, .finalize-all-form input:disabled { opacity: 0.5; cursor: not-allowed; }
+.finalize-form input[name="backdrop_color"] { width: 6.5rem; }
+.finalize-form input:disabled { opacity: 0.5; cursor: not-allowed; }
 .finalize-group {
   display: flex;
   flex-wrap: wrap;
@@ -991,7 +975,6 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .finalize-help:hover::after, .finalize-help:focus::after { display: block; }
 .finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
-.finalize-summary { margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim); }
 
 /* repair region drawing: dependency-free rectangle-drag overlay, sized in JS to match the
    rendered <img> box so percentage-based rects stay aligned across zoom/object-fit scaling. */
@@ -1118,19 +1101,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .style-check-cell h3 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
 .style-check-cell .card { max-width: 260px; }
 
-.batch-row {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem;
-  margin-bottom: 0.6rem;
-}
-.batch-row img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: var(--checker); }
-.batch-row .batch-meta { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
-.batch-row .instruction-excerpt { color: var(--text-dim); font-size: 0.8rem; }
 
 .hidden { display: none !important; }
 
@@ -1248,7 +1218,7 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .exp-run-thumb { display: flex; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }
 .exp-run-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: var(--checker); }
-.exp-run-batch-link { font-size: 0.82rem; }
+.exp-run-request-link { font-size: 0.82rem; }
 
 .exp-base-generation { display: inline-flex; align-items: center; gap: 0.5rem; }
 .exp-base-generation-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: var(--checker); }
@@ -2058,7 +2028,7 @@ export const appJs = `
       var btn = ev.target.closest ? ev.target.closest('.profile-group .dial-btn') : null;
       if (!btn) return;
       var group = btn.closest('.profile-group');
-      var form = group ? group.closest('.finalize-form, .finalize-all-form') : null;
+      var form = group ? group.closest('.finalize-form') : null;
       if (!group || !form) return;
       ev.preventDefault();
       qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
@@ -2087,8 +2057,7 @@ export const appJs = `
     return version === undefined ? { name: nameInput.value } : { name: nameInput.value, version: version };
   }
 
-  // Only .finalize-form (single image) gets a region overlay; .finalize-all-form (Batch Detail,
-  // no single image) is left untouched. State keyed by the form itself in a WeakMap, since a set
+  // State keyed by the form itself in a WeakMap, since a set
   // of rectangles has no single DOM home; finalizeOptionsFrom reads it back via regionsFor(form).
   var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
 
@@ -2388,11 +2357,11 @@ export const appJs = `
   }
 
   function initFinalizeBackdropColor() {
-    qsa('.finalize-form, .finalize-all-form').forEach(syncFinalizeBackdropColor);
+    qsa('.finalize-form').forEach(syncFinalizeBackdropColor);
     document.addEventListener('change', function (ev) {
       var radio = ev.target;
       if (!(radio instanceof HTMLInputElement) || radio.type !== 'radio' || radio.name !== 'backdrop') return;
-      var form = radio.closest('.finalize-form, .finalize-all-form');
+      var form = radio.closest('.finalize-form');
       if (!form) return;
       syncFinalizeBackdropColor(form);
       if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
@@ -2453,17 +2422,17 @@ export const appJs = `
     document.addEventListener('change', function (ev) {
       var box = ev.target;
       if (!(box instanceof HTMLInputElement) || (box.name !== 'repair_hands' && box.name !== 'repair_feet')) return;
-      var form = box.closest('.finalize-form, .finalize-all-form');
+      var form = box.closest('.finalize-form');
       if (form) syncFinalizeDeliverOnly(form);
     });
   }
 
   function initFinalizeDeliverOnly() {
-    qsa('.finalize-form, .finalize-all-form').forEach(syncFinalizeDeliverOnly);
+    qsa('.finalize-form').forEach(syncFinalizeDeliverOnly);
     document.addEventListener('change', function (ev) {
       var box = ev.target;
       if (!(box instanceof HTMLInputElement) || box.name !== 'deliver_only') return;
-      var form = box.closest('.finalize-form, .finalize-all-form');
+      var form = box.closest('.finalize-form');
       if (form) syncFinalizeDeliverOnly(form);
     });
   }
@@ -2510,10 +2479,10 @@ export const appJs = `
   }
 
   function initFinalizePreview() {
-    qsa('.finalize-form, .finalize-all-form').forEach(renderFinalizePreview);
+    qsa('.finalize-form').forEach(renderFinalizePreview);
     ['change', 'input', 'click'].forEach(function (type) {
       document.addEventListener(type, function (ev) {
-        var form = ev.target.closest('.finalize-form, .finalize-all-form');
+        var form = ev.target.closest('.finalize-form');
         if (!form) return;
         renderFinalizePreview(form);
       });
@@ -2601,53 +2570,6 @@ export const appJs = `
       } catch (e) {
         feedback.failed();
         trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
-        alert('finalize failed: ' + e.message);
-      }
-    });
-  }
-
-  function initFinalizeAll() {
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.finalize-all-form');
-      if (!form) return;
-      ev.preventDefault();
-      const idsAttr = form.getAttribute('data-generation-short-ids') || '';
-      const ids = idsAttr.split(',').filter(function (id) { return id.length > 0; });
-      const options = finalizeOptionsFrom(form);
-      if (!options) return;
-      const profile = profileRefFrom(form);
-      const feedback = submitButtonFeedback(form);
-      try {
-        const created = [];
-        for (const shortId of ids) {
-          created.push(await postFinalizeRequest(shortId, options, profile));
-        }
-        feedback.sent('Queued ' + created.length + ' ✓');
-        track('finalize.submit', Object.assign({ scope: 'all', count: ids.length, profile: profile }, options));
-        const container = form.parentElement;
-        if (container) {
-          const summary = qs('.finalize-summary', container);
-          if (summary) {
-            const match = /(\d+) queued/.exec(summary.textContent || '');
-            const currentQueued = match ? parseInt(match[1], 10) : 0;
-            summary.textContent = (summary.textContent || '').replace(/\d+ queued/, (currentQueued + created.length) + ' queued');
-          }
-          let list = qs('.request-status-list', container);
-          if (!list) {
-            list = document.createElement('ul');
-            list.className = 'request-status-list';
-            if (summary) container.insertBefore(list, summary.nextSibling);
-            else container.insertBefore(list, form.nextSibling);
-          }
-          created.forEach(function (request) {
-            const row = requestStatusRow(request, false);
-            list.insertBefore(row, list.firstChild);
-            registerRequestElement(row);
-          });
-        }
-      } catch (e) {
-        feedback.failed();
-        trackError('finalize.submit', e, { scope: 'all', count: ids.length });
         alert('finalize failed: ' + e.message);
       }
     });
@@ -2892,7 +2814,7 @@ export const appJs = `
     return grid && grid.getAttribute('data-gallery-live') === 'true' ? grid : null;
   }
 
-  // bad=1 でも ids= でもない /gallery の既定表示だけ。Bookmarks / Batch Detail には属性が無い。
+  // bad=1 でも ids= でもない /gallery の既定表示だけ。Bookmarks には属性が無い。
   function galleryHideBadGrid() {
     var grid = galleryGrid();
     return grid && grid.getAttribute('data-hide-bad') === 'true' ? grid : null;
@@ -3129,7 +3051,7 @@ export const appJs = `
   }
 
   function navQueueRowLabel(group) {
-    if (group.batch) return group.batch.short_id;
+    if (group.request && group.request.short_id) return group.request.short_id;
     if (group.experiment) return group.experiment.short_id;
     return group.key.replace(/^request:/, '').slice(0, 8);
   }
@@ -3141,9 +3063,9 @@ export const appJs = `
 
     var thumb = document.createElement('span');
     thumb.className = 'nav-queue-row-thumb';
-    if (group.batch && group.batch.thumbnail_generation_short_id) {
+    if (group.request && group.request.thumbnail_generation_short_id) {
       var img = document.createElement('img');
-      img.src = '/g/' + encodeURIComponent(group.batch.thumbnail_generation_short_id) + '/preview';
+      img.src = '/g/' + encodeURIComponent(group.request.thumbnail_generation_short_id) + '/preview';
       img.loading = 'lazy';
       img.alt = '';
       thumb.appendChild(img);
@@ -3165,7 +3087,7 @@ export const appJs = `
     el.appendChild(navQueueRowCounts(group.counts));
 
     el.addEventListener('click', function () {
-      track('queue.group.click', { kinds: group.kinds, has_batch: Boolean(group.batch) });
+      track('queue.group.click', { kinds: group.kinds, has_request: Boolean(group.request) });
     });
 
     return el;
@@ -3650,8 +3572,7 @@ export const appJs = `
     initPublicationRemove();
     initPoseReference();
     initFinalize();
-    initFinalizeAll();
-    initFinalizeBackdropColor();
+        initFinalizeBackdropColor();
     initFinalizeRepairRegions();
     initFinalizeRepairPad();
     initFinalizeDeliverOnly();

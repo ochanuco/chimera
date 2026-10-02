@@ -14,18 +14,6 @@ export const refinementInputSchema = z.object({
   raw_instruction: z.string().optional(),
 });
 
-export const storyInputSchema = z.object({
-  story_id: z.string().min(1),
-  previous_batch_ids: z.array(z.string().min(1)).min(1),
-  transition: z
-    .object({
-      label: z.string().optional(),
-      description: z.string().optional(),
-    })
-    .optional(),
-  raw_instruction: z.string().optional(),
-});
-
 export const createBatchSchema = z.object({
   idempotency_key: z.string().min(1),
   experiment_id: z.string().min(1).optional(),
@@ -39,7 +27,8 @@ export const createBatchSchema = z.object({
   // request.json (docs/generation-request.md) は「該当なし」を明示的な null で表す
   references: z.array(referenceInputSchema).nullish(),
   refinement: refinementInputSchema.nullish(),
-  story: storyInputSchema.nullish(),
+  // Story は廃止。request.json が送り続ける間は受理して無視する。
+  story: z.unknown().optional(),
   // worker が適用した patches + pose の digest。promote はこれを正本として読む
   // (semantic.attributes.patches は使わない、docs/domain-model.md「Preset」)。語彙は検証しない — target/op/reason の封筒だけ見る。
   patches: z.array(

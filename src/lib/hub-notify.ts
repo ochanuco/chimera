@@ -38,8 +38,8 @@ export async function notifyHub(env: Bindings, type: HubNotifyType, request: Hub
 export interface HubNotifyGeneration {
   generation_id: string;
   short_id: string;
-  batch_id: string;
-  /** short_id of the raw Generation this Generation's Batch refines, or null for a raw Generation. */
+  request_id: string | null;
+  /** short_id of the raw Generation this Generation refines, or null for a raw Generation. */
   refines_generation_short_id: string | null;
   created_at: string;
 }

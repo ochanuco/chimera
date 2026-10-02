@@ -68,15 +68,12 @@ describe('Tags', () => {
 });
 
 describe('Bookmark', () => {
-  it('toggles bookmark on generations, batches, stories, and experiments', async () => {
+  it('toggles bookmark on generations and experiments; batches and stories have none', async () => {
     const { generation, batch } = await createGeneration();
-    const story = await postJson<{ id: string }>('/api/v1/stories', { name: 'bookmark story' });
     const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: 'bookmark experiment' });
 
     for (const path of [
       `/api/v1/generations/${generation.id}/bookmark`,
-      `/api/v1/batches/${batch.id}/bookmark`,
-      `/api/v1/stories/${story.body.id}/bookmark`,
       `/api/v1/experiments/${experiment.body.id}/bookmark`,
     ]) {
       const put = await req(path, { method: 'PUT' });
@@ -87,6 +84,8 @@ describe('Bookmark', () => {
       expect(delRes.status).toBe(200);
       expect(await delRes.json()).toEqual({ bookmark: false });
     }
+
+    expect((await req(`/api/v1/batches/${batch.id}/bookmark`, { method: 'PUT' })).status).toBe(404);
   });
 });
 

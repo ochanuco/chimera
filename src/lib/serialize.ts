@@ -11,16 +11,10 @@ import type {
   JudgmentWinner,
   PairwiseJudgmentRow,
   RequestRow,
-  StoryRow,
-  StoryRelationRow,
 } from '../types';
 
 export function canonicalGenerationUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}`;
-}
-
-export function canonicalBatchUrl(origin: string, shortId: string): string {
-  return `${origin}/b/${shortId}`;
 }
 
 export function generationImageUrl(origin: string, shortId: string): string {
@@ -70,7 +64,7 @@ export type GenerationLightSource = Pick<
   | 'original_purged_at'
 >;
 
-/** Lightweight Generation representation embedded in Batch/Story responses. */
+/** Lightweight Generation representation embedded in Batch responses. */
 export function serializeGenerationLight(row: GenerationLightSource, origin: string) {
   return {
     id: row.id,
@@ -123,32 +117,6 @@ export function serializeJob(row: ComfyJobRow) {
   };
 }
 
-export function serializeStory(row: StoryRow) {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    note: row.note,
-    bookmark: toBool(row.bookmark),
-    created_at: row.created_at,
-  };
-}
-
-export function serializeStoryRelation(row: StoryRelationRow) {
-  return {
-    id: row.id,
-    story_id: row.story_id,
-    source_batch_id: row.source_batch_id,
-    target_batch_id: row.target_batch_id,
-    label: row.label,
-    description: row.description,
-    raw_instruction: row.raw_instruction,
-    generated_by: row.generated_by,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
-
 export function serializeExperiment(row: ExperimentRow) {
   return {
     id: row.id,
@@ -174,7 +142,6 @@ export function serializeExperimentRun(row: ExperimentRunRow) {
     experiment_id: row.experiment_id,
     run_index: row.run_index,
     parent_run_id: row.parent_run_id,
-    batch_id: row.batch_id,
     generation_id: row.generation_id,
     overrides: parseJsonObject(row.overrides_json),
     objective: row.objective,

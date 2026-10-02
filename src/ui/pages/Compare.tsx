@@ -22,12 +22,11 @@ export interface CompareSemantic {
   attributes: Record<string, unknown>;
 }
 
-/** A Compare column: same fields Gallery/Bookmarks/Batch Detail cards use (renders as `<GenerationCard>`), plus the diff table's own fields. */
+/** A Compare column: same fields Gallery/Bookmarks cards use (renders as `<GenerationCard>`), plus the diff table's own fields. */
 export interface CompareItem extends GenerationCardData {
-  batch_short_id: string | null;
   seed: number | null;
   created_at: string;
-  /** The Generation's Batch `raw_instruction` / `patches_json` (inherited patches included), for the 変更点 rows. */
+  /** The Generation's Request `raw_instruction` / `patches_json` (inherited patches included), for the 変更点 rows. */
   raw_instruction: string | null;
   patches: unknown[];
   semantic: CompareSemantic | null;
@@ -350,7 +349,6 @@ export function ComparePage({
   const promptRows: CompareRow[] = [];
   if (items.length >= 2) {
     changeRows.push(...buildChangeRows(items));
-    rows.push(buildBasicRow('batch', items, (i) => i.batch_short_id));
     rows.push(buildBasicRow('seed', items, (i) => (i.seed != null ? String(i.seed) : null)));
     rows.push(buildBasicRow('created', items, (i) => i.created_at.slice(0, 10)));
 

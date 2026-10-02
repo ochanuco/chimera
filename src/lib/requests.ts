@@ -7,8 +7,8 @@ import {
   getBatchByIdOrShortId,
   getGenerationByIdOrShortId,
   nowIso,
-  resolveBatchShortIds,
-  resolveBatchThumbnails,
+  resolveRequestShortIds,
+  resolveRequestThumbnails,
   touchExperiment,
 } from './db';
 import { parseJsonObject, type JsonObject } from './overrides';
@@ -418,8 +418,6 @@ export interface RequestListFilters {
   worker_id?: string;
   /** UUID / short_id どちらでも受ける。該当する Generation が無ければ空リストを返す。 */
   generation_id?: string;
-  /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair / masked_redraw request を集約する。 */
-  batch_id?: string;
 }
 
 export async function listRequests(
@@ -453,22 +451,6 @@ export async function listRequests(
     conditions.push("kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
     binds.push(generation.id, generation.short_id);
   }
-  if (filters.batch_id) {
-    const batch = await getBatchByIdOrShortId(db, filters.batch_id);
-    if (!batch) return [];
-    const { results } = await db
-      .prepare('SELECT id, short_id FROM generations WHERE batch_id = ?')
-      .bind(batch.id)
-      .all<{ id: string; short_id: string }>();
-    const idsAndShortIds = (results ?? []).flatMap((g) => [g.id, g.short_id]);
-    if (idsAndShortIds.length === 0) return [];
-    const placeholders = idsAndShortIds.map(() => '?').join(', ');
-    conditions.push(
-      `kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (${placeholders})`,
-    );
-    binds.push(...idsAndShortIds);
-  }
-
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { results } = await db
     .prepare(`SELECT * FROM requests ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
@@ -691,9 +673,10 @@ export interface RequestSummaryWorker {
 
 export interface RequestSummaryGroup {
   key: string;
-  batch: { id: string; short_id: string; thumbnail_generation_short_id: string | null } | null;
+  /** finalize / repair / masked_redraw の仕上げ元 Generation が属する Request。thumbnail はその最初の Generation。 */
+  request: { id: string; short_id: string | null; thumbnail_generation_short_id: string | null } | null;
   experiment: { id: string; short_id: string } | null;
-  /** Batch 詳細 (`/b/:short_id`) または Experiment 詳細 (`/experiments/:short_id`) への遷移先。無ければ null。 */
+  /** 仕上げ元 Request の最初の Generation (`/g/:short_id`) または Experiment 詳細 (`/experiments/:short_id`) への遷移先。無ければ null。 */
   href: string | null;
   kinds: Partial<Record<RequestKind, number>>;
   counts: { queued: number; running: number; failed: number };
@@ -726,20 +709,21 @@ function extractPayloadGenerationId(payloadJson: string): string | null {
   }
 }
 
-/** finalize/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Batch id を引く。 */
-async function resolveGenerationBatchIds(db: D1Database, refs: string[]): Promise<Map<string, string>> {
+/** finalize/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Request id を引く。 */
+async function resolveGenerationRequestIds(db: D1Database, refs: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const unique = Array.from(new Set(refs));
   if (unique.length === 0) return map;
   for (const part of chunk(unique, Math.floor(D1_MAX_BOUND_PARAMS / 2))) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
-      .prepare(`SELECT id, short_id, batch_id FROM generations WHERE id IN (${placeholders}) OR short_id IN (${placeholders})`)
+      .prepare(`SELECT id, short_id, request_id FROM generations WHERE id IN (${placeholders}) OR short_id IN (${placeholders})`)
       .bind(...part, ...part)
-      .all<{ id: string; short_id: string; batch_id: string }>();
+      .all<{ id: string; short_id: string; request_id: string | null }>();
     for (const r of results ?? []) {
-      map.set(r.id, r.batch_id);
-      map.set(r.short_id, r.batch_id);
+      if (!r.request_id) continue;
+      map.set(r.id, r.request_id);
+      map.set(r.short_id, r.request_id);
     }
   }
   return map;
@@ -776,7 +760,7 @@ function latestTimestamp(row: SummaryRequestRow): string {
 
 interface SummaryBucket {
   key: string;
-  batchId: string | null;
+  sourceRequestId: string | null;
   experiment: SummaryExperimentRef | null;
   kinds: Partial<Record<RequestKind, number>>;
   counts: { queued: number; running: number; failed: number };
@@ -785,7 +769,7 @@ interface SummaryBucket {
 
 /**
  * ナビの queue pill / パネル (docs/ui.md「キュー状態」) 向けの集計。1 グループ = 1 遷移先:
- * Batch (finalize/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
+ * 仕上げ元の Request (finalize/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
  */
 export async function summarizeRequests(db: D1Database, now: string): Promise<RequestSummary> {
   const cutoff = new Date(new Date(now).getTime() - SUMMARY_FAILED_WINDOW_MS).toISOString();
@@ -817,15 +801,15 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
       if (generationId) generationRefs.push(generationId);
     }
   }
-  const [generationToBatch, runToExperiment] = await Promise.all([
-    resolveGenerationBatchIds(db, generationRefs),
+  const [generationToRequest, runToExperiment] = await Promise.all([
+    resolveGenerationRequestIds(db, generationRefs),
     resolveRunExperiments(db, runIds),
   ]);
 
   const buckets = new Map<string, SummaryBucket>();
   for (const row of rows) {
     let key: string;
-    let batchId: string | null = null;
+    let sourceRequestId: string | null = null;
     let experiment: SummaryExperimentRef | null = null;
 
     if (row.kind === 'generate') {
@@ -838,10 +822,10 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
       }
     } else {
       const generationId = extractPayloadGenerationId(row.payload_json);
-      const resolvedBatchId = generationId ? (generationToBatch.get(generationId) ?? null) : null;
-      if (resolvedBatchId) {
-        key = `batch:${resolvedBatchId}`;
-        batchId = resolvedBatchId;
+      const resolvedRequestId = generationId ? (generationToRequest.get(generationId) ?? null) : null;
+      if (resolvedRequestId) {
+        key = `request:${resolvedRequestId}`;
+        sourceRequestId = resolvedRequestId;
       } else {
         key = `request:${row.id}`;
       }
@@ -850,7 +834,7 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
     const rowLatest = latestTimestamp(row);
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { key, batchId, experiment, kinds: {}, counts: { queued: 0, running: 0, failed: 0 }, latest_at: rowLatest };
+      bucket = { key, sourceRequestId, experiment, kinds: {}, counts: { queued: 0, running: 0, failed: 0 }, latest_at: rowLatest };
       buckets.set(key, bucket);
     }
     bucket.kinds[row.kind] = (bucket.kinds[row.kind] ?? 0) + 1;
@@ -860,27 +844,25 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
     if (rowLatest > bucket.latest_at) bucket.latest_at = rowLatest;
   }
 
-  const batchIds = Array.from(buckets.values())
-    .map((b) => b.batchId)
+  const sourceRequestIds = Array.from(buckets.values())
+    .map((b) => b.sourceRequestId)
     .filter((id): id is string => id !== null);
-  const [batchShortIds, batchThumbnails] = await Promise.all([
-    resolveBatchShortIds(db, batchIds),
-    resolveBatchThumbnails(db, batchIds),
+  const [sourceRequests, requestThumbnails] = await Promise.all([
+    resolveRequestShortIds(db, sourceRequestIds),
+    resolveRequestThumbnails(db, sourceRequestIds),
   ]);
 
   const groups: RequestSummaryGroup[] = Array.from(buckets.values()).map((b) => {
-    let batch: RequestSummaryGroup['batch'] = null;
+    let request: RequestSummaryGroup['request'] = null;
     let href: string | null = null;
-    if (b.batchId) {
-      const shortId = batchShortIds.get(b.batchId);
-      if (shortId) {
-        batch = { id: b.batchId, short_id: shortId, thumbnail_generation_short_id: batchThumbnails.get(b.batchId) ?? null };
-        href = `/b/${shortId}`;
-      }
+    if (b.sourceRequestId) {
+      const thumbnail = requestThumbnails.get(b.sourceRequestId) ?? null;
+      request = { id: b.sourceRequestId, short_id: sourceRequests.get(b.sourceRequestId) ?? null, thumbnail_generation_short_id: thumbnail };
+      href = thumbnail ? `/g/${thumbnail}` : null;
     } else if (b.experiment) {
       href = `/experiments/${b.experiment.short_id}`;
     }
-    return { key: b.key, batch, experiment: b.experiment, href, kinds: b.kinds, counts: b.counts, latest_at: b.latest_at };
+    return { key: b.key, request, experiment: b.experiment, href, kinds: b.kinds, counts: b.counts, latest_at: b.latest_at };
   });
 
   groups.sort((a, b) => {

@@ -102,21 +102,6 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
     );
   });
 
-  it('Batch Detail generation cards carry the same from-badge and 公開済み pill', async () => {
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
-    const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);
-    await postJson(`/api/v1/generations/${refined.generation.id}/publications`, {});
-
-    const res = await req(`/b/${refined.batch.short_id}`);
-    const html = await res.text();
-    const card = cardHtml(html, refined.generation.short_id);
-
-    expect(card).toContain(`from <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
-    expect(card).toContain('公開済み');
-    expect(card).not.toContain('tag-add-form');
-    expect(card).not.toContain('compare-check');
-  });
-
   it('Bookmarks generation cards carry the same from-badge and 公開済み pill', async () => {
     const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
     const refined = await createRefinedGeneration(sourceBatch.id, sourceGen.id);

@@ -5,7 +5,7 @@
 > 画像が主役。メタデータと系譜は必要になったときだけ見せる。
 
 Progressive disclosure
-を基本とし、Git、prompt、semantic、provenance、Story等を一覧画面へ詰め込みません。
+を基本とし、Git、prompt、semantic、provenance等を一覧画面へ詰め込みません。
 
 人間の通常フローは以下です。
 
@@ -26,18 +26,18 @@ Compare は semantic metadata の diff を表示するところまでです（�
 Chimera
 Gallery
 Bookmarks
-More（Batches / Experiments / 絵柄チェック）
+More（Experiments / 絵柄チェック）
 ```
 
-`More` は `<details><summary>`によるドロップダウンです。開くと `Batches`
-`Experiments` `絵柄チェック` の3リンクを持つパネルが summary の直下に現れます。
+`More` は `<details><summary>`によるドロップダウンです。開くと
+`Experiments` `絵柄チェック` の2リンクを持つパネルが summary の直下に現れます。
 パネル外クリックまたは
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
-var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/batches`
-`/b/{short_id}` `/experiments` 配下（`/experiments/{short_id}` `/experiments/{short_id}/ab`
-含む）と`/check`では`More`のsummaryがアクティブになります。`/compare`はグリッドから入る
+var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/experiments` 配下
+（`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`では`More`のsummaryが
+アクティブになります。`/compare`はグリッドから入る
 導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
 幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
@@ -60,11 +60,12 @@ pillはdotとテキストで状態を表します。
 -   幅600px以下では日本語ラベルと区切りを落とし、色分けした数字だけを表示する
 
 pillは`<details><summary>`で開閉し、開くと`More`と同じ見た目のパネルが現れます。パネルは
-1行 = 1グループで、finalize/repair/masked_redrawはBatch単位、run_idを持つgenerateは
-Experiment単位、run_idの無いgenerateはrequest単位にまとめます（集計規則は
-[api.md](api.md#summary)）。各行はサムネイル・BatchまたはExperimentのshort_id・kind別件数・
-状態別件数を表示し、遷移先（Batch詳細 `/b/{short_id}` またはExperiment詳細
-`/experiments/{short_id}`）があればリンク、無ければリンクなしの行です。パネルは表示・
+1行 = 1グループで、finalize/repair/masked_redrawは仕上げ元Generationが属するRequest単位、
+run_idを持つgenerateはExperiment単位、run_idの無いgenerateはrequest単位にまとめます
+（集計規則は[api.md](api.md#summary)）。各行はサムネイル・Request（仕上げ元のRequest）または
+Experimentのshort_id・kind別件数・状態別件数を表示し、遷移先（仕上げ元Requestの最初の
+Generation `/g/{short_id}` またはExperiment詳細 `/experiments/{short_id}`）があればリンク、
+無ければリンクなしの行です。パネルは表示・
 遷移専用で、finalize/repairのような再実行やcancelledなどの操作は一切持ちません。パネル
 末尾にworker接続数（`worker N 台接続中` / `worker 未接続`）を出します。グループが無ければ
 「キューは空です」と表示します。
@@ -76,17 +77,17 @@ Experiment単位、run_idの無いgenerateはrequest単位にまとめます（�
 | `/` | `/gallery` へのリダイレクト |
 | `/gallery` | [Gallery](#gallery) |
 | `/compare?ids=a,b` | [Compare](#compare)（2〜9枚の semantic metadata 比較） |
-| `/batches` | Batch 一覧（サムネイル・short_id・指示文の抜粋・status・Generation 数・作成時刻、Bookmarked only の絞り込み） |
-| `/b/{short_id}` | [Batch Detail](#batch-detail) |
+| `/b/{short_id}` | `short_id` を持つ Request の最初の Generation（Job の index、出力の index の昇順で先頭）の `/g/{short_id}` へ 302 でリダイレクトする。該当する Request か Generation が無ければ 404 ページ |
 | `/g/{short_id}` | [Generation Detail](#generation-detail)（Generation の canonical URL） |
 | `/check` | [絵柄チェック](#絵柄チェック) |
 | `/experiments`, `/experiments/{short_id}` | [Experiment View](#experiment-view) |
 | `/experiments/{short_id}/ab` | [A/B Judge View](#a-b-judge-view) |
 | `/bookmarks` | [Bookmarks](#bookmarks) |
 
-Story と系譜全体の走査は `/api/v1/stories` `/api/v1/graph` と MCP の担当です（[api.md](api.md)）。
-GUI では Batch Detail / Generation Detail が所属 Story の名前をリンクなしのテキストで、系譜を
-[Map](#batch-detail) の一列表示で見せます。
+`/b/{short_id}` は、過去に Discord などへ貼られた Batch の URL を壊さないための入口です。
+Request の `short_id` は移行前の Batch の `short_id` を引き継いでいます。
+系譜全体の走査は MCP の `get_generation_lineage` の担当で、GUI の Generation Detail は
+隣接する 1 段の親・子・兄弟だけを見せます（[Generation Detail](#generation-detail)）。
 
 ## Gallery
 
@@ -104,8 +105,8 @@ nav直下にsticky なツールバーを持ちます。
 
 `view` は3値の切り替えです。既定は `view=all`（raw / finalize済み両方）で、
 `view=raw`（finalize/repair/masked_redrawの出力ではない raw Generationのみ）、
-`view=refined`（finalize済みの出力のみ）へ絞り込めます。raw / finalize済みの判定は Batch の
-`refines_generation_id`（[domain-model.md](domain-model.md#batch)）です。
+`view=refined`（finalize済みの出力のみ）へ絞り込めます。raw / finalize済みの判定は Generation の
+`refines_generation_id`（[domain-model.md](domain-model.md#generation)）です。
 
 「bad も表示」は既定で隠している bad rating の Generation を表示に加えるトグルです
 （`bad=1`）。未評価・good・neutralの Generation は常に表示します。
@@ -165,7 +166,7 @@ nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です
 
 badを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上でratingを
 badにすると、カードはその位置のまま不透明度0.4（hover時0.75）になり、反映待ちに数えます。
-反映前にbad以外へ付け直すと元の表示に戻り、反映待ちからも外れます。BookmarksとBatch Detailでは何も隠しません。
+反映前にbad以外へ付け直すと元の表示に戻り、反映待ちからも外れます。Bookmarksでは何も隠しません。
 
 #### 反映
 
@@ -188,7 +189,7 @@ request live更新と同じ指数バックオフ（1s→2s→…上限30s）で�
 short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
 変えて末尾に✓を出します。サムネイルは[Generation Detail](#generation-detail)への素のリンク
 `<a href="/g/{short_id}">`です。サムネイル左上には
-（上から順に、両方あれば縦に積みます）、このGenerationの所属Batchがfinalize/repair/
+（上から順に、両方あれば縦に積みます）、このGenerationがfinalize/repair/
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
 橙文字、short_idは等幅）。バッジはクリックで元のshort_idをコピーし（遷移しない）、コピー後は
 short_idのボタンと同じく0.9秒間`--good`色に変えて✓を出します。サムネイルのリンク内なので
@@ -228,10 +229,8 @@ abc123                    🔖   ← short_idはクリックでコピー
 bad  neutral  good
 ```
 
-Batch Detail / Bookmarksも同じカードコンポーネントを使い、from-badge / 公開済みピルは
-表示します。進捗ピルは`GET /api/v1/generations`（Gallery / Bookmarksが使う一覧）と
-Gallery live insertionのカードフラグメントだけが持つデータなので、Batch Detailのカードには
-出ません。
+Bookmarks / Compareも同じカードコンポーネントを使い、from-badge / 公開済みピルは
+表示します。
 
 表示しないもの（サムネイルクリックで[Generation Detail](#generation-detail)を開けば見られます）:
 
@@ -241,7 +240,6 @@ Gallery live insertionのカードフラグメントだけが持つデータな�
 -   prompt全文
 -   git diff
 -   semantic全文
--   Story graph
 -   ComfyUI workflow
 
 ## Compare
@@ -255,7 +253,7 @@ Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[Gener
 `/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
 purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
 
-その下にsemantic比較テーブルを表示します。行は変更点（後述）、batch / seed / created、
+その下にsemantic比較テーブルを表示します。行は変更点（後述）、seed / created、
 render_facts、summary、core 5項目（pose /
 expression / outfit / style / composition）、strengths、defects、そして全
 Generationのattributesキーの和集合（`patches` キーは変更点の `patches` 行と重複するため
@@ -304,11 +302,11 @@ render_facts（[domain-model.md](domain-model.md#comfyjob)参照）を `render.c
 
 #### 変更点
 
-テーブルの先頭（batch行の前）に、各列が何を変えたかを示す行を置きます。
-いずれもBatchに保存済みの値を表示するだけで、Compareが文面を生成することはありません。
+テーブルの先頭（seed行の前）に、各列が何を変えたかを示す行を置きます。
+いずれもRequestに保存済みの値を表示するだけで、Compareが文面を生成することはありません。
 
-- `instruction` 行: 各GenerationのBatchの `raw_instruction` をそのまま表示します（無ければ `—`）。全列がnullなら行ごと表示しません
-- `patches` 行: 各Batchの `patches_json` のうち、全列には含まれないpatchだけを列ごとに並べます。全列が持つpatchは親から継承されたものなので省きます（patchの同一判定はキー順に依存しないJSON比較）。patchは `target`（`prompt.positive.` は省略、`prompt.negative.` は `negative.` に短縮。例: `artist` / `negative.quality`）に続けて内容を表示します。`replace` で `old` / `value` が文字列なら old→value のトークン単位の差分（削除は赤の取り消し線、追加は緑）、それ以外のopは op と value を簡潔に表示します。`reason` があれば薄い色で後ろに付けます。固有patchの無い列は `（変更なし）`。どの列にも固有patchが無ければ行ごと表示しません
+- `instruction` 行: 各Generationが属するRequestの `raw_instruction` をそのまま表示します（無ければ `—`）。全列がnullなら行ごと表示しません
+- `patches` 行: 各Requestの `patches_json` のうち、全列には含まれないpatchだけを列ごとに並べます。全列が持つpatchは親から継承されたものなので省きます（patchの同一判定はキー順に依存しないJSON比較）。patchは `target`（`prompt.positive.` は省略、`prompt.negative.` は `negative.` に短縮。例: `artist` / `negative.quality`）に続けて内容を表示します。`replace` で `old` / `value` が文字列なら old→value のトークン単位の差分（削除は赤の取り消し線、追加は緑）、それ以外のopは op と value を簡潔に表示します。`reason` があれば薄い色で後ろに付けます。固有patchの無い列は `（変更なし）`。どの列にも固有patchが無ければ行ごと表示しません
 
 #### プロンプト全文
 
@@ -348,8 +346,8 @@ Generation Detailの`比較に追加`ボタンがsessionStorageのcompare set（
 telemetry `compare.add`）。
 
 `#compare-bar`はLayoutが全ページの下端に固定配置し、setが空でない間だけ表示します。表示中は
-`main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detail / Batch
-Detailの2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
+`main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detailの
+2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
 
 -   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
     （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
@@ -358,85 +356,6 @@ Detailの2カラムはその分だけ高さを縮めます。バーの中身は�
 -   `Compare (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
 
 別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーを描き直します。
-
-## Batch Detail
-
-1回の生成要求をまとめて確認する画面です。
-
-幅1100px以上（MBP 16インチのフルスクリーン運用を想定）では、左（Generation
-サムネイルグリッド）: 右（情報）= 2:1 の2ペインをビューポート1画面に収め、
-各ペインが独立してスクロールします。それ未満の幅では縦一列です。
-
-左のサムネイルグリッドはGalleryと同じ[GenerationCard](#gallery)（from-badge / 公開済みピル
-込み）で、サムネイルクリックで同じ[Generation Detail](#generation-detail)へ遷移します。
-
-例（2ペイン時）:
-
-``` text
-[img][img][img] | Batch B001
-[img][img][img] | "結月ゆかりをseed違いで9枚"
-[img][img][img] | 親 2 · 子 1 · 兄弟 0 · Story: yk-line
-                | Finalize all arms / Tags / 親 / 子 / 兄弟 / Prompt / ...
-```
-
-Relation は BatchReference（生成材料） / BatchRelation（再試行） / StoryRelation（作品上の続き）の3種に分離されたまま
-（CLAUDE.md の不変条件）ですが、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめ、各関係を
-FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、`family-strip`）で表示します。
-サムネイルは相手Batchの代表Generation（指定サムネイル → 先頭の`rating === 'good'`のGeneration →
-先頭のGeneration、の優先順で選ぶ）、または相手GenerationそのものをFamilyCardリンク先にします。
-
--   親: このBatchの材料になったGeneration（バッジ `Reference`、purpose/aspect
-    を表示）、このBatchをrefinementした元Batch（バッジ `Refinement`、reason
-    を表示）、StoryRelationで前段にあたるBatch（バッジ `Story`、Story名/labelを表示）、
-    このBatchに紐づくExperimentRunの親Run（`parent_run_id`が指すRun）のBatch
-    （バッジ `Experiment`、`run #親 → run #自分`を表示）
--   子: このBatchのGenerationを材料に使ったBatch（バッジ `Reference`、どの
-    Generation経由かを表示）、このBatchをrefinement元とするBatch（バッジ
-    `Refinement`）、StoryRelationで後続にあたるBatch（バッジ `Story`）、
-    このBatchに紐づくExperimentRunを`parent_run_id`とする子RunのBatch
-    （バッジ `Experiment`、`run #自分 → run #子`を表示）
--   兄弟: 親を共有する他のBatch。BatchRelationで同じ親からrefinementされた
-    Batch、またはBatchReferenceで同じGenerationを材料に使ったBatch。共有の
-    親（Batch短縮IDまたはGeneration短縮ID）をカード補足テキストに表示。加えて、
-    同じExperimentの他Run（親・子を除く、batch付与済みのRunのみ）のBatch
-    （バッジ `Experiment`）
-
-`Experiment` バッジのカードはBatchReference / BatchRelation / StoryRelationのいずれでもない、
-ExperimentRun（`parent_run_id` / `run_index`）から読み取り時に導出するだけの表示専用の4本目の軸です
-（CLAUDE.mdの3種統合禁止の対象外で、行を作りません）。カードの補足テキストにはExperiment名を表示します。
-
-各カードのリンク先・short_idはshort_id優先（Reference/Refinement/Storyはそれぞれ固定配色:
-青・橙・緑。Experimentは他3種のいずれでもない4本目の軸なので専用の紫）。
-
-親セクションの直前には系譜ミニマップ（Mapセクション）を表示します。画像なし・short_idのみで、このBatch
-自身のBatchReference系譜（行ラベル `References`。材料として遡れる祖先と、このBatchのGenerationを材料に
-した子孫の有向到達集合をBatch単位に集約したもの。無関係な分岐は含まない）、BatchRelation連結成分（行ラベル
-`Retries`、無向）、このBatchが属するStoryごとの全Batch（行ラベルはStory名）を、いずれもcreated_at昇順の
-1行ずつとして、`b_abc -- b_def -- [b_ghi] -- b_jkl`のように`--`区切りの一列で
-並べます。現在地（このBatch自身）は角括弧付きで強調しリンクなし、それ以外はBatch Detailへのリンクです。要素
-が2件未満の行は表示せず、全行が該当する場合はMapセクション自体を表示しません。Generation Detailの
-Mapは同じ行構成を、BatchではなくGenerationの並びとして表示します。
-
-Promptセクションはprompt / negative_promptをカンマ区切りのトークンチップで表示します（重み記法
-`(foo:1.3)` `((foo))` `[foo]`、`<lora:name:0.8>`、`BREAK`をそれぞれ解釈し、weight!=1のトークンには
-数値バッジ、loraは専用の色、BREAKは区切り表示にします）。カンマを含まない80文字超の自然文はチップ化せず
-生テキストのまま表示します。このBatchがBatchRelationで再試行(retry)された側（incoming）を持つ場合、その
-retry元Batchのprompt / negative_promptを基準にトークン単位でdiffし、追加されたトークンを緑枠、weightが
-変化したトークンを黄枠（`0.8→1.3`のように基準値→現在値のバッジ）、削除されたトークンを取り消し線付きの
-別行で表示します。基準にしたBatchのshort_idはセクション内に`diff base: <short_id>`として明示します。
-
-Finalize all armsセクションは、このBatch配下の全GenerationについてFinalizeと
-同じoptions（`repin` / `recolor` / `keep legwear` / `denoise`）で1 Generation
-1行のfinalize requestを順に積みます（Generation Detailの Finalize
-参照、[worker-protocol.md](worker-protocol.md)）。フォーム自体はGeneration Detailと
-同じコンポーネントで、このBatchのrecipeにprofile / dialがあれば同じdial対応表示に
-切り替わります。直下には
-`finalize: N queued · M running · K done · F failed`の集計行と、その下に各requestを
-1行ずつ持つ`request-status-list`を表示します（進捗の反映はGeneration Detailの
-Finalizeセクションと同じ仕組み、後述）。
-
-見出し行の🔖でBatch自体のbookmarkを切り替えます。Tagsセクションは付与済みタグのチップと
-[タグ追加フォーム](#タグ追加)を持ちます（チップに削除ボタンはありません）。
 
 ## Generation Detail
 
@@ -452,7 +371,7 @@ Finalizeセクションと同じ仕組み、後述）。
 [ IMAGE ] | #pose-good ×  #outfit-good ×   [add tag] [+]
 ```
 
-見出しのshort_idとコピーボタンの隣には、このGenerationのBatchがfinalize / repair /
+見出しのshort_idとコピーボタンの隣には、このGenerationがfinalize / repair /
 masked_redrawで書き換えた元のraw Generationがあるとき、小さな`--text-dim`色の
 `from <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
 rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refines_generation`）。
@@ -465,18 +384,17 @@ Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
-Batch Detail の Parameters）のみ既定で畳みます。
+Workflow の Raw graph）のみ既定で畳みます。
 
 ``` text
 Finalize
 仕上げの解決値
 Summary
 Semantic
-Map
 親
 子
 兄弟
-Story
+同じ Request の Generation
 Workflow
 ComfyUI Job
 Git
@@ -486,7 +404,7 @@ Note
 rating/bookmark行の直後は「基準」行です。このGenerationがposeの基準 renderとしてpinされていれば
 `基準 <pose名>`ピルを、されていなければ`基準にする`ボタンを表示します。ボタンは
 `POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md#pose-reference-pin)）でpinし、
-その場で行をピルに書き換えます。recipe / poseはサーバーがBatchから推測し、rating goodでない
+その場で行をピルに書き換えます。recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでない
 Generationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
 続く`公開`セクションは[Publication](domain-model.md#publication)
@@ -503,41 +421,40 @@ URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入�
 `公開`の下には付与済みタグのチップ（各チップに`×`削除ボタン）とタグ追加フォームを置きます。
 フォームは自由入力のテキスト欄で、入力のたびに200ms待って`GET /api/v1/tags?q=`（前方一致、
 最大20件）を引き、既存タグ名を`<datalist>`の候補として出します。未登録の名前を送ればそのタグを
-作って付与します。追加・削除ともリロードせずチップを書き換えます。Batch DetailのTagsセクションも
-同じフォームです。
+作って付与します。追加・削除ともリロードせずチップを書き換えます。
 
 `仕上げの解決値`セクションは、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
 だけ出し、要求した`options`（requested）とworkerが解決した値（resolved）をJSONのまま並べます。
 
-親・子・兄弟はBatch Detailと同じFamilyCard表示です。Batch
-Detailと異なり、このGenerationが属するBatch自体のRefinement/Story関係も合わせて表示するため、
-それらのカードには「via batch」という補足を添えて、Generation自身の材料関係（Reference）と区別します。
-兄弟はBatchReference由来のもの（同じ材料Generationを使った他Batch）は出しません。それはこの
-Generationが属するBatchの他のGenerationと実質同じものだからです。ExperimentRunの兄弟（同じ
-Experimentの他Run、親・子を除く）だけを表示します（バッジ `Experiment`、「via batch」）。
+親・子・兄弟は、FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、
+`family-strip`）で表示します。関係は 素材参照（Generation → Request、`request_references`）と
+仕上げ元（Generation → Generation、`generations.refines_generation_id`）の2種に分離されたまま
+（CLAUDE.md の不変条件）で、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめます。
+カードのリンク先は相手の `/g/{short_id}` です。Requestを相手にする関係は、そのRequestの最初のGeneration
+（Jobのindex、出力のindexの昇順で先頭）を代表にし、カードに「via request」という補足を添えて、
+Generation自身の関係と区別します。まだGenerationを持たないRequest（queued / running）はカードにしません。
 
--   親: ①このGenerationが属するBatch自身の材料（BatchReference、バッジ `Reference`、Generationカード。
-    purpose/aspectを表示） ②そのBatchをrefinementした元Batch（バッジ `Refinement`、Batchカード＝代表
-    サムネイル、reasonを表示） ③StoryRelationで前段にあたるBatch（バッジ `Story`、Batchカード）
-    ④このBatchに紐づくExperimentRunの親Run（バッジ `Experiment`、Batchカード）
--   子: ①このGenerationを材料に使ったBatch一覧（バッジ `Reference`、Batchカード。purpose/aspectを表示）
-    ②このGenerationが属するBatchをrefinement元とするBatch（バッジ `Refinement`、Batchカード）
-    ③StoryRelationで後続にあたるBatch（バッジ `Story`、Batchカード）
-    ④このBatchに紐づくExperimentRunの子Run（バッジ `Experiment`、Batchカード）
--   兄弟: このBatchに紐づくExperimentRunと同じExperimentの他Run（親・子を除く、batch付与済みの
-    Runのみ）のBatch（バッジ `Experiment`、Batchカード）
+-   親: ①このGenerationが属するRequestの素材（バッジ `Reference`、素材のGenerationカード。
+    purpose/aspectを表示） ②このGenerationが仕上げた元のGeneration（`refines_generation_id`、バッジ
+    `Refinement`、Generationカード） ③このGenerationが属するRequestの結果にあたるRunの親Run
+    （`parent_run_id`が指すRun）の結果Request（バッジ `Experiment`、`run #親 → run #自分`を表示、「via request」）
+-   子: ①このGenerationを素材に使ったRequest（バッジ `Reference`、Requestの代表Generationカード。
+    purpose/aspectを表示、「via request」） ②このGenerationを仕上げ元とするGeneration
+    （バッジ `Refinement`、Generationカード） ③このGenerationが属するRequestの結果にあたるRunを
+    `parent_run_id`とする子Runの結果Request（バッジ `Experiment`、`run #自分 → run #子`を表示、「via request」）
+-   兄弟: 同じExperimentの他Run（親・子を除く、結果Requestを持つRunのみ）の結果Request
+    （バッジ `Experiment`、「via request」）
 
-Mapセクションは「Map」の直下、親の直前に表示する系譜ミニマップです。画像なし・short_idのみで、このGenerationが
-属するBatchのBatchReference系譜（行ラベル `References`。材料の祖先と子孫の有向到達集合をBatch単位に集約）、
-BatchRelation連結成分（行ラベル `Retries`、無向）、そのBatchが属するStoryごとの全Batch（行ラベルはStory名）を、
-いずれもcreated_at昇順の1行ずつとして、`g_abc -- g_def -- [g_ghi] -- g_jkl`のように`--`区切りの
-一列で並べます。Generation Detailから辿る間はGeneration Detailに留まれるよう、各BatchはそのBatchの代表
-Generation（FamilyCardのサムネイルと同じ選定）のshort_idで表示し、そのGeneration Detailへリンクします。
-現在地はこのGeneration自身で、角括弧付きで強調しリンクなしです。Generationをまだ持たないBatchだけは
-Batchのshort_idで表示し、Batch Detailへリンクします。要素が2件未満の行（関連Batchなしの行）は表示せず、
-全行が該当する場合はMapセクション自体を表示しません。
+`Experiment` バッジのカードは素材参照・仕上げ元のどちらでもない、ExperimentRun（`parent_run_id` /
+`run_index`）から読み取り時に導出するだけの表示専用の軸です（CLAUDE.mdの2種統合禁止の対象外で、行を
+作りません）。Reference / Refinement / Experiment はそれぞれ青・橙・紫の固定配色です。
 
-Workflowセクションは「Story」の直後にあります。このGenerationの
+`同じ Request の Generation` セクションは、このGenerationと同じRequestに属する他のGeneration
+（`GET /api/v1/generations/{id}` の `siblings`）を、バッジ `Request` のFamilyCardで並べます。
+カードは各Generationの `/g/{short_id}` へのリンクで、補足テキストに出力のindex（`output N`）を出します。
+他のGenerationが無ければ `None.` と表示します。
+
+Workflowセクションは「同じ Request の Generation」の直後にあります。このGenerationの
 ComfyJobから抽出したrender_facts（[domain-model.md](domain-model.md#comfyjob)参照）
 を使い、`/g/{short_id}` だけを見て（ほぼ）同じワークフローを再現できるだけの
 情報を読みやすいレイアウトで並べます:
@@ -570,16 +487,15 @@ checkpointを経由するグラフでは複数件）に続けて、clip/vaeが�
 node idと一致する場合、「continues pass k」を見出しに追加します。latentの
 行はkindに応じて「WxH · empty latent」「image upscale <method> → WxH」
 「latent upscale <method> → WxH」「×<scale_by> (<method>)」のいずれかです。
-positive/negativeはBatch DetailのPromptセクションと同じ`PromptChips`
-コンポーネントで表示します。pass 2以降の行は直前のpassのプロンプトに対する
+positive/negativeは`PromptChips`コンポーネントで表示します。pass 2以降の行は直前のpassのプロンプトに対する
 トークン差分（追加=緑枠、weight変化=黄枠バッジ、削除=取り消し線の別行）を表示し、
 trim後に完全に同じ場合は「same as pass N」とだけ表示します。
 
-graphが無い（未抽出）場合は `(no graph)` とだけ表示したうえで、Batchの
+graphが無い（未抽出）場合は `(no graph)` とだけ表示したうえで、Requestの
 `prompt` / `negative_prompt` をpositive/negativeのチップとして、seedは
 ComfyJobの`seed`列を表示するフォールバックにします。graphがあり、かつ
-Batchの`prompt`（trim後）がpass 1のpositiveと異なる場合は、dimな
-「request prompt differs」行と、折りたたみ`Request prompt`（Batchの
+Requestの`prompt`（trim後）がpass 1のpositiveと異なる場合は、dimな
+「request prompt differs」行と、折りたたみ`Request prompt`（Requestの
 promptをpass 1のpositiveに対して差分表示したチップ）を追加します。
 
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
@@ -602,7 +518,7 @@ Finalizeセクションは、Generation Detailから積める唯一の生成要�
 `repair_seeds`（既定`disabled`、部位チェックか範囲のどちらかがある間だけ有効）を積みます。
 外すとdenoise / keep_legwearが元の状態に戻り、`repair_seeds`は送らなくなります。
 
-このBatchのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
+このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
 無いrecipeは数値入力とチェックボックスで表示します
 （[domain-model.md](domain-model.md#finalize-プロファイル)）。
@@ -647,9 +563,7 @@ deliver onlyで使うときはworkerがここを無視するため、GUIはrecip
 それ以外はrepair hands / repair feetのどちらかが必要です。
 
 Generation Detail（画像1枚に対して1つのFinalizeフォームが並ぶページ）は
-これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます
-（Batch Detailの「Finalize all arms」は対象のGenerationが1枚に決まらないため、この
-操作自体を持ちません）。画像の親要素に`repair-region-overlay`をJSでサイズ・位置とも
+これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます。画像の親要素に`repair-region-overlay`をJSでサイズ・位置とも
 `<img>`に一致させて重ね、フォーム上の「範囲指定」トグル（`data-repair-region-toggle`、既定OFF）をONにしている間だけ、ポインタイベント（マウス/タッチ共通）でのドラッグ1回が矩形1つ
 （`repair-region-rect`、右上に消去ボタン）になり、複数指定できます。矩形は表示中の画像
 サイズに対する分数`[x0, y0, x1, y1]`（0〜4桁に丸め、0..1にクランプ）としてfinalize
@@ -668,13 +582,12 @@ backdropが不正な値のときは`送信内容: —`）。プロファイル�
 送る場合も`backdrop=transparent`と表示します。wordを送るキーは、そのrecipeの
 `dials.finalize`が対応するnumberを持っていれば`<word> (<number>)`と添えて表示します
 （catalogに無いwordは数値無しでそのまま表示）。この表示はsubmit時と同じserializer
-（`finalizeOptionsFrom`）を使うため、送信内容とズレません。Finalize all armsも同じ
-項目・同じ条件です。
+（`finalizeOptionsFrom`）を使うため、送信内容とズレません。
 Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 "gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
 `request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。挿入先はフォームの下で
 長いページでは視界の外になりやすいため、ボタン自身も押下に応えます。送信中は`disabled`で
-`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`（Finalize all armsは`Queued N ✓`）を
+`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`を
 表示して元のラベルに戻り、失敗時はすぐ戻ります。この一覧には、このGenerationを
 対象とした最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
 表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
@@ -686,9 +599,7 @@ Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
 行のクラスと表示statusを書き換えます。`done` / `failed`への遷移時は該当requestと
 （`done`なら）納品Generationを取得し直し、ページ読み込み時と同じ結果リンク / errorをその場に
 追加します。ページ読み込み後に新しく現れた行（finalize送信直後の挿入）も
-現れた時点でこの接続に登録され、まだ張っていなければソケットを開きます。Batch Detailの
-Finalize all armsセクションでも、finalize送信のたびに集計行（`N queued`）と
-`request-status-list`をその場で更新し、同じ仕組みで各行が進捗します。WebSocketが張れない
+現れた時点でこの接続に登録され、まだ張っていなければソケットを開きます。WebSocketが張れない
 環境でも静的な表示のまま壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
 
 このGenerationが`rating = good`で、かつfinalize requestが産んだもの（納品
@@ -786,7 +697,7 @@ baseline（`run_index`が最小のRun）以外の行では、baselineと異な�
 `<target> <op> <value>`、replaceは`<old> → <value>`）を並べます。
 
 3番目のtbody（`exp-facts-prompts`）には、各Runのpass 1のpositive/negative
-プロンプトをBatch DetailのPromptセクションと同じ`PromptChips`で表示します。
+プロンプトを`PromptChips`で表示します。
 baseline runは値があるものだけ（`#<run_index> positive` / `#<run_index>
 negative`の行、値がnullなら行ごと省略）。baseline以外のRunは、そのRunの
 プロンプトがbaselineのものと異なるときだけ行を出し、baselineに対する
@@ -814,8 +725,9 @@ negative`の行、値がnullなら行ごと省略）。baseline以外のRunは�
     thumbnail / evaluation / decision
 ```
 
-Runに紐づくGenerationがあればそのサムネイル、なければ Batch
-の代表画像を1枚出します。evaluation / decision
+Runに紐づくGenerationがあればそのサムネイル、なければ結果Request
+の最初のGenerationを1枚出します。サムネイルとその下の`request <short_id>`リンクは、いずれもその
+Generationの`/g/{short_id}`へ遷移します。evaluation / decision
 は固定schemaを持たないJSONなので、`overall` / `aspects` / `notes`、`action` /
 `reason` / `next_overrides` を認識できたときだけ整形し、それ以外はJSONのまま見せます。
 
@@ -823,14 +735,14 @@ status の変更は詳細画面のselectから行います。Experiment / Run / 
 の削除UIは持ちません。
 
 baseline（`run_index`が最小のRun）以外の各Runには、baselineとの `A/B vs #<baseline
-run_index>` リンクが付きます（両Runにbatchが付いている場合のみ）。リンク先はA/B Judge
+run_index>` リンクが付きます（両Runに結果Requestがある場合のみ）。リンク先はA/B Judge
 Viewです。
 
 RunsとPromotionsの間に `A/B` セクションがあります。judgmentがある baseline/arm
 の組ごとに1行（`#<baseline run_index> vs #<arm run_index>`、armの勝ち数 / baselineの勝ち数
 / tie数 / 合計）、行はそのペアのA/B Judge Viewへリンクします。judgmentがなければ
 「No judgments yet.」。その下にRunごとのrating内訳表（生成数 / good / neutral / bad /
-unrated、batch未attachのRunも0件で表示）が並びます。
+unrated、結果Requestの無いRunも0件で表示）が並びます。
 
 ### A/B Judge View
 
@@ -838,8 +750,8 @@ unrated、batch未attachのRunも0件で表示）が並びます。
 runのGenerationを人間が盲検で1対1に対比較する画面です
 （[domain-model.md](domain-model.md#pairwisejudgment)のPairwiseJudgment参照）。
 
-対象は両Runのbatchに共通するseedのみです（同じseedのGenerationが両方に存在する組）。
-multi-output jobで同一seedに複数枚あるときは、batch内で最初に作られた1枚だけを対象にします。
+対象は両Runの結果Requestに共通するseedのみです（同じseedのGenerationが両方に存在する組）。
+multi-output jobで同一seedに複数枚あるときは、Request内で最初に作られた1枚だけを対象にします。
 既にjudgment済みのseedは対象から除きます。
 
 表示のたびにサーバー側でどちらをleftに置くかをランダムに決めます。画面には現在のGenerationペア
@@ -859,7 +771,7 @@ multi-output jobで同一seedに複数枚あるときは、batch内で最初に�
 ボタンを無効化し、「Next」ボタン（キーボードは Enter / Space）を押すと次のペアへ
 進んでreveal表示を隠します。全seedを判定し終えたペアでもreveal自体は表示され、
 Nextを押すと完了メッセージとExperiment詳細への戻りリンクの状態に遷移します。
-`baseline` / `arm` が未指定・不正・別Experiment・batch未attachのRunを指すときは、
+`baseline` / `arm` が未指定・不正・別Experiment・結果Requestの無いRunを指すときは、
 ペア画面の代わりに警告文を表示します。
 
 ## Bookmarks
@@ -868,17 +780,16 @@ Bookmarkした対象を素早く呼び出します。
 
 ``` text
 Generations
-Batches
 Experiments
 ```
 
 BookmarkはFavoriteではなく再利用・再訪のための導線です。どの対象も🔖の1操作で切り替えます。
-Generationはカードと Generation Detail、BatchはBatch一覧の行とBatch Detailの見出し行、
+Generationはカードと Generation Detail、
 ExperimentはExperiment一覧の行とExperiment詳細に🔖を置きます。
 
 GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外` / `finalize` /
 `すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
-トグルはありません。Batches / Experimentsセクションにはこの切り替えはありません。
+トグルはありません。Experimentsセクションにはこの切り替えはありません。
 
 Generationsセクションのカードは[GenerationCard](#gallery)でGalleryと共通です（bad非表示との
 組み合わせは無いため、[Gallery pending changes](#gallery-pending-changes)のbadの扱いはありません）。
@@ -892,7 +803,7 @@ semantic情報はDetailに置きます。
 
 | 幅 | 挙動 |
 |---|---|
-| 1100px以上 | Batch Detail / Generation Detailが2:1の2ペイン。Gallery / Bookmarksのグリッドは6列、Batch Detailのグリッドは左ペインに190px以上の幅で入るだけ並べる |
+| 1100px以上 | Generation Detailが2:1の2ペイン。Gallery / Bookmarksのグリッドは6列 |
 | 1100px以下 | Detailは縦一列。グリッドは4列（800px以下は190px以上の幅で入るだけ並べる） |
 | 600px以下 | ナビ・カード・反映ピルのタップ領域を2.75rem以上に広げ、キュー状態pillは数字だけにする |
 
@@ -930,7 +841,7 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `promote_profile.submit` | `generation_id`, `name`, `version` | Generation Detailの`profile に登録`（`initPromoteToProfile`） |
 | `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
-| `queue.group.click` | `kinds`, `has_batch` | キュー状態パネルの行クリック（`navQueueRow`） |
+| `queue.group.click` | `kinds`, `has_request` | キュー状態パネルの行クリック（`navQueueRow`） |
 | `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |

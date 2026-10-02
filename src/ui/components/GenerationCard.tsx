@@ -16,7 +16,7 @@ export interface GenerationCardData {
   image_width?: number | null;
   image_height?: number | null;
   image_size?: number | null;
-  /** short_id of the raw Generation this card's Batch refines (finalize/repair/masked_redraw output), or null/absent for a raw Generation. */
+  /** short_id of the raw Generation this card's Generation refines (finalize/repair/masked_redraw output), or null/absent for a raw Generation. */
   refines_generation_short_id?: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published?: boolean;
@@ -66,7 +66,7 @@ function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
   );
 }
 
-/** Card used in Gallery / Batch Detail / Bookmarks / Compare generation grids: thumbnail (with optional
+/** Card used in Gallery / Bookmarks / Compare generation grids: thumbnail (with optional
  * `from <short_id>` / 公開済み overlays) + a row of rating + bookmark. Everything else lives in Generation Detail, which the thumbnail links to. */
 export function GenerationCard({ g }: { g: GenerationCardData }) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.finalize_request);

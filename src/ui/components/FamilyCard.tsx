@@ -1,10 +1,12 @@
-/** `reference` / `refinement` / `story` are the three stored Relation kinds (see CLAUDE.md invariants — never merged).
- * `experiment` is a fourth, display-only axis derived from ExperimentRun.parent_run_id / run_index at read time; it writes no row of its own. */
-export type RelKind = 'reference' | 'refinement' | 'story' | 'experiment';
+/** `reference` (素材参照) / `refinement` (仕上げ元) are the two stored relation kinds (see CLAUDE.md invariants — never merged).
+ * `experiment` is a display-only axis derived from ExperimentRun.parent_run_id / run_index at read time; it writes no row of its own.
+ * `request` marks the other Generations of the same Request. */
+export type RelKind = 'reference' | 'refinement' | 'experiment' | 'request';
 
 /** Small rounded label distinguishing which family-card kind (see RelKind) a card comes from. */
 export function RelBadge({ kind }: { kind: RelKind }) {
-  const label = kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : kind === 'story' ? 'Story' : 'Experiment';
+  const label =
+    kind === 'reference' ? 'Reference' : kind === 'refinement' ? 'Refinement' : kind === 'experiment' ? 'Experiment' : 'Request';
   return <span class={`rel-badge rel-${kind}`}>{label}</span>;
 }
 
@@ -12,15 +14,15 @@ export interface FamilyCardData {
   kind: RelKind;
   href: string;
   shortId: string;
-  /** Generation image URL, or null for an empty placeholder (e.g. a Batch with no Generations yet). */
+  /** Generation image URL, or null for an empty placeholder. */
   imageUrl: string | null;
-  /** Marks a card as describing a relation of the owning Batch rather than of the Generation itself (e.g. "via batch"). */
+  /** Marks a card as describing a relation of the owning Request rather than of the Generation itself (e.g. "via request"). */
   caption?: string | null;
-  /** purpose/aspect, reason, or Story name/label text. */
+  /** purpose/aspect text or a short relation label. */
   detail?: string | null;
 }
 
-/** Thumbnail card for a 親/子/兄弟 family relation: links straight to the related Generation/Batch detail page. */
+/** Thumbnail card for a 親/子/兄弟 family relation: links straight to the related Generation detail page. */
 export function FamilyCard({ item }: { item: FamilyCardData }) {
   return (
     <a class="family-card" href={item.href}>

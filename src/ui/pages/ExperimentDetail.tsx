@@ -11,6 +11,8 @@ export interface ExperimentDetailRunRequest {
   id: string;
   short_id: string | null;
   thumbnail_url: string | null;
+  /** 結果 Request の最初の Generation。Run カードの遷移先 (/g/)。 */
+  thumbnail_generation_short_id: string | null;
 }
 
 export interface ExperimentDetailRunGeneration {
@@ -253,14 +255,14 @@ function renderRunThumbnail(run: ExperimentDetailRun) {
         <a href={run.generation.canonical_url}>
           <img src={run.generation.thumbnail_url} alt="" />
         </a>
-      ) : run.request && run.request.short_id && run.request.thumbnail_url ? (
-        <a href={`/b/${run.request.short_id}`}>
+      ) : run.request && run.request.thumbnail_generation_short_id && run.request.thumbnail_url ? (
+        <a href={`/g/${run.request.thumbnail_generation_short_id}`}>
           <img src={run.request.thumbnail_url} alt="" />
         </a>
       ) : null}
-      {run.request && run.request.short_id ? (
-        <a class="exp-run-batch-link" href={`/b/${run.request.short_id}`}>
-          batch {run.request.short_id}
+      {run.request && run.request.short_id && run.request.thumbnail_generation_short_id ? (
+        <a class="exp-run-request-link" href={`/g/${run.request.thumbnail_generation_short_id}`}>
+          request {run.request.short_id}
         </a>
       ) : null}
     </div>
