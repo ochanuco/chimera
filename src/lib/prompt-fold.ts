@@ -76,12 +76,17 @@ export function foldGenerationDetailPrompts<T>(detail: T): T {
   if (!isRecord(detail)) return detail;
   const result: Record<string, unknown> = { ...detail };
 
-  if (isRecord(detail.batch)) {
-    result.batch = {
-      ...detail.batch,
-      prompt: foldIfString(detail.batch.prompt),
-      negative_prompt: foldIfString(detail.batch.negative_prompt),
+  if (isRecord(detail.request)) {
+    const request: Record<string, unknown> = {
+      ...detail.request,
+      prompt: foldIfString(detail.request.prompt),
+      negative_prompt: foldIfString(detail.request.negative_prompt),
+      patches: foldPatchArray(detail.request.patches),
     };
+    if (isRecord(detail.request.parameters)) {
+      request.parameters = { ...detail.request.parameters, prompt_patch: foldIfString(detail.request.parameters.prompt_patch) };
+    }
+    result.request = request;
   }
 
   if (isRecord(detail.comfy_job)) {
@@ -92,30 +97,6 @@ export function foldGenerationDetailPrompts<T>(detail: T): T {
       comfyJob.graph_omitted = true;
     }
     result.comfy_job = comfyJob;
-  }
-
-  return result as T;
-}
-
-/** getBatchDigest output (src/lib/batches.ts) with prompt bodies folded. */
-export function foldBatchDigestPrompts<T>(digest: T): T {
-  if (!isRecord(digest)) return digest;
-  const result: Record<string, unknown> = { ...digest };
-
-  if (isRecord(digest.batch)) {
-    const batch: Record<string, unknown> = {
-      ...digest.batch,
-      prompt: foldIfString(digest.batch.prompt),
-      negative_prompt: foldIfString(digest.batch.negative_prompt),
-    };
-    if (isRecord(digest.batch.parameters)) {
-      batch.parameters = { ...digest.batch.parameters, prompt_patch: foldIfString(digest.batch.parameters.prompt_patch) };
-    }
-    result.batch = batch;
-  }
-
-  if (Array.isArray(digest.jobs)) {
-    result.jobs = digest.jobs.map((job) => (isRecord(job) ? { ...job, render_facts: foldSamplerPrompts(job.render_facts) } : job));
   }
 
   return result as T;

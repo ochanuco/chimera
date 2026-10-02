@@ -206,6 +206,7 @@ export function serializePairwiseJudgment(row: PairwiseJudgmentRow, winner: Judg
 export function serializeRequest(row: RequestRow) {
   return {
     id: row.id,
+    short_id: row.short_id,
     kind: row.kind,
     status: row.status,
     payload: JSON.parse(row.payload_json),

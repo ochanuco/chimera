@@ -10,37 +10,20 @@ function uniqueRecipe(): string {
 interface GenerationDetail {
   id: string;
   short_id: string;
-  batch: { id: string; recipe: string | null } | null;
+  request: { id: string; recipe: string | null } | null;
   comfy_job: { seed: number | null } | null;
-}
-
-interface BatchDigest {
-  batch: { id: string; short_id: string };
-  jobs: { id: string; seed: number | null; index: number | null; status: string }[];
-  generations: {
-    id: string;
-    short_id: string;
-    rating: string | null;
-    bookmark: boolean;
-    tags: string[];
-    semantic_summary: string | null;
-    semantic_attributes: Record<string, unknown> | null;
-    seed: number | null;
-  }[];
-  references: unknown[];
-  relations: { outgoing: unknown[]; incoming: unknown[] };
 }
 
 interface LineageNode {
   depth: number;
-  via: 'reference' | 'relation';
+  via: 'reference' | 'refinement';
   purpose_or_kind: string | null;
-  batch: { id: string; short_id: string };
+  request: { id: string; short_id: string | null };
   generations: { short_id: string }[];
 }
 
 interface Lineage {
-  generation: { id: string; short_id: string; batch_id: string };
+  generation: { id: string; short_id: string; request_id: string | null };
   ancestors: LineageNode[];
   descendants: LineageNode[];
 }
@@ -90,46 +73,8 @@ describe('MCP get_generation', () => {
   });
 });
 
-describe('MCP list_batch', () => {
-  it('carries rating/bookmark/tags/semantic_summary/semantic_attributes/seed per generation', async () => {
-    const { batch, generation } = await createGeneration({ jobOverrides: { seed: 987654 } });
-
-    await postJson(`/api/v1/generations/${generation.id}/rating`, { rating: 'good' }, 'PUT');
-    await postJson(`/api/v1/generations/${generation.id}/tags`, { name: 'outfit-good' });
-    await postJson(
-      `/api/v1/generations/${generation.id}/semantic`,
-      {
-        schema_version: 1,
-        summary: 'a lounge pose, warm palette',
-        attributes: { patches: [{ target: 'pose', op: 'set', value: 'lounge', reason: 'seed' }] },
-      },
-      'PUT',
-    );
-
-    const tool = await mcpToolCall<BatchDigest>('list_batch', { batch_id: batch.short_id });
-    expect(tool.isError).toBe(false);
-    expect(tool.data?.batch.id).toBe(batch.id);
-
-    const g = tool.data?.generations.find((x) => x.id === generation.id);
-    expect(g).toBeTruthy();
-    expect(g?.rating).toBe('good');
-    expect(g?.bookmark).toBe(false);
-    expect(g?.tags).toEqual(['outfit-good']);
-    expect(g?.semantic_summary).toBe('a lounge pose, warm palette');
-    expect(g?.semantic_attributes).toEqual({ patches: [{ target: 'pose', op: 'set', value: 'lounge', reason: 'seed' }] });
-    expect(g?.seed).toBe(987654);
-
-    expect(tool.data?.jobs.length).toBeGreaterThan(0);
-  });
-
-  it('404s as a tool error for an unknown batch', async () => {
-    const tool = await mcpToolCall('list_batch', { batch_id: 'does-not-exist' });
-    expect(tool.isError).toBe(true);
-  });
-});
-
 describe('MCP get_generation_lineage', () => {
-  it('walks one reference hop and one relation hop in each direction', async () => {
+  it('walks one reference hop and one refinement hop in each direction', async () => {
     const { batch: batchA, generation: genA } = await createGeneration();
 
     const batchB = await postJson<{ id: string; short_id: string }>('/api/v1/batches', {
@@ -145,6 +90,7 @@ describe('MCP get_generation_lineage', () => {
       idempotency_key: crypto.randomUUID(),
       prompt: 'batch C',
       refinement: { source_batch_id: batchB.body.id, actor: 'human', reason: 'hands were broken' },
+      references: [{ source_generation_id: genB.body.id, purpose: 'rebuild' }],
     });
     expect(batchC.status).toBe(201);
     const jobC = await createJob(batchC.body.id);
@@ -152,23 +98,24 @@ describe('MCP get_generation_lineage', () => {
 
     const fromC = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genC.body.id });
     expect(fromC.isError).toBe(false);
-    expect(fromC.data?.ancestors.map((n) => ({ depth: n.depth, via: n.via, batch_id: n.batch.id }))).toEqual([
-      { depth: 1, via: 'relation', batch_id: batchB.body.id },
-      { depth: 2, via: 'reference', batch_id: batchA.id },
+    expect(fromC.data?.generation.request_id).toBe(batchC.body.id);
+    expect(fromC.data?.ancestors.map((n) => ({ depth: n.depth, via: n.via, request_id: n.request.id }))).toEqual([
+      { depth: 1, via: 'refinement', request_id: batchB.body.id },
+      { depth: 2, via: 'reference', request_id: batchA.id },
     ]);
-    expect(fromC.data?.ancestors[0]?.purpose_or_kind).toBe('refinement');
+    expect(fromC.data?.ancestors[0]?.purpose_or_kind).toBe('finalize');
     expect(fromC.data?.ancestors[1]?.purpose_or_kind).toBe('composition');
 
     const fromA = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genA.id });
     expect(fromA.isError).toBe(false);
-    expect(fromA.data?.descendants.map((n) => ({ depth: n.depth, via: n.via, batch_id: n.batch.id }))).toEqual([
-      { depth: 1, via: 'reference', batch_id: batchB.body.id },
-      { depth: 2, via: 'relation', batch_id: batchC.body.id },
+    expect(fromA.data?.descendants.map((n) => ({ depth: n.depth, via: n.via, request_id: n.request.id }))).toEqual([
+      { depth: 1, via: 'reference', request_id: batchB.body.id },
+      { depth: 2, via: 'refinement', request_id: batchC.body.id },
     ]);
 
     // depth=1 stops after the first hop.
     const shallow = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genC.body.id, depth: 1 });
-    expect(shallow.data?.ancestors.map((n) => n.batch.id)).toEqual([batchB.body.id]);
+    expect(shallow.data?.ancestors.map((n) => n.request.id)).toEqual([batchB.body.id]);
   });
 });
 
@@ -432,21 +379,26 @@ describe('MCP derive_request', () => {
     expect(call.data?.payload.generation).toEqual({ recipe: 'yukari', parameters: { pose: 'date' } });
   });
 
-  it('409s when a refinement batch in the chain has no rebuild reference', async () => {
+  it('409s when a refinement request in the chain has no source generation', async () => {
     const raw = await createParent({ parameters: { pose: 'date' } });
-    const orphanRefinement = await createBatch({ parameters: { kind: 'hires-chain' } });
+    const finalizeRequest = await postJson<{ id: string }>('/api/v1/requests', {
+      kind: 'finalize',
+      payload: { generation_id: raw.generation.id, options: {} },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(finalizeRequest.status).toBe(201);
+    const orphanRefinement = await createBatch({
+      parameters: { kind: 'hires-chain' },
+      idempotency_key: `request:${finalizeRequest.body.id}`,
+    });
     const job = await createJob(orphanRefinement.body.id);
     const orphanGeneration = await ingestGeneration(job.body.id, {
       seed: 123,
       original_filename: 'out_00001_.png',
       comfy_output_index: 0,
     });
-    await postJson(`/api/v1/batches/${orphanRefinement.body.id}/relations`, {
-      source_batch_id: raw.batch.id,
-      type: 'refinement',
-      actor: 'claude',
-    });
-    // No batch_references (rebuild) row — the chain cannot be resolved past this batch.
+    // refines_generation_id が NULL の finalize request: 仕上げ元まで遡れない。
 
     const call = await mcpToolCall('derive_request', {
       from_generation_id: orphanGeneration.body.short_id,
@@ -456,7 +408,35 @@ describe('MCP derive_request', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(true);
-    expect(call.text).toContain('rebuild reference');
+    expect(call.text).toContain('no source generation');
+  });
+
+  it('derives from a refined Generation whose Request carries the parameters, with every Batch row stripped', async () => {
+    const raw = await createParent({ parameters: { pose: 'date' }, patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }] });
+    const finalized = await createRefinementBatch(raw);
+    await env.DB.prepare(
+      'UPDATE batches SET recipe = NULL, parameters_json = NULL, patches_json = NULL, preset_versions_json = NULL, refines_generation_id = NULL',
+    ).run();
+    await env.DB.prepare('DELETE FROM batch_relations').run();
+    await env.DB.prepare('DELETE FROM batch_references').run();
+
+    const call = await mcpToolCall<{ payload: { generation: Record<string, unknown> }; derived_from: { source: { id: string } } }>(
+      'derive_request',
+      {
+        from_generation_id: finalized.generation.short_id,
+        instruction: 'try a variant',
+        count: 1,
+        semantic: { summary: 'x' },
+        idempotency_key: crypto.randomUUID(),
+      },
+    );
+    expect(call.isError).toBe(false);
+    expect(call.data?.derived_from.source.id).toBe(raw.generation.id);
+    expect(call.data?.payload.generation).toEqual({
+      recipe: 'yukari',
+      parameters: { pose: 'date' },
+      patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }],
+    });
   });
 
   describe('replaying patches against an unpinned preset body', () => {

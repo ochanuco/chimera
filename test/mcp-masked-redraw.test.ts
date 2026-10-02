@@ -185,11 +185,13 @@ describe('MCP masked_redraw_generation', () => {
     expect(targetGeneration.body.id).not.toBe(sourceGeneration.id);
 
     const lineage = await mcpToolCall<{
-      ancestors: { via: string; purpose_or_kind: string | null; batch: { id: string } }[];
+      ancestors: { via: string; purpose_or_kind: string | null; request: { id: string } }[];
     }>('get_generation_lineage', { generation_id: targetGeneration.body.id });
     expect(lineage.isError).toBe(false);
     expect(lineage.data?.ancestors).toEqual(
-      expect.arrayContaining([expect.objectContaining({ via: 'reference', purpose_or_kind: 'rebuild' })]),
+      expect.arrayContaining([
+        expect.objectContaining({ via: 'refinement', purpose_or_kind: 'masked_redraw', request: expect.objectContaining({ id: sourceBatch.id }) }),
+      ]),
     );
     const targetDetail = await getJson<{
       references: { source_generation_id: string; purpose: string | null; aspect: string | null; instruction: string | null }[];

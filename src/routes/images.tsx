@@ -18,7 +18,7 @@ import { queryGenerations } from '../lib/generations';
 import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
-import { findFinalizeRequestForBatch } from '../lib/promote';
+import { isFinalizeResult } from '../lib/promote';
 import type { FinalizeDials } from '../ui/finalize-options';
 import {
   GenerationDetailPage,
@@ -139,7 +139,7 @@ images.get('/:shortId', async (c) => {
   // Finalize セクション: 最新の finalize/repair request の状態表示のみ（GUI は request を積むだけ、worker-protocol.md）。
   const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
 
-  const recipe = data.batch?.recipe ?? null;
+  const recipe = data.request?.recipe ?? null;
   const [catalogDoc, finalizeProfiles] = await Promise.all([
     recipe ? getCatalog(db, defaultRecipeRef(c.env)) : Promise.resolve(null),
     recipe ? listFinalizeProfiles(db, recipe) : Promise.resolve([]),
@@ -154,7 +154,7 @@ images.get('/:shortId', async (c) => {
   // promote-profile の表示条件: rating good で、かつこの Generation が finalize request の
   // 納品物であること。full page のみで引く追加クエリなので card / json には出さない。
   const canPromoteToProfile =
-    data.rating === 'good' && data.batch !== null && (await findFinalizeRequestForBatch(db, data.batch.id)) !== null;
+    data.rating === 'good' && (await isFinalizeResult(db, generation));
 
   const producedByOptions = await findProducedByOptions(db, generation.id);
 

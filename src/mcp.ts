@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
 import {
   requestKindSchema,
+  requestKindFilterSchema,
   requestStatusSchema,
   RECIPE_REF_RE,
   payloadEnvelopeIssues,
@@ -24,7 +25,7 @@ import {
   getRunOr404,
   getRunWithExperimentContext,
   latestRunByExperiment,
-  listGenerationsLightForBatch,
+  listGenerationsLightForRun,
   queryExperiments,
   resolveGenerationOr404,
   updateExperimentRun,
@@ -39,7 +40,6 @@ import {
   resolveDerivationSource,
 } from './lib/requests';
 import { getGenerationDetail, queryGenerations } from './lib/generations';
-import { getBatchDigest } from './lib/batches';
 import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
 import { presetKindSchema } from './schemas/presets';
@@ -51,12 +51,11 @@ import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrC
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
-import { getBatchByIdOrShortId } from './lib/db';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
-import { foldBatchDigestPrompts, foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
+import { foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
 import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
 import type { Bindings } from './types';
 
@@ -300,7 +299,7 @@ const MCP_INSTRUCTIONS =
   "pose's pinned basis render (set_pose_reference). Seed exploration also goes through plain_render with an explicit seed.\n" +
   "3. To derive from a look, start from the Generation in get_catalog_pose's `reference` (the current pin) and call " +
   'derive_request from it. A rating=good Generation found via list_generations may predate the pin — prefer the pin. ' +
-  'get_generation / list_batch report which pose a Generation drew and that pose\'s current pin as batch.drawn_pose.\n' +
+  'get_generation reports which pose a Generation drew and that pose\'s current pin as request.drawn_pose.\n' +
   '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
   'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
   '5. A finalized / repaired / masked_redraw Generation exposes its pre-finalize source as `refines_generation` ' +
@@ -373,7 +372,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.create_run,
       description:
         "Non-destructive: only adds a new Run record under an Experiment. Never deletes or overwrites existing data. Idempotent by idempotency_key. " +
-        'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no batch attached). ' +
+        'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no request result yet). ' +
         'overrides is a diff against the Experiment\'s base recipe, shaped {"patches": [...]}. Each patch is ' +
         '{target, op, reason, plus value and/or old depending on op} — reason is required on every patch. ' +
         "chimera does not define the target/op vocabulary; it's the recipe's, on the comfyui-recipes side — read " +
@@ -407,14 +406,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'get_run',
     {
       outputSchema: mcpOutputSchemas.get_run,
-      description: "Get a Run, its attached batch, and that batch's generations (short_id, rating, image dimensions).",
+      description: "Get a Run, its result request, and that request's generations (short_id, rating, image dimensions).",
       inputSchema: z.object({ run_id: z.string().min(1) }),
       annotations: { readOnlyHint: true },
     },
     async ({ run_id }) => {
       const run = await getRunOr404(db, run_id);
       const { decorated, experiment } = await getRunWithExperimentContext(db, run, origin);
-      const generations = run.batch_id ? await listGenerationsLightForBatch(db, run.batch_id, origin) : [];
+      const generations = await listGenerationsLightForRun(db, run.id, origin);
       return jsonResult(mcpOutputSchemas.get_run, {
         ...decorated,
         experiment: {
@@ -589,8 +588,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a finalize request (docs/worker-protocol.md "finalize"): one ComfyUI graph that, unless ' +
         'options.deliver_only is set, redraws the pick at delivery size, then cuts a matte and composites the ' +
-        'backdrop and purple stroke; recorded as a refinement Batch of the source Generation, with a rebuild ' +
-        "Reference back to it. generation_id accepts a short_id. " +
+        'backdrop and purple stroke; its output Generations record the source Generation as the one they refine ' +
+        "(refines_generation). generation_id accepts a short_id. " +
         'The redraw only works on a picture drawn with Anima (recipe yukari); a picture from any other recipe ' +
         'can only be finalized with deliver_only: true (deliver without redraw) — without it the worker fails the ' +
         'request. A LayerDiffuse-derived picture cannot be finalized at all, deliver_only included. ' +
@@ -633,7 +632,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'explicitly when the render itself is the look, i.e. a redraw would repaint surfaces such as tights. ' +
         'Combined with repair and/or repair_regions, it instead produces one delivery candidate per ' +
         'seed — a masked reroll of the region(s) on the source\'s own model, then the no-redraw delivery tail — ' +
-        'recorded as a kind="repair" batch holding a raw and a delivered Generation per seed (repair_seeds controls ' +
+        'recorded as a repair request holding a raw and a delivered Generation per seed (repair_seeds controls ' +
         'how many). Still cannot combine with denoise, size, route, finalizer, keep_regions or a truthy upscale; ' +
         'repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
         'deliver_size stay compatible). ' +
@@ -668,9 +667,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a repair request (docs/worker-protocol.md "repair"): a masked local redraw of hands and/or feet ' +
-        'on an already finalized or raw Generation; recorded as a refinement Batch of the source Generation, the ' +
+        'on an already finalized or raw Generation; its output Generations record the source Generation as the one they refine, the ' +
         'same lineage shape as finalize. generation_id accepts a short_id and may be either sibling of a finalize ' +
-        "batch (the raw or the delivered Generation). options is optional; every field defaults to the worker/recipe " +
+        "request (the raw or the delivered Generation). options is optional; every field defaults to the worker/recipe " +
         'default when omitted: parts (array of "hands"/"feet" to redraw, worker default both), ' +
         'regions (explicit [x0,y0,x1,y1] fraction rectangles, worker auto-detects when omitted), ' +
         'denoise (redraw strength, recipe default), seeds (up to 16 seeds to try, worker default), ' +
@@ -703,8 +702,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a generic masked redraw / garment inpaint request (docs/worker-protocol.md "masked_redraw"): ' +
-        'the source Generation is left unchanged and the worker creates a new refinement Batch with a rebuild ' +
-        'Reference back to it. generation_id accepts a short_id. options requires one or more non-overlapping ' +
+        'the source Generation is left unchanged and the worker creates new Generations that record it as the one they refine. ' +
+        'generation_id accepts a short_id. options requires one or more non-overlapping ' +
         'normalized [x0,y0,x1,y1] rectangles and a non-empty prompt_patch; denoise is (0,0.75] or a word string ' +
         "(chimera only checks the word's type; no catalog dials namespace is defined for masked_redraw yet, so " +
         'validity is the worker\'s concern), ' +
@@ -756,7 +755,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'pass include_prompts: true only when you actually need the text.',
       inputSchema: z.object({
         status: requestStatusSchema.optional(),
-        kind: requestKindSchema.optional(),
+        kind: requestKindFilterSchema.optional(),
         run_id: z.string().min(1).optional(),
         include_prompts: z.boolean().default(false),
       }),
@@ -816,7 +815,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           summary: item.summary,
           character: item.character,
           created_at: item.created_at,
-          batch_id: item.batch_id,
+          request_id: item.request_id,
           canonical_url: item.canonical_url,
         })),
         total,
@@ -829,14 +828,18 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputSchemas.get_generation,
       description:
-        'Get a Generation (by id or short_id) with its batch, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}. ' +
-        "batch.drawn_pose is {recipe, pose, reference}: the pose this Generation drew and that pose's current basis-render pin " +
-        '(same shape as get_catalog_pose reference, null if unpinned); null when the Batch names no pose. pose_reference, by ' +
+        'Get a Generation (by id or short_id) with its request, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}. ' +
+        'request is the generation request this Generation belongs to: {id, short_id, kind, recipe, raw_instruction, prompt, ' +
+        'negative_prompt, parameters, patches, preset_versions, git_commit, git_dirty, drawn_pose}; prompt and negative_prompt ' +
+        "come from the request's first job. siblings lists the other Generations of the same request " +
+        '({id, short_id, image_width, image_height, comfy_output_index}). ' +
+        "request.drawn_pose is {recipe, pose, reference}: the pose this Generation drew and that pose's current basis-render pin " +
+        '(same shape as get_catalog_pose reference, null if unpinned); null when the request names no pose. pose_reference, by ' +
         'contrast, says whether this Generation is itself a pin. ' +
         'comfy_job.prompt_not_reusable is non-null for repair, masked_redraw and repair-carrying finalize outputs: their ' +
         'render_facts prompts were cut for a masked region (face, hair and hood tags dropped), so never pass them as a ' +
         'generate prompt — use derive_request from the Generation instead. ' +
-        'Prompt bodies (batch prompt/negative_prompt, render_facts sampler prompts, the ComfyUI graph) are folded to a ' +
+        'Prompt bodies (request prompt/negative_prompt/parameters.prompt_patch/prompt patches, render_facts sampler prompts, the ComfyUI graph) are folded to a ' +
         'length marker by default (the graph becomes null with comfy_job.graph_omitted: true); pass include_prompts: true ' +
         'only when you actually need the text.',
       inputSchema: z.object({ generation_id: z.string().min(1), include_prompts: z.boolean().default(false) }),
@@ -850,34 +853,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   );
 
   server.registerTool(
-    'list_batch',
-    {
-      outputSchema: mcpOutputSchemas.list_batch,
-      description:
-        'Get a Batch (by id or short_id) with its jobs, generations (rating/bookmark/tags/semantic_summary/semantic_attributes/seed), ' +
-        'references, relations (outgoing/incoming) and its ExperimentRun family, if any. batch.drawn_pose is ' +
-        "{recipe, pose, reference}: the pose this Batch drew and that pose's current basis-render pin (null if unpinned). " +
-        'Prompt bodies (batch prompt/negative_prompt, batch.parameters.prompt_patch, render_facts sampler prompts) are ' +
-        'folded to a length marker by default; pass include_prompts: true only when you actually need the text.',
-      inputSchema: z.object({ batch_id: z.string().min(1), include_prompts: z.boolean().default(false) }),
-      annotations: { readOnlyHint: true },
-    },
-    async ({ batch_id, include_prompts }) => {
-      const batch = await getBatchByIdOrShortId(db, batch_id);
-      if (!batch) throw notFound('batch');
-      const digest = await getBatchDigest(db, origin, batch);
-      return jsonResult(mcpOutputSchemas.list_batch, include_prompts ? digest : foldBatchDigestPrompts(digest));
-    },
-  );
-
-  server.registerTool(
     'get_generation_lineage',
     {
       outputSchema: mcpOutputSchemas.get_generation_lineage,
       description:
-        'Walk a Generation\'s Batch lineage: ancestors (material Batches it referenced, and the Batch it was refined/retried from) ' +
-        'and descendants (Batches that referenced or were refined from it), each annotated with how they connect ' +
-        "(via 'reference' or 'relation', with the reference purpose or relation type) and its own Generations " +
+        'Walk a Generation\'s request lineage: ancestors (material requests it referenced, and the request it was refined from) ' +
+        'and descendants (requests that referenced or were refined from it), each annotated with how they connect ' +
+        "(via 'reference' with the reference purpose, or 'refinement' with the refining request's kind) and its own Generations " +
         '(short_id/rating/semantic_summary). depth defaults to 5, capped at 10.',
       inputSchema: generationLineageInputSchema,
       annotations: { readOnlyHint: true },
@@ -894,14 +876,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.derive_request,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything, and never modifies the parent Generation. Idempotent by idempotency_key. " +
-        'Enqueue a generate request derived from an existing Generation: carries the parent Batch\'s recipe/parameters/patches ' +
+        'Enqueue a generate request derived from an existing Generation: carries the parent request\'s recipe/parameters/patches ' +
         'forward, merging `parameters` over the parent\'s and appending (or, with replace_patches, replacing) `patches`. ' +
         'If from_generation_id is a finalized or repaired Generation, it is resolved back to the raw Generation it was made ' +
         'from before deriving (finalize/repair payloads are not generate parameters). ' +
-        '404s if from_generation_id does not resolve; 409s if the resolved source Batch has no single recipe (graph-mode) ' +
-        'or if a refinement Batch in the chain has no rebuild reference to resolve through; ' +
-        'or if the source Batch carries patches but no pinned preset version on a recipe that has presets — pass ' +
-        'replace_patches: true (with patches restated against the current preset) or derive from a pinned batch instead. ' +
+        '404s if from_generation_id does not resolve; 409s if the resolved source request has no single recipe (graph-mode) ' +
+        'or if a refinement in the chain has no source generation to resolve through; ' +
+        'or if the source request carries patches but no pinned preset version on a recipe that has presets — pass ' +
+        'replace_patches: true (with patches restated against the current preset) or derive from a pinned request instead. ' +
         'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
         'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
         'when it differs from the source). ' +
@@ -926,17 +908,17 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       recipe_ref,
     }) => {
       const requestedGeneration = await resolveGenerationOr404(db, from_generation_id);
-      const { generation: sourceGeneration, batch: sourceBatch } = await resolveDerivationSource(db, requestedGeneration);
+      const { generation: sourceGeneration, request: sourceRequest } = await resolveDerivationSource(db, requestedGeneration);
 
-      const parentPatches = parseJsonArray(sourceBatch.patches_json);
-      const parentPresets = parseJsonArray(sourceBatch.preset_versions_json) as { kind: string; name: string; version: number }[];
-      const parentRecipeHasPresets = sourceBatch.recipe ? await recipeHasPresets(db, sourceBatch.recipe) : false;
+      const parentPatches = parseJsonArray(sourceRequest.patches_json);
+      const parentPresets = parseJsonArray(sourceRequest.preset_versions_json) as { kind: string; name: string; version: number }[];
+      const parentRecipeHasPresets = sourceRequest.recipe ? await recipeHasPresets(db, sourceRequest.recipe) : false;
 
       const payload = buildDerivedRequestPayload({
         parentGenerationId: sourceGeneration.id,
         requestedGenerationId: requestedGeneration.id,
-        parentRecipe: sourceBatch?.recipe ?? null,
-        parentParameters: parseJsonObjectOrNull(sourceBatch?.parameters_json ?? null) ?? {},
+        parentRecipe: sourceRequest.recipe,
+        parentParameters: parseJsonObjectOrNull(sourceRequest.parameters_json) ?? {},
         parentPatches,
         parentPresets,
         parentRecipeHasPresets,

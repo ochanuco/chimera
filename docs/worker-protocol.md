@@ -218,12 +218,12 @@ brain / GUI が書く遷移:
 queued 以外からの cancelled は 409。done / failed / cancelled は終端で、以後の
 PATCH は 409 です。
 
-`run_id` を持つ generate の `done` は `result.batch_id` が必須（無ければ 400）で、
-chimera は requests 行の更新と `experiment_runs.batch_id` の attach を D1 の batch
-（単一トランザクション）で行います。request だけが done になって Run に batch が付かない
-状態は作りません。Run に既に別の batch が付いていれば 409 で、requests 行も done
-になりません。worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要は
-なくなりますが、送っても既存の attach-only 規則で同じ batch なら 200 です。
+`run_id` を持つ generate の `done` は、Run の結果をその Request の `run_id` で引くので
+`result.batch_id` を要りません。`result.batch_id` を添えたときは、chimera は requests 行の更新と
+`experiment_runs.batch_id` の attach を D1 の batch（単一トランザクション）で行います。
+Run に既に別の batch が付いていれば 409 で、requests 行も done にならず、解決できない
+`batch_id` は 404 です。worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要は
+ありません。
 
 ### Get Request
 
@@ -808,7 +808,7 @@ hub → viewer:
 `generation` は Generation ingest (`POST /api/v1/jobs/{job_id}/generations`, worker-protocol.md
 の外、[api.md](api.md#generation-ingest)) が新しい行を作ったときだけ送ります。同じ
 `(comfy_job_id, comfy_output_index)` の再送（200、既存行を返すだけ）では送りません。
-`refines_generation_short_id` はそのGenerationの所属Batchが`refines_generation_id`を持つときだけ
+`refines_generation_short_id` はそのGenerationが`refines_generation_id`を持つときだけ
 non-nullです（[domain-model.md](domain-model.md#batch)）。Gallery のカードを差し込むための
 通知で、`snapshot`と違いDO storageにキャッシュを持たず、接続中のviewerへその場でbroadcast
 するだけです（接続前に届いたものは取りこぼします — Gallery は元々ページ読み込み時点の

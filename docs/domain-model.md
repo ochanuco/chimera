@@ -402,9 +402,8 @@ pin できる Generation には条件があります。
 -   finalize / repair の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
     raw Generation まで遡ります。rating を見るのは指定した Generation 自身、pin する
     render とその seed は遡った先の raw Generation です。
--   遡った先の Batch は「recipe/pose の素の render」でなければなりません: recipe が
-    一致し、その pose を実際に描き、patches を持たず、その Batch を起こした generate
-    request が prompt / negative_prompt を上書きしていないこと。どれか1つでも外れれば
+-   遡った先の Request は「recipe/pose の素の render」でなければなりません: recipe が
+    一致し、その pose を実際に描き、patches を持たず、その Request（kind = generate）が prompt / negative_prompt を上書きしていないこと。どれか1つでも外れれば
     409 で、満たさない条件は1回の呼び出しですべて列挙されます。
 -   seed は遡った先の raw Generation を作った comfy_job の seed です。
 
@@ -542,9 +541,10 @@ options は明示的な矩形 `regions` と非空の `prompt_patch` を必須と
 不変条件:
 
 -   requests 行は物理削除しません。`cancelled` は `queued` からだけ入れる終端です。
--   `run_id` を持つ generate の `done` は、requests 行の更新と対応する
+-   `run_id` を持つ generate の `done` は、`result.batch_id` を添えたとき、requests 行の更新と対応する
     ExperimentRun への `batch_id` の attach を単一トランザクションで行います。
     request だけが done になって Run に batch が付かない状態は作りません。
+    Run の結果は `requests.run_id` が Run を指す done の generate Request です。
 -   ExperimentRun 作成時、Experiment に `base_recipe` があり status が
     active / stabilized なら、Run の INSERT と同じトランザクションで
     kind=generate の requests 行を自動起票します（1 Run につき1回、
@@ -631,7 +631,7 @@ Reference を採用し、作成時刻が同じなら id の小さい方を採用
 作成時（POST /api/v1/batches）と、references / relations の追加時（POST
 /api/v1/batches/{id}/references, POST /api/v1/batches/{target_batch_id}/relations）に
 自動で再計算します（`src/lib/batch-refinement.ts`）。Gallery の既定フィルタ（`finalize
-以外`）はこの列で raw / finalize 済みの出力を分けます（[ui.md](ui.md#gallery)）。
+以外`）は Generation の `refines_generation_id`（Batch の値を ingest 時に写したもの）で raw / finalize 済みの出力を分けます（[ui.md](ui.md#gallery)）。
 
 status の候補:
 
@@ -757,8 +757,8 @@ Publication を持つ
 preset_reference の pin (generation_id または source_generation_id) である
 Preset の source_generation_id である
 Experiment の base_generation_id である
-他 Batch の BatchReference の source_generation_id である（参照材料として使われている）
-他 Batch の refines_generation_id である（finalize/repair/masked_redraw の仕上げ元）
+他 Request の素材参照（request_references）の source_generation_id である（参照材料として使われている）
+他の Generation の refines_generation_id である（finalize/repair/masked_redraw の仕上げ元）
 進行中 (queued/running) の finalize/repair/masked_redraw request の対象である
 ```
 

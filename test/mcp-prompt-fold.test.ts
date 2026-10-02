@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  foldBatchDigestPrompts,
   foldGenerationDetailPrompts,
   foldPromptText,
   foldRequestPayloadPrompts,
@@ -108,10 +107,20 @@ describe('foldRequestPayloadPrompts', () => {
 });
 
 describe('foldGenerationDetailPrompts', () => {
-  it('folds batch prompts, sampler prompts, and omits the graph', () => {
+  it('folds request prompts, prompt_patch, prompt patches, sampler prompts, and omits the graph', () => {
     const detail = {
       short_id: 'g1',
-      batch: { id: 'b1', prompt: 'positive text', negative_prompt: 'negative text', recipe: 'yukari' },
+      request: {
+        id: 'r1',
+        prompt: 'positive text',
+        negative_prompt: 'negative text',
+        recipe: 'yukari',
+        parameters: { prompt_patch: 'inpaint the sleeve', layerdiffuse: true },
+        patches: [
+          { target: 'prompt.positive', op: 'append', reason: 'x', value: 'patch text' },
+          { target: 'pose', op: 'replace', reason: 'y', value: 'sitting' },
+        ],
+      },
       comfy_job: {
         id: 'j1',
         graph: { '1': { class_type: 'KSampler', inputs: {} } },
@@ -127,8 +136,12 @@ describe('foldGenerationDetailPrompts', () => {
 
     const folded = foldGenerationDetailPrompts(detail) as typeof detail;
 
-    expect(folded.batch.prompt).toBe(foldPromptText('positive text'));
-    expect(folded.batch.negative_prompt).toBe(foldPromptText('negative text'));
+    expect(folded.request.prompt).toBe(foldPromptText('positive text'));
+    expect(folded.request.negative_prompt).toBe(foldPromptText('negative text'));
+    expect(folded.request.parameters.prompt_patch).toBe(foldPromptText('inpaint the sleeve'));
+    expect(folded.request.parameters.layerdiffuse).toBe(true);
+    expect(folded.request.patches[0]!.value).toBe(foldPromptText('patch text'));
+    expect(folded.request.patches[1]!.value).toBe('sitting');
     expect(folded.comfy_job.graph).toBeNull();
     expect((folded.comfy_job as unknown as { graph_omitted: boolean }).graph_omitted).toBe(true);
     expect(folded.comfy_job.render_facts.samplers[0]!.prompt).toEqual({
@@ -141,112 +154,44 @@ describe('foldGenerationDetailPrompts', () => {
   });
 
   it('leaves a null graph null without adding graph_omitted', () => {
-    const detail = { batch: null, comfy_job: { id: 'j1', graph: null, render_facts: null } };
+    const detail = { request: null, comfy_job: { id: 'j1', graph: null, render_facts: null } };
     const folded = foldGenerationDetailPrompts(detail) as typeof detail;
     expect(folded.comfy_job.graph).toBeNull();
     expect('graph_omitted' in folded.comfy_job).toBe(false);
   });
 });
 
-describe('foldBatchDigestPrompts', () => {
-  it('folds batch prompts, batch.parameters.prompt_patch, and per-job sampler prompts, leaving other render_facts fields intact', () => {
-    const digest = {
-      batch: {
-        id: 'b1',
-        prompt: 'batch positive',
-        negative_prompt: 'batch negative',
-        parameters: { prompt_patch: 'inpaint the sleeve', layerdiffuse: true },
-      },
-      jobs: [
-        {
-          id: 'j1',
-          index: 0,
-          render_facts: {
-            version: 2,
-            samplers: [{ node_id: '3', cfg: 5, prompt: { positive: 'job positive', negative: 'job negative' } }],
-          },
-        },
-      ],
-    };
-    const snapshot = JSON.parse(JSON.stringify(digest));
-
-    const folded = foldBatchDigestPrompts(digest) as typeof digest;
-
-    expect(folded.batch.prompt).toBe(foldPromptText('batch positive'));
-    expect(folded.batch.negative_prompt).toBe(foldPromptText('batch negative'));
-    expect(folded.batch.parameters.prompt_patch).toBe(foldPromptText('inpaint the sleeve'));
-    expect(folded.batch.parameters.layerdiffuse).toBe(true);
-    expect(folded.jobs[0]!.render_facts.samplers[0]!.prompt).toEqual({
-      positive: foldPromptText('job positive'),
-      negative: foldPromptText('job negative'),
-    });
-    expect(folded.jobs[0]!.render_facts.samplers[0]!.cfg).toBe(5);
-    expect(folded.jobs[0]!.index).toBe(0);
-    expect(digest).toEqual(snapshot);
-  });
-});
-
 describe('MCP tool prompt folding', () => {
-  it('get_generation folds batch prompts and sampler prompts and omits the graph by default; include_prompts: true returns originals', async () => {
-    const { batch, job, generation } = await createGeneration({
-      batchOverrides: { prompt: 'a long positive prompt', negative_prompt: 'ugly' },
+  it('get_generation folds request prompts and sampler prompts and omits the graph by default; include_prompts: true returns originals', async () => {
+    const { job, generation } = await createGeneration({
+      batchOverrides: { parameters: { prompt_patch: 'inpaint the sleeve' } },
     });
     await setJobGraph(job.id, GRAPH_WITH_PROMPTS);
 
-    const folded = await mcpToolCall<{
-      batch: { prompt: string; negative_prompt: string };
+    type Detail = {
+      request: { prompt: string; negative_prompt: string; parameters: { prompt_patch: string } };
       comfy_job: { graph: unknown; graph_omitted?: boolean; render_facts: { samplers: { prompt: { positive: string; negative: string } }[] } };
-    }>('get_generation', { generation_id: generation.short_id });
+    };
+    const folded = await mcpToolCall<Detail>('get_generation', { generation_id: generation.short_id });
     expect(folded.isError).toBeFalsy();
-    expect(folded.data?.batch.prompt).toBe(foldPromptText('a long positive prompt'));
-    expect(folded.data?.batch.negative_prompt).toBe(foldPromptText('ugly'));
+    expect(folded.data?.request.prompt).toBe(foldPromptText('sampler positive forbidden-tag text'));
+    expect(folded.data?.request.negative_prompt).toBe(foldPromptText('sampler negative forbidden-tag text'));
+    expect(folded.data?.request.parameters.prompt_patch).toBe(foldPromptText('inpaint the sleeve'));
     expect(folded.data?.comfy_job.graph).toBeNull();
     expect(folded.data?.comfy_job.graph_omitted).toBe(true);
     expect(folded.data?.comfy_job.render_facts.samplers[0]?.prompt.positive).toBe(
       foldPromptText('sampler positive forbidden-tag text'),
     );
     expect(folded.text).not.toContain('forbidden-tag');
-    expect(folded.text).not.toContain('a long positive prompt');
+    expect(folded.text).not.toContain('inpaint the sleeve');
 
-    const full = await mcpToolCall<{
-      batch: { prompt: string; negative_prompt: string };
-      comfy_job: { graph: unknown; graph_omitted?: boolean; render_facts: { samplers: { prompt: { positive: string; negative: string } }[] } };
-    }>('get_generation', { generation_id: generation.short_id, include_prompts: true });
-    expect(full.data?.batch.prompt).toBe('a long positive prompt');
-    expect(full.data?.batch.negative_prompt).toBe('ugly');
+    const full = await mcpToolCall<Detail>('get_generation', { generation_id: generation.short_id, include_prompts: true });
+    expect(full.data?.request.prompt).toBe('sampler positive forbidden-tag text');
+    expect(full.data?.request.negative_prompt).toBe('sampler negative forbidden-tag text');
+    expect(full.data?.request.parameters.prompt_patch).toBe('inpaint the sleeve');
     expect(full.data?.comfy_job.graph).not.toBeNull();
     expect('graph_omitted' in (full.data?.comfy_job ?? {})).toBe(false);
     expect(full.data?.comfy_job.render_facts.samplers[0]?.prompt.positive).toBe('sampler positive forbidden-tag text');
-
-    void batch;
-  });
-
-  it('list_batch folds batch prompts and job sampler prompts by default; include_prompts: true returns originals', async () => {
-    const { batch, job, generation } = await createGeneration({
-      batchOverrides: { prompt: 'batch level positive prompt', negative_prompt: 'batch level negative' },
-    });
-    await setJobGraph(job.id, GRAPH_WITH_PROMPTS);
-    void generation;
-
-    const folded = await mcpToolCall<{
-      batch: { prompt: string; negative_prompt: string };
-      jobs: { render_facts: { samplers: { prompt: { positive: string; negative: string } }[] } }[];
-    }>('list_batch', { batch_id: batch.id });
-    expect(folded.isError).toBeFalsy();
-    expect(folded.data?.batch.prompt).toBe(foldPromptText('batch level positive prompt'));
-    expect(folded.data?.batch.negative_prompt).toBe(foldPromptText('batch level negative'));
-    expect(folded.data?.jobs[0]?.render_facts.samplers[0]?.prompt.positive).toBe(
-      foldPromptText('sampler positive forbidden-tag text'),
-    );
-    expect(folded.text).not.toContain('forbidden-tag');
-
-    const full = await mcpToolCall<{
-      batch: { prompt: string; negative_prompt: string };
-      jobs: { render_facts: { samplers: { prompt: { positive: string; negative: string } }[] } }[];
-    }>('list_batch', { batch_id: batch.id, include_prompts: true });
-    expect(full.data?.batch.prompt).toBe('batch level positive prompt');
-    expect(full.data?.batch.negative_prompt).toBe('batch level negative');
-    expect(full.data?.jobs[0]?.render_facts.samplers[0]?.prompt.positive).toBe('sampler positive forbidden-tag text');
   });
 
   it('get_request / list_requests fold prompt.* patch values by default; include_prompts: true returns originals', async () => {

@@ -9,6 +9,7 @@ import {
   resolveBatchShortIds,
   resolveBatchThumbnails,
   resolveGenerationShortIds,
+  resolveRunRequests,
 } from '../lib/db';
 import type { MiniMapRow } from '../ui/components/MiniMap';
 import { listTagsForTarget } from '../lib/tags';
@@ -314,6 +315,8 @@ pages.get('/experiments/:id/ab', async (c) => {
   let warning: string | null = null;
   let baselineRun: ExperimentRunRow | null = null;
   let armRun: ExperimentRunRow | null = null;
+  let baselineRequestId: string | null = null;
+  let armRequestId: string | null = null;
 
   if (!baselineId || !armId) {
     warning = 'Select a baseline and an arm run.';
@@ -328,13 +331,18 @@ pages.get('/experiments/:id/ab', async (c) => {
       warning = 'Select a baseline and an arm run.';
     } else if (b.experiment_id !== experiment.id || a.experiment_id !== experiment.id) {
       warning = 'baseline / arm run belongs to a different experiment.';
-    } else if (!b.batch_id || !a.batch_id) {
-      warning = 'baseline and arm runs must both have a batch attached.';
-    } else if (b.batch_id === a.batch_id) {
-      warning = 'baseline and arm runs share the same batch.';
     } else {
-      baselineRun = b;
-      armRun = a;
+      const requestByRunId = await resolveRunRequests(db, [b.id, a.id]);
+      baselineRequestId = requestByRunId.get(b.id)?.id ?? null;
+      armRequestId = requestByRunId.get(a.id)?.id ?? null;
+      if (!baselineRequestId || !armRequestId) {
+        warning = 'baseline and arm runs must both have a request attached.';
+      } else if (baselineRequestId === armRequestId) {
+        warning = 'baseline and arm runs share the same request.';
+      } else {
+        baselineRun = b;
+        armRun = a;
+      }
     }
   }
 
@@ -344,10 +352,10 @@ pages.get('/experiments/:id/ab', async (c) => {
 
   if (baselineRun && armRun) {
     const seedRows =
-      'SELECT id, seed, original_purged_at FROM generations WHERE batch_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
+      'SELECT id, seed, original_purged_at FROM generations WHERE request_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
     const [baselineGens, armGens, judgedSeeds] = await Promise.all([
-      db.prepare(seedRows).bind(baselineRun.batch_id).all<{ id: string; seed: number; original_purged_at: string | null }>(),
-      db.prepare(seedRows).bind(armRun.batch_id).all<{ id: string; seed: number; original_purged_at: string | null }>(),
+      db.prepare(seedRows).bind(baselineRequestId).all<{ id: string; seed: number; original_purged_at: string | null }>(),
+      db.prepare(seedRows).bind(armRequestId).all<{ id: string; seed: number; original_purged_at: string | null }>(),
       judgedSeedsForPair(db, baselineRun.id, armRun.id),
     ]);
 

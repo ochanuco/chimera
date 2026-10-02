@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createRequestSchema, claimRequestSchema, updateRequestSchema, requestKindSchema, requestStatusSchema } from '../schemas/requests';
+import { createRequestSchema, claimRequestSchema, updateRequestSchema, requestKindFilterSchema, requestStatusSchema } from '../schemas/requests';
 import {
   createRequest,
   listRequests,
@@ -48,7 +48,7 @@ requests.get('/', async (c) => {
 
   let kind: RequestKind | undefined;
   if (query.kind) {
-    const parsed = requestKindSchema.safeParse(query.kind);
+    const parsed = requestKindFilterSchema.safeParse(query.kind);
     if (!parsed.success) throw badRequest(`invalid kind '${query.kind}'`);
     kind = parsed.data;
   }

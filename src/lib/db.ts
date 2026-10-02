@@ -120,6 +120,66 @@ export async function resolveBatchThumbnails(db: D1Database, batchIds: string[])
   return map;
 }
 
+/**
+ * Request id -> representative Generation's short_id (the first-created one), the Request counterpart
+ * of resolveBatchThumbnails.
+ */
+export async function resolveRequestThumbnails(db: D1Database, requestIds: string[]): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(requestIds));
+  const map = new Map<string, string>();
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(
+        `SELECT request_id, short_id FROM (
+           SELECT request_id, short_id,
+             ROW_NUMBER() OVER (PARTITION BY request_id ORDER BY created_at ASC, id ASC) AS rn
+           FROM generations
+           WHERE request_id IN (${placeholders})
+         ) WHERE rn = 1`,
+      )
+      .bind(...part)
+      .all<{ request_id: string; short_id: string }>();
+    for (const r of results ?? []) map.set(r.request_id, r.short_id);
+  }
+  return map;
+}
+
+/**
+ * `experiment_runs <alias>` の結果 Request の id を返す副問い合わせ。Run の結果は done の generate/import
+ * Request (docs/batch-removal.md「Experiment」: 1 Run に done の generate Request は高々 1 件)。
+ */
+export function runRequestIdSql(alias: string): string {
+  return `(SELECT x.id FROM requests x WHERE x.run_id = ${alias}.id AND x.status = 'done' AND x.kind IN ('generate', 'import') ORDER BY x.created_at DESC, x.id DESC LIMIT 1)`;
+}
+
+export interface RunRequestRef {
+  id: string;
+  short_id: string | null;
+}
+
+/** Run id -> その結果 Request (runRequestIdSql と同じ規則)。結果の無い Run は含まれない。 */
+export async function resolveRunRequests(db: D1Database, runIds: string[]): Promise<Map<string, RunRequestRef>> {
+  const unique = Array.from(new Set(runIds));
+  const map = new Map<string, RunRequestRef>();
+  for (const part of chunk(unique, D1_MAX_BOUND_PARAMS)) {
+    const placeholders = part.map(() => '?').join(', ');
+    const { results } = await db
+      .prepare(
+        `SELECT run_id, id, short_id FROM (
+           SELECT x.run_id, x.id, x.short_id,
+             ROW_NUMBER() OVER (PARTITION BY x.run_id ORDER BY x.created_at DESC, x.id DESC) AS rn
+           FROM requests x
+           WHERE x.run_id IN (${placeholders}) AND x.status = 'done' AND x.kind IN ('generate', 'import')
+         ) WHERE rn = 1`,
+      )
+      .bind(...part)
+      .all<{ run_id: string; id: string; short_id: string | null }>();
+    for (const r of results ?? []) map.set(r.run_id, { id: r.id, short_id: r.short_id });
+  }
+  return map;
+}
+
 export interface ChainBatch {
   id: string;
   short_id: string;

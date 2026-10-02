@@ -271,7 +271,7 @@ describe('List / Summary PairwiseJudgment', () => {
     expect(list.body.items[0]!.winner).toBe('arm');
   });
 
-  it('GET summary returns pairs with win/loss/tie/total and per-run rating counts, including a run without batch', async () => {
+  it('GET summary returns pairs with win/loss/tie/total and per-run rating counts, including a run without a result request', async () => {
     const ctx = await setupPair();
     const extraRun = await createRun(ctx.experiment.id);
 
@@ -313,21 +313,21 @@ describe('List / Summary PairwiseJudgment', () => {
 
     const baselineRunSummary = summary.body.runs.find((r) => r.run_id === ctx.baselineRun.id);
     expect(baselineRunSummary).toMatchObject({
-      batch_id: ctx.baselineBatch.id,
+      request_id: ctx.baselineBatch.id,
       generation_count: 2,
       rating: { good: 1, neutral: 0, bad: 0, unrated: 1 },
     });
 
     const armRunSummary = summary.body.runs.find((r) => r.run_id === ctx.armRun.id);
     expect(armRunSummary).toMatchObject({
-      batch_id: ctx.armBatch.id,
+      request_id: ctx.armBatch.id,
       generation_count: 2,
       rating: { good: 0, neutral: 0, bad: 1, unrated: 1 },
     });
 
     const extraRunSummary = summary.body.runs.find((r) => r.run_id === extraRun.body.id);
     expect(extraRunSummary).toMatchObject({
-      batch_id: null,
+      request_id: null,
       generation_count: 0,
       rating: { good: 0, neutral: 0, bad: 0, unrated: 0 },
     });
