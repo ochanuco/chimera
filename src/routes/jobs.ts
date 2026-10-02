@@ -7,6 +7,7 @@ import { badRequest, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import { parsePngDimensions } from '../lib/image-meta';
 import { extractRenderFacts } from '../lib/render-facts';
+import { JOB_SOURCE_GENERATION_ID_SQL } from '../lib/batch-request-sync';
 import { notifyHubGeneration, runInBackground } from '../lib/hub-notify';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
@@ -130,8 +131,9 @@ jobs.post('/:jobId/generations', async (c) => {
       .prepare(
         `INSERT INTO generations (id, short_id, batch_id, comfy_job_id, character_id, seed, original_filename,
           comfy_output_index, r2_object_key, image_width, image_height, image_size, note, rating, bookmark,
-          semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
+          semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at,
+          request_id, refines_generation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ${JOB_SOURCE_GENERATION_ID_SQL})`,
       )
       .bind(
         id,
@@ -147,6 +149,8 @@ jobs.post('/:jobId/generations', async (c) => {
         imageHeight,
         imageSize,
         now,
+        job.request_id ?? null,
+        job.batch_id,
       )
       .run();
   } catch (err) {
