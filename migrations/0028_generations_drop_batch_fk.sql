@@ -3,7 +3,8 @@
 -- 旧コードは batch_id を書き続けるので、この状態は新旧どちらのコードとも両立する。
 -- D1 は 1 回の migration の CPU 時間に上限があるため、作り直しは 1 表ずつ別の migration にする。
 -- DROP TABLE の暗黙の DELETE が子表の外部キー違反を数えるので、検査は COMMIT まで遅らせ、
--- 同じ名前の表に行を戻して解消する。
+-- 同じ名前の表に行を戻して解消する。戻す行ごとに子表を引き直すので、索引（自己参照の
+-- refines_generation_id を含む）は行を戻す前に作る。後に作ると子表の走査が全件になり CPU 上限を超える。
 -- generations を参照する ON DELETE CASCADE の子表（generation_tags / request_references / batch_references）は
 -- DROP で行が消えるので、退避して戻す。
 PRAGMA defer_foreign_keys = true;
@@ -42,6 +43,15 @@ CREATE TABLE generations (
   refines_generation_id TEXT REFERENCES generations(id),
   UNIQUE (comfy_job_id, comfy_output_index)
 );
+CREATE INDEX idx_generations_batch_id ON generations(batch_id);
+CREATE INDEX idx_generations_character_id ON generations(character_id);
+CREATE INDEX idx_generations_rating ON generations(rating);
+CREATE INDEX idx_generations_bookmark ON generations(bookmark);
+CREATE INDEX idx_generations_created_at ON generations(created_at);
+CREATE INDEX idx_generations_original_filename ON generations(original_filename);
+CREATE INDEX idx_generations_request_id ON generations(request_id);
+CREATE INDEX idx_generations_refines_generation_id ON generations(refines_generation_id);
+
 INSERT INTO generations (id, short_id, batch_id, comfy_job_id, character_id, seed, original_filename, comfy_output_index, r2_object_key, note, rating, bookmark, semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at, image_width, image_height, image_size, original_purged_at, original_recompress_checked_at, request_id, refines_generation_id)
 SELECT id, short_id, batch_id, comfy_job_id, character_id, seed, original_filename, comfy_output_index, r2_object_key, note, rating, bookmark, semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at, image_width, image_height, image_size, original_purged_at, original_recompress_checked_at, request_id, refines_generation_id
 FROM _m28_generations;
@@ -52,11 +62,3 @@ DROP TABLE _m28_generations;
 DROP TABLE _m28_generation_tags;
 DROP TABLE _m28_request_references;
 DROP TABLE _m28_batch_references;
-CREATE INDEX idx_generations_batch_id ON generations(batch_id);
-CREATE INDEX idx_generations_character_id ON generations(character_id);
-CREATE INDEX idx_generations_rating ON generations(rating);
-CREATE INDEX idx_generations_bookmark ON generations(bookmark);
-CREATE INDEX idx_generations_created_at ON generations(created_at);
-CREATE INDEX idx_generations_original_filename ON generations(original_filename);
-CREATE INDEX idx_generations_request_id ON generations(request_id);
-CREATE INDEX idx_generations_refines_generation_id ON generations(refines_generation_id);
