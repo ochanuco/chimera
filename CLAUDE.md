@@ -20,7 +20,7 @@ npm run typecheck && npm test
 
 - 関係 2 種の分離: 素材参照（Generation → Request、request_references）と仕上げ元（Generation → Generation、generations.refines_generation_id）を統合しない
 - Generation は物理削除しない。削除より rating / tag によるラベリング。ただし original 画像（`generations/{id}/original.png`）だけは保持期間ジョブ（`src/lib/original-purge.ts`）が古い低価値 Generation について削除することがある。行と preview は残る（`docs/domain-model.md`「original の保持」）
-- 冪等性: Batch / Job 作成は idempotency_key、ingest は (comfy_job_id, comfy_output_index) unique。再送は既存レコードを 200 で返す
+- 冪等性: Request / Job 作成は idempotency_key、ingest は (comfy_job_id, comfy_output_index) unique。再送は既存レコードを 200 で返す
 - ingest は D1 INSERT → R2 PUT の順（行が ID / R2 key を確定し、orphan object を作らない）。R2 key は `generations/{generation_id}/original.png`
 - `references` / `refinement` / `story` はキー省略と明示 null の両方を「該当なし」として受理する（request.json 契約）
 - SSR ページから API を呼ぶときは `src/lib/internal-api.ts` の `internalApiRequest` を使う（`app.request` にパスだけ渡すと origin が localhost になり絶対 URL が壊れる）

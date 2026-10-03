@@ -38,7 +38,6 @@ export async function createUniqueShortId(db: D1Database, table: string, alsoAvo
   throw new Error(`failed to generate unique short_id for ${table} after 10 attempts`);
 }
 
-/** requests と batches は /b/{short_id} の同じ名前空間を共有する (docs/batch-removal.md)。互いに衝突させない。 */
 export function createUniqueRequestShortId(db: D1Database): Promise<string> {
-  return createUniqueShortId(db, 'requests', ['batches']);
+  return createUniqueShortId(db, 'requests');
 }

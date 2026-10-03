@@ -3,7 +3,6 @@
 import {
   chunk,
   D1_MAX_BOUND_PARAMS,
-  getBatchByIdOrShortId,
   getExperimentByIdOrShortId,
   getGenerationByIdOrShortId,
   nowIso,
@@ -18,7 +17,6 @@ import { isUuid, uuidv7 } from './uuidv7';
 import { resolveRequestRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
-import { runAttachStatement } from './batch-request-sync';
 import { createUniqueRequestShortId } from './shortid';
 import {
   generationPreviewUrl,
@@ -41,12 +39,6 @@ export async function getRunOr404(db: D1Database, id: string): Promise<Experimen
   const row = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(id).first<ExperimentRunRow>();
   if (!row) throw notFound('experiment run');
   return row;
-}
-
-export async function resolveBatchOr404(db: D1Database, idOrShortId: string) {
-  const batch = await getBatchByIdOrShortId(db, idOrShortId);
-  if (!batch) throw notFound(`batch '${idOrShortId}'`);
-  return batch;
 }
 
 export async function resolveGenerationOr404(db: D1Database, idOrShortId: string) {
@@ -170,15 +162,6 @@ export async function getExperimentDetail(db: D1Database, experiment: Experiment
     runs: await decorateRuns(db, runRows, org),
     promotions: promotionRows.map(serializeExperimentPromotion),
   };
-}
-
-/** 1 Batch は 1 Run にしか属さない (idx_experiment_runs_batch_id_unique)。UNIQUE 違反を D1 の 500 ではなく 409 として返すための事前確認。 */
-async function assertBatchNotAttachedToAnotherRun(db: D1Database, batchId: string, exceptRunId: string | null): Promise<void> {
-  const other = await db
-    .prepare('SELECT id FROM experiment_runs WHERE batch_id = ? AND (? IS NULL OR id != ?) LIMIT 1')
-    .bind(batchId, exceptRunId, exceptRunId)
-    .first<{ id: string }>();
-  if (other) throw conflict(`batch is already attached to run ${other.id}`);
 }
 
 export interface ExperimentRunFamilyMember {
@@ -329,7 +312,6 @@ export interface CreateExperimentRunInput {
   overrides?: JsonObject;
   objective?: string;
   parent_run_id?: string;
-  batch_id?: string;
   generation_id?: string;
   evaluation?: JsonObject;
   decision?: JsonObject;
@@ -390,21 +372,10 @@ export async function createExperimentRun(
     parentRunId = parent.id;
   }
 
-  const batchId = body.batch_id ? (await resolveBatchOr404(db, body.batch_id)).id : null;
-  if (batchId) await assertBatchNotAttachedToAnotherRun(db, batchId, null);
-  // 代表 Generation は Run 自身の Batch から出たものに限る（updateExperimentRun と同じ規則、provenance を壊さないため）。
-  let generationId: string | null = null;
+  // 代表 Generation は Run の結果 Request から出たものに限る。作成時点の Run には結果がまだ無いので、後から PATCH で付ける。
   if (body.generation_id) {
-    const generation = await resolveGenerationOr404(db, body.generation_id);
-    if (!batchId) {
-      throw conflict('run has no batch attached; attach a batch before attaching a generation');
-    }
-    if (generation.batch_id !== batchId) {
-      throw conflict(
-        `generation belongs to batch ${generation.batch_id}, not the run's batch ${batchId}`,
-      );
-    }
-    generationId = generation.id;
+    await resolveGenerationOr404(db, body.generation_id);
+    throw conflict('run has no request result yet; attach a generation after the run request is done');
   }
 
   const now = nowIso();
@@ -413,7 +384,6 @@ export async function createExperimentRun(
   // docs/worker-protocol.md「ExperimentRun 由来の generate」。既存 Run へは遡って起票しない。
   const shouldAutoCreateRequest =
     experiment.base_recipe !== null &&
-    batchId === null &&
     (experiment.status === 'active' || experiment.status === 'stabilized');
   let requestId: string | null = null;
   let requestShortId: string | null = null;
@@ -431,8 +401,7 @@ export async function createExperimentRun(
       experiment_id: experiment.id,
       run_index: (countRow?.c ?? 0) + 1,
       parent_run_id: parentRunId,
-      batch_id: batchId,
-      generation_id: generationId,
+      generation_id: null,
       overrides_json: JSON.stringify(body.overrides ?? {}),
       objective: body.objective ?? null,
       evaluation_json: null,
@@ -455,17 +424,16 @@ export async function createExperimentRun(
   const runInsertStatement = db
     .prepare(
       `INSERT INTO experiment_runs
-         (id, experiment_id, run_index, parent_run_id, batch_id, generation_id, overrides_json,
+         (id, experiment_id, run_index, parent_run_id, generation_id, overrides_json,
           objective, evaluation_json, decision_json, note, idempotency_key, variables_json, created_at, updated_at)
-       SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       SELECT ?, ?, COALESCE(MAX(run_index), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        FROM experiment_runs WHERE experiment_id = ?`,
     )
     .bind(
       id,
       experiment.id,
       parentRunId,
-      batchId,
-      generationId,
+      null,
       JSON.stringify(body.overrides ?? {}),
       body.objective ?? null,
       body.evaluation ? JSON.stringify(body.evaluation) : null,
@@ -479,7 +447,6 @@ export async function createExperimentRun(
     );
 
   const statements = [runInsertStatement];
-  if (batchId) statements.push(runAttachStatement(db, batchId, id));
   if (shouldAutoCreateRequest && requestId && requestPayloadJson && requestPayloadHash) {
     statements.push(
       db
@@ -515,7 +482,6 @@ export async function createExperimentRun(
 export interface UpdateExperimentRunInput {
   overrides?: JsonObject;
   objective?: string | null;
-  batch_id?: string;
   generation_id?: string;
   evaluation?: JsonObject | null;
   decision?: JsonObject | null;
@@ -542,47 +508,26 @@ export async function updateExperimentRun(
   if (body.overrides !== undefined) {
     // 生成結果が付いた Run の overrides を書き換えると「何がその画像を生んだか」の
     // 記録が失われる。付け替えたい場合は新しい Run を作る。
-    if (run.batch_id || run.generation_id) {
-      throw conflict('overrides cannot be changed after a batch or generation is attached; create a new run instead');
+    if (run.generation_id || (await resolveRunRequests(db, [run.id])).has(run.id)) {
+      throw conflict('overrides cannot be changed after a request result or generation is attached; create a new run instead');
     }
     assign('overrides_json', JSON.stringify(body.overrides));
-  }
-  // 同じ PATCH で batch_id と generation_id を両方渡した場合、generation は「これから設定される
-  // Batch」(= effectiveBatchId) に対して検証する必要があるため、batch_id の解決を先に行う。
-  let effectiveBatchId = run.batch_id;
-  if (body.batch_id !== undefined) {
-    const batch = await resolveBatchOr404(db, body.batch_id);
-    if (run.batch_id && run.batch_id !== batch.id) {
-      throw conflict('run already has a batch attached');
-    }
-    await assertBatchNotAttachedToAnotherRun(db, batch.id, run.id);
-    assign('batch_id', batch.id);
-    effectiveBatchId = batch.id;
   }
   if (body.generation_id !== undefined) {
     const generation = await resolveGenerationOr404(db, body.generation_id);
     if (run.generation_id && run.generation_id !== generation.id) {
       throw conflict('run already has a generation attached');
     }
-    const requestRunId = generation.request_id
-      ? (
-          await db
-            .prepare('SELECT run_id FROM requests WHERE id = ?')
-            .bind(generation.request_id)
-            .first<{ run_id: string | null }>()
-        )?.run_id ?? null
-      : null;
-    const belongsToRunRequest = requestRunId === run.id;
-    const belongsToRunBatch = effectiveBatchId !== null && generation.batch_id === effectiveBatchId;
-    if (!belongsToRunRequest && !belongsToRunBatch) {
+    const owner = await db
+      .prepare('SELECT run_id FROM requests WHERE id = ?')
+      .bind(generation.request_id)
+      .first<{ run_id: string | null }>();
+    if (owner?.run_id !== run.id) {
       const resolved = await resolveRunRequests(db, [run.id]);
-      if (!effectiveBatchId && !resolved.has(run.id)) {
-        throw conflict('run has no batch attached; attach a batch or a request result before attaching a generation');
-      }
       throw conflict(
-        effectiveBatchId
-          ? `generation belongs to batch ${generation.batch_id}, not the run's batch ${effectiveBatchId}`
-          : `generation belongs to request ${generation.request_id}, not the run's request`,
+        resolved.has(run.id)
+          ? `generation belongs to request ${generation.request_id}, not the run's request`
+          : 'run has no request result yet; attach a generation after the run request is done',
       );
     }
     assign('generation_id', generation.id);
@@ -596,7 +541,7 @@ export async function updateExperimentRun(
   }
   if (body.note !== undefined) assign('note', body.note);
   // overrides と違い、variables は「グラフに現れない factor の注記」であって provenance
-  // ではないので batch/generation 付与後も自由に書き換えられる。
+  // ではないので generation 付与後も自由に書き換えられる。
   if (body.variables !== undefined) {
     assign('variables_json', body.variables === null ? null : JSON.stringify(body.variables));
   }
@@ -604,12 +549,7 @@ export async function updateExperimentRun(
   const now = nowIso();
   assign('updated_at', now);
   binds.push(run.id);
-  const updateStatement = db.prepare(`UPDATE experiment_runs SET ${sets.join(', ')} WHERE id = ?`).bind(...binds);
-  if (body.batch_id !== undefined && effectiveBatchId) {
-    await db.batch([updateStatement, runAttachStatement(db, effectiveBatchId, run.id)]);
-  } else {
-    await updateStatement.run();
-  }
+  await db.prepare(`UPDATE experiment_runs SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
   await touchExperiment(db, run.experiment_id, now);
 
   return getRunOr404(db, run.id);
@@ -636,7 +576,7 @@ export async function listPendingRuns(db: D1Database, limit: number, offset: num
          e.base_generation_id AS experiment_base_generation_id
        FROM experiment_runs r
        JOIN experiments e ON e.id = r.experiment_id
-       WHERE r.batch_id IS NULL AND e.status IN ('active', 'stabilized')
+       WHERE e.status IN ('active', 'stabilized')
          AND NOT EXISTS (SELECT 1 FROM requests q WHERE q.run_id = r.id)
        ORDER BY r.created_at ASC, r.id ASC
        LIMIT ? OFFSET ?`,

@@ -4,7 +4,7 @@ ComfyUI で生成した画像を、単なる置き場ではなく生成探索の
 
 MCP には、既存 Generation を変更せず任意の矩形を garment / local inpaint する
 `masked_redraw_generation` もあります。これは `repair_generation`（hands / feet 専用）とは
-別の worker request kind で、結果は refinement Batch と rebuild Reference として追跡します。
+別の worker request kind で、結果は Job の `source_generation_id`（Generation の `refines_generation_id`）で仕上げ元を追跡します。
 
 設計ドキュメントは [docs/](docs/README.md) が正本。画面は [docs/ui.md](docs/ui.md)、API は [docs/api.md](docs/api.md)、クライアント（comfyui-recipes の `comfy-recipes generate` CLI）との `request.json` 契約は [docs/generation-request.md](docs/generation-request.md)。
 

@@ -1,5 +1,5 @@
 import { isUuid } from './uuidv7';
-import type { BatchRow, ExperimentRow, GenerationRow } from '../types';
+import type { ExperimentRow, GenerationRow } from '../types';
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -28,18 +28,6 @@ export function toBool(value: number | null | undefined): boolean {
 
 export function boolToInt(value: boolean): number {
   return value ? 1 : 0;
-}
-
-/** Resolves a Batch by its UUID or short_id (path {id} accepts both). */
-export async function getBatchByIdOrShortId(
-  db: D1Database,
-  idOrShortId: string,
-): Promise<BatchRow | null> {
-  const column = isUuid(idOrShortId) ? 'id' : 'short_id';
-  return db
-    .prepare(`SELECT * FROM batches WHERE ${column} = ?`)
-    .bind(idOrShortId)
-    .first<BatchRow>();
 }
 
 export async function getGenerationByIdOrShortId(
@@ -124,7 +112,7 @@ export async function resolveRequestThumbnails(db: D1Database, requestIds: strin
 
 /**
  * `experiment_runs <alias>` の結果 Request の id を返す副問い合わせ。Run の結果は done の generate/import
- * Request (docs/batch-removal.md「Experiment」: 1 Run に done の generate Request は高々 1 件)。
+ * Request (1 Run に done の generate Request は高々 1 件)。
  */
 export function runRequestIdSql(alias: string): string {
   return `(SELECT x.id FROM requests x WHERE x.run_id = ${alias}.id AND x.status = 'done' AND x.kind IN ('generate', 'import') ORDER BY x.created_at DESC, x.id DESC LIMIT 1)`;

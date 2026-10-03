@@ -47,7 +47,7 @@ tags.patch('/:id', async (c) => {
   return c.json(serialize({ ...row, name: body.name, updated_at }));
 });
 
-const ASSIGNMENT_TABLES = ['generation_tags', 'batch_tags', 'story_tags', 'experiment_tags'] as const;
+const ASSIGNMENT_TABLES = ['generation_tags', 'experiment_tags'] as const;
 
 tags.delete('/:id', async (c) => {
   const db = c.env.DB;

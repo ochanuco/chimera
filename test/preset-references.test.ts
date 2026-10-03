@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson, req } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
 function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
@@ -109,9 +109,9 @@ async function setRatingGood(generationId: string): Promise<void> {
 }
 
 /**
- * Builds a raw (non-refinement) Batch + Generation for `recipe`, and — unless `withPin` is
+ * Builds a raw (non-refinement) Request + Generation for `recipe`, and — unless `withPin` is
  * false — a matching kind=generate request pinning `parameters.pose`, marked `done` against the
- * created Batch (so set_pose_reference's result-lookup finds it). `patches` land on the Batch row
+ * created Generation (so set_pose_reference's result-lookup finds it). `patches` land on the Request row
  * itself; `generationPayload` merges into the pinning request (to simulate a prompt override).
  */
 async function setupGeneration(
@@ -126,7 +126,7 @@ async function setupGeneration(
   const { withPin = true, parameters = { pose: 'lounge' }, patches, generationPayload } = options;
   const poseFingerprint = patches ? 'sha256:fixture' : undefined;
 
-  // worker と同じく、生成 request を先に積んで claim し、Batch は idempotency_key `request:{id}` でその request に紐づける。
+  // worker と同じく、生成 request を先に積んで claim し、その request に Job と Generation を積む。
   let genReqId: string | null = null;
   let claimedWorkerId: string | null = null;
   if (withPin) {
@@ -146,11 +146,11 @@ async function setupGeneration(
     claimedWorkerId = claimed.body!.worker_id;
   }
 
-  const { batch, generation } = await createGeneration({
-    batchOverrides: {
+  const { request, generation } = await createGeneration({
+    ...(genReqId ? { requestId: genReqId } : {}),
+    requestOverrides: {
       recipe,
       parameters,
-      ...(genReqId ? { idempotency_key: `request:${genReqId}` } : {}),
       ...(patches ? { patches } : {}),
       ...(poseFingerprint ? { pose_fingerprint: poseFingerprint } : {}),
     },
@@ -159,43 +159,29 @@ async function setupGeneration(
   if (genReqId) {
     const done = await postJson(
       `/api/v1/requests/${genReqId}`,
-      { status: 'done', worker_id: claimedWorkerId, result: { batch_id: batch.id, generation_ids: [generation.id] } },
+      { status: 'done', worker_id: claimedWorkerId, result: { generation_ids: [generation.id] } },
       'PATCH',
     );
     expect(done.status).toBe(200);
   }
 
-  return { batch, generation };
+  return { request, generation };
 }
 
 /**
- * Builds a refinement Batch (the shape finalize/repair leave behind): wired back to `source` via
- * batch_relations (type=refinement) and batch_references (purpose=rebuild) — the two tables
- * resolveDerivationSource (lib/requests.ts) walks. Uses a different seed than `source` so a test
+ * Builds a refinement Request (the shape finalize/repair leave behind): its Job's source_generation_id points back
+ * at `source`, which resolveDerivationSource (lib/requests.ts) walks. Uses a different seed than `source` so a test
  * can tell whether set_pose_reference read the source's seed rather than this one's.
  */
-async function createRefinementBatch(source: { batch: { id: string }; generation: { id: string } }) {
-  const refinementBatch = await createBatch({
-    parameters: { kind: 'hires-chain', base_generation: source.generation.id, size: 2560 },
+async function createRefinement(source: { generation: { id: string } }) {
+  return createGeneration({
+    requestOverrides: {
+      kind: 'finalize',
+      parameters: { kind: 'hires-chain', base_generation: source.generation.id, size: 2560 },
+    },
+    jobOverrides: { source_generation_id: source.generation.id, seed: 999 },
+    metadata: { seed: 999 },
   });
-  const job = await createJob(refinementBatch.body.id, { seed: 999 });
-  const ingest = await ingestGeneration(job.body.id, {
-    seed: 999,
-    original_filename: 'out_00001_.png',
-    comfy_output_index: 0,
-  });
-
-  await postJson(`/api/v1/batches/${refinementBatch.body.id}/relations`, {
-    source_batch_id: source.batch.id,
-    type: 'refinement',
-    actor: 'claude',
-  });
-  await postJson(`/api/v1/batches/${refinementBatch.body.id}/references`, {
-    source_generation_id: source.generation.id,
-    purpose: 'rebuild',
-  });
-
-  return { batch: refinementBatch.body, generation: ingest.body };
 }
 
 interface ReferenceView {
@@ -216,7 +202,7 @@ interface SetPoseReferenceResult {
 
 describe('MCP set_pose_reference', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
@@ -282,7 +268,7 @@ describe('MCP set_pose_reference', () => {
     expect(call.text).toContain('requires rating good');
   });
 
-  it('409s when the resolved batch carries patches', async () => {
+  it('409s when the resolved request carries patches', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
     const patches = [{ target: 'pose', op: 'append', reason: 'x', value: 'y' }];
@@ -299,7 +285,7 @@ describe('MCP set_pose_reference', () => {
     expect(call.text).toContain('patches');
   });
 
-  it('409s when the resolved batch drew a different pose', async () => {
+  it('409s when the resolved request drew a different pose', async () => {
     const recipe = uniqueRecipe();
     await publishAndImportTwoPoses(recipe);
     const { generation } = await setupGeneration(recipe, { parameters: { pose: 'lounge' } });
@@ -331,7 +317,7 @@ describe('MCP set_pose_reference', () => {
     expect(call.text).toContain('overrides the prompt');
   });
 
-  it('409s when the resolved batch belongs to a different recipe', async () => {
+  it('409s when the resolved request belongs to a different recipe', async () => {
     const recipe = uniqueRecipe();
     const otherRecipe = uniqueRecipe();
     await publishAndImport(recipe);
@@ -350,7 +336,7 @@ describe('MCP set_pose_reference', () => {
 
   it('404s (not found) for a pose with no Preset yet', async () => {
     const recipe = uniqueRecipe();
-    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
     await setRatingGood(generation.id);
 
     const call = await mcpToolCall('set_pose_reference', {
@@ -366,8 +352,8 @@ describe('MCP set_pose_reference', () => {
   it('resolves a finalize/repair-style refinement output back to the raw generation and its seed', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { batch, generation: rawGeneration } = await setupGeneration(recipe);
-    const refined = await createRefinementBatch({ batch, generation: rawGeneration });
+    const { generation: rawGeneration } = await setupGeneration(recipe);
+    const refined = await createRefinement({ generation: rawGeneration });
     await setRatingGood(refined.generation.id);
 
     const call = await mcpToolCall<SetPoseReferenceResult>('set_pose_reference', {
@@ -470,7 +456,7 @@ interface PlainRenderResult {
 
 describe('MCP plain_render', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 

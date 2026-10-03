@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
-import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, ingestGeneration, postJson, req, setJobGraph, clearRequests } from './helpers';
 
 const BASE = 'https://chimera.test';
 
@@ -238,8 +238,8 @@ describe('Web GUI pages', () => {
       0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
       0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
     ]);
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const ingest = await ingestGeneration(
       job.body.id,
       { seed: 1, original_filename: 'sized.png', comfy_output_index: 0 },
@@ -264,8 +264,8 @@ describe('Web GUI pages', () => {
       0x08, 0x06, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00,
     ]);
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const ingest = await ingestGeneration(
       job.body.id,
       { seed: 1, original_filename: 'no-r2-fallback.png', comfy_output_index: 0 },
@@ -294,8 +294,8 @@ describe('Web GUI pages', () => {
       0x08, 0x06, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00,
     ]);
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const ingest = await ingestGeneration(
       job.body.id,
       { seed: 1, original_filename: 'legacy-row.png', comfy_output_index: 0 },
@@ -324,8 +324,8 @@ describe('Web GUI pages', () => {
       0x08, 0x06, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00,
     ]);
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const ingest = await ingestGeneration(
       job.body.id,
       { seed: 1, original_filename: 'gallery-card-meta.png', comfy_output_index: 0 },
@@ -347,12 +347,9 @@ describe('Web GUI pages', () => {
   });
 
   it('GET /g/:short_id links and copies the refined-from source only for a refined Generation', async () => {
-    const { batch: sourceBatch, generation: source } = await createGeneration();
+    const { generation: source } = await createGeneration();
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: source.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: source.id },
     });
 
     const refinedHtml = await (await req(`/g/${refined.generation.short_id}`)).text();
@@ -380,12 +377,9 @@ describe('Web GUI pages', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rating: 'bad' }),
     });
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: sourceGen } = await createGeneration();
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: sourceGen.id },
     });
 
     const res = await req('/gallery?limit=200');
@@ -397,12 +391,9 @@ describe('Web GUI pages', () => {
 
   it('GET /gallery?view=raw shows only raw generations (excludes finalize-output)', async () => {
     const { generation: rawGen } = await createGeneration();
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: sourceGen } = await createGeneration();
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: sourceGen.id },
     });
 
     const res = await req('/gallery?view=raw&limit=200');
@@ -426,12 +417,9 @@ describe('Web GUI pages', () => {
 
   it('GET /gallery?view=refined shows only finalize-output generations, and view=all shows both', async () => {
     const { generation: rawGen } = await createGeneration();
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: sourceGen } = await createGeneration();
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: sourceGen.id },
     });
 
     const refinedOnly = await req('/gallery?view=refined&limit=200');
@@ -515,15 +503,15 @@ describe('Web GUI pages', () => {
   });
 
   it('GET /b/{short_id} redirects (302) to the first Generation of the Request: lowest job index, then output index', async () => {
-    const batch = await createBatch({ raw_instruction: 'test instruction' });
-    const laterJob = await createJob(batch.body.id, { index: 1 });
+    const request = await createRequest({ raw_instruction: 'test instruction' });
+    const laterJob = await createJob(request.body.id, { index: 1 });
     const laterGen = await ingestGeneration(laterJob.body.id, { seed: 1, original_filename: 'later.png', comfy_output_index: 0 });
-    const firstJob = await createJob(batch.body.id, { index: 0 });
+    const firstJob = await createJob(request.body.id, { index: 0 });
     const secondOutput = await ingestGeneration(firstJob.body.id, { seed: 2, original_filename: 'b.png', comfy_output_index: 1 });
     const firstOutput = await ingestGeneration(firstJob.body.id, { seed: 2, original_filename: 'a.png', comfy_output_index: 0 });
     expect([laterGen.status, secondOutput.status, firstOutput.status]).toEqual([201, 201, 201]);
 
-    const res = await req(`/b/${batch.body.short_id}`, { redirect: 'manual' });
+    const res = await req(`/b/${request.body.short_id}`, { redirect: 'manual' });
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe(`/g/${firstOutput.body.short_id}`);
   });
@@ -533,14 +521,14 @@ describe('Web GUI pages', () => {
     expect(unknown.status).toBe(404);
     expect(await unknown.text()).toContain('Request');
 
-    const empty = await createBatch();
+    const empty = await createRequest();
     const noGeneration = await req(`/b/${empty.body.short_id}`, { redirect: 'manual' });
     expect(noGeneration.status).toBe(404);
   });
 
   it('GET /b/{short_id} resolves a short_id owned by a Request', async () => {
-    const { generation, batch } = await createGeneration();
-    await env.DB.prepare("UPDATE requests SET short_id = 'rq1234' WHERE id = ?").bind(batch.id).run();
+    const { generation, request } = await createGeneration();
+    await env.DB.prepare("UPDATE requests SET short_id = 'rq1234' WHERE id = ?").bind(request.id).run();
     const res = await req('/b/rq1234', { redirect: 'manual' });
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe(`/g/${generation.short_id}`);
@@ -567,7 +555,7 @@ describe('Web GUI pages', () => {
   });
 
   it('the Finalize form offer the recolor checkbox regardless of recipe', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { recipe: 'yukari-il' } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari-il' } });
 
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect(genHtml).toContain('name="repin"');
@@ -609,7 +597,7 @@ describe('Web GUI pages', () => {
   });
 
   it('the Finalize form show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { recipe: 'yukari' } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari' } });
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
     expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(11);
   });
@@ -663,7 +651,7 @@ describe('Web GUI pages', () => {
   });
 
   it('GET /graph 404s', async () => {
-    await createBatch();
+    await createRequest();
     const res = await req('/graph');
     expect(res.status).toBe(404);
   });
@@ -680,23 +668,11 @@ describe('Web GUI pages', () => {
     expect(html).not.toContain('href="/stories');
   });
 
-  it('GET /bookmarks has no Batches section even when a Batch row is bookmarked in the database', async () => {
-    const { batch } = await createGeneration();
-    await env.DB.prepare('UPDATE batches SET bookmark = 1 WHERE id = ?').bind(batch.id).run();
-    const html = await (await req('/bookmarks')).text();
-    expect(html).not.toContain('>Batches<');
-    expect(html).not.toContain('batch-row');
-    expect(html).toContain('>Experiments<');
-  });
-
   it('GET /bookmarks defaults the Generations section to view=refined, and view=all shows raw bookmarks too', async () => {
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: sourceGen } = await createGeneration();
     await req(`/api/v1/generations/${sourceGen.short_id}/bookmark`, { method: 'PUT' });
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: sourceGen.id },
     });
     await req(`/api/v1/generations/${refined.generation.short_id}/bookmark`, { method: 'PUT' });
 
@@ -714,7 +690,6 @@ describe('Web GUI pages', () => {
   });
 
   it('GET /batches 404s', async () => {
-    await createBatch();
     const res = await req('/batches');
     expect(res.status).toBe(404);
   });
@@ -727,7 +702,7 @@ describe('Web GUI pages', () => {
   it('GET /g/{short_id} shows reference short_ids, not raw UUIDs', async () => {
     const { generation: sourceGen } = await createGeneration();
     const refGen = await createGeneration({
-      batchOverrides: { references: [{ source_generation_id: sourceGen.id, purpose: 'style' }] },
+      requestOverrides: { references: [{ source_generation_id: sourceGen.id, purpose: 'style' }] },
     });
 
     const refHtml = await (await req(`/g/${refGen.generation.short_id}`)).text();
@@ -739,18 +714,16 @@ describe('Web GUI pages', () => {
     const sourceHtml = await (await req(`/g/${sourceGen.short_id}`)).text();
     expect(sourceHtml).toContain(refGen.generation.short_id);
     expect(sourceHtml).not.toContain(refGen.generation.id);
-    expect(sourceHtml).not.toContain(refGen.batch.id);
+    expect(sourceHtml).not.toContain(refGen.request.id);
   });
 
   it('GET /g/{short_id} shows 親 (own Request material) and 子 (downstream usage) separately', async () => {
     const { generation: material } = await createGeneration();
     const { generation: middleGen } = await createGeneration({
-      batchOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition' }] },
+      requestOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition' }] },
     });
-    const { generation: consumerGen, batch: consumer } = await createGeneration();
-    await postJson(`/api/v1/batches/${consumer.id}/references`, {
-      source_generation_id: middleGen.id,
-      purpose: 'outfit',
+    const { generation: consumerGen } = await createGeneration({
+      requestOverrides: { references: [{ source_generation_id: middleGen.id, purpose: 'outfit' }] },
     });
 
     const html = await (await req(`/g/${middleGen.short_id}`)).text();
@@ -779,12 +752,9 @@ describe('Web GUI pages', () => {
   });
 
   it('GET /compare?ids=a,b shows the same badges Gallery would (from-badge, 公開済み)', async () => {
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
+    const { generation: sourceGen } = await createGeneration();
     const { generation: refinedGen } = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: sourceGen.id },
     });
     await postJson(`/api/v1/generations/${refinedGen.id}/publications`, {});
 
@@ -1020,9 +990,9 @@ describe('Web GUI pages', () => {
     });
 
     async function makePair() {
-      const base = await createGeneration({ batchOverrides: { patches: [shared], pose_fingerprint: 'fp' } });
+      const base = await createGeneration({ requestOverrides: { patches: [shared], pose_fingerprint: 'fp' } });
       const variant = await createGeneration({
-        batchOverrides: { raw_instruction: 'A: 画家タグ強め', patches: [shared, own], pose_fingerprint: 'fp' },
+        requestOverrides: { raw_instruction: 'A: 画家タグ強め', patches: [shared, own], pose_fingerprint: 'fp' },
       });
       await postJson(`/api/v1/jobs/${base.job.id}`, { graph: graphFor('1girl, outdoors') }, 'PATCH');
       await postJson(`/api/v1/jobs/${variant.job.id}`, { graph: graphFor('1girl, indoors') }, 'PATCH');
@@ -1038,7 +1008,7 @@ describe('Web GUI pages', () => {
       expect(links[0]![2]).toContain(links[0]![1]);
     });
 
-    it('renders the instruction row with — for a Batch without one', async () => {
+    it('renders the instruction row with — for a Request without one', async () => {
       const { body } = await makePair();
       const row = body.match(/<tr class="compare-change"><td>instruction<\/td>(.*?)<\/tr>/s);
       expect(row).not.toBeNull();
@@ -1139,7 +1109,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
   // Other tests in this file post finalize requests without completing them, which would starve
   // our claim() calls (same reason test/finalize-profiles.test.ts resets this table).
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
   });
 
   function uniqueRecipe(): string {
@@ -1187,7 +1157,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
 
   /** Mirrors test/finalize-profiles.test.ts's createFinalizeResult: claims and completes a finalize request. */
   async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
-    const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation: source } = await createGeneration({ requestOverrides: { recipe } });
 
     const finalizeReq = await postJson<RequestBody>('/api/v1/requests', {
       kind: 'finalize',
@@ -1200,14 +1170,15 @@ describe('Finalize profiles and word dials (GUI)', () => {
     const claimRes = await postJson<RequestBody>('/api/v1/requests/claim', { worker_id: `worker-${crypto.randomUUID()}` }, 'POST');
     expect(claimRes.status).toBe(200);
 
-    // worker と同じく、納品物の Batch は idempotency_key `request:{id}` でこの finalize request に紐づく。
-    const { batch: deliveredBatch, generation: delivered } = await createGeneration({
-      batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+    const { generation: delivered } = await createGeneration({
+      requestId: finalizeReq.body.id,
+      requestOverrides: { recipe },
+      jobOverrides: { source_generation_id: source.id },
     });
 
     const done = await postJson(
       `/api/v1/requests/${finalizeReq.body.id}`,
-      { status: 'done', worker_id: claimRes.body.worker_id, result: { batch_id: deliveredBatch.id, generation_ids: [delivered.id] } },
+      { status: 'done', worker_id: claimRes.body.worker_id, result: { generation_ids: [delivered.id] } },
       'PATCH',
     );
     expect(done.status).toBe(200);
@@ -1216,14 +1187,14 @@ describe('Finalize profiles and word dials (GUI)', () => {
   }
 
   it('a recipe with no published catalog dials/profiles still renders the legacy keep_legwear checkbox', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('<input type="checkbox" name="keep_legwear"/>');
     expect(html).not.toContain('data-dial-key="denoise"');
   });
 
   it('a recipe with no published catalog finalize.defaults leaves deliver_only unchecked', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).not.toMatch(/name="deliver_only"[^>]*checked/);
   });
@@ -1231,7 +1202,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
   it('a recipe with published catalog finalize.defaults presets deliver_only checked, repin left unchecked', async () => {
     const recipe = uniqueRecipe();
     await publishFinalizeDefaults(recipe, { deliver_only: true, repin: false });
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toMatch(/name="deliver_only"[^>]*checked/);
@@ -1241,7 +1212,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
   it('a recipe with published catalog finalize.defaults presets the stroke_light select', async () => {
     const recipe = uniqueRecipe();
     await publishFinalizeDefaults(recipe, { stroke_light: 'n' });
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toMatch(/<option value="n"[^>]*selected/);
@@ -1249,7 +1220,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
   });
 
   it('a recipe with no published catalog finalize.defaults keeps the stroke_light select and backdrop picker on their defaults', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe() } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toMatch(/<option value="none"[^>]*selected/);
@@ -1259,7 +1230,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
   it('a recipe with published catalog dials.finalize.denoise renders a denoise dial group with a button per word', async () => {
     const recipe = uniqueRecipe();
     await publishDenoiseDials(recipe);
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('data-dial-key="denoise"');
@@ -1283,7 +1254,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
       },
       'PUT',
     );
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('data-backdrop-value="stripes"');
@@ -1299,7 +1270,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
       { schema_version: 1, recipes: [{ name: recipe, poses: [] }], patches: {} },
       'PUT',
     );
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('data-backdrop-value="stripes"');
@@ -1321,7 +1292,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
       },
       'PUT',
     );
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toMatch(/<input type="radio" name="backdrop" value="dots" checked/);
@@ -1339,7 +1310,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
     });
     expect(promoted.status).toBe(200);
 
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('data-profile-name="daily"');
     expect(html).toContain('data-profile-version="1"');
@@ -1353,7 +1324,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
     const html = await (await req(`/g/${delivered.short_id}`)).text();
     expect(html).toContain('<form class="promote-profile-form"');
 
-    const { generation: plain } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation: plain } = await createGeneration({ requestOverrides: { recipe } });
     const plainHtml = await (await req(`/g/${plain.short_id}`)).text();
     expect(plainHtml).not.toContain('<form class="promote-profile-form"');
   });
@@ -1364,12 +1335,10 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
   it('GET /g/{short_id} shows parent material and child used_by as thumbnail family cards', async () => {
     const { generation: material } = await createGeneration();
     const { generation: middleGen } = await createGeneration({
-      batchOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition', aspect: 'pose' }] },
+      requestOverrides: { references: [{ source_generation_id: material.id, purpose: 'composition', aspect: 'pose' }] },
     });
-    const { generation: consumerGen, batch: consumer } = await createGeneration();
-    await postJson(`/api/v1/batches/${consumer.id}/references`, {
-      source_generation_id: middleGen.id,
-      purpose: 'outfit',
+    const { generation: consumerGen } = await createGeneration({
+      requestOverrides: { references: [{ source_generation_id: middleGen.id, purpose: 'outfit' }] },
     });
 
     const res = await req(`/g/${middleGen.short_id}`);
@@ -1388,12 +1357,9 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
   });
 
   it('GET /g/{short_id} shows the 仕上げ元 as a Refinement parent card and the refined output as a Refinement child card', async () => {
-    const { batch: rawBatch, generation: raw } = await createGeneration();
+    const { generation: raw } = await createGeneration();
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: rawBatch.id, actor: 'human', reason: 'finalize' },
-        references: [{ source_generation_id: raw.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: raw.id },
     });
 
     const refinedHtml = await (await req(`/g/${refined.generation.short_id}`)).text();
@@ -1408,23 +1374,11 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(rawHtml).toContain(`href="/g/${refined.generation.short_id}"`);
   });
 
-  it('GET /g/{short_id} does not turn a retry Relation between Batches into family cards', async () => {
-    const { batch: batchA, generation: genA } = await createGeneration();
-    const { generation: genB, batch: batchB } = await createGeneration();
-    await postJson(`/api/v1/batches/${batchB.id}/relations`, { source_batch_id: batchA.id, type: 'retry', actor: 'human', reason: 'retry composition' });
-
-    const html = await (await req(`/g/${genB.short_id}`)).text();
-    expect(html).toContain('親 (0)');
-    expect(html).not.toContain('retry composition');
-    expect(html).not.toContain(`href="/g/${genA.short_id}"`);
-  });
-
   it('GET /g/{short_id} lists the other Generations of the same Request in a 同じ Request の Generation strip', async () => {
-    const { batch, job, generation: first } = await createGeneration();
+    const { job, generation: first } = await createGeneration();
     const second = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00002_.png', comfy_output_index: 1 });
     const third = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00003_.png', comfy_output_index: 2 });
     const other = await createGeneration();
-    expect(batch.id).toBeTruthy();
 
     const html = await (await req(`/g/${first.short_id}`)).text();
     expect(html).toContain('同じ Request の Generation (2)');
@@ -1494,16 +1448,14 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
 describe('Family panel: Experiment badge cards (ExperimentRun-derived, not a stored Relation)', () => {
   it('GET /g/{short_id} shows an Experiment child card ("via request") and a 兄弟 section listing only ExperimentRun siblings', async () => {
     const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
-    const { generation: parentGen, batch: parentBatch } = await createGeneration();
-    const { generation: childGen, batch: childBatch } = await createGeneration();
-    const { generation: siblingGen, batch: siblingBatch } = await createGeneration();
-
-    const parentRun = await postJson<{ id: string }>(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: parentBatch.id });
+    const parentRun = await postJson<{ id: string }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
     const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
       parent_run_id: parentRun.body.id,
-      batch_id: childBatch.id,
     });
-    await postJson(`/api/v1/experiments/${exp.body.id}/runs`, { batch_id: siblingBatch.id });
+    const siblingRun = await postJson<{ id: string }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
+    const { generation: parentGen } = await createGeneration({ requestOverrides: { run_id: parentRun.body.id } });
+    const { generation: childGen } = await createGeneration({ requestOverrides: { run_id: childRun.body.id } });
+    const { generation: siblingGen } = await createGeneration({ requestOverrides: { run_id: siblingRun.body.id } });
 
     const res = await req(`/g/${parentGen.short_id}`);
     expect(res.status).toBe(200);
@@ -1520,16 +1472,12 @@ describe('Family panel: Experiment badge cards (ExperimentRun-derived, not a sto
 
   it('GET /g/{short_id} shows an Experiment parent card for the parent run\'s result Request', async () => {
     const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID().slice(0, 8)}` });
-    const { generation: parentGen, batch: parentBatch } = await createGeneration();
-    const { generation: childGen, batch: childBatch } = await createGeneration();
-
-    const parentRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
-      batch_id: parentBatch.id,
-    });
+    const parentRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
     const childRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${exp.body.id}/runs`, {
       parent_run_id: parentRun.body.id,
-      batch_id: childBatch.id,
     });
+    const { generation: parentGen } = await createGeneration({ requestOverrides: { run_id: parentRun.body.id } });
+    const { generation: childGen } = await createGeneration({ requestOverrides: { run_id: childRun.body.id } });
 
     const html = await (await req(`/g/${childGen.short_id}`)).text();
     expect(html).toContain('rel-badge rel-experiment');
@@ -1676,15 +1624,14 @@ describe('Experiments pages', () => {
   });
 
   it('GET /experiments/{id} renders the attached generation thumbnail and the promotion', async () => {
-    const { generation, batch } = await createGeneration();
     const experiment = await createExperiment();
     const run = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {
       overrides: { patches: [{ target: 'pose.hip_rotation', op: 'set', value: 4, reason: 'r' }] },
-      batch_id: batch.id,
-      generation_id: generation.id,
       evaluation: { overall: 'pass', aspects: { clothing: 'pass' }, notes: ['sock cuff is distinct'] },
       decision: { action: 'stabilize', reason: 'legwear separated' },
     });
+    const { generation } = await createGeneration({ requestOverrides: { run_id: run.body.id } });
+    await postJson(`/api/v1/experiment-runs/${run.body.id}`, { generation_id: generation.id }, 'PATCH');
     await postJson(`/api/v1/experiments/${experiment.id}/promotions`, {
       source_run_id: run.body.id,
       target_path: 'recipes/dq3.py',
@@ -1705,8 +1652,14 @@ describe('Experiments pages', () => {
   it('GET /experiments/{id} shows the exp-facts table: baseline-diff highlighting on the arm checkpoint cell, a variables column, and a patches row', async () => {
     const experiment = await createExperiment();
 
-    const { generation: baselineGen, job: baselineJob, batch: baselineBatch } = await createGeneration();
-    const { generation: armGen, job: armJob, batch: armBatch } = await createGeneration();
+    const baselineRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      overrides: { patches: [{ target: 'render.cfg', op: 'set', value: 5, reason: 'sharper' }] },
+    });
+    const armRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.id}/runs`, {
+      variables: { prompt_variant: 'v2' },
+    });
+    const { generation: baselineGen, job: baselineJob } = await createGeneration({ requestOverrides: { run_id: baselineRun.body.id } });
+    const { generation: armGen, job: armJob } = await createGeneration({ requestOverrides: { run_id: armRun.body.id } });
     await postJson(
       `/api/v1/jobs/${baselineJob.id}`,
       { graph: { '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'base.safetensors' } } } },
@@ -1718,16 +1671,8 @@ describe('Experiments pages', () => {
       'PATCH',
     );
 
-    const baselineRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      overrides: { patches: [{ target: 'render.cfg', op: 'set', value: 5, reason: 'sharper' }] },
-      batch_id: baselineBatch.id,
-      generation_id: baselineGen.id,
-    });
-    const armRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.id}/runs`, {
-      variables: { prompt_variant: 'v2' },
-      batch_id: armBatch.id,
-      generation_id: armGen.id,
-    });
+    await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { generation_id: baselineGen.id }, 'PATCH');
+    await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { generation_id: armGen.id }, 'PATCH');
 
     const res = await req(`/experiments/${experiment.id}`);
     expect(res.status).toBe(200);
@@ -1751,8 +1696,10 @@ describe('Experiments pages', () => {
   it('GET /experiments/{id} shows the baseline\'s positive prompt chips and a diff-added arm prompt row', async () => {
     const experiment = await createExperiment();
 
-    const { generation: baselineGen, job: baselineJob, batch: baselineBatch } = await createGeneration();
-    const { generation: armGen, job: armJob, batch: armBatch } = await createGeneration();
+    const baselineRun = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {});
+    const armRun = await postJson<{ id: string }>(`/api/v1/experiments/${experiment.id}/runs`, {});
+    const { generation: baselineGen, job: baselineJob } = await createGeneration({ requestOverrides: { run_id: baselineRun.body.id } });
+    const { generation: armGen, job: armJob } = await createGeneration({ requestOverrides: { run_id: armRun.body.id } });
     const graphFor = (text: string) => ({
       '3': {
         class_type: 'KSampler',
@@ -1766,8 +1713,8 @@ describe('Experiments pages', () => {
     await postJson(`/api/v1/jobs/${baselineJob.id}`, { graph: graphFor('1girl, old_tag') }, 'PATCH');
     await postJson(`/api/v1/jobs/${armJob.id}`, { graph: graphFor('1girl, new_tag') }, 'PATCH');
 
-    await postJson(`/api/v1/experiments/${experiment.id}/runs`, { batch_id: baselineBatch.id, generation_id: baselineGen.id });
-    await postJson(`/api/v1/experiments/${experiment.id}/runs`, { batch_id: armBatch.id, generation_id: armGen.id });
+    await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { generation_id: baselineGen.id }, 'PATCH');
+    await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { generation_id: armGen.id }, 'PATCH');
 
     const res = await req(`/experiments/${experiment.id}`);
     expect(res.status).toBe(200);
@@ -1814,11 +1761,11 @@ describe('Experiments pages', () => {
 });
 
 describe('A/B judge page', () => {
-  async function batchWithSeeds(seeds: number[]) {
-    const batch = await createBatch();
+  async function requestWithSeeds(seeds: number[], runId: string) {
+    const request = await createRequest({ run_id: runId });
     const gens: Record<number, { id: string; short_id: string }> = {};
     for (const seed of seeds) {
-      const job = await createJob(batch.body.id, { seed });
+      const job = await createJob(request.body.id, { seed });
       const ingest = await ingestGeneration(job.body.id, {
         seed,
         original_filename: `out_${seed}_${crypto.randomUUID().slice(0, 8)}.png`,
@@ -1826,7 +1773,7 @@ describe('A/B judge page', () => {
       });
       gens[seed] = { id: ingest.body.id, short_id: ingest.body.short_id };
     }
-    return { batch: batch.body, gens };
+    return { request: request.body, gens };
   }
 
   async function setupPair() {
@@ -1842,10 +1789,8 @@ describe('A/B judge page', () => {
       { objective: 'arm objective text' },
     );
 
-    const { batch: baselineBatch, gens: baselineGens } = await batchWithSeeds([11, 22]);
-    const { batch: armBatch, gens: armGens } = await batchWithSeeds([11, 22]);
-    await postJson(`/api/v1/experiment-runs/${baselineRun.body.id}`, { batch_id: baselineBatch.id }, 'PATCH');
-    await postJson(`/api/v1/experiment-runs/${armRun.body.id}`, { batch_id: armBatch.id }, 'PATCH');
+    const { gens: baselineGens } = await requestWithSeeds([11, 22], baselineRun.body.id);
+    const { gens: armGens } = await requestWithSeeds([11, 22], armRun.body.id);
 
     return {
       experiment: experiment.body,

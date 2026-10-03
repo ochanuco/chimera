@@ -1,14 +1,11 @@
-// Batch 廃止の段階 3 (docs/batch-removal.md): worker が Request に直接報告する解決済みの値 (resolution) と、
-// その Request から作る Job。段階 4 までは comfy_jobs.batch_id / generations.batch_id が batches を指すので、
-// 同じ値を持つ影の Batch (id は Request の id、idempotency_key は 'request:{id}') を内部で保つ。
+// worker が Request に直接報告する解決済みの値 (resolution) と、その Request から作る Job。
 
 import { getGenerationByIdOrShortId, nowIso } from './db';
 import { conflict, notFound, badRequest } from './errors';
 import { stableStringify } from './json-canonical';
 import { uuidv7 } from './uuidv7';
 import { createUniqueRequestShortId } from './shortid';
-import { refinesGenerationUpdateStatement } from './batch-refinement';
-import type { BatchRow, ComfyJobRow, RequestRow } from '../types';
+import type { ComfyJobRow, RequestRow } from '../types';
 import type { PutResolutionInput } from '../schemas/requests';
 
 export type ResolutionInput = Omit<PutResolutionInput, 'parameters' | 'worker_id'> & { parameters: Record<string, unknown> };
@@ -32,7 +29,7 @@ export interface NormalizedResolution {
   references: ResolvedReference[];
 }
 
-/** rebuild は Job の source_generation_id で表すので素材参照には持たない (docs/batch-removal.md)。 */
+/** rebuild は Job の source_generation_id で表すので素材参照には持たない。 */
 export async function normalizeResolution(
   db: D1Database,
   input: ResolutionInput,
@@ -106,28 +103,18 @@ export async function sameResolution(db: D1Database, row: RequestRow, next: Norm
   );
 }
 
-export async function findShadowBatch(db: D1Database, requestId: string): Promise<BatchRow | null> {
-  return db.prepare('SELECT * FROM batches WHERE idempotency_key = ?').bind(`request:${requestId}`).first<BatchRow>();
-}
-
 export async function requestHasJobs(db: D1Database, requestId: string): Promise<boolean> {
   return (await db.prepare('SELECT 1 FROM comfy_jobs WHERE request_id = ? LIMIT 1').bind(requestId).first()) !== null;
 }
 
-/**
- * resolution の書き込み。Request の列・request_references・影の Batch (と batch_references) を同じ db.batch に積む。
- * `shortId` は Request に発行済みの値 (Batch はそれを引き継ぐ)。影の Batch が既にあれば列を上書きし、無ければ作る。
- */
-export async function resolutionStatements(
+/** resolution の書き込み。Request の列と request_references を同じ db.batch に積む。`shortId` は Request に発行済みの値。 */
+export function resolutionStatements(
   db: D1Database,
-  args: { requestId: string; shortId: string; resolution: NormalizedResolution; shadow: BatchRow | null; batchStatus: BatchRow['status'] },
-): Promise<D1PreparedStatement[]> {
-  const { requestId, shortId, resolution: r, shadow, batchStatus } = args;
+  args: { requestId: string; shortId: string; resolution: NormalizedResolution },
+): D1PreparedStatement[] {
+  const { requestId, shortId, resolution: r } = args;
   const now = nowIso();
-  const batchId = shadow?.id ?? (await batchIdFor(db, requestId));
-  const refs = r.references.map((ref) => ({ ...ref, id: uuidv7() }));
-
-  const statements: D1PreparedStatement[] = [
+  return [
     db
       .prepare(
         `UPDATE requests SET short_id = ?, recipe = ?, raw_instruction = ?, parameters_json = ?, patches_json = ?,
@@ -135,53 +122,14 @@ export async function resolutionStatements(
       )
       .bind(shortId, r.recipe, r.raw_instruction, r.parameters_json, r.patches_json, r.pose_fingerprint, r.preset_versions_json, r.git_commit, r.git_dirty, now, requestId),
     db.prepare('DELETE FROM request_references WHERE target_request_id = ?').bind(requestId),
-    ...refs.map((ref) =>
+    ...r.references.map((ref) =>
       db
         .prepare(
           'INSERT INTO request_references (id, source_generation_id, target_request_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         )
-        .bind(ref.id, ref.generationId, requestId, ref.purpose, ref.aspect, ref.instruction, now),
+        .bind(uuidv7(), ref.generationId, requestId, ref.purpose, ref.aspect, ref.instruction, now),
     ),
   ];
-
-  if (shadow) {
-    statements.push(
-      db
-        .prepare(
-          `UPDATE batches SET raw_instruction = ?, recipe = ?, parameters_json = ?, git_commit = ?, git_dirty = ?,
-             patches_json = ?, pose_fingerprint = ?, preset_versions_json = ?, updated_at = ? WHERE id = ?`,
-        )
-        .bind(r.raw_instruction, r.recipe, r.parameters_json, r.git_commit, r.git_dirty, r.patches_json, r.pose_fingerprint, r.preset_versions_json, now, batchId),
-      db.prepare("DELETE FROM batch_references WHERE target_batch_id = ? AND purpose IS NOT 'rebuild'").bind(batchId),
-    );
-  } else {
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO batches (id, short_id, experiment_id, raw_instruction, recipe, prompt, negative_prompt, parameters_json,
-             git_commit, git_dirty, note, bookmark, status, idempotency_key, created_at, updated_at, patches_json,
-             pose_fingerprint, preset_versions_json)
-           VALUES (?, ?, NULL, ?, ?, NULL, NULL, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(batchId, shortId, r.raw_instruction, r.recipe, r.parameters_json, r.git_commit, r.git_dirty, batchStatus, `request:${requestId}`, now, now, r.patches_json, r.pose_fingerprint, r.preset_versions_json),
-    );
-  }
-  for (const ref of refs) {
-    statements.push(
-      db
-        .prepare(
-          'INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        )
-        .bind(ref.id, ref.generationId, batchId, ref.purpose, ref.aspect, ref.instruction, now),
-    );
-  }
-  return statements;
-}
-
-/** 影の Batch の id は Request の id。別 Batch が既に使っていれば (backfill が補った Request など) 新しい id にする。 */
-async function batchIdFor(db: D1Database, requestId: string): Promise<string> {
-  const taken = await db.prepare('SELECT 1 FROM batches WHERE id = ?').bind(requestId).first();
-  return taken ? uuidv7() : requestId;
 }
 
 // worker-protocol.md「再送レスポンスに含めるもの」: jobs[] は seed/status/comfy_prompt_id + ingest 済み generations。
@@ -234,52 +182,26 @@ export async function createRequestJob(
 
   if (row.status === 'cancelled') throw conflict('request is cancelled');
   if (!isResolved(row)) throw conflict('resolution has not been reported for this request');
-  const shadow = await findShadowBatch(db, row.id);
-  if (!shadow) throw conflict('resolution has not been reported for this request');
 
   let sourceGenerationId: string | null = null;
-  let sourceBatchId: string | null = null;
   if (requiresSourceGeneration(row.kind)) {
     if (!body.source_generation_id) throw badRequest(`source_generation_id is required for kind ${row.kind}`);
     const source = await getGenerationByIdOrShortId(db, body.source_generation_id);
     if (!source) throw notFound(`source generation '${body.source_generation_id}'`);
     sourceGenerationId = source.id;
-    sourceBatchId = source.batch_id;
   } else if (body.source_generation_id) {
     throw badRequest(`source_generation_id is not accepted for kind ${row.kind}`);
   }
 
   const id = uuidv7();
   const now = nowIso();
-  const statements: D1PreparedStatement[] = [
-    db
-      .prepare(
-        `INSERT INTO comfy_jobs (id, batch_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at, request_id, source_generation_id)
-         VALUES (?, ?, NULL, ?, ?, 'created', ?, ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING`,
-      )
-      .bind(id, shadow.id, body.seed, body.index, body.idempotency_key, now, now, row.id, sourceGenerationId),
-  ];
-  if (sourceGenerationId) {
-    // finalize.py が今 POST /batches で作る rebuild 参照 + refinement 関係と同じ形。系譜と家族カードが Batch を読む間の互換。
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO batch_references (id, source_generation_id, target_batch_id, purpose, aspect, instruction, created_at)
-           SELECT ?, ?, ?, 'rebuild', NULL, NULL, ?
-           WHERE NOT EXISTS (SELECT 1 FROM batch_references WHERE target_batch_id = ? AND source_generation_id = ? AND purpose = 'rebuild')`,
-        )
-        .bind(uuidv7(), sourceGenerationId, shadow.id, now, shadow.id, sourceGenerationId),
-      db
-        .prepare(
-          `INSERT INTO batch_relations (id, source_batch_id, target_batch_id, type, actor, reason, raw_instruction, created_at)
-           SELECT ?, ?, ?, 'refinement', 'claude', NULL, NULL, ?
-           WHERE NOT EXISTS (SELECT 1 FROM batch_relations WHERE source_batch_id = ? AND target_batch_id = ? AND type = 'refinement')`,
-        )
-        .bind(uuidv7(), sourceBatchId!, shadow.id, now, sourceBatchId!, shadow.id),
-      refinesGenerationUpdateStatement(db, shadow.id),
-    );
-  }
-  await db.batch(statements);
+  await db
+    .prepare(
+      `INSERT INTO comfy_jobs (id, request_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at, source_generation_id)
+       VALUES (?, ?, NULL, ?, ?, 'created', ?, ?, ?, ?) ON CONFLICT (idempotency_key) DO NOTHING`,
+    )
+    .bind(id, row.id, body.seed, body.index, body.idempotency_key, now, now, sourceGenerationId)
+    .run();
 
   const created = await db.prepare('SELECT * FROM comfy_jobs WHERE idempotency_key = ?').bind(body.idempotency_key).first<ComfyJobRow>();
   if (created && created.id !== id) return { status: 200, job: await replayJob(db, row, created) };
@@ -288,7 +210,6 @@ export async function createRequestJob(
     job: {
       id,
       request_id: row.id,
-      batch_id: shadow.id,
       seed: body.seed,
       index: body.index,
       status: 'created',
@@ -308,7 +229,6 @@ async function replayJob(db: D1Database, row: RequestRow, job: ComfyJobRow) {
   return {
     id: job.id,
     request_id: job.request_id,
-    batch_id: job.batch_id,
     seed: job.seed,
     index: job.job_index,
     status: job.status,
@@ -327,21 +247,12 @@ export async function putResolution(db: D1Database, row: RequestRow, input: Reso
   if (workerId && row.status === 'running' && row.worker_id !== workerId) throw conflict('worker_id does not match the claim');
 
   const resolution = await normalizeResolution(db, input, row.preset_versions_json);
-  const shadow = await findShadowBatch(db, row.id);
-  if (shadow && (await sameResolution(db, row, resolution))) return false;
+  if (await sameResolution(db, row, resolution)) return false;
   if (isResolved(row) && (await requestHasJobs(db, row.id))) {
     throw conflict('resolution differs from the one already reported and jobs exist for this request');
   }
 
   const shortId = row.short_id ?? (await createUniqueRequestShortId(db));
-  const batchStatus = row.status === 'done' ? 'completed' : 'running';
-  try {
-    await db.batch(await resolutionStatements(db, { requestId: row.id, shortId, resolution, shadow, batchStatus }));
-  } catch (err) {
-    // 同時 PUT が影の Batch の INSERT (UNIQUE idempotency_key) で衝突するレース。後から来た側は上書きとして書き直す。
-    const raced = await findShadowBatch(db, row.id);
-    if (shadow || !raced) throw err;
-    await db.batch(await resolutionStatements(db, { requestId: row.id, shortId, resolution, shadow: raced, batchStatus }));
-  }
+  await db.batch(resolutionStatements(db, { requestId: row.id, shortId, resolution }));
   return true;
 }

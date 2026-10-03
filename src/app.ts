@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { ZodError } from 'zod';
 import { createMcpHandler } from 'agents/mcp/server';
 import { ApiError } from './lib/errors';
-import { batches } from './routes/batches';
 import { jobs } from './routes/jobs';
 import { generations } from './routes/generations';
 import { experiments, experimentRuns, promotions } from './routes/experiments';
@@ -24,7 +23,6 @@ import type { AppEnv } from './types';
 
 export const app = new Hono<AppEnv>();
 
-app.route('/api/v1/batches', batches);
 app.route('/api/v1/jobs', jobs);
 app.route('/api/v1/generations', generations);
 app.route('/api/v1/experiments', experiments);
