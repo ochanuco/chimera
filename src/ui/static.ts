@@ -1156,6 +1156,17 @@ details.section .section-body { margin-top: 0.6rem; }
 .compare-table .tok-uniq { background: rgba(95, 191, 123, 0.3); border-radius: 2px; }
 .compare-table .tok-partial { background: rgba(184, 171, 95, 0.35); border-radius: 2px; }
 .compare-legend { font-size: 0.75rem; color: var(--text-dim); margin: 0.75rem 0 0.25rem; }
+/* Experiment Detail の Compare セクション（Run を列にした Compare 表、docs/ui.md「Experiment View」） */
+.exp-compare { margin-bottom: 1.5rem; }
+.exp-compare-seeds { display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: baseline; font-size: 0.85rem; color: var(--text-dim); }
+.exp-compare-seed { font-family: ui-monospace, monospace; }
+.exp-compare-seed.current { color: var(--text); }
+.compare-col-label, .compare-head-label { font-weight: 600; margin-bottom: 0.25rem; }
+.compare-head-pending { color: var(--text-dim); font-weight: 400; }
+.compare-placeholder {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 1; color: var(--text-dim);
+  border: 1px dashed var(--border); border-radius: 6px;
+}
 .compare-legend .tok-uniq, .compare-legend .tok-partial { padding: 0 0.25rem; }
 
 .empty-state { color: var(--text-dim); padding: 2rem 0; }

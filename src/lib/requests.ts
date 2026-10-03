@@ -37,12 +37,17 @@ export async function canonicalPayloadHash(kind: string, payload: unknown): Prom
 
 /** ExperimentRun 由来の generate payload。comfy-recipes の watch.build_request と同じ request.json v1 形式にする（語彙は解釈せず base_parameters を詰め替えるだけ）。 */
 export function buildRunRequestPayload(experiment: ExperimentRow, run: ExperimentRunRow): JsonObject {
-  const baseParameters = parseJsonObject(experiment.base_parameters_json) as JsonObject & { count?: unknown };
-  const { count, ...parameters } = baseParameters;
+  const baseParameters = parseJsonObject(experiment.base_parameters_json) as JsonObject & { count?: unknown; seeds?: unknown };
+  const { count, seeds, ...parameters } = baseParameters;
   const instruction = run.objective ?? `run #${run.run_index} of ${experiment.name}`;
+  // seeds は全 Run で共有する request.seeds になり、件数は seeds で決まる (docs/generation-request.md「Seeds」)。
+  const sharedSeeds = Array.isArray(seeds) && seeds.length > 0 && seeds.every((n) => Number.isInteger(n) && n >= 0) ? (seeds as number[]) : null;
+  const requestBody: JsonObject = sharedSeeds
+    ? { instruction, count: sharedSeeds.length, seeds: sharedSeeds }
+    : { instruction, count: typeof count === 'number' ? count : 1 };
   const payload: JsonObject = {
     schema_version: 1,
-    request: { instruction, count: typeof count === 'number' ? count : 1 },
+    request: requestBody,
     generation: { recipe: experiment.base_recipe, parameters },
     semantic: { summary: instruction },
     experiment: {

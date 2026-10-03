@@ -55,12 +55,24 @@ Experiment は、検証中ずっと固定する生成条件を持ちます。
 { "pose": "lounge", "costume": "default", "count": 3 }
 ```
 
+seed を共有したいときは `count` の代わりに `seeds` を置きます（[base_parameters.seeds](#base_parametersseeds)）。
+
 Run の `overrides.patches` が変える差分、Experiment の `base_parameters` が固定する土台です。
 これがないと Run 単体を実行できません。
 `overrides` に混ぜると差分という概念が濁るため分けています。
 
 chimera は中身を検証しません。
 `base_recipe` と同じく、語彙は comfyui-recipes のものです。
+例外は `seeds` だけです。
+
+### base_parameters.seeds
+
+`base_parameters.seeds` は、0 以上の整数を 1〜16 個並べた配列です。
+指定すると、その Experiment の全 Run が同じ seed で描画されます。
+Run 作成時に自動起票する request.json は、`request.seeds` にこの配列を入れ、`request.count` を `seeds` の件数にします。
+`seeds` は generation.parameters には入りません。
+`count` も指定したときは `seeds` の件数と一致させる必要があり、食い違う作成・更新は 400 です。
+seed を揃えると、Run 同士で同じ seed の Generation を並べて比べられます。
 
 ### base_generation_id
 
@@ -99,6 +111,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | --- | --- | --- | --- |
 | `list_experiments` | `status?` | 読み取り | Experiment の一覧。各行に base_recipe / base_parameters / base_generation_id / run_count / latest_run |
 | `get_experiment` | `id` | 読み取り | `GET /api/v1/experiments/{id}` と同じ形（runs / promotions / tags 込み） |
+| `create_experiment` | `name, recipe, parameters?, seeds?, base_generation_id?, character_id?, description?, arms, idempotency_key` | 追記 | Experiment を1件と、arm ごとの Run を作る。各 Run が requests 行を自動起票する。Experiment の `url` / `compare_url` と、arm ごとの Run id・`request_id`・`request_short_id` を返す |
 | `create_run` | `experiment_id, overrides, objective?, parent_run_id?, idempotency_key?, variables?` | 追記 | Run を1件作る。自動起票した requests 行の id を `run.request_id` に返す |
 | `get_run` | `run_id` | 読み取り | Run、所属 Experiment の要約、結果 Request の Generation 一覧 |
 | `attach_generation` | `run_id, generation_id` | 追記 | Run の代表 Generation を記録する |
@@ -224,7 +237,7 @@ raw Generation では `null` なので、仕上げ済みの ID だけ渡され�
 ### derive_request
 
 Experiment を経由しない単発の派生（「この Generation のポーズを少し変えて3枚」）は `derive_request` で積みます。
-Experiment のサイクルに乗せるなら `create_run` を使います。
+Experiment のサイクルに乗せるなら `create_experiment` / `create_run` を使います。
 
 `derive_request` は既存の Generation を起点に `kind: "generate"` の requests 行を積みます。
 `from_generation_id` が finalize / repair / masked_redraw 済みの Generation なら、`refines_generation_id` を辿って raw の Generation まで遡ってから起点にします。
@@ -277,6 +290,42 @@ options に同じキーがあればそちらが勝ち、明示の `null` も上�
 `masked_redraw_generation` は `regions`（1つ以上の、互いに重ならない正規化矩形）と空でない `prompt_patch` を必須とし、`denoise`（0 超 0.75 以下、または dial の語）、`mask_padding`、`mask_feather`、`size`、`seeds` を任意で受けます（[api.md](api.md#generic-masked-redraw)）。
 `pad` / `feather` は alias として受け、`mask_padding` / `mask_feather` に正規化して保存します。
 
+### create_experiment
+
+バリアントを比べたいときの入口です。
+指示1つにつき Experiment を1つ作り、比べたい案を arm として並べます。
+
+``` json
+{
+  "name": "表情の比較",
+  "recipe": "yukari",
+  "parameters": { "pose": "lounge" },
+  "seeds": [11, 22, 33],
+  "arms": [
+    { "label": "control" },
+    { "label": "smile", "instruction": "少し笑う", "patches": [ { "target": "prompt.positive.expression", "op": "replace", "value": "smile", "reason": "笑顔に寄せる" } ] }
+  ],
+  "idempotency_key": "..."
+}
+```
+
+`recipe` は `base_recipe`、`parameters`（`count` を含められる）と `seeds` は `base_parameters` になります。
+`seeds` を渡すと全 arm が同じ seed で描画されるので、列が比べられます。このとき `count` は省略します。
+arm は 1〜9 個で、`label` は呼び出しの中で一意にします。
+`patches` は Run の `overrides.patches` と同じ形で、1つの arm では1つの側面だけを変え、prompt は `prompt.positive.<part>` の部品単位の target で書きます。
+patches を持たない arm が control（基準）なので、control も arm として含めます。
+
+arm は並び順に Run になります。
+Run の `idempotency_key` は `{idempotency_key}:arm:{index}`、`objective` は `instruction`（省略時は `label`）、`variables` は `{ "arm": label }`、`overrides` は `{ "patches": patches ?? [] }` です。
+作った Run の request ごとに WorkerHub へ `queued` を通知します。
+
+同じ `idempotency_key` の再送は、何も作らず既存の Experiment と Run を返し、`created: false` になります。
+同じキーを別の arms（件数かラベルが違う）で呼ぶと 409 です。
+再送時に arm の Run が一部だけ欠けていれば、欠けた分だけを作ります。
+
+結果の `experiment.url` は `/experiments/{short_id}` で、そのページの Compare セクションが arm を列に、seed を行の切り替えにして並べます（[ui.md](ui.md#experiment-view)）。
+`compare_url` はそのセクションへのアンカー付きの URL です。
+
 ### Experiment サイクルの tool
 
 Run の代表 Generation を選んだあと、その Generation を見て次の一手を決める段になったら `get_generation` / `get_generation_lineage` を使います。
@@ -301,13 +350,13 @@ requests 行を積む tool と、その行の `created_by` は次の通りです
 
 | tool | kind | created_by |
 | --- | --- | --- |
-| `create_run`（自動起票） | `generate`（`run_id` 付き、`idempotency_key` は `run:{run_id}`） | `system` |
+| `create_experiment` / `create_run`（自動起票） | `generate`（`run_id` 付き、`idempotency_key` は `run:{run_id}`） | `system` |
 | `create_request` | 指定した kind | `mcp` |
 | `derive_request` / `plain_render` | `generate` | `mcp` |
 | `finalize_generation` / `repair_generation` / `masked_redraw_generation` | `finalize` / `repair` / `masked_redraw` | `mcp` |
 
-`create_run` 以外は `POST /api/v1/requests` と同じ `src/lib/requests.ts` の `createRequest` を通り、preset の pin と finalize profile の展開もそこで hash の計算より前に行います。
-`create_run` の自動起票も同じ規則で pin してから hash を取るので、同じ内容の request はどの経路でも同じ hash になります。
+`create_experiment` / `create_run` 以外は `POST /api/v1/requests` と同じ `src/lib/requests.ts` の `createRequest` を通り、preset の pin と finalize profile の展開もそこで hash の計算より前に行います。
+Run 作成の自動起票も同じ規則で pin してから hash を取るので、同じ内容の request はどの経路でも同じ hash になります。
 worker から見える requests 行の形と claim / 状態遷移は、REST で積んだ行と変わりません。
 新しく積んだ行は WorkerHub に `queued` として通知します（[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）。
 
@@ -405,11 +454,9 @@ REST で Run 作成時に同じ組を渡す経路にも同じ規則が適用さ�
 ## 1サイクル
 
 ``` text
-人間      Experiment を作る（base_recipe / base_parameters / テーマ）
-
-Agent     list_experiments → get_experiment で過去 Run を読む
-          override を決めて create_run
-              ↓ chimera が requests 行を自動起票
+Agent     create_experiment（1つの指示から base_recipe / base_parameters / seeds / arm を作る）
+          （続きの周は list_experiments → get_experiment で過去 Run を読み、override を決めて create_run）
+              ↓ chimera が Run ごとに requests 行を自動起票
 worker    requests 行を claim → request.json → ComfyUI
               ↓ done を PATCH（Run の結果は Request の run_id で引く）
 Agent     get_run で生成物を見る
