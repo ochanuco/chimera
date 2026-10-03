@@ -3,7 +3,7 @@
 -- 旧コードは batch_id を書き続けるので、この状態は新旧どちらのコードとも両立する。
 -- D1 は 1 回の migration の CPU 時間に上限があるため、作り直しは 1 表ずつ別の migration にする。
 -- DROP TABLE の暗黙の DELETE が子表の外部キー違反を数えるので、検査は COMMIT まで遅らせ、
--- 同じ名前の表に行を戻して解消する。
+-- 同じ名前の表に行を戻して解消する。戻す行ごとに子表を引き直すので、索引は行を戻す前に作る。
 PRAGMA defer_foreign_keys = true;
 
 CREATE TABLE _m29_experiment_runs AS SELECT * FROM experiment_runs;
@@ -26,13 +26,14 @@ CREATE TABLE experiment_runs (
   variables_json TEXT,
   UNIQUE (experiment_id, run_index)
 );
-INSERT INTO experiment_runs (id, experiment_id, run_index, parent_run_id, generation_id, batch_id, overrides_json, objective, evaluation_json, decision_json, note, created_at, updated_at, idempotency_key, variables_json)
-SELECT id, experiment_id, run_index, parent_run_id, generation_id, batch_id, overrides_json, objective, evaluation_json, decision_json, note, created_at, updated_at, idempotency_key, variables_json
-FROM _m29_experiment_runs;
-DROP TABLE _m29_experiment_runs;
 CREATE INDEX idx_experiment_runs_experiment_id ON experiment_runs(experiment_id);
 CREATE INDEX idx_experiment_runs_parent_run_id ON experiment_runs(parent_run_id);
 CREATE INDEX idx_experiment_runs_generation_id ON experiment_runs(generation_id);
 CREATE INDEX idx_experiment_runs_batch_id ON experiment_runs(batch_id);
 CREATE UNIQUE INDEX idx_experiment_runs_batch_id_unique ON experiment_runs(batch_id) WHERE batch_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_experiment_runs_idempotency_key ON experiment_runs(idempotency_key);
+
+INSERT INTO experiment_runs (id, experiment_id, run_index, parent_run_id, generation_id, batch_id, overrides_json, objective, evaluation_json, decision_json, note, created_at, updated_at, idempotency_key, variables_json)
+SELECT id, experiment_id, run_index, parent_run_id, generation_id, batch_id, overrides_json, objective, evaluation_json, decision_json, note, created_at, updated_at, idempotency_key, variables_json
+FROM _m29_experiment_runs;
+DROP TABLE _m29_experiment_runs;
