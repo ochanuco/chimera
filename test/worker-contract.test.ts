@@ -10,6 +10,7 @@ interface Req {
   short_id: string | null;
   kind: string;
   status: string;
+  run_id?: string | null;
   result: { generation_ids: string[] } | null;
 }
 
@@ -272,6 +273,39 @@ describe('kind import', () => {
     const detail = await getJson<Record<string, unknown>>(`/api/v1/generations/${g.body.id}`);
     expect(detail.status).toBe(200);
     expect(detail.body).not.toHaveProperty('batch');
+  });
+
+  it('links a run through run_id and takes it off the pending list', async () => {
+    // base_recipe の無い Experiment の Run は requests が自動起票されず pending に残る。
+    const exp = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-${crypto.randomUUID()}` });
+    const run = await postJson<{ id: string }>(`/api/v1/experiments/${exp.body.id}/runs`, {});
+    const pending = async () =>
+      (await getJson<{ items: { id: string }[] }>('/api/v1/experiment-runs?pending=true&limit=200')).body.items.map((r) => r.id);
+    expect(await pending()).toContain(run.body.id);
+
+    const body = importBody({ run_id: run.body.id });
+    const created = await postJson<Req>('/api/v1/requests', body);
+    expect(created.status).toBe(201);
+    expect(created.body.run_id).toBe(run.body.id);
+    expect(await pending()).not.toContain(run.body.id);
+    // 再開時の再送は Run の重複判定より先にキーで既存行へ戻る。
+    const resend = await postJson<Req>('/api/v1/requests', body);
+    expect(resend.status).toBe(200);
+    expect(resend.body.id).toBe(created.body.id);
+
+    expect((await postJson('/api/v1/requests', importBody({ run_id: run.body.id }))).status).toBe(409);
+    expect((await postJson('/api/v1/requests', importBody({ run_id: 'missing-run' }))).status).toBe(404);
+  });
+
+  it('rejects run_id on non-import kinds', async () => {
+    const res = await postJson('/api/v1/requests', {
+      kind: 'generate',
+      run_id: 'x',
+      idempotency_key: `gen-${crypto.randomUUID()}`,
+      created_by: 'brain',
+      payload: { schema_version: 1, request: { instruction: 'x', count: 1 }, generation: { recipe: 'yukari' } },
+    });
+    expect(res.status).toBe(400);
   });
 
   it('validates the import envelope', async () => {

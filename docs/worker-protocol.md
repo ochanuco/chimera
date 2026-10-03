@@ -167,6 +167,15 @@ form しか持たないことで保っており、API が `created_by`
 保存します。再送の一致は payload と解決済みの値の両方で見ます（`idempotency_key` が同じで内容が
 違えば 409）。`finished_at` は作成時刻で、claim も `PATCH`（cancelled を含む）も受け付けません（409）。
 作成後は `POST /requests/{id}/jobs` で Job を作り、通常どおり ingest します。
+Job の status は ingest で `ingested` になるので、`PATCH /jobs/{id}` で進める必要はありません。
+
+worker を通さずに描いた ExperimentRun の結果（`GET /experiment-runs?pending=true` から拾った Run）は、
+`run_id` を付けた import として登録します。その Run を指す Request ができるので Run は pending から外れ、
+Run の結果はこの Request になります。存在しない Run は 404、既に Request を持つ Run は 409 です。
+`run_id` は import 以外の kind では受け付けません（400）。
+
+実際に送った prompt は Job の `graph`（`PATCH /jobs/{id}`）から読みます。graph の無い画像に prompt は残りません。
+identity guard の許可（`identity_override` / `identity_removed`）は、Generation の `semantic.attributes` に記録します。
 
 ### List Requests
 
