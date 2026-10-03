@@ -281,33 +281,117 @@ export function itxtChunkData(keyword: string, text: string, compressed = false)
   return out;
 }
 
-export async function createBatch(overrides: Record<string, unknown> = {}) {
-  return postJson<{ id: string; short_id: string; status: string }>('/api/v1/batches', {
-    idempotency_key: crypto.randomUUID(),
-    prompt: 'a test prompt',
-    ...overrides,
-  });
+export interface TestRequestOverrides {
+  id?: string;
+  kind?: 'generate' | 'finalize' | 'repair' | 'masked_redraw' | 'import';
+  status?: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+  idempotency_key?: string;
+  run_id?: string | null;
+  created_by?: 'brain' | 'mcp' | 'gui' | 'system';
+  created_at?: string;
+  payload?: unknown;
+  recipe?: string | null;
+  raw_instruction?: string | null;
+  parameters?: Record<string, unknown> | null;
+  patches?: unknown[] | null;
+  pose_fingerprint?: string | null;
+  preset_versions?: unknown[] | null;
+  git_commit?: string | null;
+  git_dirty?: boolean;
+  references?: { source_generation_id: string; purpose?: string; aspect?: string; instruction?: string }[] | null;
 }
 
-const batchIndexCounters = new Map<string, number>();
+export interface TestRequest {
+  id: string;
+  short_id: string;
+  kind: string;
+  status: string;
+}
 
-export async function createJob(batchId: string, overrides: Record<string, unknown> = {}) {
-  let index = 0;
-  if (!('index' in overrides)) {
-    const current = batchIndexCounters.get(batchId) ?? 0;
-    index = current;
-    batchIndexCounters.set(batchId, current + 1);
+const SHORT_ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+function randomShortId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, (b) => SHORT_ID_ALPHABET[b % SHORT_ID_ALPHABET.length]).join('');
+}
+
+/**
+ * Inserts a Request whose resolution has already been reported (the state a worker leaves behind before it creates
+ * Jobs), bypassing the claim / PUT resolution handshake. Defaults to a done generate Request.
+ */
+export async function createRequest(overrides: TestRequestOverrides = {}): Promise<{ status: number; body: TestRequest }> {
+  const id = overrides.id ?? crypto.randomUUID();
+  const kind = overrides.kind ?? 'generate';
+  const status = overrides.status ?? 'done';
+  const now = overrides.created_at ?? new Date().toISOString();
+  const shortId = randomShortId();
+  const payload = overrides.payload ?? { schema_version: 1, request: { instruction: overrides.raw_instruction ?? 'test' } };
+  const parameters = overrides.parameters === undefined ? {} : overrides.parameters;
+  await env.DB.prepare(
+    `INSERT INTO requests (
+       id, kind, status, payload_json, payload_hash, recipe_ref, run_id, idempotency_key, created_by, created_at, updated_at,
+       finished_at, short_id, recipe, raw_instruction, parameters_json, patches_json, pose_fingerprint, preset_versions_json,
+       git_commit, git_dirty
+     ) VALUES (?, ?, ?, ?, ?, 'production', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      id,
+      kind,
+      status,
+      JSON.stringify(payload),
+      'test',
+      overrides.run_id ?? null,
+      overrides.idempotency_key ?? crypto.randomUUID(),
+      overrides.created_by ?? 'brain',
+      now,
+      now,
+      status === 'done' ? now : null,
+      shortId,
+      overrides.recipe ?? null,
+      overrides.raw_instruction ?? null,
+      parameters === null ? null : JSON.stringify(parameters),
+      overrides.patches ? JSON.stringify(overrides.patches) : null,
+      overrides.pose_fingerprint ?? null,
+      overrides.preset_versions ? JSON.stringify(overrides.preset_versions) : null,
+      overrides.git_commit ?? null,
+      overrides.git_dirty ? 1 : 0,
+    )
+    .run();
+  for (const ref of overrides.references ?? []) {
+    await env.DB.prepare(
+      'INSERT INTO request_references (id, source_generation_id, target_request_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(crypto.randomUUID(), ref.source_generation_id, id, ref.purpose ?? null, ref.aspect ?? null, ref.instruction ?? null, now)
+      .run();
   }
+  return { status: 201, body: { id, short_id: shortId, kind, status } };
+}
 
-  return postJson<{ id: string; batch_id: string; seed: number; index: number }>(
-    `/api/v1/batches/${batchId}/jobs`,
-    {
-      idempotency_key: crypto.randomUUID(),
-      seed: 123,
-      index,
-      ...overrides,
-    },
-  );
+const requestIndexCounters = new Map<string, number>();
+
+/** Inserts a Job under `requestId` the way POST /requests/{id}/jobs does (status created, request_id and source_generation_id set). */
+export async function createJob(requestId: string, overrides: Record<string, unknown> = {}) {
+  let index = 0;
+  if ('index' in overrides) {
+    index = overrides.index as number;
+  } else {
+    index = requestIndexCounters.get(requestId) ?? 0;
+    requestIndexCounters.set(requestId, index + 1);
+  }
+  const id = crypto.randomUUID();
+  const seed = (overrides.seed as number | undefined) ?? 123;
+  const sourceGenerationId = (overrides.source_generation_id as string | null | undefined) ?? null;
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO comfy_jobs (id, request_id, comfy_prompt_id, seed, job_index, status, idempotency_key, created_at, updated_at, source_generation_id)
+     VALUES (?, ?, NULL, ?, ?, 'created', ?, ?, ?, ?)`,
+  )
+    .bind(id, requestId, seed, index, (overrides.idempotency_key as string | undefined) ?? crypto.randomUUID(), now, now, sourceGenerationId)
+    .run();
+  return {
+    status: 201,
+    body: { id, request_id: requestId, seed, index, source_generation_id: sourceGenerationId },
+  };
 }
 
 export interface IngestResult {
@@ -339,20 +423,56 @@ export async function setJobGraph(jobId: string, graph: unknown): Promise<void> 
   await env.DB.prepare('UPDATE comfy_jobs SET graph = ? WHERE id = ?').bind(JSON.stringify(graph), jobId).run();
 }
 
-/** End-to-end helper: batch -> job -> ingested generation. */
+/** Reports resolved values onto an existing Request, the way PUT /requests/{id}/resolution does. */
+export async function resolveRequest(requestId: string, values: TestRequestOverrides): Promise<void> {
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE requests SET recipe = ?, raw_instruction = ?, parameters_json = ?, patches_json = ?, pose_fingerprint = ?,
+       preset_versions_json = ?, git_commit = ?, git_dirty = ?, updated_at = ? WHERE id = ?`,
+  )
+    .bind(
+      values.recipe ?? null,
+      values.raw_instruction ?? null,
+      JSON.stringify(values.parameters ?? {}),
+      values.patches ? JSON.stringify(values.patches) : null,
+      values.pose_fingerprint ?? null,
+      values.preset_versions ? JSON.stringify(values.preset_versions) : null,
+      values.git_commit ?? null,
+      values.git_dirty ? 1 : 0,
+      now,
+      requestId,
+    )
+    .run();
+  for (const ref of values.references ?? []) {
+    await env.DB.prepare(
+      'INSERT INTO request_references (id, source_generation_id, target_request_id, purpose, aspect, instruction, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(crypto.randomUUID(), ref.source_generation_id, requestId, ref.purpose ?? null, ref.aspect ?? null, ref.instruction ?? null, now)
+      .run();
+  }
+}
+
+/** End-to-end helper: request -> job -> ingested generation. Pass `requestId` to add a Generation to an existing Request. */
 export async function createGeneration(overrides: {
-  batchOverrides?: Record<string, unknown>;
+  requestOverrides?: TestRequestOverrides;
+  requestId?: string;
   jobOverrides?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 } = {}) {
-  const batch = await createBatch(overrides.batchOverrides);
-  if (batch.status !== 201 && batch.status !== 200) {
-    throw new Error(`createBatch failed with status ${batch.status}: ${JSON.stringify(batch.body)}`);
+  let request: TestRequest;
+  if (overrides.requestId) {
+    const row = await env.DB.prepare('SELECT id, short_id, kind, status FROM requests WHERE id = ?')
+      .bind(overrides.requestId)
+      .first<TestRequest>();
+    if (!row) throw new Error(`request ${overrides.requestId} not found`);
+    request = row;
+    if (overrides.requestOverrides) await resolveRequest(row.id, overrides.requestOverrides);
+  } else {
+    const kind = overrides.requestOverrides?.kind ?? (overrides.jobOverrides?.source_generation_id ? 'finalize' : undefined);
+    const created = await createRequest({ ...overrides.requestOverrides, ...(kind ? { kind } : {}) });
+    request = created.body;
   }
-  const job = await createJob(batch.body.id, overrides.jobOverrides);
-  if (job.status !== 201 && job.status !== 200) {
-    throw new Error(`createJob failed with status ${job.status}: ${JSON.stringify(job.body)}`);
-  }
+  const job = await createJob(request.id, overrides.jobOverrides);
   const ingest = await ingestGeneration(job.body.id, {
     seed: 123,
     original_filename: 'out_00001_.png',
@@ -362,22 +482,36 @@ export async function createGeneration(overrides: {
   if (ingest.status !== 201 && ingest.status !== 200) {
     throw new Error(`ingestGeneration failed with status ${ingest.status}: ${JSON.stringify(ingest.body)}`);
   }
-  return { batch: batch.body, job: job.body, generation: ingest.body };
+  return { request, job: job.body, generation: ingest.body };
 }
 
-/**
- * Empties everything a Batch carries that a Request / Generation now owns (docs/batch-removal.md 段階 2): the
- * Request-bearing columns, the refinement pointer, and the relation / reference tables. A reader that still
- * passes after this call depends on Request / Generation columns alone.
- */
-export async function stripBatchSide(): Promise<void> {
+/** Empties every table that holds or points at Generations, in an order that respects the foreign keys. */
+export async function clearGenerationData(): Promise<void> {
   await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE batches SET recipe = NULL, raw_instruction = NULL, prompt = NULL, negative_prompt = NULL,
-         parameters_json = NULL, patches_json = NULL, pose_fingerprint = NULL, preset_versions_json = NULL,
-         git_commit = NULL, refines_generation_id = NULL`,
-    ),
-    env.DB.prepare('DELETE FROM batch_relations'),
-    env.DB.prepare('DELETE FROM batch_references'),
+    env.DB.prepare('UPDATE generations SET refines_generation_id = NULL'),
+    env.DB.prepare('UPDATE comfy_jobs SET source_generation_id = NULL'),
+    env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
+    env.DB.prepare('UPDATE requests SET run_id = NULL'),
+    env.DB.prepare('DELETE FROM generation_assets'),
+    env.DB.prepare('DELETE FROM pairwise_judgments'),
+    env.DB.prepare('DELETE FROM experiment_promotions'),
+    env.DB.prepare('DELETE FROM experiment_runs'),
+    env.DB.prepare('DELETE FROM generation_publications'),
+    env.DB.prepare('DELETE FROM preset_references'),
+    env.DB.prepare('DELETE FROM presets'),
+    env.DB.prepare('DELETE FROM request_references'),
+    env.DB.prepare('DELETE FROM generation_tags'),
+    env.DB.prepare('DELETE FROM generations'),
+    env.DB.prepare('DELETE FROM comfy_jobs'),
+    env.DB.prepare('DELETE FROM requests'),
+    env.DB.prepare('DELETE FROM experiments'),
+  ]);
+}
+
+/** Deletes every Request nothing depends on yet (no Job, no Generation), so a test sees only its own queue. */
+export async function clearRequests(): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM request_references WHERE target_request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
+    env.DB.prepare('DELETE FROM requests WHERE id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
   ]);
 }

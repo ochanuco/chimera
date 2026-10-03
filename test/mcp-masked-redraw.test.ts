@@ -1,5 +1,6 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
+import { createGeneration, getJson, mcpToolCall, postJson } from './helpers';
 
 interface RequestResult {
   created: boolean;
@@ -14,9 +15,8 @@ interface RequestResult {
 describe('MCP masked_redraw_generation', () => {
   it('queues explicit arbitrary regions and propagates prompt/denoise/padding/feather options', async () => {
     const { generation } = await createGeneration({
-      batchOverrides: {
+      requestOverrides: {
         recipe: 'yukari-sketch',
-        prompt: 'good pose and composition; original garment',
         parameters: { delivery: 'finalized-size' },
       },
     });
@@ -52,7 +52,7 @@ describe('MCP masked_redraw_generation', () => {
     expect(queued.body.kind).toBe('masked_redraw');
     expect(queued.body.payload).toEqual({ generation_id: generation.short_id, options });
 
-    // Queueing never mutates the source Generation or its owning Batch.
+    // Queueing never mutates the source Generation or its owning Request.
     const after = await getJson<Record<string, unknown>>(`/api/v1/generations/${generation.id}`);
     expect(after.body).toEqual(before.body);
   });
@@ -129,9 +129,9 @@ describe('MCP masked_redraw_generation', () => {
     }
   });
 
-  it('records the required refinement/reference lineage shape for a worker result', async () => {
-    const { batch: sourceBatch, generation: sourceGeneration } = await createGeneration({
-      batchOverrides: { recipe: 'yukari-sketch', prompt: 'source prompt' },
+  it('records the required refinement lineage shape for a worker result', async () => {
+    const { request: sourceRequest, generation: sourceGeneration } = await createGeneration({
+      requestOverrides: { recipe: 'yukari-sketch' },
     });
     const promptPatch = 'long loose A-line mid-calf dress';
     const queued = await mcpToolCall<RequestResult>('masked_redraw_generation', {
@@ -147,41 +147,24 @@ describe('MCP masked_redraw_generation', () => {
     });
     expect(queued.isError).toBe(false);
 
-    // This is the worker-side adapter contract: output is a new Batch, linked by
-    // refinement and by a rebuild Reference; the source row is never reused.
-    const target = await createBatch({
-      recipe: 'yukari-sketch',
-      raw_instruction: promptPatch,
-      prompt: 'source prompt + ' + promptPatch,
-      parameters: {
+    // This is the worker-side adapter contract: output is a new masked_redraw Request whose Job points at the
+    // source Generation, and the source row is never reused.
+    const target = await createGeneration({
+      requestOverrides: {
         kind: 'masked_redraw',
-        source_generation_id: sourceGeneration.id,
-        options: (queued.data?.request.payload.options ?? null) as Record<string, unknown>,
-      },
-      refinement: {
-        source_batch_id: sourceBatch.id,
-        actor: 'claude',
-        reason: 'masked redraw',
+        recipe: 'yukari-sketch',
         raw_instruction: promptPatch,
-      },
-      references: [
-        {
+        parameters: {
+          kind: 'masked_redraw',
           source_generation_id: sourceGeneration.id,
-          purpose: 'rebuild',
-          aspect: 'masked_redraw',
-          instruction: promptPatch,
+          options: (queued.data?.request.payload.options ?? null) as Record<string, unknown>,
         },
-      ],
+      },
+      jobOverrides: { source_generation_id: sourceGeneration.id },
+      metadata: { seed: 42, original_filename: 'masked-redraw.png' },
     });
-    expect(target.status).toBe(201);
-    expect(target.body.id).not.toBe(sourceBatch.id);
-
-    const targetJob = await createJob(target.body.id);
-    const targetGeneration = await ingestGeneration(targetJob.body.id, {
-      seed: 42,
-      original_filename: 'masked-redraw.png',
-      comfy_output_index: 0,
-    });
+    expect(target.request.id).not.toBe(sourceRequest.id);
+    const targetGeneration = { body: target.generation };
     expect(targetGeneration.body.id).not.toBe(sourceGeneration.id);
 
     const lineage = await mcpToolCall<{
@@ -190,32 +173,12 @@ describe('MCP masked_redraw_generation', () => {
     expect(lineage.isError).toBe(false);
     expect(lineage.data?.ancestors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ via: 'refinement', purpose_or_kind: 'masked_redraw', request: expect.objectContaining({ id: sourceBatch.id }) }),
+        expect.objectContaining({ via: 'refinement', purpose_or_kind: 'masked_redraw', request: expect.objectContaining({ id: sourceRequest.id }) }),
       ]),
     );
-    const targetDetail = await getJson<{
-      references: { source_generation_id: string; purpose: string | null; aspect: string | null; instruction: string | null }[];
-      relations: { incoming: { source_batch_id: string; type: string | null; reason: string | null; raw_instruction: string | null }[] };
-    }>(`/api/v1/batches/${target.body.id}`);
-    expect(targetDetail.body.references).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source_generation_id: sourceGeneration.id,
-          purpose: 'rebuild',
-          aspect: 'masked_redraw',
-          instruction: promptPatch,
-        }),
-      ]),
-    );
-    expect(targetDetail.body.relations.incoming).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          source_batch_id: sourceBatch.id,
-          type: 'refinement',
-          reason: 'masked redraw',
-          raw_instruction: promptPatch,
-        }),
-      ]),
-    );
+    const refined = await env.DB.prepare('SELECT refines_generation_id FROM generations WHERE id = ?')
+      .bind(targetGeneration.body.id)
+      .first<{ refines_generation_id: string | null }>();
+    expect(refined?.refines_generation_id).toBe(sourceGeneration.id);
   });
 });

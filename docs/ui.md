@@ -84,8 +84,8 @@ Generation `/g/{short_id}` またはExperiment詳細 `/experiments/{short_id}`�
 | `/experiments/{short_id}/ab` | [A/B Judge View](#a-b-judge-view) |
 | `/bookmarks` | [Bookmarks](#bookmarks) |
 
-`/b/{short_id}` は、過去に Discord などへ貼られた Batch の URL を壊さないための入口です。
-Request の `short_id` は移行前の Batch の `short_id` を引き継いでいます。
+`/b/{short_id}` は、過去に Discord などへ貼られた URL を壊さないための入口です。
+Request の `short_id` から最初の Generation の `/g/` へ 302 で飛ばします。
 系譜全体の走査は MCP の `get_generation_lineage` の担当で、GUI の Generation Detail は
 隣接する 1 段の親・子・兄弟だけを見せます（[Generation Detail](#generation-detail)）。
 

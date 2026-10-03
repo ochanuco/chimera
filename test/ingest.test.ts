@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createBatch, createJob, ingestGeneration } from './helpers';
+import { createRequest, createJob, ingestGeneration } from './helpers';
 
 describe('Generation ingest', () => {
   it('stores the image in R2 and registers the Generation in D1', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
 
     const result = await ingestGeneration(job.body.id, {
       seed: 999,
@@ -24,8 +24,8 @@ describe('Generation ingest', () => {
   });
 
   it('does not duplicate on repeated ingest for the same (job, output_index)', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const metadata = { seed: 1, original_filename: 'dup.png', comfy_output_index: 0 };
 
     const first = await ingestGeneration(job.body.id, metadata);
@@ -42,8 +42,8 @@ describe('Generation ingest', () => {
   });
 
   it('re-uploads a missing R2 object when the same ingest is replayed', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const metadata = { seed: 7, original_filename: 'replay.png', comfy_output_index: 0 };
 
     const first = await ingestGeneration(job.body.id, metadata);
@@ -62,8 +62,8 @@ describe('Generation ingest', () => {
   });
 
   it('allows multiple outputs from the same job at different output indices', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
 
     const first = await ingestGeneration(job.body.id, {
       seed: 1,
@@ -100,8 +100,8 @@ describe('Generation ingest', () => {
       0x08, 0x06, 0x00, 0x00, 0x00, // bit depth, color type, compression, filter, interlace
       0x00, 0x00, 0x00, 0x00, // CRC (unchecked)
     ]);
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const result = await ingestGeneration(
       job.body.id,
       { seed: 1, original_filename: 'meta.png', comfy_output_index: 0 },
@@ -119,8 +119,8 @@ describe('Generation ingest', () => {
 
   it('persists a NULL width/height but a non-NULL image_size for a non-PNG image', async () => {
     const bytes = new Uint8Array([1, 2, 3, 4, 5]);
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const result = await ingestGeneration(
       job.body.id,
       { seed: 1, original_filename: 'not-a-png.bin', comfy_output_index: 0 },

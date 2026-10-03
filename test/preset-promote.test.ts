@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createGeneration, getJson, mcpToolCall, postJson, req } from './helpers';
+import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
 function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
@@ -132,20 +132,20 @@ async function setPatches(generationId: string, patches: unknown[]): Promise<voi
 }
 
 /**
- * Builds a raw (non-refinement) Batch + Generation for `recipe`, and — unless `withPin` is
+ * Builds a raw (non-refinement) Request + Generation for `recipe`, and — unless `withPin` is
  * false — a matching kind=generate request pinning `parameters.pose` (the pin promote reads as
- * its base), marked `done` against the created Batch (so promote's result-lookup finds it).
- * `patches` / `poseFingerprint` land on the Batch row itself, which is what promote reads.
+ * its base), marked `done` with the created Generation (so promote's result-lookup finds it).
+ * `patches` / `poseFingerprint` land on the Request row itself, which is what promote reads.
  */
 async function setupGeneration(
   recipe: string,
   options: { withPin?: boolean; parameters?: Record<string, unknown>; patches?: unknown[]; poseFingerprint?: string } = {},
 ) {
-  // patches のある Batch は pose_fingerprint も要る (schemas/batches.ts の superRefine)。
+  // patches のある Request は pose_fingerprint も要る (putResolutionSchema の superRefine)。
   const { withPin = true, parameters = { pose: 'lounge' }, patches } = options;
   const poseFingerprint = options.poseFingerprint ?? (patches ? 'sha256:fixture' : undefined);
 
-  // worker と同じく、生成 request を先に積んで claim し、Batch は idempotency_key `request:{id}` でその request に紐づける。
+  // worker と同じく、生成 request を先に積んで claim し、その request に Job と Generation を積む。
   let genReqId: string | null = null;
   let claimedWorkerId: string | null = null;
   if (withPin) {
@@ -165,11 +165,11 @@ async function setupGeneration(
     claimedWorkerId = claimed.body!.worker_id;
   }
 
-  const { batch, generation } = await createGeneration({
-    batchOverrides: {
+  const { request, generation } = await createGeneration({
+    ...(genReqId ? { requestId: genReqId } : {}),
+    requestOverrides: {
       recipe,
       parameters,
-      ...(genReqId ? { idempotency_key: `request:${genReqId}` } : {}),
       ...(patches ? { patches } : {}),
       ...(poseFingerprint ? { pose_fingerprint: poseFingerprint } : {}),
     },
@@ -178,18 +178,18 @@ async function setupGeneration(
   if (genReqId) {
     const done = await postJson(
       `/api/v1/requests/${genReqId}`,
-      { status: 'done', worker_id: claimedWorkerId, result: { batch_id: batch.id, generation_ids: [generation.id] } },
+      { status: 'done', worker_id: claimedWorkerId, result: { generation_ids: [generation.id] } },
       'PATCH',
     );
     expect(done.status).toBe(200);
   }
 
-  return { batch, generation };
+  return { request, generation };
 }
 
 /**
- * Batch `parameters.pose` ("lounge") deliberately differs from the pin it recorded
- * ("lounge-relaxed") — so a test can tell whether `derive_request` copied the Batch value or
+ * Request `parameters.pose` ("lounge") deliberately differs from the pin it recorded
+ * ("lounge-relaxed") — so a test can tell whether `derive_request` copied the Request value or
  * the pin's name.
  */
 async function setupPinnedDerivationSource(recipe: string, patches: unknown[]) {
@@ -205,29 +205,29 @@ async function setupPinnedDerivationSource(recipe: string, patches: unknown[]) {
   const claimed = await claim(`worker-${crypto.randomUUID()}`);
   expect(claimed.status).toBe(200);
 
-  const { batch, generation } = await createGeneration({
-    batchOverrides: {
+  const { request, generation } = await createGeneration({
+    requestId: genReq.body.id,
+    requestOverrides: {
       recipe,
       parameters: { pose: 'lounge' },
       patches,
       pose_fingerprint: 'sha256:fixture',
-      idempotency_key: `request:${genReq.body.id}`,
     },
   });
 
   const done = await postJson(
     `/api/v1/requests/${genReq.body.id}`,
-    { status: 'done', worker_id: claimed.body!.worker_id, result: { batch_id: batch.id, generation_ids: [generation.id] } },
+    { status: 'done', worker_id: claimed.body!.worker_id, result: { generation_ids: [generation.id] } },
     'PATCH',
   );
   expect(done.status).toBe(200);
 
-  return { batch, generation };
+  return { request, generation };
 }
 
 describe('preset pin (createRequest / generate)', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
   });
 
   it('pins generation.presets to the latest active version when the recipe has a matching preset', async () => {
@@ -387,12 +387,20 @@ describe('preset pin (createRequest / generate)', () => {
     ]);
   });
 
-  it('400s creating a Batch that carries patches without a pose_fingerprint', async () => {
-    const res = await postJson('/api/v1/batches', {
-      idempotency_key: crypto.randomUUID(),
-      recipe: 'yukari',
-      patches: [{ target: 'pose', op: 'append', reason: 'no fingerprint', value: 'x' }],
-    });
+  it('400s a resolution that carries patches without a pose_fingerprint', async () => {
+    const genReq = await createGenerateRequest(uniqueRecipe());
+    const claimed = await claim(`worker-${crypto.randomUUID()}`);
+    expect(claimed.body!.id).toBe(genReq.body.id);
+    const res = await postJson(
+      `/api/v1/requests/${genReq.body.id}/resolution`,
+      {
+        recipe: 'yukari',
+        parameters: {},
+        patches: [{ target: 'pose', op: 'append', reason: 'no fingerprint', value: 'x' }],
+        worker_id: claimed.body!.worker_id,
+      },
+      'PUT',
+    );
     expect(res.status).toBe(400);
   });
 
@@ -447,7 +455,7 @@ describe('preset pin (createRequest / generate)', () => {
     expect(res.status).toBe(201);
   });
 
-  it('done: does not 404 when a pin is present but result.batch_id does not resolve (skips writing preset_versions_json)', async () => {
+  it('done: copies the request pin onto preset_versions_json', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
 
@@ -460,20 +468,24 @@ describe('preset pin (createRequest / generate)', () => {
 
     const done = await postJson<RequestBody>(
       `/api/v1/requests/${genReq.body.id}`,
-      { status: 'done', worker_id: claimed.body!.worker_id, result: { batch_id: 'does-not-exist', generation_ids: [] } },
+      { status: 'done', worker_id: claimed.body!.worker_id, result: { generation_ids: [] } },
       'PATCH',
     );
     expect(done.status).toBe(200);
     expect(done.body.status).toBe('done');
+    const row = await env.DB.prepare('SELECT preset_versions_json FROM requests WHERE id = ?')
+      .bind(genReq.body.id)
+      .first<{ preset_versions_json: string | null }>();
+    expect(JSON.parse(row!.preset_versions_json!)).toEqual([{ kind: 'pose', name: 'lounge', version: 1 }]);
   });
 });
 
 describe('MCP derive_request (preset pin inheritance)', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
   });
 
-  it("carries the source Batch's pin into generation.presets, setting parameters.pose to the pin name (not the Batch's own recorded value)", async () => {
+  it("carries the source Request's pin into generation.presets, setting parameters.pose to the pin name (not the Request's own recorded value)", async () => {
     const recipe = uniqueRecipe();
     await publishAndImportTwoPoses(recipe);
     const patches = [{ target: 'pose', op: 'append', reason: 'promote v2', value: 'a bit more relaxed' }];
@@ -517,7 +529,7 @@ describe('MCP derive_request (preset pin inheritance)', () => {
 
 describe('POST /api/v1/presets/promote', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
   });
 
   it('promotes a rating=good Generation to version 2, body {base, patches}; GET resolves the root record + patches', async () => {
@@ -580,7 +592,7 @@ describe('POST /api/v1/presets/promote', () => {
     expect(res.status).toBe(409);
   });
 
-  it('409s when the Batch has no patches', async () => {
+  it('409s when the Request has no patches', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
     const { generation } = await setupGeneration(recipe);
@@ -595,7 +607,7 @@ describe('POST /api/v1/presets/promote', () => {
     expect(res.status).toBe(409);
   });
 
-  it('records base_fingerprint from the Batch pose_fingerprint', async () => {
+  it('records base_fingerprint from the Request pose_fingerprint', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
     const patches = [{ target: 'pose', op: 'append', reason: 'promote v2', value: 'a bit more relaxed' }];
@@ -687,11 +699,11 @@ describe('POST /api/v1/presets/promote', () => {
     expect(reused.status).toBe(409);
   });
 
-  it('ignores semantic.attributes.patches: the Batch patches_json is what gets promoted', async () => {
+  it('ignores semantic.attributes.patches: the Request patches_json is what gets promoted', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const batchPatches = [{ target: 'pose', op: 'append', reason: 'from batch', value: 'a bit more relaxed' }];
-    const { generation } = await setupGeneration(recipe, { patches: batchPatches });
+    const requestPatches = [{ target: 'pose', op: 'append', reason: 'from request', value: 'a bit more relaxed' }];
+    const { generation } = await setupGeneration(recipe, { patches: requestPatches });
     await setRatingGood(generation.id);
     await setPatches(generation.id, [{ target: 'pose', op: 'append', reason: 'from semantic (should be ignored)', value: 'ignored' }]);
 
@@ -702,13 +714,13 @@ describe('POST /api/v1/presets/promote', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(res.status).toBe(200);
-    expect(res.body.patches).toEqual(batchPatches);
+    expect(res.body.patches).toEqual(requestPatches);
   });
 });
 
 describe('MCP promote_to_pose', () => {
   beforeEach(async () => {
-    await env.DB.prepare('DELETE FROM requests').run();
+    await clearRequests();
   });
 
   it('creates the same version REST would, verified through GET /api/v1/presets/{recipe}/{kind}/{name}/{version}', async () => {

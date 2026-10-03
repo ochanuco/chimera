@@ -25,10 +25,6 @@ Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
   素材参照         過去Generationの何を生成材料として利用したか
   仕上げ元         この Generation が、どの Generation を finalize / repair / masked_redraw したものか
 
-Batch は旧モデルの単位で、読み取りには使いません。Batch の行は現行の comfyui-recipes が
-使う互換の書き込み経路（`POST /api/v1/batches` ほか、[api.md](api.md#batch)）の記録として
-残っているだけです（[Batch](#batch)）。
-
 ## Experiment
 
 1つの検証テーマです。例えば「結月ゆかりの脚部で黒タイツと薄紫ソックスを安定して分離する」のように、base
@@ -69,7 +65,7 @@ abandoned  → active
 に戻すと消えます。`stabilized → promoted` では最初に完了した時刻を保ちます。許可されていない遷移は409です。
 
 過去の生成系譜を辿るときは、過去の Experiment を「再開」するより、過去
-Generation を Reference として新しい Experiment / Batch
+Generation を Reference として新しい Experiment / Request
 に取り込み、現在の prompt / recipe で rebuild します。Experiment
 自体の再開は、この rebuild とは別に、`abandoned` / `promoted` から
 `active` への status 遷移として扱います。
@@ -85,8 +81,7 @@ Experiment は原則物理削除しません。
 
 Experiment 内の1回の試行です。`run_index` は Experiment
 内で1から連番、`(experiment_id, run_index)` は一意です。
-`batch_id` も Run 間で一意です（1 Batch は 1 Run にしか属さない）。既に他の Run
-に付いている Batch を付けようとすると 409 になります。
+Run の結果は、`requests.run_id` が Run を指す Request です。
 
 主な属性:
 
@@ -95,7 +90,6 @@ id
 experiment_id
 run_index
 parent_run_id
-batch_id
 generation_id
 overrides_json
 objective
@@ -110,8 +104,8 @@ updated_at
 `overrides` は base recipe に対する差分だけを保持し、recipe
 全体は保存しません。`parent_run_id` は「どの Run を受けて次を試したか」を表します。
 
-既存の Batch / Generation は ExperimentRun 側から参照します（Generation
-/ Batch 側に experiment_run_id は持たせません）。
+Run の結果の Request は `requests.run_id` で Run を参照します。Generation 側に
+experiment_run_id は持たせません。
 
 `overrides` / `evaluation` / `decision` は typed schema を持たない
 JSON blob です。評価軸は Experiment や評価者ごとに変わるため、DB
@@ -174,15 +168,15 @@ factor を CLI / 人間が書き添えるための、キー文字列 → `string
 のフラットな注記です（プロンプトのバリアント名など）。overrides
 と違ってこれは provenance（何がその生成結果を生んだか）ではなく単なる
 ラベル付けなので、`overrides` のように attach 後は不変、という制約を
-持ちません。Batch / Generation が attach された後でも自由に変更できます。
+持ちません。結果が付いた後でも自由に変更できます。
 
 不変条件:
 
 -   ExperimentRun は原則物理削除しません。
--   Batch / Generation が attach された Run の `overrides`
+-   結果の Request が付いた、または Generation が attach された Run の `overrides`
     は変更できません（409）。条件を変えるなら新しい Run を作ります。
--   attach 済みの Batch / Generation を別のものに付け替えることはできません（409）。同じ
-    id の再送は冪等です。
+-   attach 済みの Generation を別のものに付け替えることはできません（409）。同じ
+    id の再送は冪等です。attach できるのは Run の結果の Request に属する Generation だけです。
 -   `variables` に上記の制約はありません（いつでも変更・クリア可能）。
 
 ## ExperimentPromotion
@@ -301,23 +295,23 @@ publish されておらず、参照にしても行が増えるだけで何も足
 -   promote の起点 Generation は `rating = good` でなければなりません。Rating を書ける
     のは人間だけなので（[Rating](#rating)）、preset の審査は人間に残ります。
 -   chimera は preset の器の形だけを知り、patch の `op` の意味も pose の本文も
-    解釈しません。器の形を知るのは、起点 Generation の Batch から promote 後の body を
+    解釈しません。器の形を知るのは、起点 Generation の Request から promote 後の body を
     組み立てるためです。
 -   base の再現性は preset の版ではなく `git_commit` が担います。`recipe_pose` が指す
     本文は comfyui-recipes の checkout の中にあり、版が固定するのは patches の層だけです。
     版が不変でも、指す先の pose は commit で動きます。
--   昇格できるのは、Batch が patches を持つ generate 由来の Generation だけです。
+-   昇格できるのは、Request が patches を持つ generate 由来の Generation だけです。
     `generation.prompt` で全文上書きしたものと、finalize / repair / masked_redraw の
     出力は patches という概念を持たないので昇格できません。
--   昇格の入力になる patches は Batch 行から取ります。`semantic.attributes.patches` は
+-   昇格の入力になる patches は Request 行から取ります。`semantic.attributes.patches` は
     使いません。semantic の PUT は失敗しても生成が進み、MCP クライアントから後で
     書き換えられる場所でもあるので、正本になりません。
--   Batch が記録する patches は request 自身の分だけで、pin された preset が持っていた
+-   Request が記録する patches は request 自身の分だけで、pin された preset が持っていた
     patches は含みません。実際に適用された全体は「pin された版を解決した patches +
-    Batch の patches」で、この形なら昇格が preset 自身の patches を二重に取り込みません。
-    Batch は `preset_versions_json` と `patches_json` の2つで、何が適用されたかを
+    Request の patches」で、この形なら昇格が preset 自身の patches を二重に取り込みません。
+    Request は `preset_versions_json` と `patches_json` の2つで、何が適用されたかを
     重複なく記録します。
--   Batch は自分が実際に解決した preset の版を記録します。`recipe_ref` はコードの
+-   Request は自分が実際に解決した preset の版を記録します。`recipe_ref` はコードの
     ブランチしか指さないので、何が描かれたかを特定するのは
     `(git_commit, 解決済みの preset の版)` の組です。
 
@@ -325,8 +319,8 @@ publish されておらず、参照にしても行が増えるだけで何も足
 
 patches の text op（replace / remove）は本文の needle に依存し、needle が消えると worker
 側で落ちます。base が参照である以上この結合は避けられないので、昇格した版にはその時点の
-本文の digest を `base_fingerprint` として一緒に記録します。worker が Batch を作るときに
-送ってくる同じ digest と突き合わせれば、その preset を使う前に「本文 X に対して昇格された
+本文の digest を `base_fingerprint` として一緒に記録します。worker が resolution で
+報告する同じ digest と突き合わせれば、その preset を使う前に「本文 X に対して昇格された
 が worker は今 Y を組み立てる」と言えます。
 
 digest の対象は pose レコードではなく、その pose を既定 costume で組み立てた prompt ペア
@@ -345,7 +339,7 @@ chimera はこの文字列を不透明に保存し、突き合わせにしか使
 必ず捕まえます。
 
 落ち方自体は静かではありません。worker は claim 直後の probe で patch の適用を試し、
-落ちれば Batch を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
+落ちれば Job を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
 より前に気付くための層です。
 
 ### finalize プロファイル
@@ -366,11 +360,10 @@ dial word か、chimera が検証しない数値で、chimera が語彙を持た
     `rating = good` でなければなりません（他の kind と同じ、[Rating](#rating)）。
 -   base への参照も patches の層も持ちません。`resolvePreset` はこの body を見た時点で
     即座に返します — pose/costume/expression のように base を遡りません。
--   昇格の起点は「finalize request が産んだ Generation」であって、「Batch が patches を
-    持つ generate 由来の Generation」ではありません。その Batch（納品 Batch、相乗りした
-    repair があれば sibling も含む）に対する `result.batch_id` を持つ直近の
-    `kind = finalize` request を探し、その request が queued した時点の `payload.options`
-    （profile 展開後、word は解決せずそのまま）を丸ごと body にします — 起点 Batch の
+-   昇格の起点は「finalize request が産んだ Generation」であって、「Request が patches を
+    持つ generate 由来の Generation」ではありません。その Generation の所属 Request
+    （`kind = finalize`）が queued した時点の `payload.options`
+    （profile 展開後、word は解決せずそのまま）を丸ごと body にします — 起点 Request の
     `patches_json` は見ません（そもそも持ちません）。
 -   `base_fingerprint` は使いません（base という概念が無いので、base の drift を検知する
     対象がありません）。
@@ -387,7 +380,7 @@ dial word か、chimera が検証しない数値で、chimera が語彙を持た
 その基準の seed で recipe の既定（patches なし）を再度描かせます。GUI は
 Generation Detail の「基準にする」から同じ pin を書けます（`POST
 /api/v1/generations/{id}/pose-reference`）が、recipe/pose は指定せず、対象 Generation の
-resolved raw Batch から推測します（[api.md](api.md#pose-reference-pin)）。
+resolved raw Request から推測します（[api.md](api.md#pose-reference-pin)）。
 
 pin できる Generation には条件があります。
 
@@ -485,12 +478,12 @@ created_at
 
 ### 実験のアームは Observation ではない
 
-`experiments/` の記録には、パラメータの観測ではなく実験のアームそのもの（Batch を
+`experiments/` の記録には、パラメータの観測ではなく実験のアームそのもの（生成単位を
 指名し、seed の組を持ち、verdict と observation を持つ）が混ざっています。これは
 Experiment / ExperimentRun にそのまま入るので、Observation にはしません。
 
-アームが Generation を指名していて Batch を指名していない記録は、Run に組み直せません。
-1アームの Generation が複数の Batch にまたがっている（当時 count=1 で1枚ずつ回していた）
+アームが Generation を指名していて生成単位を指名していない記録は、Run に組み直せません。
+1アームの Generation が複数の生成単位にまたがっている（当時 count=1 で1枚ずつ回していた）
 ためで、Run にすると存在しない実行単位を捏造することになります。この形は Observation
 として写し、axis を `parameter`、採用された Generation を `generation_ids` に入れます。
 アーム分けは chimera に対応する行が無いので持ち込みません。JSONL 側に残ります。
@@ -585,7 +578,7 @@ tie
 
 `left_generation_id` / `right_generation_id` は表示時にランダムに割り当てた向きで、`verdict`
 はその向きへの回答です。どちらの Generation が baseline / arm 側だったかは列自体には残らず、各
-Generation の `batch_id`（baseline run / arm run のどちらの batch から出たか）と突き合わせて
+Generation の所属 Request の `run_id`（baseline run / arm run のどちらの Request から出たか）と突き合わせて
 その都度導きます（API の `winner` フィールド）。この向き付けにより、GUI 上で人間が
 baseline / arm のどちらを見ているか判別できません（盲検性）。
 
@@ -593,21 +586,6 @@ baseline / arm のどちらを見ているか判別できません（盲検性�
 
 -   `(baseline_run_id, arm_run_id, seed)` は一意です。同じ組み合わせへの2回目の judgment は409です。
 -   PairwiseJudgment は物理削除しません。
-
-## Batch
-
-旧モデルの「1 生成リクエスト = 1 Batch」の行です。現行の comfyui-recipes が
-`POST /api/v1/batches` ほかで書き込むため残っていますが、chimera は読み取りに使いません。
-`GET /api/v1/batches/{id}` だけは、現行の comfyui-recipes が仕上げ元の Batch を読むために
-残している互換の読み取りです。Request の `resolution` / Job の API で動く worker は
-Batch を作らず、Request の列に直接書きます（[worker-protocol.md](worker-protocol.md)）。
-
-互換の書き込みは Batch と同時に Request / Job / Generation の対応する列
-（`requests` の解決済み列、`comfy_jobs.request_id`、`generations.request_id` /
-`refines_generation_id`、`request_references`）へも書きます。`refines_generation_id` は、
-Batch を target とする `type = 'refinement'` の関係と `purpose = 'rebuild'` の素材参照が対になり、
-かつ参照元 Generation がその関係の source Batch に属するときに導出します
-（`src/lib/batch-refinement.ts`）。
 
 ## ComfyJob
 

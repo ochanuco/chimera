@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { buildDerivedRequestPayload, type BuildDerivedRequestPayloadInput } from '../src/lib/requests';
-import { createBatch, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
 
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
@@ -46,12 +46,9 @@ describe('MCP get_generation', () => {
   });
 
   it('exposes the pre-finalize source as refines_generation, and null for a raw Generation', async () => {
-    const { batch: sourceBatch, generation: source } = await createGeneration();
+    const { generation: source } = await createGeneration();
     const refined = await createGeneration({
-      batchOverrides: {
-        refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-        references: [{ source_generation_id: source.id, purpose: 'rebuild' }],
-      },
+      jobOverrides: { source_generation_id: source.id },
     });
 
     const rest = await getJson<{ refines_generation: unknown }>(`/api/v1/generations/${refined.generation.id}`);
@@ -75,33 +72,21 @@ describe('MCP get_generation', () => {
 
 describe('MCP get_generation_lineage', () => {
   it('walks one reference hop and one refinement hop in each direction', async () => {
-    const { batch: batchA, generation: genA } = await createGeneration();
-
-    const batchB = await postJson<{ id: string; short_id: string }>('/api/v1/batches', {
-      idempotency_key: crypto.randomUUID(),
-      prompt: 'batch B',
-      references: [{ source_generation_id: genA.id, purpose: 'composition', aspect: 'pose' }],
+    const { generation: genA, request: requestA } = await createGeneration();
+    const { generation: genB, request: requestB } = await createGeneration({
+      requestOverrides: { references: [{ source_generation_id: genA.id, purpose: 'composition', aspect: 'pose' }] },
     });
-    expect(batchB.status).toBe(201);
-    const jobB = await createJob(batchB.body.id);
-    const genB = await ingestGeneration(jobB.body.id, { seed: 1, original_filename: 'b.png', comfy_output_index: 0 });
-
-    const batchC = await postJson<{ id: string; short_id: string }>('/api/v1/batches', {
-      idempotency_key: crypto.randomUUID(),
-      prompt: 'batch C',
-      refinement: { source_batch_id: batchB.body.id, actor: 'human', reason: 'hands were broken' },
-      references: [{ source_generation_id: genB.body.id, purpose: 'rebuild' }],
+    const { generation: genC, request: requestC } = await createGeneration({
+      requestOverrides: { kind: 'finalize' },
+      jobOverrides: { source_generation_id: genB.id },
     });
-    expect(batchC.status).toBe(201);
-    const jobC = await createJob(batchC.body.id);
-    const genC = await ingestGeneration(jobC.body.id, { seed: 2, original_filename: 'c.png', comfy_output_index: 0 });
 
-    const fromC = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genC.body.id });
+    const fromC = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genC.id });
     expect(fromC.isError).toBe(false);
-    expect(fromC.data?.generation.request_id).toBe(batchC.body.id);
+    expect(fromC.data?.generation.request_id).toBe(requestC.id);
     expect(fromC.data?.ancestors.map((n) => ({ depth: n.depth, via: n.via, request_id: n.request.id }))).toEqual([
-      { depth: 1, via: 'refinement', request_id: batchB.body.id },
-      { depth: 2, via: 'reference', request_id: batchA.id },
+      { depth: 1, via: 'refinement', request_id: requestB.id },
+      { depth: 2, via: 'reference', request_id: requestA.id },
     ]);
     expect(fromC.data?.ancestors[0]?.purpose_or_kind).toBe('finalize');
     expect(fromC.data?.ancestors[1]?.purpose_or_kind).toBe('composition');
@@ -109,13 +94,13 @@ describe('MCP get_generation_lineage', () => {
     const fromA = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genA.id });
     expect(fromA.isError).toBe(false);
     expect(fromA.data?.descendants.map((n) => ({ depth: n.depth, via: n.via, request_id: n.request.id }))).toEqual([
-      { depth: 1, via: 'reference', request_id: batchB.body.id },
-      { depth: 2, via: 'refinement', request_id: batchC.body.id },
+      { depth: 1, via: 'reference', request_id: requestB.id },
+      { depth: 2, via: 'refinement', request_id: requestC.id },
     ]);
 
     // depth=1 stops after the first hop.
-    const shallow = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genC.body.id, depth: 1 });
-    expect(shallow.data?.ancestors.map((n) => n.request.id)).toEqual([batchB.body.id]);
+    const shallow = await mcpToolCall<Lineage>('get_generation_lineage', { generation_id: genC.id, depth: 1 });
+    expect(shallow.data?.ancestors.map((n) => n.request.id)).toEqual([requestB.id]);
   });
 });
 
@@ -123,51 +108,37 @@ describe('MCP derive_request', () => {
   async function createParent(
     overrides: { recipe?: string | null; parameters?: Record<string, unknown>; patches?: unknown[] } = {},
   ) {
-    const batchOverrides: Record<string, unknown> = { parameters: overrides.parameters ?? { pose: 'lounge' } };
+    const requestOverrides: Record<string, unknown> = { parameters: overrides.parameters ?? { pose: 'lounge' } };
     // `recipe` is an optional string field (not nullable) — omit the key entirely to get a
-    // graph-mode batch (recipe stays NULL) instead of sending an explicit null.
-    if (overrides.recipe !== null) batchOverrides.recipe = overrides.recipe ?? 'yukari';
+    // graph-mode request (recipe stays NULL) instead of sending an explicit null.
+    if (overrides.recipe !== null) requestOverrides.recipe = overrides.recipe ?? 'yukari';
     if (overrides.patches) {
-      batchOverrides.patches = overrides.patches;
-      // patches のある Batch は pose_fingerprint も要る (schemas/batches.ts の superRefine)。
-      batchOverrides.pose_fingerprint = 'sha256:fixture';
+      requestOverrides.patches = overrides.patches;
+      // patches のある Request は pose_fingerprint も要る (docs/domain-model.md「Preset」)。
+      requestOverrides.pose_fingerprint = 'sha256:fixture';
     }
-    return createGeneration({ batchOverrides });
+    return createGeneration({ requestOverrides });
   }
 
   /**
-   * Builds a refinement Batch (the shape finalize/repair leave behind): `parameters` is a
-   * finalize-style payload, wired back to `source` via batch_relations (type=refinement) and
-   * batch_references (purpose=rebuild) — the two tables lib/lineage.ts walks.
+   * Builds a refinement Request (the shape finalize/repair leave behind): `parameters` is a finalize-style
+   * payload and the Job's source_generation_id points back at `source`, which ingest copies into
+   * generations.refines_generation_id — the column lib/lineage.ts walks.
    */
-  async function createRefinementBatch(source: { batch: { id: string }; generation: { id: string } }) {
-    const refinementBatch = await createBatch({
-      parameters: { kind: 'hires-chain', base_generation: source.generation.id, size: 2560 },
+  async function createRefinement(source: { generation: { id: string } }) {
+    return createGeneration({
+      requestOverrides: {
+        kind: 'finalize',
+        parameters: { kind: 'hires-chain', base_generation: source.generation.id, size: 2560 },
+      },
+      jobOverrides: { source_generation_id: source.generation.id },
     });
-    const job = await createJob(refinementBatch.body.id);
-    const ingest = await ingestGeneration(job.body.id, {
-      seed: 123,
-      original_filename: 'out_00001_.png',
-      comfy_output_index: 0,
-    });
-
-    await postJson(`/api/v1/batches/${refinementBatch.body.id}/relations`, {
-      source_batch_id: source.batch.id,
-      type: 'refinement',
-      actor: 'claude',
-    });
-    await postJson(`/api/v1/batches/${refinementBatch.body.id}/references`, {
-      source_generation_id: source.generation.id,
-      purpose: 'rebuild',
-    });
-
-    return { batch: refinementBatch.body, generation: ingest.body };
   }
 
-  it('merges the parent batch recipe/parameters and carries parent patches (from Batch patches_json, not semantic) forward', async () => {
+  it('merges the parent request recipe/parameters and carries parent patches (from Request patches_json, not semantic) forward', async () => {
     const patches = [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }];
     const { generation } = await createParent({ patches });
-    // semantic.attributes.patches is a different value — proves derive_request reads the Batch,
+    // semantic.attributes.patches is a different value — proves derive_request reads the Request,
     // not this (docs/domain-model.md「preset の不変条件」: semantic は正本ではない).
     await postJson(
       `/api/v1/generations/${generation.id}/semantic`,
@@ -256,7 +227,7 @@ describe('MCP derive_request', () => {
     expect(call.text).toContain('seeds');
   });
 
-  it('409s when the parent batch has no recipe (graph-mode)', async () => {
+  it('409s when the parent request has no recipe (graph-mode)', async () => {
     const { generation } = await createParent({ recipe: null });
     const call = await mcpToolCall('derive_request', {
       from_generation_id: generation.id,
@@ -333,7 +304,7 @@ describe('MCP derive_request', () => {
       parameters: { pose: 'date' },
       patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }],
     });
-    const finalized = await createRefinementBatch(raw);
+    const finalized = await createRefinement(raw);
 
     const call = await mcpToolCall<{
       payload: { generation: Record<string, unknown>; references: { generation_id: string; purpose: string; aspect?: string }[] };
@@ -364,8 +335,8 @@ describe('MCP derive_request', () => {
 
   it('resolves a two-hop chain (finalize of a finalize) back to the raw generation', async () => {
     const raw = await createParent({ parameters: { pose: 'date' } });
-    const finalized = await createRefinementBatch(raw);
-    const refinalized = await createRefinementBatch({ batch: finalized.batch, generation: finalized.generation });
+    const finalized = await createRefinement(raw);
+    const refinalized = await createRefinement(finalized);
 
     const call = await mcpToolCall<{ payload: { generation: Record<string, unknown> } }>('derive_request', {
       from_generation_id: refinalized.generation.short_id,
@@ -388,16 +359,11 @@ describe('MCP derive_request', () => {
       created_by: 'gui',
     });
     expect(finalizeRequest.status).toBe(201);
-    const orphanRefinement = await createBatch({
-      parameters: { kind: 'hires-chain' },
-      idempotency_key: `request:${finalizeRequest.body.id}`,
+    const orphan = await createGeneration({
+      requestId: finalizeRequest.body.id,
+      requestOverrides: { parameters: { kind: 'hires-chain' } },
     });
-    const job = await createJob(orphanRefinement.body.id);
-    const orphanGeneration = await ingestGeneration(job.body.id, {
-      seed: 123,
-      original_filename: 'out_00001_.png',
-      comfy_output_index: 0,
-    });
+    const orphanGeneration = { body: orphan.generation };
     // refines_generation_id が NULL の finalize request: 仕上げ元まで遡れない。
 
     const call = await mcpToolCall('derive_request', {
@@ -409,34 +375,6 @@ describe('MCP derive_request', () => {
     });
     expect(call.isError).toBe(true);
     expect(call.text).toContain('no source generation');
-  });
-
-  it('derives from a refined Generation whose Request carries the parameters, with every Batch row stripped', async () => {
-    const raw = await createParent({ parameters: { pose: 'date' }, patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }] });
-    const finalized = await createRefinementBatch(raw);
-    await env.DB.prepare(
-      'UPDATE batches SET recipe = NULL, parameters_json = NULL, patches_json = NULL, preset_versions_json = NULL, refines_generation_id = NULL',
-    ).run();
-    await env.DB.prepare('DELETE FROM batch_relations').run();
-    await env.DB.prepare('DELETE FROM batch_references').run();
-
-    const call = await mcpToolCall<{ payload: { generation: Record<string, unknown> }; derived_from: { source: { id: string } } }>(
-      'derive_request',
-      {
-        from_generation_id: finalized.generation.short_id,
-        instruction: 'try a variant',
-        count: 1,
-        semantic: { summary: 'x' },
-        idempotency_key: crypto.randomUUID(),
-      },
-    );
-    expect(call.isError).toBe(false);
-    expect(call.data?.derived_from.source.id).toBe(raw.generation.id);
-    expect(call.data?.payload.generation).toEqual({
-      recipe: 'yukari',
-      parameters: { pose: 'date' },
-      patches: [{ target: 'pose', op: 'set', value: 'date', reason: 'base' }],
-    });
   });
 
   describe('replaying patches against an unpinned preset body', () => {
@@ -482,7 +420,7 @@ describe('MCP derive_request', () => {
       expect((payload.generation as Record<string, unknown>).presets).toEqual([{ kind: 'pose', name: 'lounge', version: 1 }]);
     });
 
-    it('409s over MCP when the source batch carries patches but no pin on a recipe with presets', async () => {
+    it('409s over MCP when the source request carries patches but no pin on a recipe with presets', async () => {
       const recipe = uniqueRecipe();
       const patches = [{ target: 'pose', op: 'set', value: 'lounge', reason: 'base' }];
       const { generation } = await createParent({ recipe, patches });

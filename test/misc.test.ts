@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, getJson, postJson, req } from './helpers';
+import { createRequest, createGeneration, getJson, postJson, req } from './helpers';
 
 describe('Characters', () => {
   it('creates and lists characters', async () => {
@@ -45,13 +45,6 @@ describe('Experiments', () => {
 
     const list = await getJson<{ items: { id: string }[] }>('/api/v1/experiments?limit=200');
     expect(list.body.items.some((e) => e.id === created.body.id)).toBe(true);
-  });
-
-  it('a batch can be attached to an experiment', async () => {
-    const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: `exp-batch-${crypto.randomUUID().slice(0, 8)}` });
-    const batch = await createBatch({ experiment_id: experiment.body.id });
-    expect(batch.status).toBe(201);
-    expect(batch.body).toMatchObject({ experiment_id: experiment.body.id });
   });
 });
 

@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  clearGenerationData,
   createGeneration,
   getJson,
   ingestGeneration,
@@ -45,29 +46,7 @@ async function putRealOriginal(generationId: string): Promise<void> {
 // test in this file would pollute "oldest first" / global-count assertions (same reasoning as
 // test/requests.test.ts's claim() beforeEach).
 beforeEach(async () => {
-  await env.DB.batch([
-    // batches.refines_generation_id / experiments.base_generation_id point back at generations,
-    // while generations.batch_id points at batches — a genuine FK cycle, so back-references must
-    // be cleared before either table's rows can be deleted.
-    env.DB.prepare('UPDATE batches SET refines_generation_id = NULL'),
-    env.DB.prepare('UPDATE generations SET refines_generation_id = NULL'),
-    env.DB.prepare('UPDATE comfy_jobs SET source_generation_id = NULL'),
-    env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
-    env.DB.prepare('DELETE FROM generation_assets'),
-    env.DB.prepare('DELETE FROM pairwise_judgments'),
-    env.DB.prepare('DELETE FROM experiment_promotions'),
-    env.DB.prepare('DELETE FROM experiment_runs'),
-    env.DB.prepare('DELETE FROM generation_publications'),
-    env.DB.prepare('DELETE FROM preset_references'),
-    env.DB.prepare('DELETE FROM presets'),
-    env.DB.prepare('DELETE FROM batch_references'),
-    env.DB.prepare('DELETE FROM request_references'),
-    env.DB.prepare('DELETE FROM requests'),
-    env.DB.prepare('DELETE FROM generations'),
-    env.DB.prepare('DELETE FROM comfy_jobs'),
-    env.DB.prepare('DELETE FROM batches'),
-    env.DB.prepare('DELETE FROM experiments'),
-  ]);
+  await clearGenerationData();
 });
 
 describe('purgeOldOriginals', () => {
@@ -187,7 +166,7 @@ describe('purgeOldOriginals', () => {
       `INSERT INTO request_references (id, source_generation_id, target_request_id, purpose, aspect, instruction, created_at)
        VALUES (?, ?, ?, 'composition', NULL, NULL, ?)`,
     )
-      .bind(crypto.randomUUID(), generation.id, other.batch.id, NOW)
+      .bind(crypto.randomUUID(), generation.id, other.request.id, NOW)
       .run();
 
     await purgeOldOriginals(env, NOW, 10);
@@ -202,8 +181,6 @@ describe('purgeOldOriginals', () => {
     await env.DB.prepare('UPDATE generations SET refines_generation_id = ? WHERE id = ?')
       .bind(generation.id, refined.generation.id)
       .run();
-    // Batch 側に何も無くても、Generation 間の仕上げ元参照だけで保護される。
-    await env.DB.prepare('UPDATE batches SET refines_generation_id = NULL').run();
 
     await purgeOldOriginals(env, NOW, 10);
     expect(await originalPurgedAt(generation.id)).toBeNull();

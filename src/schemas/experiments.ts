@@ -88,15 +88,20 @@ export const updateExperimentSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
 /** Run に付記する自由記述の factor マップ。render_facts から読み取れない要因を人間/Agent が書き添えるもので、
- * overrides と違い batch/generation 付与後も編集できる（docs/domain-model.md）。値を string|number に絞ることで
+ * overrides と違い generation 付与後も編集できる（docs/domain-model.md）。値を string|number に絞ることで
  * ネスト/配列/真偽値/null は zod が自動的に弾く。 */
 export const runVariablesSchema = z.record(z.string().min(1), z.union([z.string(), z.number()]));
+
+const BATCH_ID_REMOVED = 'batch_id is no longer supported; runs link to requests via run_id';
+
+/** Batch 廃止後も batch_id を送ってくる呼び出しは、黙って無視せず 400 にする。 */
+const removedBatchId = z.unknown().refine(() => false, { message: BATCH_ID_REMOVED }).optional();
 
 export const createExperimentRunSchema = z.object({
   overrides: overridesSchema.optional(),
   objective: z.string().optional(),
   parent_run_id: z.string().min(1).optional(),
-  batch_id: z.string().min(1).optional(),
+  batch_id: removedBatchId,
   generation_id: z.string().min(1).optional(),
   evaluation: jsonObject.optional(),
   decision: jsonObject.optional(),
@@ -105,13 +110,13 @@ export const createExperimentRunSchema = z.object({
   variables: runVariablesSchema.optional(),
 });
 
-/** `batch_id`/`generation_id` は attach 専用（nullable ではない）。付け替えると Run が「何を生んだ試行か」の
+/** `generation_id` は attach 専用（nullable ではない）。付け替えると Run が「何を生んだ試行か」の
  * 記録でなくなるため 409 で拒否する。evaluation/decision は上書き・クリア可能。 */
 export const updateExperimentRunSchema = z
   .object({
     overrides: overridesSchema.optional(),
     objective: z.string().nullable().optional(),
-    batch_id: z.string().min(1).optional(),
+    batch_id: removedBatchId,
     generation_id: z.string().min(1).optional(),
     evaluation: jsonObject.nullable().optional(),
     decision: jsonObject.nullable().optional(),
