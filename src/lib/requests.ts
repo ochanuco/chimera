@@ -7,8 +7,8 @@ import {
   getBatchByIdOrShortId,
   getGenerationByIdOrShortId,
   nowIso,
-  resolveBatchShortIds,
-  resolveBatchThumbnails,
+  resolveRequestShortIds,
+  resolveRequestThumbnails,
   touchExperiment,
 } from './db';
 import { parseJsonObject, type JsonObject } from './overrides';
@@ -18,6 +18,8 @@ import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
 import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import { presetVersionsStatement, runAttachStatement } from './batch-request-sync';
+import { createUniqueRequestShortId } from './shortid';
+import { findShadowBatch, normalizeResolution, resolutionStatements, type ResolutionInput } from './request-resolution';
 import type {
   BatchRow,
   ExperimentRow,
@@ -59,69 +61,59 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
   return payload;
 }
 
-/** `resolveDerivationSource` が遡れる refinement Batch の連鎖の上限。循環データに対する安全弁。 */
+/** `resolveDerivationSource` が遡れる仕上げ連鎖の上限。循環データに対する安全弁。 */
 const MAX_DERIVATION_HOPS = 10;
 
 export interface DerivationSource {
   generation: GenerationRow;
-  batch: BatchRow;
+  request: RequestRow;
 }
 
 /**
- * `derive_request` の起点解決。finalize/repair が積む refinement Batch は `parameters_json` が
+ * `derive_request` の起点解決。finalize/repair が積む Request は `parameters_json` が
  * 仕上げ payload で generate parameters ではないため、そのまま親にすると worker のバリデーションに落ちる。
- * incoming `batch_relations(type='refinement')` を遡り、対になる `batch_references(purpose='rebuild')` が
- * 指す raw Generation/Batch まで戻す (lib/lineage.ts の祖先探索と同じ2テーブル)。
+ * `generations.refines_generation_id` を遡り、仕上げ元の無い raw Generation とその Request まで戻す。
  */
 export async function resolveDerivationSource(db: D1Database, generation: GenerationRow): Promise<DerivationSource> {
-  let currentGeneration = generation;
-  let currentBatch = await getBatchByIdOrShortId(db, generation.batch_id);
-  if (!currentBatch) throw notFound(`batch '${generation.batch_id}'`);
+  let current = generation;
 
   for (let hop = 0; hop < MAX_DERIVATION_HOPS; hop++) {
-    const relation = await db
-      .prepare(`SELECT source_batch_id FROM batch_relations WHERE target_batch_id = ? AND type = 'refinement' LIMIT 1`)
-      .bind(currentBatch.id)
-      .first<{ source_batch_id: string }>();
-    if (!relation) return { generation: currentGeneration, batch: currentBatch };
-
-    const rebuild = await db
-      .prepare(
-        `SELECT br.source_generation_id AS generation_id
-         FROM batch_references br
-         JOIN generations g ON g.id = br.source_generation_id
-         WHERE br.target_batch_id = ? AND br.purpose = 'rebuild' AND g.batch_id = ?
-         LIMIT 1`,
-      )
-      .bind(currentBatch.id, relation.source_batch_id)
-      .first<{ generation_id: string }>();
-    if (!rebuild) {
-      throw conflict(`refinement batch '${currentBatch.short_id}' has no rebuild reference; cannot resolve a derivation source`);
+    if (!current.refines_generation_id) {
+      const request = await requestOfGeneration(db, current);
+      if (request.kind === 'finalize' || request.kind === 'repair' || request.kind === 'masked_redraw') {
+        throw conflict(`refinement request '${request.short_id ?? request.id}' has no source generation; cannot resolve a derivation source`);
+      }
+      return { generation: current, request };
     }
-
-    const nextGeneration = await getGenerationByIdOrShortId(db, rebuild.generation_id);
-    const nextBatch = await getBatchByIdOrShortId(db, relation.source_batch_id);
-    if (!nextGeneration || !nextBatch) {
-      throw conflict(`refinement batch '${currentBatch.short_id}' has no rebuild reference; cannot resolve a derivation source`);
+    const next = await getGenerationByIdOrShortId(db, current.refines_generation_id);
+    if (!next) {
+      throw conflict(`refinement generation '${current.short_id}' has no source generation; cannot resolve a derivation source`);
     }
-
-    currentGeneration = nextGeneration;
-    currentBatch = nextBatch;
+    current = next;
   }
 
-  throw conflict(`refinement batch '${currentBatch.short_id}' derivation chain exceeds ${MAX_DERIVATION_HOPS} hops`);
+  throw conflict(`refinement generation '${current.short_id}' derivation chain exceeds ${MAX_DERIVATION_HOPS} hops`);
+}
+
+/** Generation が属する Request。所属が無い (request_id が NULL か行が無い) Generation は 404。 */
+export async function requestOfGeneration(db: D1Database, generation: Pick<GenerationRow, 'request_id' | 'short_id'>): Promise<RequestRow> {
+  const row = generation.request_id
+    ? await db.prepare('SELECT * FROM requests WHERE id = ?').bind(generation.request_id).first<RequestRow>()
+    : null;
+  if (!row) throw notFound(`request of generation '${generation.short_id}'`);
+  return row;
 }
 
 export interface BuildDerivedRequestPayloadInput {
   parentGenerationId: string;
   /** Set only when the caller (derive_request) resolved a different Generation than the one requested — the finalized/repaired pick the agent looked at. Adds a second purpose="derive" reference. */
   requestedGenerationId?: string;
-  /** null/empty means the parent Batch is graph-mode (no single recipe) and cannot be derived. */
+  /** null/empty means the parent Request is graph-mode (no single recipe) and cannot be derived. */
   parentRecipe: string | null;
   parentParameters: JsonObject;
-  /** Parent Batch's `patches_json` (the request's own patch layer; the pinned preset's patches are not included), or `[]` if absent. */
+  /** Parent Request's `patches_json` (the request's own patch layer; the pinned preset's patches are not included), or `[]` if absent. */
   parentPatches: unknown[];
-  /** Parent Batch's `preset_versions_json` pins, or `[]` if absent (docs/worker-protocol.md「preset の pin」). */
+  /** Parent Request's `preset_versions_json` pins, or `[]` if absent (docs/worker-protocol.md「preset の pin」). */
   parentPresets: { kind: string; name: string; version: number }[];
   /** Whether the parent recipe has any Preset row at all (`recipeHasPresets` in ./presets) — a recipe with none has no preset body that can drift, so replaying its patches without a pin stays safe. */
   parentRecipeHasPresets: boolean;
@@ -144,14 +136,14 @@ export interface BuildDerivedRequestPayloadInput {
  */
 export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInput): JsonObject {
   if (!input.parentRecipe) {
-    throw conflict('parent batch has no recipe; a graph-mode batch cannot be derived');
+    throw conflict('parent request has no recipe; a graph-mode request cannot be derived');
   }
   // patches は書かれた時点の preset 本文への差分。pin が無いと worker が現行版を解決し、差分の宛先がずれて
   // text op が needle 不在で落ちる (docs/worker-protocol.md「preset の pin」)。
   if (!input.replacePatches && input.parentPatches.length > 0 && input.parentPresets.length === 0 && input.parentRecipeHasPresets) {
     throw conflict(
-      'parent batch carries patches but no pinned preset version, so the preset body those patches target may have moved since; ' +
-        'pass replace_patches: true with patches restated against the current preset, or derive from a batch that has pins',
+      'parent request carries patches but no pinned preset version, so the preset body those patches target may have moved since; ' +
+        'pass replace_patches: true with patches restated against the current preset, or derive from a request that has pins',
     );
   }
 
@@ -160,7 +152,7 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
     ? (input.patches ?? [])
     : [...input.parentPatches, ...(input.patches ?? [])];
 
-  // A pin carries forward only for a kind the caller didn't override. Batch's `parameters_json` holds the
+  // A pin carries forward only for a kind the caller didn't override. The parent Request's `parameters_json` holds the
   // worker-resolved `recipe_pose`, not the preset name, so the carried pin's `name` overwrites
   // `mergedParameters[kind]` to keep the two in sync (docs/worker-protocol.md「preset の pin」).
   const overriddenKinds = new Set(Object.keys(input.parameters ?? {}));
@@ -233,7 +225,10 @@ export function defaultRecipeRef(env: { REQUESTS_DEFAULT_RECIPE_REF?: string }):
 
 export interface CreateRequestInput {
   kind: RequestKind;
-  payload: JsonObject;
+  /** import だけは省略でき、省略時は {schema_version: 1, request: {instruction}} を保存する。 */
+  payload?: JsonObject;
+  /** kind=import の解決済みの値。import は done で作られ、worker は claim しない。 */
+  resolution?: ResolutionInput;
   recipe_ref?: string;
   idempotency_key: string;
   created_by: RequestCreatedBy;
@@ -261,6 +256,8 @@ export async function createRequest(
   options: CreateRequestOptions = {},
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
+  if (input.kind === 'import') return createImportRequest(db, input, options);
+  if (input.payload === undefined) throw badRequest('payload is required');
   // masked_redraw のエイリアス正規化、generate の preset pin (worker-protocol.md「preset の pin」)、
   // finalize profile の展開 (worker-protocol.md「finalize profile」) は payload をハッシュする前にここで行う
   // — 内部呼び出しや idempotency 再送もこの正規化を通す。
@@ -325,8 +322,9 @@ export async function createRequest(
       .prepare(
         `INSERT INTO requests (
            id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
-           claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at
-         ) VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`,
+           claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
+           short_id
+         ) VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -339,6 +337,7 @@ export async function createRequest(
         input.created_by,
         now,
         now,
+        await createUniqueRequestShortId(db),
       )
       .run();
   } catch (err) {
@@ -354,6 +353,63 @@ export async function createRequest(
   return { row: await getRequestOr404(db, id), created: true };
 }
 
+/**
+ * kind=import: 手加工・合成などキューを通らない画像の登録枠。done で作り、同じ Request に Job と Generation を ingest する。
+ * 再送の一致は payload と解決済みの値の両方で見る。
+ */
+async function createImportRequest(
+  db: D1Database,
+  input: CreateRequestInput,
+  options: CreateRequestOptions,
+): Promise<CreateRequestResult> {
+  const resolutionInput = input.resolution;
+  if (!resolutionInput) throw badRequest('parameters is required for kind import');
+  const payload: JsonObject = input.payload ?? {
+    schema_version: 1,
+    request: { instruction: resolutionInput.raw_instruction ?? null },
+  };
+  const payloadHash = await canonicalPayloadHash('import', { payload, resolution: resolutionInput });
+
+  const find = () => db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(input.idempotency_key).first<RequestRow>();
+  const existing = await find();
+  if (existing) return replayOrConflict(existing, 'import', payloadHash);
+
+  const resolution = await normalizeResolution(db, resolutionInput, null);
+  const id = uuidv7();
+  const now = nowIso();
+  const shortId = await createUniqueRequestShortId(db);
+  try {
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO requests (
+             id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
+             claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
+             short_id
+           ) VALUES (?, 'import', 'done', ?, ?, ?, NULL, NULL, 0, 3, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          id,
+          JSON.stringify(payload),
+          payloadHash,
+          input.recipe_ref ?? options.defaultRecipeRef ?? 'production',
+          now,
+          input.idempotency_key,
+          input.created_by,
+          now,
+          now,
+          shortId,
+        ),
+      ...(await resolutionStatements(db, { requestId: id, shortId, resolution, shadow: null, batchStatus: 'completed' })),
+    ]);
+  } catch (err) {
+    const raced = await find();
+    if (!raced) throw err;
+    return replayOrConflict(raced, 'import', payloadHash);
+  }
+  return { row: await getRequestOr404(db, id), created: true };
+}
+
 export interface RequestListFilters {
   status?: RequestStatus;
   kind?: RequestKind;
@@ -362,8 +418,6 @@ export interface RequestListFilters {
   worker_id?: string;
   /** UUID / short_id どちらでも受ける。該当する Generation が無ければ空リストを返す。 */
   generation_id?: string;
-  /** UUID / short_id どちらでも受ける。Batch 配下の全 Generation を対象に finalize / repair / masked_redraw request を集約する。 */
-  batch_id?: string;
 }
 
 export async function listRequests(
@@ -397,22 +451,6 @@ export async function listRequests(
     conditions.push("kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
     binds.push(generation.id, generation.short_id);
   }
-  if (filters.batch_id) {
-    const batch = await getBatchByIdOrShortId(db, filters.batch_id);
-    if (!batch) return [];
-    const { results } = await db
-      .prepare('SELECT id, short_id FROM generations WHERE batch_id = ?')
-      .bind(batch.id)
-      .all<{ id: string; short_id: string }>();
-    const idsAndShortIds = (results ?? []).flatMap((g) => [g.id, g.short_id]);
-    if (idsAndShortIds.length === 0) return [];
-    const placeholders = idsAndShortIds.map(() => '?').join(', ');
-    conditions.push(
-      `kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (${placeholders})`,
-    );
-    binds.push(...idsAndShortIds);
-  }
-
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { results } = await db
     .prepare(`SELECT * FROM requests ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
@@ -484,8 +522,16 @@ export async function claimRequest(
 export interface UpdateRequestInput {
   status: 'running' | 'queued' | 'done' | 'failed' | 'cancelled';
   worker_id?: string;
-  result?: { batch_id: string; generation_ids: string[]; recipe_commit?: string };
+  result?: { batch_id?: string; generation_ids: string[]; recipe_commit?: string };
   error?: string;
+}
+
+/** resolution が内部に作った影の Batch (status = running) の終端状態を Request に合わせる。互換の Batch 経路で作られた Batch には触れない。 */
+async function markShadowBatch(db: D1Database, requestId: string, status: 'completed' | 'failed', now: string): Promise<void> {
+  await db
+    .prepare("UPDATE batches SET status = ?, updated_at = ? WHERE idempotency_key = ? AND status = 'running'")
+    .bind(status, now, `request:${requestId}`)
+    .run();
 }
 
 const TERMINAL_STATUSES: RequestStatus[] = ['done', 'failed', 'cancelled'];
@@ -528,6 +574,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       )
       .bind(...(exhausted ? ['released after max attempts', now, now, row.id] : [now, row.id]))
       .run();
+    if (exhausted) await markShadowBatch(db, row.id, 'failed', now);
     return getRequestOr404(db, row.id);
   }
 
@@ -536,6 +583,7 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
       .prepare('UPDATE requests SET status = ?, error = ?, finished_at = ?, updated_at = ? WHERE id = ?')
       .bind('failed', body.error ?? null, now, now, row.id)
       .run();
+    await markShadowBatch(db, row.id, 'failed', now);
     return getRequestOr404(db, row.id);
   }
 
@@ -549,55 +597,64 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
   const pins = extractPins(JSON.parse(row.payload_json));
   const presetVersionsJson = pins && pins.length > 0 ? JSON.stringify(pins) : null;
 
+  const doneStatement = db
+    .prepare(
+      'UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ?, preset_versions_json = COALESCE(?, preset_versions_json) WHERE id = ?',
+    )
+    .bind('done', resultJson, now, now, presetVersionsJson, row.id);
+
+  // 結果の Batch は、worker が互換のため result.batch_id を渡せばそれ、無ければ resolution で内部に作った影の Batch。
+  const shadow = await findShadowBatch(db, row.id);
+
   if (row.run_id) {
     const run = await db.prepare('SELECT * FROM experiment_runs WHERE id = ?').bind(row.run_id).first<ExperimentRunRow>();
     if (!run) throw notFound('experiment run');
 
-    const batch = await getBatchByIdOrShortId(db, result.batch_id);
-    if (!batch) throw notFound(`batch '${result.batch_id}'`);
+    // 結果の Run への紐づけは requests.run_id が持つ。experiment_runs.batch_id は Batch 廃止まで GUI の Run カード用に attach する。
+    const batch = result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : shadow;
+    if (result.batch_id && !batch) throw notFound(`batch '${result.batch_id}'`);
 
-    // Run に既に別の batch が付いていれば409で、request 行も done になりません (worker-protocol.md「Update Request」)。
-    if (run.batch_id && run.batch_id !== batch.id) {
-      throw conflict('run already has a different batch attached');
-    }
+    if (batch) {
+      // Run に既に別の batch が付いていれば、result.batch_id 指定なら409で request 行も done になりません (worker-protocol.md「Update Request」)。
+      // 影の Batch は Run の既存の attach を壊さないよう、付いていれば黙って付けない。
+      if (run.batch_id && run.batch_id !== batch.id && result.batch_id) {
+        throw conflict('run already has a different batch attached');
+      }
 
-    // request の done と experiment_runs.batch_id の attach を単一トランザクションにする（片方だけの状態を作らない）。
-    const statements = [
-      db
-        .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-        .bind('done', resultJson, now, now, row.id),
-      db
-        .prepare('UPDATE experiment_runs SET batch_id = ?, updated_at = ? WHERE id = ? AND (batch_id IS NULL OR batch_id = ?)')
-        .bind(batch.id, now, run.id, batch.id),
-    ];
-    if (presetVersionsJson) {
-      statements.push(
-        db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
-        presetVersionsStatement(db, batch.id, presetVersionsJson),
-      );
+      // request の done と experiment_runs.batch_id の attach を単一トランザクションにする（片方だけの状態を作らない）。
+      const statements = [
+        doneStatement,
+        db
+          .prepare('UPDATE experiment_runs SET batch_id = ?, updated_at = ? WHERE id = ? AND (batch_id IS NULL OR batch_id = ?)')
+          .bind(batch.id, now, run.id, batch.id),
+      ];
+      if (presetVersionsJson) {
+        statements.push(
+          db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
+          presetVersionsStatement(db, batch.id, presetVersionsJson),
+        );
+      }
+      statements.push(runAttachStatement(db, batch.id, run.id));
+      await db.batch(statements);
+    } else {
+      await doneStatement.run();
     }
-    statements.push(runAttachStatement(db, batch.id, run.id));
-    await db.batch(statements);
     await touchExperiment(db, run.experiment_id, now);
   } else {
     // pin の記録は付随的なもの: result.batch_id が解決できなければ request の完了は妨げず、
-    // preset_versions_json の書き込みだけ飛ばす（run_id 経路は batch 未解決を 409/404 で拒む契約のまま）。
-    const batch = presetVersionsJson ? await getBatchByIdOrShortId(db, result.batch_id) : null;
+    // Batch 側の preset_versions_json の書き込みだけ飛ばす。
+    const batch = presetVersionsJson ? (result.batch_id ? await getBatchByIdOrShortId(db, result.batch_id) : shadow) : null;
     if (presetVersionsJson && batch) {
       await db.batch([
-        db
-          .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-          .bind('done', resultJson, now, now, row.id),
+        doneStatement,
         db.prepare('UPDATE batches SET preset_versions_json = ?, updated_at = ? WHERE id = ?').bind(presetVersionsJson, now, batch.id),
         presetVersionsStatement(db, batch.id, presetVersionsJson),
       ]);
     } else {
-      await db
-        .prepare('UPDATE requests SET status = ?, result_json = ?, finished_at = ?, updated_at = ? WHERE id = ?')
-        .bind('done', resultJson, now, now, row.id)
-        .run();
+      await doneStatement.run();
     }
   }
+  await markShadowBatch(db, row.id, 'completed', now);
 
   return getRequestOr404(db, row.id);
 }
@@ -616,9 +673,10 @@ export interface RequestSummaryWorker {
 
 export interface RequestSummaryGroup {
   key: string;
-  batch: { id: string; short_id: string; thumbnail_generation_short_id: string | null } | null;
+  /** finalize / repair / masked_redraw の仕上げ元 Generation が属する Request。thumbnail はその最初の Generation。 */
+  request: { id: string; short_id: string | null; thumbnail_generation_short_id: string | null } | null;
   experiment: { id: string; short_id: string } | null;
-  /** Batch 詳細 (`/b/:short_id`) または Experiment 詳細 (`/experiments/:short_id`) への遷移先。無ければ null。 */
+  /** 仕上げ元 Request の最初の Generation (`/g/:short_id`) または Experiment 詳細 (`/experiments/:short_id`) への遷移先。無ければ null。 */
   href: string | null;
   kinds: Partial<Record<RequestKind, number>>;
   counts: { queued: number; running: number; failed: number };
@@ -651,20 +709,21 @@ function extractPayloadGenerationId(payloadJson: string): string | null {
   }
 }
 
-/** finalize/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Batch id を引く。 */
-async function resolveGenerationBatchIds(db: D1Database, refs: string[]): Promise<Map<string, string>> {
+/** finalize/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Request id を引く。 */
+async function resolveGenerationRequestIds(db: D1Database, refs: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const unique = Array.from(new Set(refs));
   if (unique.length === 0) return map;
   for (const part of chunk(unique, Math.floor(D1_MAX_BOUND_PARAMS / 2))) {
     const placeholders = part.map(() => '?').join(', ');
     const { results } = await db
-      .prepare(`SELECT id, short_id, batch_id FROM generations WHERE id IN (${placeholders}) OR short_id IN (${placeholders})`)
+      .prepare(`SELECT id, short_id, request_id FROM generations WHERE id IN (${placeholders}) OR short_id IN (${placeholders})`)
       .bind(...part, ...part)
-      .all<{ id: string; short_id: string; batch_id: string }>();
+      .all<{ id: string; short_id: string; request_id: string | null }>();
     for (const r of results ?? []) {
-      map.set(r.id, r.batch_id);
-      map.set(r.short_id, r.batch_id);
+      if (!r.request_id) continue;
+      map.set(r.id, r.request_id);
+      map.set(r.short_id, r.request_id);
     }
   }
   return map;
@@ -701,7 +760,7 @@ function latestTimestamp(row: SummaryRequestRow): string {
 
 interface SummaryBucket {
   key: string;
-  batchId: string | null;
+  sourceRequestId: string | null;
   experiment: SummaryExperimentRef | null;
   kinds: Partial<Record<RequestKind, number>>;
   counts: { queued: number; running: number; failed: number };
@@ -710,7 +769,7 @@ interface SummaryBucket {
 
 /**
  * ナビの queue pill / パネル (docs/ui.md「キュー状態」) 向けの集計。1 グループ = 1 遷移先:
- * Batch (finalize/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
+ * 仕上げ元の Request (finalize/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
  */
 export async function summarizeRequests(db: D1Database, now: string): Promise<RequestSummary> {
   const cutoff = new Date(new Date(now).getTime() - SUMMARY_FAILED_WINDOW_MS).toISOString();
@@ -742,15 +801,15 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
       if (generationId) generationRefs.push(generationId);
     }
   }
-  const [generationToBatch, runToExperiment] = await Promise.all([
-    resolveGenerationBatchIds(db, generationRefs),
+  const [generationToRequest, runToExperiment] = await Promise.all([
+    resolveGenerationRequestIds(db, generationRefs),
     resolveRunExperiments(db, runIds),
   ]);
 
   const buckets = new Map<string, SummaryBucket>();
   for (const row of rows) {
     let key: string;
-    let batchId: string | null = null;
+    let sourceRequestId: string | null = null;
     let experiment: SummaryExperimentRef | null = null;
 
     if (row.kind === 'generate') {
@@ -763,10 +822,10 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
       }
     } else {
       const generationId = extractPayloadGenerationId(row.payload_json);
-      const resolvedBatchId = generationId ? (generationToBatch.get(generationId) ?? null) : null;
-      if (resolvedBatchId) {
-        key = `batch:${resolvedBatchId}`;
-        batchId = resolvedBatchId;
+      const resolvedRequestId = generationId ? (generationToRequest.get(generationId) ?? null) : null;
+      if (resolvedRequestId) {
+        key = `request:${resolvedRequestId}`;
+        sourceRequestId = resolvedRequestId;
       } else {
         key = `request:${row.id}`;
       }
@@ -775,7 +834,7 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
     const rowLatest = latestTimestamp(row);
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { key, batchId, experiment, kinds: {}, counts: { queued: 0, running: 0, failed: 0 }, latest_at: rowLatest };
+      bucket = { key, sourceRequestId, experiment, kinds: {}, counts: { queued: 0, running: 0, failed: 0 }, latest_at: rowLatest };
       buckets.set(key, bucket);
     }
     bucket.kinds[row.kind] = (bucket.kinds[row.kind] ?? 0) + 1;
@@ -785,27 +844,25 @@ export async function summarizeRequests(db: D1Database, now: string): Promise<Re
     if (rowLatest > bucket.latest_at) bucket.latest_at = rowLatest;
   }
 
-  const batchIds = Array.from(buckets.values())
-    .map((b) => b.batchId)
+  const sourceRequestIds = Array.from(buckets.values())
+    .map((b) => b.sourceRequestId)
     .filter((id): id is string => id !== null);
-  const [batchShortIds, batchThumbnails] = await Promise.all([
-    resolveBatchShortIds(db, batchIds),
-    resolveBatchThumbnails(db, batchIds),
+  const [sourceRequests, requestThumbnails] = await Promise.all([
+    resolveRequestShortIds(db, sourceRequestIds),
+    resolveRequestThumbnails(db, sourceRequestIds),
   ]);
 
   const groups: RequestSummaryGroup[] = Array.from(buckets.values()).map((b) => {
-    let batch: RequestSummaryGroup['batch'] = null;
+    let request: RequestSummaryGroup['request'] = null;
     let href: string | null = null;
-    if (b.batchId) {
-      const shortId = batchShortIds.get(b.batchId);
-      if (shortId) {
-        batch = { id: b.batchId, short_id: shortId, thumbnail_generation_short_id: batchThumbnails.get(b.batchId) ?? null };
-        href = `/b/${shortId}`;
-      }
+    if (b.sourceRequestId) {
+      const thumbnail = requestThumbnails.get(b.sourceRequestId) ?? null;
+      request = { id: b.sourceRequestId, short_id: sourceRequests.get(b.sourceRequestId) ?? null, thumbnail_generation_short_id: thumbnail };
+      href = thumbnail ? `/g/${thumbnail}` : null;
     } else if (b.experiment) {
       href = `/experiments/${b.experiment.short_id}`;
     }
-    return { key: b.key, batch, experiment: b.experiment, href, kinds: b.kinds, counts: b.counts, latest_at: b.latest_at };
+    return { key: b.key, request, experiment: b.experiment, href, kinds: b.kinds, counts: b.counts, latest_at: b.latest_at };
   });
 
   groups.sort((a, b) => {

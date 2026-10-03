@@ -18,7 +18,7 @@ npm run typecheck && npm test
 
 ## 設計上の不変条件（壊さないこと）
 
-- Relation 3種の分離: BatchReference（生成材料）/ BatchRelation（再試行）/ StoryRelation（作品上の続き）を統合しない
+- 関係 2 種の分離: 素材参照（Generation → Request、request_references）と仕上げ元（Generation → Generation、generations.refines_generation_id）を統合しない
 - Generation は物理削除しない。削除より rating / tag によるラベリング。ただし original 画像（`generations/{id}/original.png`）だけは保持期間ジョブ（`src/lib/original-purge.ts`）が古い低価値 Generation について削除することがある。行と preview は残る（`docs/domain-model.md`「original の保持」）
 - 冪等性: Batch / Job 作成は idempotency_key、ingest は (comfy_job_id, comfy_output_index) unique。再送は既存レコードを 200 で返す
 - ingest は D1 INSERT → R2 PUT の順（行が ID / R2 key を確定し、orphan object を作らない）。R2 key は `generations/{generation_id}/original.png`

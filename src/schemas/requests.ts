@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const requestKindSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw']);
+/** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request (docs/batch-removal.md) で、生成要求の入力には使えない。 */
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -177,15 +179,90 @@ export function payloadEnvelopeIssues(kind: 'generate' | 'finalize' | 'repair' |
   return parsed.success ? [] : parsed.error.issues;
 }
 
+const resolutionReferenceSchema = z
+  .object({
+    source_generation_id: z.string().min(1).optional(),
+    generation_id: z.string().min(1).optional(),
+    purpose: z.string().min(1).nullish(),
+    aspect: z.string().min(1).nullish(),
+    instruction: z.string().nullish(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.source_generation_id && !value.generation_id) {
+      ctx.addIssue({ code: 'custom', message: 'source_generation_id is required', path: ['source_generation_id'] });
+    }
+  });
+
+/** worker が生成前に報告する解決済みの値 (docs/worker-protocol.md「Resolution」)。PUT /requests/{id}/resolution と import の作成が共有する。 */
+const resolutionBaseShape = {
+  recipe: z.string().nullish(),
+  raw_instruction: z.string().nullish(),
+  // target/op/reason の封筒だけ検証する。語彙は検証しない。
+  patches: z
+    .array(z.object({ target: z.string().min(1), op: z.string().min(1), reason: z.string().min(1) }).passthrough())
+    .nullish(),
+  pose_fingerprint: z.string().min(1).nullish(),
+  preset_versions: z.array(z.unknown()).nullish(),
+  git_commit: z.string().nullish(),
+  git_dirty: z.boolean().nullish(),
+  references: z.array(resolutionReferenceSchema).nullish(),
+};
+
+export const resolutionShape = { ...resolutionBaseShape, parameters: jsonObject };
+
+function patchesNeedFingerprint(
+  value: { patches?: unknown[] | null; pose_fingerprint?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  // patches があるのに fingerprint が無いと base_fingerprint が NULL になり drift 検出できなくなる (docs/domain-model.md「Preset」)。
+  if ((value.patches?.length ?? 0) > 0 && !value.pose_fingerprint) {
+    ctx.addIssue({ code: 'custom', message: 'pose_fingerprint is required when patches is non-empty', path: ['pose_fingerprint'] });
+  }
+}
+
+export const putResolutionSchema = z
+  .object({ ...resolutionShape, worker_id: z.string().min(1).optional() })
+  .superRefine(patchesNeedFingerprint);
+
+export type PutResolutionInput = z.infer<typeof putResolutionSchema>;
+
+const RESOLUTION_KEYS = Object.keys(resolutionShape);
+
 export const createRequestSchema = z
   .object({
-    kind: requestKindSchema,
-    payload: jsonObject,
+    kind: requestKindFilterSchema,
+    payload: jsonObject.optional(),
     recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
     idempotency_key: z.string().min(1),
     created_by: requestCreatedBySchema,
+    /** import だけが done で作られる。他の kind は queued 固定で、指定できない。 */
+    status: z.literal('done').optional(),
+    ...resolutionBaseShape,
+    parameters: jsonObject.optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.kind === 'import') {
+      if (value.status !== 'done') {
+        ctx.addIssue({ code: 'custom', message: "status must be 'done' for kind import", path: ['status'] });
+      }
+      if (!value.parameters) {
+        ctx.addIssue({ code: 'custom', message: 'parameters is required for kind import', path: ['parameters'] });
+      }
+      patchesNeedFingerprint(value, ctx);
+      return;
+    }
+    if (value.status !== undefined) {
+      ctx.addIssue({ code: 'custom', message: "status is only accepted for kind import", path: ['status'] });
+    }
+    for (const key of RESOLUTION_KEYS) {
+      if ((value as Record<string, unknown>)[key] !== undefined) {
+        ctx.addIssue({ code: 'custom', message: `${key} is only accepted for kind import`, path: [key] });
+      }
+    }
+    if (value.payload === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'payload is required', path: ['payload'] });
+      return;
+    }
     for (const issue of payloadEnvelopeIssues(value.kind, value.payload)) {
       ctx.addIssue({ code: 'custom', message: issue.message, path: ['payload', ...issue.path] });
     }
@@ -204,7 +281,7 @@ export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
  * 素の z.object が黙って落とさないため。chimera は不透明な JSON として保存するだけ。 */
 export const updateRequestResultSchema = z
   .object({
-    batch_id: z.string().min(1),
+    batch_id: z.string().min(1).optional(),
     generation_ids: z.array(z.string().min(1)),
     recipe_commit: z.string().optional(),
   })

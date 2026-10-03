@@ -17,7 +17,6 @@ interface Experiment {
 interface ExperimentRun {
   id: string;
   experiment_id: string;
-  batch_id: string | null;
   generation_id: string | null;
   overrides: Record<string, unknown>;
   evaluation: Record<string, unknown> | null;
@@ -262,7 +261,6 @@ describe('MCP server at /mcp', () => {
         'list_requests',
         'list_generations',
         'get_generation',
-        'list_batch',
         'get_generation_lineage',
         'derive_request',
         'list_catalog',
@@ -482,12 +480,12 @@ describe('Run creation enforces the same generation provenance rule', () => {
   it('creates a run when the batch and generation match', async () => {
     const { batch, generation } = await createGeneration();
     const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: uniqueName('exp-prov-c') });
-    const res = await postJson<{ batch_id: string; generation_id: string }>(
+    const res = await postJson<{ batch_id?: string; generation_id: string }>(
       `/api/v1/experiments/${experiment.body.id}/runs`,
       { batch_id: batch.id, generation_id: generation.id },
     );
     expect(res.status).toBe(201);
-    expect(res.body.batch_id).toBe(batch.id);
+    expect(res.body).not.toHaveProperty('batch_id');
     expect(res.body.generation_id).toBe(generation.id);
   });
 });
@@ -505,7 +503,6 @@ describe('MCP tool annotations', () => {
       'get_run',
       'get_generation_image',
       'get_generation',
-      'list_batch',
       'get_generation_lineage',
       'list_catalog',
       'get_catalog_pose',

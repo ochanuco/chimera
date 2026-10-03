@@ -5,36 +5,29 @@
 中心となる生成階層は以下です。
 
 ``` text
-Batch
- └── ComfyJob
-      └── Generation
+Experiment → ExperimentRun → Request → ComfyJob → Generation
 ```
 
-Experiment は Batch を包含する階層ではなく、ExperimentRun を介して
-Batch / Generation を参照します。
-
-``` text
-Experiment
-  └── ExperimentRun ──▶ Batch / Generation
-```
-
-`batches.experiment_id` は引き続き存在しますが、Experiment
-上の試行の主体は ExperimentRun です。
+Request は worker への生成要求 1 件で、generate / finalize / repair / masked_redraw / import の
+どれも、Generation は必ず Request に属します。Run の結果は `requests.run_id` が Run を指す
+Request で、Run が Request を包含するのではなく、Request が Run を参照します。
 
 ただし、本システムの重要部分は階層そのものではなく、生成探索に存在する複数種類の
-Relation を意味ごとに分離することです。以下の3種類を統合してはいけません。
+関係を意味ごとに分離することです。以下の2種類を統合してはいけません。
 
 ``` text
-Batch ── BatchRelation ──▶ Batch
-Generation ── BatchReference ──▶ Batch
-Batch ── StoryRelation ──▶ Batch
+Generation ── 素材参照（RequestReference） ──▶ Request
+Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
 ```
 
-  Relation         意味
+  関係             意味
   ---------------- ----------------------------------------------
-  BatchReference   過去Generationの何を生成材料として利用したか
-  BatchRelation    前Batchを受けてどう再試行したか
-  StoryRelation    作品・世界観としてどう続くか
+  素材参照         過去Generationの何を生成材料として利用したか
+  仕上げ元         この Generation が、どの Generation を finalize / repair / masked_redraw したものか
+
+Batch は旧モデルの単位で、読み取りには使いません。Batch の行は現行の comfyui-recipes が
+使う互換の書き込み経路（`POST /api/v1/batches` ほか、[api.md](api.md#batch)）の記録として
+残っているだけです（[Batch](#batch)）。
 
 ## Experiment
 
@@ -83,8 +76,8 @@ Generation を Reference として新しい Experiment / Batch
 
 `base_generation_id`（nullable）はこの rebuild 元の Generation です。設定すると、
 自動起票される各 Run の request にも purpose `rebuild` の Reference として渡ります
-（下記 Request 節）。あくまで各 request payload への伝播であり、BatchReference
-そのものは相変わらず唯一の永続化された material relation です。
+（下記 Request 節）。あくまで各 request payload への伝播であり、素材参照
+（`request_references`）そのものは相変わらず唯一の永続化された material relation です。
 
 Experiment は原則物理削除しません。
 
@@ -402,9 +395,8 @@ pin できる Generation には条件があります。
 -   finalize / repair の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
     raw Generation まで遡ります。rating を見るのは指定した Generation 自身、pin する
     render とその seed は遡った先の raw Generation です。
--   遡った先の Batch は「recipe/pose の素の render」でなければなりません: recipe が
-    一致し、その pose を実際に描き、patches を持たず、その Batch を起こした generate
-    request が prompt / negative_prompt を上書きしていないこと。どれか1つでも外れれば
+-   遡った先の Request は「recipe/pose の素の render」でなければなりません: recipe が
+    一致し、その pose を実際に描き、patches を持たず、その Request（kind = generate）が prompt / negative_prompt を上書きしていないこと。どれか1つでも外れれば
     409 で、満たさない条件は1回の呼び出しですべて列挙されます。
 -   seed は遡った先の raw Generation を作った comfy_job の seed です。
 
@@ -512,7 +504,8 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 
 ``` text
 id
-kind              generate | finalize | repair | masked_redraw
+short_id          /b/{short_id} の Request の短縮 ID
+kind              generate | finalize | repair | masked_redraw | import
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -530,7 +523,20 @@ idempotency_key
 created_by        brain | mcp | gui | system
 created_at
 updated_at
+recipe            worker が解決した recipe。graph-mode は NULL
+raw_instruction
+parameters_json   解決済み parameters（kind / pose / prompt_patch を含む）
+patches_json
+pose_fingerprint
+preset_versions_json
+git_commit
+git_dirty
 ```
+
+`recipe` 以降の列は生成前に worker が報告する解決済みの値です
+（[worker-protocol.md](worker-protocol.md)）。実際に送った prompt / negative は Request に持たず、
+Job の `graph` / `render_facts` を正とします。素材参照は `request_references` に持ちます
+（[素材参照](#素材参照)）。
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
@@ -542,9 +548,7 @@ options は明示的な矩形 `regions` と非空の `prompt_patch` を必須と
 不変条件:
 
 -   requests 行は物理削除しません。`cancelled` は `queued` からだけ入れる終端です。
--   `run_id` を持つ generate の `done` は、requests 行の更新と対応する
-    ExperimentRun への `batch_id` の attach を単一トランザクションで行います。
-    request だけが done になって Run に batch が付かない状態は作りません。
+-   Run の結果は `requests.run_id` が Run を指す done の generate Request です（1 Run に高々 1 件）。
 -   ExperimentRun 作成時、Experiment に `base_recipe` があり status が
     active / stabilized なら、Run の INSERT と同じトランザクションで
     kind=generate の requests 行を自動起票します（1 Run につき1回、
@@ -592,56 +596,18 @@ baseline / arm のどちらを見ているか判別できません（盲検性�
 
 ## Batch
 
-1生成リクエスト = 1 Batch と定義します。
+旧モデルの「1 生成リクエスト = 1 Batch」の行です。現行の comfyui-recipes が
+`POST /api/v1/batches` ほかで書き込むため残っていますが、chimera は読み取りに使いません。
+`GET /api/v1/batches/{id}` だけは、現行の comfyui-recipes が仕上げ元の Batch を読むために
+残している互換の読み取りです。Request の `resolution` / Job の API で動く worker は
+Batch を作らず、Request の列に直接書きます（[worker-protocol.md](worker-protocol.md)）。
 
-「seed 違いで9枚」は1 Batchです。Claude が結果を反芻し prompt
-を修正して再度9枚生成した場合は別 Batch です。
-
-主な属性:
-
-``` text
-id
-experiment_id
-raw_instruction
-recipe
-prompt
-negative_prompt
-parameters_json
-git_commit
-git_dirty
-note
-bookmark
-status
-idempotency_key
-created_at
-refines_generation_id
-patches_json
-pose_fingerprint
-preset_versions_json
-```
-
-`patches_json` / `pose_fingerprint` / `preset_versions_json` は [Preset](#preset) 参照。
-
-`refines_generation_id` は、この Batch が finalize/repair/masked_redraw で仕上げた元の raw
-Generation です。この Batch を target とする BatchRelation（`type = 'refinement'`,
-source を S とする）と、この Batch を target とする BatchReference（`purpose = 'rebuild'`,
-source_generation を G とする）が対になり、かつ `G.batch_id = S` であるときに
-`refines_generation_id = G` とします（複数一致するときは最も早く作成された rebuild
-Reference を採用し、作成時刻が同じなら id の小さい方を採用）。raw の生成 Batch（そのような対が無い Batch）では NULL です。Batch
-作成時（POST /api/v1/batches）と、references / relations の追加時（POST
-/api/v1/batches/{id}/references, POST /api/v1/batches/{target_batch_id}/relations）に
-自動で再計算します（`src/lib/batch-refinement.ts`）。Gallery の既定フィルタ（`finalize
-以外`）はこの列で raw / finalize 済みの出力を分けます（[ui.md](ui.md#gallery)）。
-
-status の候補:
-
-``` text
-created
-running
-completed
-partial
-failed
-```
+互換の書き込みは Batch と同時に Request / Job / Generation の対応する列
+（`requests` の解決済み列、`comfy_jobs.request_id`、`generations.request_id` /
+`refines_generation_id`、`request_references`）へも書きます。`refines_generation_id` は、
+Batch を target とする `type = 'refinement'` の関係と `purpose = 'rebuild'` の素材参照が対になり、
+かつ参照元 Generation がその関係の source Batch に属するときに導出します
+（`src/lib/batch-refinement.ts`）。
 
 ## ComfyJob
 
@@ -650,7 +616,7 @@ ComfyUI への実際の1リクエストです。
 現在の運用では、9枚生成時にキューへ9回投入されるため、
 
 ``` text
-1 Batch = 9 ComfyJobs
+1 Request = 9 ComfyJobs
 ```
 
 が基本です。
@@ -658,7 +624,7 @@ ComfyUI への実際の1リクエストです。
 将来1 ComfyJobから複数outputが生成される可能性を許容します。
 
 ``` text
-Batch 1:N ComfyJob
+Request 1:N ComfyJob
 ComfyJob 1:N Generation
 ```
 
@@ -666,7 +632,8 @@ ComfyJob 1:N Generation
 
 ``` text
 id
-batch_id
+request_id
+source_generation_id
 comfy_prompt_id
 seed
 index
@@ -676,6 +643,8 @@ render_facts_json
 created_at
 updated_at
 ```
+
+`source_generation_id` は finalize / repair / masked_redraw の Job で仕上げ元の Generation を指します。
 
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
@@ -695,8 +664,11 @@ controlnet / seed / output のキャッシュ、`version` フィールドで抽�
 
 生成画像そのものの永続単位です。
 
-1 Generation は必ず1 Batchに属します。別の Experiment / Story
-で再利用しても、元の Batch 所属は変更しません。
+1 Generation は必ず1 Requestに属します。別の Experiment
+で再利用しても、元の Request 所属は変更しません。
+
+`refines_generation_id` は仕上げ元の Generation です。ingest 時に Job の `source_generation_id` から写し、raw の
+Generation は NULL です。
 
 MVPでは1 Generationにつき Character は0..1です。
 
@@ -705,7 +677,8 @@ MVPでは1 Generationにつき Character は0..1です。
 ``` text
 id
 short_id
-batch_id
+request_id
+refines_generation_id
 comfy_job_id
 character_id
 seed
@@ -757,8 +730,8 @@ Publication を持つ
 preset_reference の pin (generation_id または source_generation_id) である
 Preset の source_generation_id である
 Experiment の base_generation_id である
-他 Batch の BatchReference の source_generation_id である（参照材料として使われている）
-他 Batch の refines_generation_id である（finalize/repair/masked_redraw の仕上げ元）
+他 Request の素材参照（request_references）の source_generation_id である（参照材料として使われている）
+他の Generation の refines_generation_id である（finalize/repair/masked_redraw の仕上げ元）
 進行中 (queued/running) の finalize/repair/masked_redraw request の対象である
 ```
 
@@ -894,20 +867,20 @@ aliases
 
 MVPでは複数キャラクター画像を対象外とします。
 
-## BatchReference
+## 素材参照
 
-新しい Batch を生成するために、過去 Generation
-の何を参照したかを表す強い provenance です。
+新しい Request を生成するために、過去 Generation
+の何を参照したかを表す強い provenance です（`request_references`）。
 
 ``` text
-Generation ──▶ Batch
+Generation ──▶ Request
 ```
 
 例:
 
 ``` text
 G123 -- pose ----\
-                  > B200
+                  > R200
 G456 -- outfit --/
 ```
 
@@ -916,7 +889,7 @@ G456 -- outfit --/
 ``` text
 id
 source_generation_id
-target_batch_id
+target_request_id
 purpose
 aspect
 instruction
@@ -928,7 +901,6 @@ purpose 例:
 ``` text
 composition
 reference
-rebuild
 continuity
 ```
 
@@ -943,94 +915,14 @@ composition
 other
 ```
 
-## BatchRelation
+仕上げ元は素材参照に含めません。`purpose = rebuild` の参照は `request_references` に
+写さず、`refines_generation_id` が持ちます。
 
-生成試行としての Batch 間関係です。
+## 仕上げ元
 
-``` text
-B001 -- refinement --> B002
-```
-
-Claude
-の自動再試行と、人間の追加指示による再試行を同じモデルで表現し、actor
-で区別します。
-
-``` text
-id
-source_batch_id
-target_batch_id
-type
-actor
-reason
-raw_instruction
-created_at
-```
-
-actor:
-
-``` text
-human
-claude
-```
-
-type 例:
-
-``` text
-refinement
-retry
-variation
-```
-
-## Story
-
-生成 provenance とは独立した、作品・世界観上の連続性です。
-
-Story は独立エンティティとして扱います。Tag は分類用途であり、Story の
-sequence / branch / merge を Tag 階層に押し込みません。
-
-主な属性:
-
-``` text
-id
-name
-description
-note
-bookmark
-created_at
-```
-
-## StoryRelation
-
-Story 上の Batch 間の遷移です。
-
-分岐・合流を許す DAG とします。
-
-``` text
-B010
- ├── "海へ行く" ──▶ B020
- └── "帰宅する" ──▶ B021
-```
-
-主な属性:
-
-``` text
-id
-story_id
-source_batch_id
-target_batch_id
-raw_instruction
-label
-description
-generated_by
-created_at
-updated_at
-```
-
-`label` / `description` は原則 Claude
-が会話から自動生成して即時保存し、人間は必要な場合のみ後編集します。
-
-Story は「何の続きか」を表し、BatchReference
-は「何を材料にしたか」を表します。両者を混同しません。
+finalize / repair / masked_redraw の出力 Generation は、仕上げた元の Generation を
+`generations.refines_generation_id` で直接指します。再試行の関係は持ちません。
+素材参照（Generation → Request）とは別の関係で、統合しません。
 
 ## Tag
 
@@ -1050,8 +942,6 @@ FK 整合性を維持するため、assignment は対象ごとに分けます。
 
 ``` text
 generation_tags
-batch_tags
-story_tags
 experiment_tags
 ```
 
@@ -1103,8 +993,6 @@ Bookmark は「後から素早く呼び出す」ための状態です。
 
 ``` text
 Generation
-Batch
-Story
 Experiment
 ```
 

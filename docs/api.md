@@ -19,6 +19,7 @@ Web GUI     → Read / user mutation
     ヘッダーを送ること。
 -   `references` / `refinement` / `story` は request.json
     と同様、キー省略と明示的な `null` のどちらも「該当なし」として受理する。
+    `story` は値の形を問わず受理して無視する（Story は廃止済み）。
 
 代表的な流れ:
 
@@ -88,74 +89,11 @@ failed
 GET /api/v1/batches/{id-or-short-id}
 ```
 
-既存のフィールド（`references` / `relations.outgoing` / `relations.incoming` /
-`story_relations` など）に加え、GUIの「親・子・兄弟」表示向けに以下を追加で返します
-（Web GUI 専用ではなく通常のBatch取得レスポンスの一部です）:
-
-``` json
-{
-  "reference_children": [
-    { "batch_id": "...", "source_generation_id": "...", "purpose": "composition", "aspect": "pose" }
-  ],
-  "siblings": [
-    { "batch_id": "...", "via": "refinement", "shared_id": "..." },
-    { "batch_id": "...", "via": "reference", "shared_id": "..." }
-  ],
-  "experiment_run": {
-    "experiment": { "id": "...", "short_id": "...", "name": "..." },
-    "run": { "id": "...", "run_index": 2 },
-    "parent": { "run_id": "...", "run_index": 1, "batch_id": "..." },
-    "children": [{ "run_id": "...", "run_index": 3, "batch_id": "..." }],
-    "siblings": [{ "run_id": "...", "run_index": 4, "batch_id": "..." }]
-  }
-}
-```
-
--   `reference_children`: このBatchのGenerationを材料として使った他Batchの一覧
--   `siblings`: 自分以外で親を共有するBatchの一覧。`via: "refinement"`
-    は同じrefinement元Batchを持つBatch（`shared_id` はそのBatchのid）、
-    `via: "reference"` は同じGenerationを材料に使ったBatch（`shared_id`
-    はそのGenerationのid）
--   `experiment_run`: このBatchに紐づく ExperimentRun（`experiment_runs.batch_id`
-    がこのBatch）があれば、その親/子/兄弟。`parent` は `parent_run_id`
-    の指す Run（batch未付与なら含めない）、`children` は自分を
-    `parent_run_id` に持つ Run、`siblings` はそれ以外の同じ Experiment の
-    Run（いずれも batch 未付与のものは含めない）。該当する ExperimentRun
-    が無ければ `null`。BatchReference / BatchRelation / StoryRelation
-    とは別物の、表示専用の4本目の軸です（[domain-model.md](domain-model.md#experiment)）。
-
-### List Batches
-
-``` text
-GET /api/v1/batches
-```
-
-主なquery:
-
-``` text
-bookmark   # "true" | "false"
-status
-limit
-offset
-```
-
-`created_at` DESC順です。各行に先頭 Generation のサムネイル情報を付けて返します。
-
-``` json
-{
-  "items": [
-    {
-      "id": "...",
-      "short_id": "abc123",
-      "status": "completed",
-      "recipe": "yukari",
-      "created_at": "...",
-      "generation_count": 9,
-      "thumbnail": { "id": "...", "short_id": "def456", "rating": null, "bookmark": false }
-    }
-  ]
-}
-```
+Batch の列に加え、`jobs[]`（`graph` / `render_facts` 付き）、`generations[]`（軽量表現と
+`refines_generation_short_id`）、`references[]`（このBatchが素材に使ったGeneration）、
+`relations.outgoing` / `relations.incoming`（`type = refinement` の Relation）を返します。
+現行の comfyui-recipes（finalize / repair / masked_redraw / work）が仕上げ元を読むために
+使う互換の読み取りで、GUI は使いません。Batch の一覧、tag、bookmark の API はありません。
 
 ## ComfyJob
 
@@ -259,7 +197,7 @@ sampler ごとの prompt・latent だけ）。
 `version` が現在の `RENDER_FACTS_VERSION` 未満（v1 キャッシュのように
 `version` フィールド自体が無い場合を含む）は「未抽出」を意味し、graph はある
 がfactsがまだ無い（または古い）行は最初の読み取り時（Generation detail /
-Batch detail / Experiment run のいずれか）に抽出してその場で書き戻します。
+Experiment run のいずれか）に抽出してその場で書き戻します。
 
 original が保持期間を過ぎて purge / 再圧縮の対象になった Generation は、original の
 PNG が持つ `prompt` text chunk から `comfy_job.graph` を救出済みなので
@@ -269,13 +207,13 @@ PNG が持つ `prompt` text chunk から `comfy_job.graph` を救出済みなの
 `render_facts` は以下の箇所に現れます:
 
 -   `GET /api/v1/generations/{id}` の `comfy_job.render_facts`（同じレスポンスの
-    `comfy_job.graph` は投稿された prompt グラフ全体、`batch.negative_prompt`
-    は所属 Batch の negative prompt — どちらも `/g/` の Workflow セクション
+    `comfy_job.graph` は投稿された prompt グラフ全体、`request.negative_prompt`
+    は所属 Request の先頭 Job の negative prompt — どちらも `/g/` の Workflow セクション
     が「グラフから再現できる形」を組み立てる材料）
--   `GET /api/v1/batches/{id}` の各 `jobs[].render_facts`
+-   `GET /api/v1/batches/{id}` の各 `jobs[].render_facts`（互換の読み取り）
 -   ExperimentRun（`GET /api/v1/experiments/{id}` の `runs[]` /
     `GET /api/v1/experiments/{id}/runs` / `GET /api/v1/experiment-runs/{id}` /
-    MCP `get_experiment` / `get_run`）の `render_facts`。Run の Batch に
+    MCP `get_experiment` / `get_run`）の `render_facts`。Run の結果 Request に
     紐づく Job のうち、`job_index` が最小で graph を持つものから解決します
 
 Job status:
@@ -392,7 +330,7 @@ GET /api/v1/experiments/{id-or-short-id}
 ```
 
 List item と同じフィールドに加え、`tags` と `runs`（`run_index`
-昇順。各 Run に `batch` / `generation` が付く）、`promotions` を返します。
+昇順。各 Run に `request` / `generation` が付く）、`promotions` を返します。
 
 ``` json
 {
@@ -418,7 +356,6 @@ List item と同じフィールドに加え、`tags` と `runs`（`run_index`
       "experiment_id": "...",
       "run_index": 1,
       "parent_run_id": null,
-      "batch_id": "...",
       "generation_id": "...",
       "overrides": { "pose": { "hip_rotation": 4 } },
       "objective": "...",
@@ -427,7 +364,7 @@ List item と同じフィールドに加え、`tags` と `runs`（`run_index`
       "note": null,
       "created_at": "...",
       "updated_at": "...",
-      "batch": { "id": "...", "short_id": "...", "thumbnail_url": "..." },
+      "request": { "id": "...", "short_id": "...", "thumbnail_url": "...", "thumbnail_generation_short_id": "..." },
       "generation": { "id": "...", "short_id": "..." }
     }
   ],
@@ -474,7 +411,8 @@ POST /api/v1/experiments/{id}/runs
 }
 ```
 
-`batch_id` / `generation_id` はUUID / short_idのどちらでも受けます。`run_index`
+`generation_id` はUUID / short_idのどちらでも受けます（互換のため `batch_id` も受け、Run の結果の
+Request は `requests.run_id` で引くので出力には含めません）。`run_index`
 は Experiment 内で自動採番されます。
 
 `idempotency_key` は省略可能です。渡した場合、同じキーの再送は新規作成せず既存
@@ -519,7 +457,7 @@ GET /api/v1/experiments/{id}/runs
 GET /api/v1/experiment-runs/{run_id}
 ```
 
-Run の各フィールドに加え、`batch` / `generation` と以下を返します。
+Run の各フィールドに加え、`request` / `generation` と以下を返します。
 
 ``` json
 "experiment": {
@@ -553,13 +491,13 @@ PATCH /api/v1/experiment-runs/{run_id}
 }
 ```
 
-`batch_id` / `generation_id` はattach専用でnullを受けません。`evaluation`
+`generation_id`（と互換の `batch_id`）はattach専用でnullを受けません。`evaluation`
 / `decision` / `variables` は明示nullでクリアできます。
 
 409のケース:
 
--   Batch / Generation がattach済みのRunで `overrides` を変更しようとした
--   既にattach済みの `batch_id` / `generation_id` を別のものへ付け替えようとした
+-   Generation がattach済みのRunで `overrides` を変更しようとした
+-   既にattach済みの `generation_id` を別のものへ付け替えようとした
 
 ## ExperimentPromotion
 
@@ -629,26 +567,27 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)
-GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&batch_id=&pending=true&limit=&offset=
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意）
+GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
+PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe / parameters / patches / pose_fingerprint / preset_versions / git_commit / git_dirty / references）を報告。200（再送・Job 作成前の上書き）/ 409（Job 作成後に別の値）。応答は { id, short_id, status, jobs[] }
+POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。finalize・repair・masked_redraw は source_generation_id 必須
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
 ```
 
 `GET` のクエリパラメータ:
 
--   `status` / `kind`: 完全一致
+-   `status` / `kind`: 完全一致。`kind` には `import`（worker を通らず登録側が `done` で作る Request）も指定できる
 -   `run_id`: `kind = generate` の行のみ持つ
 -   `generation_id`: `kind = finalize` / `kind = repair` / `kind = masked_redraw` の行を対象に、その
     `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
--   `batch_id`: 同様に `kind = finalize` / `kind = repair` / `kind = masked_redraw` の行を、その Batch 配下の
-    Generation を対象にしたものに絞る（UUID / short_id どちらでも可）
+-   `worker_id`: claim した worker
 -   `pending=true`: `status=queued` の別名
 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
-（`payload_hash` は内部実装なので含めません）。
+（`payload_hash` は内部実装なので含めません）。`short_id` は生成前に worker が解決値を報告するまで `null` です。
 
 `kind = finalize` / `repair` / `masked_redraw` の作成は、`payload.generation_id` が指す
 Generation の original が purge 済み（`original_purged_at` 非 null）なら 409
@@ -660,8 +599,9 @@ derive request は対象外です。
 ### Summary
 
 `GET /api/v1/requests/summary` は queued / running の全件と、直近24hに failed
-になった件のみを対象に、Batch（finalize/repair/masked_redraw）または Experiment（generate、
-`run_id` があるとき）単位にまとめて返します。GUI ナビの queue pill 専用で、他のフィルタは
+になった件のみを対象に、仕上げ元 Generation が属する Request（finalize/repair/masked_redraw）または
+Experiment（generate、`run_id` があるとき）単位にまとめて返します。仕上げ元が解決できない行と、`run_id` の無い
+generate は request 単体のグループです。GUI ナビの queue pill 専用で、他のフィルタは
 持ちません。
 
 ``` json
@@ -670,10 +610,10 @@ derive request は対象外です。
   "workers": [{ "worker_id": "w1", "kinds": ["finalize"], "connected_at": "2026-09-11T00:00:00.000Z" }],
   "groups": [
     {
-      "key": "batch:...",
-      "batch": { "id": "...", "short_id": "b_7k2m9q", "thumbnail_generation_short_id": "g_..." },
+      "key": "request:...",
+      "request": { "id": "...", "short_id": "b_7k2m9q", "thumbnail_generation_short_id": "g_..." },
       "experiment": null,
-      "href": "/b/b_7k2m9q",
+      "href": "/g/g_...",
       "kinds": { "finalize": 2 },
       "counts": { "queued": 1, "running": 1, "failed": 0 },
       "latest_at": "2026-09-11T00:00:00.000Z"
@@ -686,7 +626,8 @@ derive request は対象外です。
     fetch が失敗しても `workers: []` で 200 を返します
 -   `groups` は最大20件。running を含むグループを先頭に、次いで `latest_at`（グループ内の
     `claimed_at` / `finished_at` / `created_at` の最大値）降順
--   `batch` / `experiment` / `href` は解決できないとき（generate で `run_id` が無い行など）null
+-   `request` / `experiment` / `href` は解決できないとき（generate で `run_id` が無い行など）null。`request` は仕上げ元の
+    Request で、`thumbnail_generation_short_id` はその最初の Generation、`href` はその `/g/{short_id}`
 -   generate かつ `run_id` があるグループは `experiment` に所属 Experiment の `id` / `short_id`
     を持ち、`href` はその詳細ページ（`/experiments/{short_id}`）
 
@@ -722,9 +663,8 @@ instruction / prompt patch、`denoise` は (0, 0.75]（低〜中程度は0.2〜0
 で、受け付け後はそれぞれ canonical key に正規化して request payload に保存されます。
 canonical key と同時には指定できません。
 
-worker は source Generation を変更せず、新しい refinement Batch、source への
-`purpose = rebuild` Reference、source Batch への `type = refinement` Relation、および
-新しい Generation を作ります。request payload と target Batch の `parameters` / `prompt`
+worker は source Generation を変更せず、source を仕上げ元（`refines_generation_id`）とする
+新しい Generation を作ります。request payload と Request の `parameters` / Job の graph
 には patch、regions、denoise、padding、feather を残し、再現可能性を保ちます。chimera
 自体は ComfyUI graph を実行せず、comfyui-recipes の masked-img2img / inpaint adapter
 境界を worker protocol として公開します（詳細は
@@ -787,13 +727,13 @@ GUI 用に `recipe`/`pose` を Generation から推測する薄いラッパー�
 { "generation_id": "abc123", "name": "lounge", "kind": "pose", "base_version": 7, "note": "...", "idempotency_key": "..." }
 ```
 
-base になる版は、その Batch を作った generate request が pin していた版です。pin が無い
+base になる版は、その Generation を作った generate request が pin していた版です。pin が無い
 Generation（段階 B より前のもの）では `base_version` が要ります。どちらも無ければ 409
 （`no pinned preset for this generation; pass base_version`）で、chimera は base を推測しません。
 
-起点 Generation の rating が good でなければ 409（`promote requires rating good`）、起点 Batch が
-recipe を持たない graph-mode なら 409、Batch が patches を持たなければ 409
-（`promote requires a batch with patches`）です。patches と `base_fingerprint` は Batch 行から
+起点 Generation の rating が good でなければ 409（`promote requires rating good`）、起点 Request が
+recipe を持たない graph-mode なら 409、Request が patches を持たなければ 409
+（`promote requires a request with patches`）です。patches と `base_fingerprint` は Request 行から
 取ります。既存の版は書き換えません。`idempotency_key` の再送は、既に作られた版をそのまま
 200 で返します。
 
@@ -835,8 +775,7 @@ finalize request の `options` をまとめて一発で選ぶための Preset �
 { "generation_id": "abc123", "name": "daily", "note": "...", "idempotency_key": "..." }
 ```
 
-`generation_id` は `rating = good` かつ、`result.batch_id` がその Batch を指す
-`kind = finalize` request を持つ Generation（納品 Generation か、相乗りした repair が
+`generation_id` は `rating = good` かつ、所属 Request が `kind = finalize` である Generation（納品 Generation か、相乗りした repair が
 あればその sibling）でなければならず、それ以外は409
 （`generation is not a finalize-kind result; nothing to promote from`）。body はその
 finalize request が queued した時点の `payload.options`（profile 展開後、word はそのまま）を
@@ -955,7 +894,7 @@ MCP `get_catalog_pose` で1件だけ引きます。`get_catalog_pose` のレス�
 同じ形の `reference`（pin が無ければ `null`）が付きます。Agent はまず `list_catalog` で
 pose 名を確かめ、名前のある look は `plain_render` が pin の seed で再現し、派生はこの
 `reference` の Generation から `derive_request` を起こします。既存の Generation がどの pose を
-描いたかとその pin は `get_generation` / `list_batch` の `batch.drawn_pose`
+描いたかとその pin は `get_generation` の `request.drawn_pose`
 （[Generation Context](#generation-context)）で分かります。
 
 `dials` は `{ finalize?: {optionKey: {word: number}}, repair?: {...}, patches?: {...} }` の
@@ -1053,7 +992,7 @@ POST /api/v1/experiments/{id}/judgments
 }
 ```
 
-`winner`は`verdict`と各Generationの所属batchから導いた`baseline` / `arm` /
+`winner`は`verdict`と各Generationの所属Requestから導いた`baseline` / `arm` /
 `tie`です（`left_generation_id` / `right_generation_id`自体は向きを覚えているだけで、
 どちらがbaselineかは表現しません）。
 
@@ -1074,14 +1013,14 @@ arm run それぞれの render_facts サマリ（`RENDER_FACT_COLUMNS` に続け
 
 -   `baseline_run_id` と `arm_run_id` が同じ
 -   `baseline_run_id` / `arm_run_id` が別のExperimentのRun
--   baseline run と arm run が同じ batch を指している
+-   baseline run と arm run が同じ request を指している
 -   `left_generation_id` / `right_generation_id`
-    がbaseline runのbatchとarm runのbatchから一つずつになっていない
+    がbaseline runのrequestとarm runのrequestから一つずつになっていない
 -   `left_generation_id` / `right_generation_id` の `seed` が `seed` フィールドと一致しない
 
 409のケース:
 
--   `baseline_run_id` / `arm_run_id` のいずれかに `batch_id` が付いていない
+-   `baseline_run_id` / `arm_run_id` のいずれかに結果の Request（`requests.run_id` がその Run を指す done の generate Request）が無い
 -   同じ `(baseline_run_id, arm_run_id, seed)` に対する2回目のjudgment
 
 ### List Judgments
@@ -1121,7 +1060,7 @@ GET /api/v1/experiments/{id}/judgments/summary
     {
       "run_id": "...",
       "run_index": 1,
-      "batch_id": "...",
+      "request_id": "...",
       "generation_count": 9,
       "rating": { "good": 4, "neutral": 3, "bad": 0, "unrated": 2 }
     }
@@ -1131,8 +1070,8 @@ GET /api/v1/experiments/{id}/judgments/summary
 
 `win` / `loss` / `tie` はarmから見た結果（`win` =
 armが選ばれた数）です。`pairs`は実際にjudgmentがあるbaseline/armの組だけを持ちます。`runs`は
-Experimentの全Run（`batch_id`未attachのRunも`generation_count: 0`
-で含む）で、`rating`はそのRunのbatchに属する全Generationの評価内訳です（未評価は
+Experimentの全Run（結果のRequestが無いRunも`request_id: null`、`generation_count: 0`
+で含む）で、`rating`はそのRunの結果Requestに属する全Generationの評価内訳です（未評価は
 `unrated`）。
 
 ## Generation Ingest
@@ -1284,21 +1223,51 @@ GET /api/v1/generations/{id-or-short-id}/context
   "batch": {
     "id": "..."
   },
+  "request": {
+    "id": "...",
+    "short_id": "...",
+    "kind": "generate",
+    "recipe": "yukari",
+    "raw_instruction": "...",
+    "prompt": "...",
+    "negative_prompt": "...",
+    "parameters": { "pose": "lounge" },
+    "patches": [],
+    "preset_versions": [{ "kind": "pose", "name": "lounge", "version": 1 }],
+    "git_commit": "...",
+    "git_dirty": false,
+    "drawn_pose": { "recipe": "yukari", "pose": "lounge", "reference": null }
+  },
+  "generations": [
+    { "id": "...", "short_id": "abc123", "image_width": 832, "image_height": 1216, "comfy_output_index": 0 }
+  ],
   "references": [],
   "used_by": []
 }
 ```
 
-`references` はこのGenerationを材料として使ったBatch向けの
-BatchReferenceそのもの（`target_batch_id`
-を持つ）で、`used_by` は同じ行を `batch_id`
-キーで返す簡易版です（どちらもこのGenerationを材料に使ったBatchの一覧）。
+`request` はこの Generation が属する Request で、所属が無ければ `null` です。
+`kind` は `generate` / `finalize` / `repair` / `masked_redraw` / `import` のいずれか、
+`parameters` / `patches` / `preset_versions` は未報告なら `null` です。
+`prompt` / `negative_prompt` は Request の先頭 Job（`job_index` が最小で graph を持つもの）の
+`render_facts` の先頭 sampler から取ります。Job に graph が無ければ `null` です。
+`generations` は同じ Request に属する全 Generation（この Generation 自身を含む）で、
+`comfy_output_index` 順ではなく作成順です。worker は GET /batches/{id} の代わりに、ここから
+recipe と parameters（`kind` / `base_generation` を含む）と各 Generation の
+`short_id` / `image_width` / `image_height` を読みます。
+
+`batch` は現行の comfyui-recipes が仕上げ元の Batch を引くために残している互換のフィールドです
+（`GET /api/v1/batches/{id}`）。
+
+`references` はこのGenerationを素材として使った Request への素材参照（`request_references`）で、
+`{ id, target_request_id, purpose, aspect, instruction, created_at }` を返します。`used_by` は同じ行を
+`request_id` キーで返す簡易版です（どちらもこのGenerationを素材に使った Request の一覧）。
 
 ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 
-`GET /api/v1/generations/{id}` はこの内容に `batch`（`prompt` / `recipe` /
-`raw_instruction` / `preset_versions` / `drawn_pose` 込み）と `comfy_job`（`graph` / `render_facts`）、
-`original_filename`、`refines_generation`（Batchの`refines_generation_id`が指す
+`GET /api/v1/generations/{id}` はこの内容に `comfy_job`（`graph` / `render_facts`）、
+`original_filename`、`siblings`（同じ Request の他の Generation。`generations` から自分自身を除いたもの）、
+`refines_generation`（`generations.refines_generation_id`が指す
 finalize / repair / masked_redraw前のGeneration `{ "id", "short_id", "rating" }`、rawなら
 `null`）、`publications`（[Publication](#publication)の一覧、
 新しい順）、`pose_reference`（このGenerationが現行の pose 基準 render として pin
@@ -1307,22 +1276,21 @@ finalize / repair / masked_redraw前のGeneration `{ "id", "short_id", "rating" 
 `src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
 `get_generation` もここを呼ぶ同じ形を返します。
 
-`batch.drawn_pose` は `{ "recipe": "...", "pose": "...", "reference": {...} | null }` で、
-この Generation の Batch が描いた pose（`preset_versions` の pose pin、無ければ
+`request.drawn_pose` は `{ "recipe": "...", "pose": "...", "reference": {...} | null }` で、
+この Generation の Request が描いた pose（`preset_versions` の pose pin、無ければ
 `parameters.pose`）と、その pose の現行の基準 render の pin（[Preset](#preset) の `reference`
-と同じ `{ generation_id, short_id, seed }`、pin が無ければ `null`）です。Batch が recipe か
-pose を持たなければ（graph-mode、finalize / repair の Batch）`drawn_pose` 自体が `null` です。
+と同じ `{ generation_id, short_id, seed }`、pin が無ければ `null`）です。Request が recipe か
+pose を持たなければ（graph-mode、finalize / repair の Request）`drawn_pose` 自体が `null` です。
 `pose_reference` が「この Generation 自身が pin か」を答えるのに対し、`drawn_pose` は
-「同じ pose の基準はどこか」を答えます。MCP `list_batch` の `batch` にも同じ `drawn_pose` が
-付きます。Agent の手順は catalog（`list_catalog`）で pose 名を確かめ、名前のある look は
+「同じ pose の基準はどこか」を答えます。Agent の手順は catalog（`list_catalog`）で pose 名を確かめ、名前のある look は
 `plain_render` で pin の seed から再現し、派生は pin の Generation から `derive_request` を
 起こす順です（[experiment-agent.md](experiment-agent.md)）。
 
 `comfy_job.prompt_not_reusable` は、render_facts の prompt を generate に流用してはいけない
-Generation で `{ "reason": ..., "message": ... }` になり、それ以外は `null` です。所属 Batch の
+Generation で `{ "reason": ..., "message": ... }` になり、それ以外は `null` です。所属 Request の
 `parameters.kind` から決めます。
 
-  reason            Batch の parameters
+  reason            Request の parameters
   ----------------- ---------------------------------------------
   repair            `kind: "repair"`
   masked_redraw     `kind: "masked_redraw"`
@@ -1368,8 +1336,8 @@ to=2026-08-26
 ```
 
 検索結果には short ID、canonical URL、thumbnail/image
-URL、summary、`refines_generation_short_id`（この Generation の Batch が finalize/repair/
-masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）、`published`
+URL、summary、`refines_generation_short_id`（この Generation が finalize/repair/
+masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）、`request_id`、`published`
 （[Publication](#publication)を1件以上持つか）、`reference`（現行の pose 基準 render として
 pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
 [Pose Reference Pin](#pose-reference-pin)参照）、`finalize_request`
@@ -1386,7 +1354,7 @@ WebP に変換していることがあり、その場合 `image_url` は `Conten
 （[domain-model.md](domain-model.md#original-の保持)）。null なら未削除で、`image_url`
 がそのまま使えます。非 null な Generation を `image_url` で読むと 410 です — `thumbnail_url`
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation
-表現（Generation Search / Context / Batch/Story 埋め込み / MCP の対応する出力）に付きます。
+表現（Generation Search / Context / Batch 埋め込み / MCP の対応する出力）に付きます。
 
 `finalize_request` は、この Generation を対象にした最新の finalize / repair /
 masked_redraw [Request](#request)（`payload.generation_id` がこの Generation の UUID /
@@ -1470,6 +1438,9 @@ POST /api/v1/batches/{id}/references
 }
 ```
 
+現行の comfyui-recipes が使う互換の書き込みで、Batch と同時にその Request の素材参照
+（`request_references`、`purpose = rebuild` を除く）へも写します。
+
 ## Batch Relation
 
 ``` text
@@ -1485,169 +1456,9 @@ POST /api/v1/batches/{target_batch_id}/relations
 }
 ```
 
-## Story
-
-### Create Story
-
-``` text
-POST /api/v1/stories
-```
-
-``` json
-{
-  "name": "海辺のシリーズ",
-  "description": "..."
-}
-```
-
-### List Stories
-
-``` text
-GET /api/v1/stories
-```
-
-`created_at` DESC順です。各行に `batch_count`（その Story の StoryRelation が指す Batch の
-重複無し件数）を付けて返します。
-
-``` json
-{
-  "items": [
-    {
-      "id": "...",
-      "name": "海辺のシリーズ",
-      "description": "...",
-      "note": null,
-      "bookmark": false,
-      "created_at": "...",
-      "batch_count": 3
-    }
-  ]
-}
-```
-
-### Get Story
-
-``` text
-GET /api/v1/stories/{id}
-```
-
-Story 本体に加えて、その StoryRelation が指す Batch（各 Batch の代表 Generation 付き）、
-relation 一覧、tag 一覧を返します。
-
-``` json
-{
-  "id": "...",
-  "name": "海辺のシリーズ",
-  "description": "...",
-  "note": null,
-  "bookmark": false,
-  "created_at": "...",
-  "relations": [
-    {
-      "id": "...",
-      "source_batch_id": "...",
-      "target_batch_id": "...",
-      "label": "海辺へ移動",
-      "description": "...",
-      "raw_instruction": "...",
-      "generated_by": "...",
-      "created_at": "...",
-      "updated_at": "..."
-    }
-  ],
-  "batches": [
-    { "id": "...", "short_id": "...", "representative_generation": { "id": "...", "short_id": "..." } }
-  ],
-  "tags": ["..."]
-}
-```
-
-### Update Story
-
-``` text
-PATCH /api/v1/stories/{id}
-```
-
-`name` / `description` / `note` を部分更新します（`description` / `note` は明示 `null` で
-クリアできます）。
-
-## Story Relation
-
-``` text
-POST /api/v1/stories/{story_id}/relations
-```
-
-``` json
-{
-  "source_batch_id": "B010",
-  "target_batch_id": "B020",
-  "label": "海辺へ移動",
-  "description": "...",
-  "raw_instruction": "..."
-}
-```
-
-### Update Story Relation
-
-``` text
-PATCH /api/v1/stories/{story_id}/relations/{relation_id}
-```
-
-`label` / `description` を部分更新します（明示 `null` でクリアできます）。
-
-## Graph
-
-生成履歴全体をBatch単位のノードとして返します。
-
-``` text
-GET /api/v1/graph
-```
-
-``` json
-{
-  "nodes": [
-    {
-      "id": "...",
-      "short_id": "...",
-      "raw_instruction": "先頭60文字",
-      "status": "...",
-      "created_at": "...",
-      "generation_count": 3,
-      "thumbnail_generation_short_id": "... or null"
-    }
-  ],
-  "edges": [
-    {
-      "type": "reference",
-      "source_batch_id": "...",
-      "target_batch_id": "...",
-      "label": "pose (abc123)",
-      "source_generation_short_id": "abc123",
-      "aspect": "pose"
-    },
-    {
-      "type": "relation",
-      "source_batch_id": "...",
-      "target_batch_id": "...",
-      "label": "refinement / human",
-      "relation_type": "refinement",
-      "actor": "human"
-    },
-    {
-      "type": "story",
-      "source_batch_id": "...",
-      "target_batch_id": "...",
-      "label": "<story name>: <relation label>",
-      "story_id": "..."
-    }
-  ]
-}
-```
-
-`edges[].type`はBatchReference / BatchRelation /
-StoryRelationに対応し、統合しません（[domain-model.md](domain-model.md#overview)
-参照）。reference エッジは、Generation起点のBatchReferenceをsource
-Generationが属するBatchへ集約したものです。source/targetが同一Batchになるものは除外します。
+現行の comfyui-recipes が使う互換の書き込みです。効くのは `type = refinement` だけで、
+`purpose = rebuild` の Batch Reference と対になったとき、その Batch の Generation の
+`refines_generation_id` を導出します。他の `type` は受理しますが何も導出しません。
 
 ## Publication
 
@@ -1664,7 +1475,7 @@ DELETE /api/v1/publications/{id}                      204
 `url` は省略・`null` いずれも「まだ無い」を表し、後から `PATCH` で埋められます。
 指定する場合は `https://` で始まる URL である必要があります（それ以外は400）。
 `published_at` を省略すると記録した時刻になります。`idempotency_key` を渡すと、
-同じキーの再送は新しい行を作らず既存行を200で返します（Batch create 等と同じ
+同じキーの再送は新しい行を作らず既存行を200で返します（Request create 等と同じ
 [Idempotency](#idempotency) パターン）。
 
 `GET /api/v1/generations` に `published=true|false` フィルタがあり、各アイテムに
@@ -1681,7 +1492,7 @@ POST /api/v1/generations/{id}/pose-reference   {idempotency_key?}
 GUI の Generation Detail の「基準にする」ボタンが呼ぶ窓口です
 （[ui.md](ui.md#generation-detail)、[domain-model.md](domain-model.md#基準-render-の-pin)）。
 MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — この Generation を
-`resolveDerivationSource` で raw Batch まで遡り、その `recipe` と drawn pose
+`resolveDerivationSource` で raw Generation の Request まで遡り、その `recipe` と drawn pose
 （`preset_versions_json` の pose pin、無ければ `parameters_json.pose`）から推測します。
 どちらも特定できなければ 409（`cannot infer which pose to pin`）です。
 
@@ -1727,12 +1538,6 @@ pin が無いポーズは `skipped: "no_pin"` で、request は積まれませ�
 POST   /api/v1/generations/{id}/tags
 DELETE /api/v1/generations/{id}/tags/{tag_id}
 
-POST   /api/v1/batches/{id}/tags
-DELETE /api/v1/batches/{id}/tags/{tag_id}
-
-POST   /api/v1/stories/{id}/tags
-DELETE /api/v1/stories/{id}/tags/{tag_id}
-
 POST   /api/v1/experiments/{id}/tags
 DELETE /api/v1/experiments/{id}/tags/{tag_id}
 ```
@@ -1744,12 +1549,6 @@ Tag本体はrename/delete可能です。
 ``` text
 PUT    /api/v1/generations/{id}/bookmark
 DELETE /api/v1/generations/{id}/bookmark
-
-PUT    /api/v1/batches/{id}/bookmark
-DELETE /api/v1/batches/{id}/bookmark
-
-PUT    /api/v1/stories/{id}/bookmark
-DELETE /api/v1/stories/{id}/bookmark
 
 PUT    /api/v1/experiments/{id}/bookmark
 DELETE /api/v1/experiments/{id}/bookmark
@@ -1779,7 +1578,7 @@ PUT /api/v1/generations/{id}/rating
 
 ``` text
 /g/{short_id}
-/b/{short_id}
+/b/{short_id}    # Request の short_id。最初の Generation の /g/ へ 302
 ```
 
 Experiment の人間向けパスは `/experiments/{short_id}` です。
@@ -1791,7 +1590,7 @@ APIへ解決可能な設計とします。
 
 以下は必須です。
 
--   Batch create
+-   Batch create（互換の書き込み）
 -   ComfyJob create
 -   Generation ingest
 -   Request create（同じキーで `kind` / payload が異なれば409。

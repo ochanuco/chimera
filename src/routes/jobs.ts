@@ -7,7 +7,6 @@ import { badRequest, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import { parsePngDimensions } from '../lib/image-meta';
 import { extractRenderFacts } from '../lib/render-facts';
-import { JOB_SOURCE_GENERATION_ID_SQL } from '../lib/batch-request-sync';
 import { notifyHubGeneration, runInBackground } from '../lib/hub-notify';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
@@ -133,7 +132,7 @@ jobs.post('/:jobId/generations', async (c) => {
           comfy_output_index, r2_object_key, image_width, image_height, image_size, note, rating, bookmark,
           semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at,
           request_id, refines_generation_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ${JOB_SOURCE_GENERATION_ID_SQL})`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -150,7 +149,7 @@ jobs.post('/:jobId/generations', async (c) => {
         imageSize,
         now,
         job.request_id ?? null,
-        job.batch_id,
+        job.source_generation_id ?? null,
       )
       .run();
   } catch (err) {
@@ -176,21 +175,21 @@ jobs.post('/:jobId/generations', async (c) => {
 
   // Gallery live insertion (docs/ui.md「Gallery」) only fires for the new row, not an
   // idempotent resend, which every viewer's grid already has.
-  const batchRow = await db
-    .prepare('SELECT refines_generation_id FROM batches WHERE id = ?')
-    .bind(job.batch_id)
+  const insertedRow = await db
+    .prepare('SELECT refines_generation_id FROM generations WHERE id = ?')
+    .bind(id)
     .first<{ refines_generation_id: string | null }>();
   let refinesGenerationShortId: string | null = null;
-  if (batchRow?.refines_generation_id) {
-    const shortIds = await resolveGenerationShortIds(db, [batchRow.refines_generation_id]);
-    refinesGenerationShortId = shortIds.get(batchRow.refines_generation_id) ?? null;
+  if (insertedRow?.refines_generation_id) {
+    const shortIds = await resolveGenerationShortIds(db, [insertedRow.refines_generation_id]);
+    refinesGenerationShortId = shortIds.get(insertedRow.refines_generation_id) ?? null;
   }
   runInBackground(
     c,
     notifyHubGeneration(c.env, {
       generation_id: id,
       short_id: shortId,
-      batch_id: job.batch_id,
+      request_id: job.request_id ?? null,
       refines_generation_short_id: refinesGenerationShortId,
       created_at: now,
     }),

@@ -1,5 +1,6 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createGeneration, getJson, postJson } from './helpers';
+import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, setJobGraph } from './helpers';
 
 interface ContextShape {
   id: string;
@@ -46,20 +47,72 @@ describe('Generation context API', () => {
     expect(res.body.id).toBe(generation.id);
   });
 
-  it('full detail includes batch prompt/recipe and comfy_job', async () => {
-    const { generation, job } = await createGeneration({ batchOverrides: { prompt: 'p1', recipe: 'dq3' } });
+  it('full detail includes the request block (prompt from the first job) and comfy_job', async () => {
+    const { generation, job } = await createGeneration({ batchOverrides: { recipe: 'dq3', parameters: { pose: 'standing' } } });
+    await setJobGraph(job.id, {
+      '3': { class_type: 'KSampler', inputs: { seed: 1, steps: 20, cfg: 5, sampler_name: 'euler', scheduler: 'normal', denoise: 1, positive: ['6', 0], negative: ['7', 0] } },
+      '6': { class_type: 'CLIPTextEncode', inputs: { text: 'p1' } },
+      '7': { class_type: 'CLIPTextEncode', inputs: { text: 'n1' } },
+    });
 
     const res = await getJson<{
-      batch: { prompt: string; recipe: string };
+      request: { id: string; kind: string; prompt: string; negative_prompt: string; recipe: string; parameters: { pose: string }; patches: unknown; git_dirty: boolean };
+      siblings: unknown[];
       comfy_job: { id: string; seed: number };
       original_filename: string;
     }>(`/api/v1/generations/${generation.id}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.batch.prompt).toBe('p1');
-    expect(res.body.batch.recipe).toBe('dq3');
+    expect(res.body.request.prompt).toBe('p1');
+    expect(res.body.request.negative_prompt).toBe('n1');
+    expect(res.body.request.recipe).toBe('dq3');
+    expect(res.body.request.kind).toBe('generate');
+    expect(res.body.request.parameters).toEqual({ pose: 'standing' });
+    expect(res.body.request.git_dirty).toBe(false);
+    expect(res.body.siblings).toEqual([]);
     expect(res.body.comfy_job.id).toBe(job.id);
     expect(res.body.original_filename).toBeTruthy();
+  });
+});
+
+describe('Generation request block and siblings', () => {
+  it('context carries the request block and every generation of the same request; detail lists the others as siblings', async () => {
+    const batch = await createBatch({ recipe: 'dq3', parameters: { pose: 'standing' }, raw_instruction: 'two seeds' });
+    const jobA = await createJob(batch.body.id, { seed: 1 });
+    const jobB = await createJob(batch.body.id, { seed: 2 });
+    const a = await ingestGeneration(jobA.body.id, { seed: 1, original_filename: 'a.png', comfy_output_index: 0 });
+    const b = await ingestGeneration(jobB.body.id, { seed: 2, original_filename: 'b.png', comfy_output_index: 0 });
+
+    const context = await getJson<{
+      request: { id: string; short_id: string; kind: string; recipe: string; raw_instruction: string; parameters: unknown } | null;
+      generations: { id: string; short_id: string; image_width: number | null; image_height: number | null; comfy_output_index: number | null }[];
+    }>(`/api/v1/generations/${a.body.id}/context`);
+    expect(context.status).toBe(200);
+    expect(context.body.request).toMatchObject({
+      short_id: batch.body.short_id,
+      kind: 'generate',
+      recipe: 'dq3',
+      raw_instruction: 'two seeds',
+      parameters: { pose: 'standing' },
+    });
+    expect(context.body.generations.map((g) => g.id).sort()).toEqual([a.body.id, b.body.id].sort());
+    expect(context.body.generations[0]).toHaveProperty('image_width');
+    expect(context.body.generations[0]).toHaveProperty('comfy_output_index');
+
+    const detail = await getJson<{ siblings: { id: string; short_id: string }[] }>(`/api/v1/generations/${a.body.id}`);
+    expect(detail.body.siblings.map((g) => g.id)).toEqual([b.body.id]);
+  });
+
+  it('reads the request block from the Request alone when the Batch side carries nothing', async () => {
+    const { batch, generation } = await createGeneration({ batchOverrides: { recipe: 'dq3', parameters: { pose: 'standing' } } });
+    await env.DB.prepare(
+      'UPDATE batches SET recipe = NULL, parameters_json = NULL, patches_json = NULL, raw_instruction = NULL WHERE id = ?',
+    )
+      .bind(batch.id)
+      .run();
+
+    const detail = await getJson<{ request: { recipe: string; parameters: unknown } }>(`/api/v1/generations/${generation.id}`);
+    expect(detail.body.request).toMatchObject({ recipe: 'dq3', parameters: { pose: 'standing' } });
   });
 });
 

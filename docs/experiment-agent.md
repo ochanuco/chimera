@@ -100,21 +100,20 @@ status が active / stabilized の Experiment を横断して、`batch_id` が n
 | `list_experiments` | `status?` | 読み取り | Experiment の一覧。各行に base_recipe / base_parameters / base_generation_id / run_count / latest_run |
 | `get_experiment` | `id` | 読み取り | `GET /api/v1/experiments/{id}` と同じ形（runs / promotions / tags 込み） |
 | `create_run` | `experiment_id, overrides, objective?, parent_run_id?, idempotency_key?, variables?` | 追記 | Run を1件作る。自動起票した requests 行の id を `run.request_id` に返す |
-| `get_run` | `run_id` | 読み取り | Run、所属 Experiment の要約、attach 済み Batch の Generation 一覧 |
+| `get_run` | `run_id` | 読み取り | Run、所属 Experiment の要約、結果 Request の Generation 一覧 |
 | `attach_generation` | `run_id, generation_id` | 追記 | Run の代表 Generation を記録する |
 | `set_evaluation` | `run_id, evaluation` | 追記 | Run の evaluation を書く（`null` でクリア） |
 | `set_decision` | `run_id, decision` | 追記 | Run の decision を書く（`null` でクリア） |
 | `create_request` | `kind, payload, recipe_ref?, idempotency_key` | 追記 | requests 行を手組みの payload で積む |
 | `get_request` | `id, include_prompts?` | 読み取り | requests 行1件（payload、done / failed 後は result / error） |
-| `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧。claim はしない |
+| `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧（`kind` は `import` も指定できる）。claim はしない |
 | `derive_request` | `from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?` | 追記 | 既存 Generation を起点にした generate request を積む |
 | `finalize_generation` | `generation_id, options?, profile?, idempotency_key` | 追記 | finalize request を積む |
 | `repair_generation` | `generation_id, options?, idempotency_key` | 追記 | hands / feet の repair request を積む |
 | `masked_redraw_generation` | `generation_id, options, idempotency_key` | 追記 | 任意矩形の garment / local inpaint request を積む。source は不変 |
 | `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
-| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（publications / pose_reference / refines_generation / batch.drawn_pose 込み） |
-| `list_batch` | `batch_id, include_prompts?` | 読み取り | Batch（drawn_pose 込み）/ jobs / generations（rating、bookmark、tags、semantic、seed 込み）/ references / relations / ExperimentRun |
-| `get_generation_lineage` | `generation_id, depth?` | 読み取り | Batch 単位の祖先と子孫。depth 既定 5、上限 10 |
+| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / pose_reference / refines_generation 込み） |
+| `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
 | `get_generation_image` | `short_id, width?` | 読み取り | 縮小した JPEG 画像。載らなければ canonical URL |
 | `list_catalog` | `recipe_ref?` | 読み取り | 公開済み recipe catalog の要約（既定 `"production"`） |
 | `get_catalog_pose` | `recipe, pose, recipe_ref?` | 読み取り | 単一 pose のフルレコードと現行の pin |
@@ -162,7 +161,7 @@ pin は `(recipe, pose)` の名前に付き、Preset の版には付きません
 
 `set_pose_reference` は `rating = good` の Generation を `(recipe, pose)` の pin にします。
 finalize / repair 済みの Generation なら [derive_request](#derive_request) と同じ規則で raw の Generation まで遡りますが、rating は指定した Generation のものを見ます。
-遡った先の Batch が「素の render」（recipe が一致し、その pose を描き、patches を持たず、起こした generate request が prompt / negative_prompt を上書きしていない）でなければ 409 で、満たさない条件は1つの 409 にまとめて返ります。
+遡った先の Request が「素の render」（recipe が一致し、その pose を描き、patches を持たず、起こした generate request が prompt / negative_prompt を上書きしていない）でなければ 409 で、満たさない条件は1つの 409 にまとめて返ります。
 seed は遡った先の raw Generation の comfy_job から取り、記録が無ければ 409 です。
 その `(recipe, pose)` の Preset がまだ無ければ 404 です。
 再設定は現行の pin を `superseded_at` で閉じてから新しい行を足すので、それまでの pin も履歴として残り、レスポンスは閉じた pin を `superseded` で返します。
@@ -176,19 +175,19 @@ pin がまだ無い pose には、`seed` を渡して最初の基準 render を�
 同じ seed と catalog でもう1件積むときは、`idempotency_key` を明示します。
 
 `promote_to_pose` は、良かった生成をそのまま Preset の次の版にする tool です。
-起点 Batch から `recipe`、pin されていた preset の版（base）、`patches_json` の patches、pose レコードの fingerprint を取り、`{ base, patches }` を `(recipe, kind, name)` の次の版として足します。
+起点 Request から `recipe`、pin されていた preset の版（base）、`patches_json` の patches、pose レコードの fingerprint を取り、`{ base, patches }` を `(recipe, kind, name)` の次の版として足します。
 `name` が既存なら新しい版、新しい名前ならその名前の version 1 で、`kind` の既定は `pose` です。
 finalize / repair 済みの Generation は `derive_request` と同じ規則で raw まで遡りますが、rating は指定した Generation のものを見ます。
 
-base は、その Batch を作った generate request が pin していた版です。
+base は、その Generation を作った generate request が pin していた版です。
 pin の無い Generation では `base_version` で明示し、どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です（chimera は base を推測しません）。
-ほかに 409 になるのは、rating が good でないとき（`promote requires rating good`）、起点 Batch が recipe を持たない graph-mode のとき、Batch が patches を持たないとき（`promote requires a batch with patches`。全文上書きと finalize / repair / masked_redraw の出力はここで弾かれます）です。
+ほかに 409 になるのは、rating が good でないとき（`promote requires rating good`）、起点 Request が recipe を持たない graph-mode のとき、Request が patches を持たないとき（`promote requires a request with patches`。全文上書きと finalize / repair / masked_redraw の出力はここで弾かれます）です。
 Rating を書けるのは人間だけなので、Agent が単独で preset を本番へ入れることはできません。
 既存の版は書き換わらないため、昇格が過去の request の再現性を壊すこともありません。
 `idempotency_key` の再送は既に作られた版をそのまま返し、同じキーで別の Generation や名前を渡すと 409 です。
 
 `promote_to_profile` は、finalize request が産んだ rating good の Generation を kind `finalize` の Preset の新しい版にします（[worker-protocol.md](worker-protocol.md#finalize-profile)）。
-`generation_id` の Batch を `result.batch_id` に持つ直近の `kind = finalize` request を探し、その `payload.options`（profile 展開後、dial の語はそのまま）を新しい版の本文にします。
+`generation_id` が属する Request が `kind = finalize` であることを確かめ、その `payload.options`（profile 展開後、dial の語はそのまま）を新しい版の本文にします。
 そういう request が無ければ 409（`generation is not a finalize-kind result; nothing to promote from`）、rating が good でなければ 409（`promote requires rating good`）です。
 版の足し方と再送の扱いは `promote_to_pose` と同じです。
 作った版は `finalize_generation` の `profile` で使います。
@@ -201,22 +200,26 @@ Rating を書けるのは人間だけなので、Agent が単独で preset を�
 `reference=true` は `set_pose_reference` で現在 pin されている Generation の索引です。
 rating は人間の判定として読むもので、Agent が書くものではありません。
 
-`get_generation` / `list_batch` は、REST の `GET /api/v1/generations/{id}` / `GET /api/v1/batches/{id}` と同じ `src/lib/generations.ts` / `src/lib/batches.ts` を呼ぶ別窓口です。
-`list_batch` は UI 向けの siblings などを持たない subset です。
+`get_generation` は、REST の `GET /api/v1/generations/{id}` と同じ `src/lib/generations.ts` を呼ぶ別窓口です。
 
-`batch.drawn_pose`（`{recipe, pose, reference}`）は、その Generation / Batch が描いた pose と、その pose の現行の pin です。
-`reference` は `get_catalog_pose` と同じ形（pin が無ければ `null`）で、Batch が pose を持たなければ `drawn_pose` 自体が `null` です。
+`request` は、その Generation が属する Request です（`{id, short_id, kind, recipe, raw_instruction, prompt, negative_prompt, parameters, patches, preset_versions, git_commit, git_dirty, drawn_pose}`）。
+`prompt` / `negative_prompt` は Request の先頭 Job の render_facts から取ります。
+`siblings`（`{id, short_id, image_width, image_height, comfy_output_index}` の配列）は、同じ Request の他の Generation です。
+
+`request.drawn_pose`（`{recipe, pose, reference}`）は、その Generation が描いた pose と、その pose の現行の pin です。
+`reference` は `get_catalog_pose` と同じ形（pin が無ければ `null`）で、Request が pose を持たなければ `drawn_pose` 自体が `null` です。
 `get_generation` の `pose_reference`（この Generation 自身が pin か）とは別物です。
 
-`refines_generation`（`{id, short_id, rating}`）は、finalize / repair / masked_redraw の出力 Generation について、その Batch の `refines_generation_id` が指す仕上げ前の Generation です。
+`refines_generation`（`{id, short_id, rating}`）は、finalize / repair / masked_redraw の出力 Generation について、その `refines_generation_id` が指す仕上げ前の Generation です。
 raw Generation では `null` なので、仕上げ済みの ID だけ渡されても `get_generation` で元の Generation を引けます。
 
 `get_generation` の `comfy_job.prompt_not_reusable` が null でない Generation（repair / masked_redraw / repair 付き finalize の出力）は、render_facts の prompt が mask 領域用に削られています。
 これを generate の prompt として使わず、その Generation から `derive_request` を起こします（[api.md](api.md#generation-context)）。
 
-`get_generation_lineage` は Batch 単位で祖先と子孫を辿ります。
-祖先は「この Batch が材料に使った Generation の Batch」（`via: "reference"`、`purpose_or_kind` は Reference の purpose）と「この Batch の直接の起点 Batch」（`via: "relation"`、`purpose_or_kind` は BatchRelation の type、例えば `refinement`）の両方を含み、子孫はその逆方向です。
-同じ Batch を二度訪れず、`depth` 段目で止まります。
+`get_generation_lineage` は Request 単位で祖先と子孫を辿ります。
+各ノードは `{depth, via, purpose_or_kind, request: {id, short_id, recipe, raw_instruction, created_at}, generations}` です。
+祖先は「この Request が材料に使った Generation の Request」（`via: "reference"`、`purpose_or_kind` は素材参照の purpose）と「この Request の Generation が仕上げ元にした Generation の Request」（`via: "refinement"`、`purpose_or_kind` は仕上げた Request の kind、例えば `finalize`）の両方を含み、子孫はその逆方向です。
+同じ Request を二度訪れず、`depth` 段目で止まります。
 
 ### derive_request
 
@@ -224,23 +227,23 @@ Experiment を経由しない単発の派生（「この Generation のポーズ
 Experiment のサイクルに乗せるなら `create_run` を使います。
 
 `derive_request` は既存の Generation を起点に `kind: "generate"` の requests 行を積みます。
-`from_generation_id` が finalize / repair / masked_redraw 済みの Generation なら、refinement の BatchRelation と rebuild の Reference を辿って raw の Generation まで遡ってから起点にします。
-仕上げの Batch の `parameters` は仕上げの payload で、generate parameters ではないためです。
-連鎖の途中の refinement Batch が rebuild の Reference を持たなければ 409 です。
+`from_generation_id` が finalize / repair / masked_redraw 済みの Generation なら、`refines_generation_id` を辿って raw の Generation まで遡ってから起点にします。
+仕上げの Request の `parameters` は仕上げの payload で、generate parameters ではないためです。
+連鎖の途中の Generation が仕上げ元を持たない（辿れない）仕上げの Request なら 409 です。
 
-起点 Batch から引き継ぐのは `recipe`、`parameters`、`patches_json` の patches、`preset_versions_json` の preset の pin です。
+起点 Request から引き継ぐのは `recipe`、`parameters`、`patches_json` の patches、`preset_versions_json` の preset の pin です。
 `parameters` は上書きマージ、`patches` は既定で追記、`replace_patches: true` なら丸ごと置き換えます。
-patches を Batch から取るのは、`semantic.attributes.patches` が後から書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。
-Batch の `patches_json` が持つのは request 自身の分（α）だけで、preset の分は pin が運びます。
-引き継いだ pin は新しい payload の `generation.presets` に載り、`parameters` の該当 kind は Batch に記録された `recipe_pose` ではなく pin の `name` に戻します。
-Batch の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると pin が外れ、`lounge-relaxed@3` からの派生が素の `lounge` になります。
+patches を Request から取るのは、`semantic.attributes.patches` が後から書き換わりうるためです（[domain-model.md](domain-model.md#preset)）。
+Request の `patches_json` が持つのは request 自身の分（α）だけで、preset の分は pin が運びます。
+引き継いだ pin は新しい payload の `generation.presets` に載り、`parameters` の該当 kind は Request に記録された `recipe_pose` ではなく pin の `name` に戻します。
+Request の `parameters` は worker が preset を解決した後の値なので、そのままコピーすると pin が外れ、`lounge-relaxed@3` からの派生が素の `lounge` になります。
 `identity_override` は起点から引き継がず、渡したときだけ `generation.identity_override` に載ります。
 
-起点 Batch が recipe を持たない graph-mode の Batch なら 409 です。
-起点 Batch が patches を持ちながら preset の pin を持たず、その recipe に Preset がある場合も 409 です。
+起点 Request が recipe を持たない graph-mode の Request なら 409 です。
+起点 Request が patches を持ちながら preset の pin を持たず、その recipe に Preset がある場合も 409 です。
 その patches は pin が入る前の preset 本文に対して書かれています。
 worker は pin が無ければ現行の版を解決するので、そのまま引き継ぐと text op が needle 不在で落ち、request を積んでから失敗します。
-`replace_patches: true` で現行の preset に対して組み直すか、pin を持つ Batch を起点にします。
+`replace_patches: true` で現行の preset に対して組み直すか、pin を持つ Request を起点にします。
 その recipe に Preset が1件も無ければ、patches はそのまま引き継ぎます。
 chimera は patch の op を読まないので、needle に依存する op だけを選り分けることはしません。
 `seeds` を渡すなら要素数は `count` と一致しなければなりません。
@@ -261,7 +264,7 @@ identity を意図して変えるときだけ `identity_override` に理由を�
 `generation_id` を解決して `payload.generation_id` に short_id を詰め、`options`（finalize は `profile` も）を渡されたときだけ payload に載せます。
 options は REST の payload と同じ zod スキーマで検証します。
 `create_request` で payload を手で組む代わりに、これら3つを使います。
-どれも出力は source Generation の refinement Batch として記録され、source への rebuild の Reference を持ちます。
+どれも出力は source Generation を仕上げ元（`refines_generation_id`）とする Generation として記録されます。
 options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[finalize](worker-protocol.md#finalize)」「[repair](worker-protocol.md#repair)」「[masked_redraw](worker-protocol.md#masked_redraw)」節が正本です。
 
 `finalize_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `finalize` の Preset を解決して options の土台にします。
@@ -276,7 +279,7 @@ options に同じキーがあればそちらが勝ち、明示の `null` も上�
 
 ### Experiment サイクルの tool
 
-Run の代表 Generation を選んだあと、その Generation を見て次の一手を決める段になったら `get_generation` / `list_batch` / `get_generation_lineage` を使います。
+Run の代表 Generation を選んだあと、その Generation を見て次の一手を決める段になったら `get_generation` / `get_generation_lineage` を使います。
 
 `create_run` の `overrides` は `{}` か `{"patches": [...]}` 形の diff だけを受け付けます。
 各 patch は `{target, op, reason, ...}` で、`reason` は必須です。
@@ -361,8 +364,8 @@ schema と serializer のずれは、実際に呼ばれるまで表に出ませ�
 
 ### prompt の折り畳み
 
-`get_request` / `list_requests` / `get_generation` / `list_batch` は、既定で prompt 本文を長さマーカーに畳んで返します。
-畳む対象は、requests の payload では prompt override と prompt patch、`get_generation` では batch の prompt / negative_prompt と render_facts の sampler prompt、`list_batch` ではそれに加えて `batch.parameters.prompt_patch` です。
+`get_request` / `list_requests` / `get_generation` は、既定で prompt 本文を長さマーカーに畳んで返します。
+畳む対象は、requests の payload では prompt override と prompt patch、`get_generation` では `request` の prompt / negative_prompt / `parameters.prompt_patch` / prompt を対象にする patch と、render_facts の sampler prompt です。
 `get_generation` はさらに `comfy_job.graph` を省き、`null` にして `comfy_job.graph_omitted: true` を付けます。
 
 ChatGPT の MCP client は tool 結果にコンテンツ分類器をかけており、一度でも prompt のタグに引っかかると、そのセッションでコネクタごと無効化されるためです。
@@ -387,7 +390,7 @@ MCP には次の操作を tool として置きません。
 
 ``` text
 Experiment / Run / Promotion の削除
-attach 済み Batch / Generation の付け替え
+attach 済みの Generation の付け替え
 attach 後の overrides 変更
 recipe への書き込み、comfyui-recipes のファイル編集
 ```
@@ -395,8 +398,8 @@ recipe への書き込み、comfyui-recipes のファイル編集
 API 側も同じ操作を 409 / 404 で拒みます。
 tool として存在しないことと合わせて、防御が二重になります。
 
-Run の代表 Generation は、その Run 自身の Batch に属するものだけを選べます。
-Batch が未 attach の Run への attach、別 Batch の Generation の attach、既に別の Generation が付いた Run への attach は、いずれも 409 です。
+Run の代表 Generation は、その Run 自身の結果 Request に属するものだけを選べます。
+結果 Request の無い Run への attach、別 Request の Generation の attach、既に別の Generation が付いた Run への attach は、いずれも 409 です。
 REST で Run 作成時に同じ組を渡す経路にも同じ規則が適用されます。
 
 ## 1サイクル

@@ -125,15 +125,10 @@ async function setupGeneration(
 ) {
   const { withPin = true, parameters = { pose: 'lounge' }, patches, generationPayload } = options;
   const poseFingerprint = patches ? 'sha256:fixture' : undefined;
-  const { batch, generation } = await createGeneration({
-    batchOverrides: {
-      recipe,
-      parameters,
-      ...(patches ? { patches } : {}),
-      ...(poseFingerprint ? { pose_fingerprint: poseFingerprint } : {}),
-    },
-  });
 
+  // worker と同じく、生成 request を先に積んで claim し、Batch は idempotency_key `request:{id}` でその request に紐づける。
+  let genReqId: string | null = null;
+  let claimedWorkerId: string | null = null;
   if (withPin) {
     const genReq = await createGenerateRequest(recipe, {
       payload: {
@@ -147,10 +142,24 @@ async function setupGeneration(
     const claimed = await claim(`worker-${crypto.randomUUID()}`);
     expect(claimed.status).toBe(200);
     expect(claimed.body!.id).toBe(genReq.body.id);
+    genReqId = genReq.body.id;
+    claimedWorkerId = claimed.body!.worker_id;
+  }
 
+  const { batch, generation } = await createGeneration({
+    batchOverrides: {
+      recipe,
+      parameters,
+      ...(genReqId ? { idempotency_key: `request:${genReqId}` } : {}),
+      ...(patches ? { patches } : {}),
+      ...(poseFingerprint ? { pose_fingerprint: poseFingerprint } : {}),
+    },
+  });
+
+  if (genReqId) {
     const done = await postJson(
-      `/api/v1/requests/${genReq.body.id}`,
-      { status: 'done', worker_id: claimed.body!.worker_id, result: { batch_id: batch.id, generation_ids: [generation.id] } },
+      `/api/v1/requests/${genReqId}`,
+      { status: 'done', worker_id: claimedWorkerId, result: { batch_id: batch.id, generation_ids: [generation.id] } },
       'PATCH',
     );
     expect(done.status).toBe(200);

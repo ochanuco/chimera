@@ -1,6 +1,5 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
-import { BatchRow, type BatchRowData } from '../components/BatchRow';
 import { ViewSwitch, type GalleryView } from '../components/ViewSwitch';
 
 export interface BookmarkedExperiment {
@@ -12,13 +11,11 @@ export interface BookmarkedExperiment {
 export function BookmarksPage({
   path,
   generations,
-  batches,
   experiments,
   view,
 }: {
   path: string;
   generations: GenerationCardData[];
-  batches: BatchRowData[];
   experiments: BookmarkedExperiment[];
   view: GalleryView;
 }) {
@@ -38,15 +35,6 @@ export function BookmarksPage({
               <GenerationCard g={g} />
             ))}
           </div>
-        )}
-      </section>
-
-      <section class="bookmark-section">
-        <h2>Batches</h2>
-        {batches.length === 0 ? (
-          <p class="empty-state">No bookmarked batches.</p>
-        ) : (
-          batches.map((b) => <BatchRow b={b} />)
         )}
       </section>
 

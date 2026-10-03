@@ -1,23 +1,10 @@
 import { Hono } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
-import {
-  getGenerationByIdOrShortId,
-  getReferenceLineageBatches,
-  getRelationChainBatches,
-  getStoryChainBatches,
-  resolveBatchPrompts,
-  resolveBatchShortIds,
-  resolveBatchThumbnails,
-  resolveGenerationShortIds,
-} from '../lib/db';
-import type { MiniMapRow } from '../ui/components/MiniMap';
-import { listTagsForTarget } from '../lib/tags';
+import { getGenerationByIdOrShortId, resolveGenerationShortIds, resolveRequestThumbnails, resolveRunRequests } from '../lib/db';
 import { generationImageUrl, generationPreviewUrl } from '../lib/serialize';
 import { listBookmarkedExperiments } from '../lib/ui-queries';
 import { GalleryPage, GalleryCards, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
 import type { GalleryView } from '../ui/components/ViewSwitch';
-import { BatchesPage } from '../ui/pages/Batches';
-import { BatchDetailPage, type BatchDetailData, type FinalizeSummary, type FinalizeRequestStatus } from '../ui/pages/BatchDetail';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
 import { EXPERIMENT_STATUSES } from '../lib/experiment-status';
 import { ExperimentDetailPage, type ExperimentDetailData, type ExperimentJudgmentSummary } from '../ui/pages/ExperimentDetail';
@@ -32,12 +19,9 @@ import { parseJsonArray } from '../lib/preset-references';
 import { renderFactsForJob } from '../lib/render-facts';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
-import { listFinalizeProfiles } from '../lib/presets';
-import type { FinalizeDials } from '../ui/finalize-options';
+import { getCatalog } from '../lib/catalogs';
 import type { AppEnv, ComfyJobRow, ExperimentRunRow, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
-import type { BatchRowData } from '../ui/components/BatchRow';
 
 export const pages = new Hono<AppEnv>();
 
@@ -99,167 +83,14 @@ pages.get('/gallery', async (c) => {
   return c.html(<GalleryPage path={c.req.path} items={genData.items} nextCursor={genData.next_cursor} filters={filters} />);
 });
 
-pages.get('/batches', async (c) => {
-  const bookmarkOnly = c.req.query('bookmark') === 'true';
-  const params = new URLSearchParams();
-  if (bookmarkOnly) params.set('bookmark', 'true');
-  params.set('limit', '100');
-
-  const res = await internalApiRequest(c, `/api/v1/batches?${params.toString()}`);
-  const data = (await res.json()) as { items: BatchRowData[] };
-
-  return c.html(<BatchesPage path={c.req.path} items={data.items} bookmarkOnly={bookmarkOnly} />);
-});
-
+// 廃止した Batch ページの URL (Discord などに貼られたもの) を壊さない。Request の short_id から最初の Generation へ飛ばす。
 pages.get('/b/:shortId', async (c) => {
-  const shortId = c.req.param('shortId');
-  const res = await internalApiRequest(c, `/api/v1/batches/${shortId}`);
-  if (res.status === 404) {
-    return c.html(<NotFoundPage what="Batch" />, 404);
-  }
-  const data = (await res.json()) as BatchDetailData;
-
-  // dials / profile buttons (FinalizeFields) — same lookup as /g/:shortId (routes/images.tsx).
-  const recipe = data.recipe;
-  const [catalogDoc, finalizeProfiles] = await Promise.all([
-    recipe ? getCatalog(c.env.DB, defaultRecipeRef(c.env)) : Promise.resolve(null),
-    recipe ? listFinalizeProfiles(c.env.DB, recipe) : Promise.resolve([]),
-  ]);
-  const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
-  const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
-  const finalizeBackdrops = catalogDoc ? findBackdrops(catalogDoc.doc).map(({ name, label }) => ({ name, label })) : [];
-  const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
-  const finalizeCatalogVersion = catalogDoc?.row.updated_at ?? null;
-
-  const experimentRunBatchIds = data.experiment_run
-    ? [
-        ...(data.experiment_run.parent ? [data.experiment_run.parent.batch_id] : []),
-        ...data.experiment_run.children.map((ch) => ch.batch_id),
-        ...data.experiment_run.siblings.map((s) => s.batch_id),
-      ]
-    : [];
-  const referencedBatchIds = [
-    ...data.relations.outgoing.map((r) => r.target_batch_id),
-    ...data.relations.incoming.map((r) => r.source_batch_id),
-    ...data.story_relations.map((r) => r.source_batch_id),
-    ...data.story_relations.map((r) => r.target_batch_id),
-    ...data.reference_children.map((r) => r.batch_id),
-    ...data.siblings.map((s) => s.batch_id),
-    ...data.siblings.filter((s) => s.via === 'refinement').map((s) => s.shared_id),
-    ...experimentRunBatchIds,
-  ];
-  const referencedGenerationIds = [
-    ...data.references.map((r) => r.source_generation_id),
-    ...data.reference_children.map((r) => r.source_generation_id),
-    ...data.siblings.filter((s) => s.via === 'reference').map((s) => s.shared_id),
-  ];
-
-  const miniMapStoryIds = Array.from(new Set(data.story_relations.map((r) => r.story_id)));
-  // retry 元(親)の先頭を diff 基準にする。incoming は created_at ASC で並ぶ(routes/batches.ts)。
-  const diffParentId = data.relations.incoming[0]?.source_batch_id ?? null;
-
-  const [
-    storyNames,
-    generationTags,
-    batchShortIds,
-    generationShortIds,
-    batchThumbnails,
-    referenceLineageBatches,
-    relationChainBatches,
-    storyChainBatchesList,
-    diffParentPrompts,
-  ] = await Promise.all([
-      (async () => {
-        const names: Record<string, string> = {};
-        await Promise.all(
-          miniMapStoryIds.map(async (sid) => {
-            const sRes = await internalApiRequest(c, `/api/v1/stories/${sid}`);
-            if (sRes.ok) {
-              const sData = (await sRes.json()) as { name: string };
-              names[sid] = sData.name;
-            }
-          }),
-        );
-        return names;
-      })(),
-      Promise.all(data.generations.map((g) => listTagsForTarget(c.env.DB, 'generation_tags', g.id))),
-      resolveBatchShortIds(c.env.DB, referencedBatchIds),
-      resolveGenerationShortIds(c.env.DB, referencedGenerationIds),
-      resolveBatchThumbnails(c.env.DB, referencedBatchIds),
-      getReferenceLineageBatches(c.env.DB, data.id),
-      getRelationChainBatches(c.env.DB, data.id),
-      Promise.all(miniMapStoryIds.map((sid) => getStoryChainBatches(c.env.DB, sid))),
-      resolveBatchPrompts(c.env.DB, diffParentId ? [diffParentId] : []),
-    ]);
-
-  // Finalize all arms の状況表示: Batch 配下の全 Generation の finalizeRequest を status 別に集計（GUI は表示のみ、worker-protocol.md）。
-  const finalizeRequestsRes = await internalApiRequest(c, `/api/v1/requests?kind=finalize&batch_id=${data.id}&limit=200`);
-  const finalizeRequestsData = (await finalizeRequestsRes.json()) as { items: { id: string; status: string }[] };
-  const finalizeSummary: FinalizeSummary = { queued: 0, running: 0, done: 0, failed: 0 };
-  for (const r of finalizeRequestsData.items) {
-    if (r.status === 'queued' || r.status === 'running' || r.status === 'done' || r.status === 'failed') {
-      finalizeSummary[r.status] += 1;
-    }
-  }
-  const finalizeRequests: FinalizeRequestStatus[] = finalizeRequestsData.items.map((r) => ({
-    id: r.id,
-    status: r.status as FinalizeRequestStatus['status'],
-  }));
-
-  const diffParentPrompt = diffParentId ? diffParentPrompts.get(diffParentId) ?? null : null;
-  const diffParent = diffParentId && diffParentPrompt
-    ? {
-        shortId: batchShortIds.get(diffParentId) ?? diffParentId,
-        prompt: diffParentPrompt.prompt,
-        negative_prompt: diffParentPrompt.negative_prompt,
-      }
-    : null;
-
-  const generationsWithTags = data.generations.map((g, i) => ({
-    ...g,
-    tags: (generationTags[i] ?? []).map((t) => t.name),
-  }));
-
-  const batchMapItem = (b: { id: string; short_id: string }) => ({
-    short_id: b.short_id,
-    href: `/b/${b.short_id}`,
-    is_current: b.id === data.id,
-  });
-  const miniMapRows: MiniMapRow[] = [
-    {
-      label: 'References',
-      items: referenceLineageBatches.map(batchMapItem),
-    },
-    {
-      label: 'Retries',
-      items: relationChainBatches.map(batchMapItem),
-    },
-    ...miniMapStoryIds.map((sid, i) => ({
-      label: storyNames[sid] ?? sid,
-      items: storyChainBatchesList[i]!.map(batchMapItem),
-    })),
-  ];
-
-  return c.html(
-    <BatchDetailPage
-      path={c.req.path}
-      batch={{ ...data, generations: generationsWithTags }}
-      storyNames={storyNames}
-      miniMapRows={miniMapRows}
-      batchShortIds={batchShortIds}
-      generationShortIds={generationShortIds}
-      batchThumbnails={batchThumbnails}
-      diffParent={diffParent}
-      finalizeSummary={finalizeSummary}
-      finalizeRequests={finalizeRequests}
-      dials={finalizeDials}
-      defaults={finalizeDefaults}
-      profiles={finalizeProfiles}
-      backdrops={finalizeBackdrops}
-      recipeRef={finalizeRecipeRef}
-      catalogVersion={finalizeCatalogVersion}
-    />,
-  );
+  const request = await c.env.DB.prepare('SELECT id FROM requests WHERE short_id = ?')
+    .bind(c.req.param('shortId'))
+    .first<{ id: string }>();
+  const firstGenerationShortId = request ? (await resolveRequestThumbnails(c.env.DB, [request.id])).get(request.id) : undefined;
+  if (!firstGenerationShortId) return c.html(<NotFoundPage what="Request" />, 404);
+  return c.redirect(`/g/${firstGenerationShortId}`, 302);
 });
 
 pages.get('/experiments', async (c) => {
@@ -314,6 +145,8 @@ pages.get('/experiments/:id/ab', async (c) => {
   let warning: string | null = null;
   let baselineRun: ExperimentRunRow | null = null;
   let armRun: ExperimentRunRow | null = null;
+  let baselineRequestId: string | null = null;
+  let armRequestId: string | null = null;
 
   if (!baselineId || !armId) {
     warning = 'Select a baseline and an arm run.';
@@ -328,13 +161,18 @@ pages.get('/experiments/:id/ab', async (c) => {
       warning = 'Select a baseline and an arm run.';
     } else if (b.experiment_id !== experiment.id || a.experiment_id !== experiment.id) {
       warning = 'baseline / arm run belongs to a different experiment.';
-    } else if (!b.batch_id || !a.batch_id) {
-      warning = 'baseline and arm runs must both have a batch attached.';
-    } else if (b.batch_id === a.batch_id) {
-      warning = 'baseline and arm runs share the same batch.';
     } else {
-      baselineRun = b;
-      armRun = a;
+      const requestByRunId = await resolveRunRequests(db, [b.id, a.id]);
+      baselineRequestId = requestByRunId.get(b.id)?.id ?? null;
+      armRequestId = requestByRunId.get(a.id)?.id ?? null;
+      if (!baselineRequestId || !armRequestId) {
+        warning = 'baseline and arm runs must both have a request attached.';
+      } else if (baselineRequestId === armRequestId) {
+        warning = 'baseline and arm runs share the same request.';
+      } else {
+        baselineRun = b;
+        armRun = a;
+      }
     }
   }
 
@@ -344,10 +182,10 @@ pages.get('/experiments/:id/ab', async (c) => {
 
   if (baselineRun && armRun) {
     const seedRows =
-      'SELECT id, seed, original_purged_at FROM generations WHERE batch_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
+      'SELECT id, seed, original_purged_at FROM generations WHERE request_id = ? AND seed IS NOT NULL ORDER BY created_at ASC, id ASC';
     const [baselineGens, armGens, judgedSeeds] = await Promise.all([
-      db.prepare(seedRows).bind(baselineRun.batch_id).all<{ id: string; seed: number; original_purged_at: string | null }>(),
-      db.prepare(seedRows).bind(armRun.batch_id).all<{ id: string; seed: number; original_purged_at: string | null }>(),
+      db.prepare(seedRows).bind(baselineRequestId).all<{ id: string; seed: number; original_purged_at: string | null }>(),
+      db.prepare(seedRows).bind(armRequestId).all<{ id: string; seed: number; original_purged_at: string | null }>(),
       judgedSeedsForPair(db, baselineRun.id, armRun.id),
     ]);
 
@@ -411,19 +249,16 @@ pages.get('/bookmarks', async (c) => {
   const genParams = new URLSearchParams({ bookmark: 'true', limit: '100' });
   if (view !== 'all') genParams.set('origin', view);
 
-  const [genRes, batchRes, bookmarkedExperiments] = await Promise.all([
+  const [genRes, bookmarkedExperiments] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations?${genParams.toString()}`),
-    internalApiRequest(c, '/api/v1/batches?bookmark=true&limit=100'),
     listBookmarkedExperiments(c.env.DB),
   ]);
   const genData = (await genRes.json()) as { items: GenerationCardData[] };
-  const batchData = (await batchRes.json()) as { items: BatchRowData[] };
 
   return c.html(
     <BookmarksPage
       path={c.req.path}
       generations={genData.items}
-      batches={batchData.items}
       experiments={bookmarkedExperiments}
       view={view}
     />,
@@ -532,19 +367,14 @@ pages.get('/compare', async (c) => {
     rows.push(row);
   }
 
-  const batchShortIds = await resolveBatchShortIds(
-    c.env.DB,
-    rows.map((row) => row.batch_id),
-  );
-
-  const batchIds = Array.from(new Set(rows.map((row) => row.batch_id)));
-  const batchChangesById = new Map<string, { raw_instruction: string | null; patches_json: string | null }>();
-  if (batchIds.length > 0) {
-    const placeholders = batchIds.map(() => '?').join(', ');
-    const { results } = await c.env.DB.prepare(`SELECT id, raw_instruction, patches_json FROM batches WHERE id IN (${placeholders})`)
-      .bind(...batchIds)
+  const requestIds = Array.from(new Set(rows.map((row) => row.request_id).filter((id): id is string => id !== null)));
+  const requestChangesById = new Map<string, { raw_instruction: string | null; patches_json: string | null }>();
+  if (requestIds.length > 0) {
+    const placeholders = requestIds.map(() => '?').join(', ');
+    const { results } = await c.env.DB.prepare(`SELECT id, raw_instruction, patches_json FROM requests WHERE id IN (${placeholders})`)
+      .bind(...requestIds)
       .all<{ id: string; raw_instruction: string | null; patches_json: string | null }>();
-    for (const b of results ?? []) batchChangesById.set(b.id, b);
+    for (const r of results ?? []) requestChangesById.set(r.id, r);
   }
 
   const jobIds = Array.from(new Set(rows.map((row) => row.comfy_job_id)));
@@ -575,11 +405,10 @@ pages.get('/compare', async (c) => {
     if (!card) throw new Error(`generation ${row.id} missing from its own queryGenerations lookup`);
     return {
       ...card,
-      batch_short_id: batchShortIds.get(row.batch_id) ?? null,
       seed: row.seed,
       created_at: row.created_at,
-      raw_instruction: batchChangesById.get(row.batch_id)?.raw_instruction ?? null,
-      patches: parseJsonArray(batchChangesById.get(row.batch_id)?.patches_json ?? null),
+      raw_instruction: (row.request_id ? requestChangesById.get(row.request_id)?.raw_instruction : null) ?? null,
+      patches: parseJsonArray((row.request_id ? requestChangesById.get(row.request_id)?.patches_json : null) ?? null),
       semantic: parseCompareSemantic(row),
       render_facts: renderFactsByGenerationId.get(row.id) ?? null,
     };

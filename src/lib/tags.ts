@@ -2,12 +2,10 @@ import { uuidv7 } from './uuidv7';
 import { nowIso } from './db';
 import type { CreatedBy, TagRow } from '../types';
 
-export type TaggableTable = 'generation_tags' | 'batch_tags' | 'story_tags' | 'experiment_tags';
+export type TaggableTable = 'generation_tags' | 'experiment_tags';
 
 const FK_COLUMN: Record<TaggableTable, string> = {
   generation_tags: 'generation_id',
-  batch_tags: 'batch_id',
-  story_tags: 'story_id',
   experiment_tags: 'experiment_id',
 };
 

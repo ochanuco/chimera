@@ -4,6 +4,8 @@ export const createJobSchema = z.object({
   idempotency_key: z.string().min(1),
   seed: z.number().int(),
   index: z.number().int().nonnegative(),
+  // POST /requests/{id}/jobs だけが使う。finalize / repair / masked_redraw では必須、generate / import では不可。
+  source_generation_id: z.string().min(1).nullish(),
 });
 
 export type CreateJobInput = z.infer<typeof createJobSchema>;

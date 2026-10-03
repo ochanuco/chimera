@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createRequestSchema, claimRequestSchema, updateRequestSchema, requestKindSchema, requestStatusSchema } from '../schemas/requests';
+import { createRequestSchema, putResolutionSchema, claimRequestSchema, updateRequestSchema, requestKindFilterSchema, requestStatusSchema } from '../schemas/requests';
 import {
   createRequest,
   listRequests,
@@ -10,6 +10,8 @@ import {
   summarizeRequests,
   type RequestSummaryWorker,
 } from '../lib/requests';
+import { createJobSchema } from '../schemas/jobs';
+import { buildRequestJobs, createRequestJob, putResolution } from '../lib/request-resolution';
 import { notifyHub, runInBackground } from '../lib/hub-notify';
 import { viewerWs } from './worker-hub';
 import { getWorkerHubStub } from '../worker-hub';
@@ -26,7 +28,13 @@ requests.get('/ws', viewerWs);
 requests.post('/', async (c) => {
   const body = createRequestSchema.parse(await c.req.json());
   const db = c.env.DB;
-  const { row, created } = await createRequest(db, body, { defaultRecipeRef: defaultRecipeRef(c.env) });
+  const { kind, payload, recipe_ref, idempotency_key, created_by, status: _status, ...rest } = body;
+  const resolution = kind === 'import' ? { ...rest, parameters: rest.parameters! } : undefined;
+  const { row, created } = await createRequest(
+    db,
+    { kind, payload, recipe_ref, idempotency_key, created_by, resolution },
+    { defaultRecipeRef: defaultRecipeRef(c.env) },
+  );
   if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json(serializeRequest(row), created ? 201 : 200);
 });
@@ -48,14 +56,14 @@ requests.get('/', async (c) => {
 
   let kind: RequestKind | undefined;
   if (query.kind) {
-    const parsed = requestKindSchema.safeParse(query.kind);
+    const parsed = requestKindFilterSchema.safeParse(query.kind);
     if (!parsed.success) throw badRequest(`invalid kind '${query.kind}'`);
     kind = parsed.data;
   }
 
   const rows = await listRequests(
     db,
-    { status, kind, run_id: query.run_id, worker_id: query.worker_id, generation_id: query.generation_id, batch_id: query.batch_id },
+    { status, kind, run_id: query.run_id, worker_id: query.worker_id, generation_id: query.generation_id },
     limit,
     offset,
   );
@@ -97,6 +105,23 @@ requests.get('/:id', async (c) => {
   const db = c.env.DB;
   const row = await getRequestOr404(db, c.req.param('id'));
   return c.json(serializeRequest(row));
+});
+
+requests.put('/:id/resolution', async (c) => {
+  const { worker_id, ...input } = putResolutionSchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const row = await getRequestOr404(db, c.req.param('id'));
+  await putResolution(db, row, input, worker_id);
+  const current = await getRequestOr404(db, row.id);
+  return c.json({ id: current.id, short_id: current.short_id, status: current.status, jobs: await buildRequestJobs(db, current.id) });
+});
+
+requests.post('/:id/jobs', async (c) => {
+  const body = createJobSchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const row = await getRequestOr404(db, c.req.param('id'));
+  const { status, job } = await createRequestJob(db, row, body);
+  return c.json(job, status);
 });
 
 requests.patch('/:id', async (c) => {
