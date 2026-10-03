@@ -6,6 +6,8 @@ import { RENDER_FACT_COLUMNS, summarizeRenderFacts, type RenderFacts } from '../
 import { PromptChips } from '../components/PromptChips';
 import type { ExperimentStatus } from '../../types';
 import { StatusBadge } from './Experiments';
+import { CompareView } from './Compare';
+import type { ExperimentCompare } from '../../lib/compare-items';
 
 export interface ExperimentDetailRunRequest {
   id: string;
@@ -97,6 +99,7 @@ export interface ExperimentDetailData {
   note: string | null;
   status: string;
   base_recipe: string | null;
+  base_parameters: JsonObject | null;
   base_generation_id: string | null;
   character_id: string | null;
   bookmark: boolean;
@@ -538,14 +541,51 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
   );
 }
 
+/** Run を列にした Compare 表。選んだ seed ごとの Generation を並べ、seed が複数あれば切り替えリンクを出す。 */
+function renderExperimentCompare(shortId: string, compare: ExperimentCompare) {
+  const generationShortIds = compare.items.filter((item) => !item.placeholder).map((item) => item.short_id);
+  return (
+    <section id="experiment-compare" class="exp-compare">
+      <h3>Compare</h3>
+      {compare.seeds.length > 1 ? (
+        <p class="exp-compare-seeds">
+          seed:{' '}
+          {compare.seeds.map((seed) =>
+            seed === compare.selectedSeed ? (
+              <strong class="exp-compare-seed current">{seed}</strong>
+            ) : (
+              <a class="exp-compare-seed" href={`/experiments/${shortId}?seed=${seed}#experiment-compare`}>
+                {seed}
+              </a>
+            ),
+          )}
+        </p>
+      ) : null}
+      {compare.omittedRuns > 0 ? (
+        <p class="empty-state">先頭 {compare.items.length} 件の Run だけを表示しています（ほか {compare.omittedRuns} 件）。</p>
+      ) : null}
+      {generationShortIds.length >= 2 ? (
+        <p>
+          <a class="exp-compare-open" href={`/compare?ids=${generationShortIds.join(',')}`}>
+            Compare で開く
+          </a>
+        </p>
+      ) : null}
+      <CompareView items={compare.items} headers={compare.headers} />
+    </section>
+  );
+}
+
 export function ExperimentDetailPage({
   path,
   experiment,
   judgments,
+  compare,
 }: {
   path: string;
   experiment: ExperimentDetailData;
   judgments: ExperimentJudgmentSummary;
+  compare?: ExperimentCompare;
 }) {
   const baseline = findBaseline(experiment.runs);
   return (
@@ -628,6 +668,7 @@ export function ExperimentDetailPage({
       </table>
 
       <h2>Runs</h2>
+      {compare && compare.items.length >= 2 ? renderExperimentCompare(experiment.short_id, compare) : null}
       {renderExpFactsTable(experiment.runs, baseline)}
       {experiment.runs.length === 0 ? (
         <p class="empty-state">No runs yet.</p>

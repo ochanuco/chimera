@@ -221,6 +221,12 @@ POST /api/v1/experiments
 `status` は常に `active` で作成されます。`base_generation_id`
 はUUID / short_idのどちらでも受け、保存するのはUUIDです。存在しなければ404です。
 
+`base_parameters` は語彙を解釈しないJSONオブジェクトですが、`seeds` だけは検証します。
+`seeds` は0以上の整数1〜16個の配列で、指定するとこのExperimentの全Runが同じseedで描画され
+（自動起票するrequestの `request.seeds` にこの配列、`request.count` にその件数が入り、
+generation.parametersには入りません）、`count` を併記する場合は `seeds` の件数と
+一致させます。形が違う、または件数が食い違う場合は、作成・PATCHとも400です。
+
 ### List Experiments
 
 ``` text
