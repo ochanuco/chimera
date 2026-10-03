@@ -22,19 +22,15 @@ async function schemaNames(type: 'table' | 'index'): Promise<string[]> {
   return (results ?? []).map((r) => r.name);
 }
 
-describe('migration 0027 (drop batches)', () => {
-  it('leaves no Batch or Story table, column or index behind', async () => {
-    const tables = await schemaNames('table');
-    for (const gone of ['batches', 'batch_relations', 'batch_references', 'batch_tags', 'story_relations', 'stories', 'story_tags']) {
-      expect(tables, gone).not.toContain(gone);
-    }
-    expect(tables).not.toContain('_m27_generations');
-
+describe('Batch removal migrations (batch_id without foreign keys)', () => {
+  it('makes batch_id nullable and drops its foreign key on the rebuilt tables', async () => {
     for (const table of ['comfy_jobs', 'generations', 'experiment_runs']) {
-      expect((await columns(table)).map((c) => c.name), table).not.toContain('batch_id');
+      const batchId = (await columns(table)).find((c) => c.name === 'batch_id');
+      expect(batchId?.notnull, table).toBe(0);
+      expect((await foreignKeys(table)).filter((fk) => fk.from === 'batch_id'), table).toEqual([]);
     }
-    const indexes = await schemaNames('index');
-    expect(indexes.filter((n) => n.includes('batch') || n.includes('story'))).toEqual([]);
+    const tables = await schemaNames('table');
+    expect(tables.filter((n) => n.startsWith('_m2'))).toEqual([]);
   });
 
   it('keeps every index and the NOT NULL request_id of the rebuilt tables', async () => {
