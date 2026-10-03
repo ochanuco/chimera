@@ -28,11 +28,11 @@ requests.get('/ws', viewerWs);
 requests.post('/', async (c) => {
   const body = createRequestSchema.parse(await c.req.json());
   const db = c.env.DB;
-  const { kind, payload, recipe_ref, idempotency_key, created_by, status: _status, ...rest } = body;
+  const { kind, payload, recipe_ref, idempotency_key, created_by, status: _status, run_id, ...rest } = body;
   const resolution = kind === 'import' ? { ...rest, parameters: rest.parameters! } : undefined;
   const { row, created } = await createRequest(
     db,
-    { kind, payload, recipe_ref, idempotency_key, created_by, resolution },
+    { kind, payload, recipe_ref, idempotency_key, created_by, resolution, run_id },
     { defaultRecipeRef: defaultRecipeRef(c.env) },
   );
   if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
