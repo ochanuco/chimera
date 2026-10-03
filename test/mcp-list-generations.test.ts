@@ -78,8 +78,8 @@ describe('MCP list_generations', () => {
   it('filters by reference (pose basis-render pin)', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { generation: pinned } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
-    const { generation: other } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: pinned } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: other } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
     await postJson(`/api/v1/generations/${pinned.id}/rating`, { rating: 'good' }, 'PUT');
     const pin = await postJson<{ name: string }>(`/api/v1/generations/${pinned.id}/pose-reference`, {});
     expect(pin.status).toBe(201);
@@ -95,7 +95,7 @@ describe('MCP list_generations', () => {
   it('get_generation returns pose_reference', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { generation } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
     await postJson(`/api/v1/generations/${generation.id}/rating`, { rating: 'good' }, 'PUT');
     const pin = await postJson(`/api/v1/generations/${generation.id}/pose-reference`, {});
     expect(pin.status).toBe(201);
@@ -110,8 +110,8 @@ describe('MCP list_generations', () => {
   it('get_generation reports the drawn pose with its current pin', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
-    const { generation: pinned } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
-    const { generation: older } = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: pinned } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const { generation: older } = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
 
     // Before any pin: the drawn pose is known, its reference is null.
     const unpinned = await mcpToolCall<GenerationWithDrawnPose>('get_generation', { generation_id: older.short_id });
@@ -136,7 +136,7 @@ describe('MCP list_generations', () => {
   });
 
   it('drawn_pose is null when the request names no pose', async () => {
-    const { generation } = await createGeneration({ batchOverrides: { recipe: uniqueRecipe(), parameters: { kind: 'hires-chain' } } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe(), parameters: { kind: 'hires-chain' } } });
     const call = await mcpToolCall<GenerationWithDrawnPose>('get_generation', { generation_id: generation.short_id });
     expect(call.isError).toBe(false);
     expect(call.data?.request?.drawn_pose).toBeNull();

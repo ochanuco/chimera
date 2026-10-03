@@ -6,13 +6,13 @@
 import { env, runDurableObjectAlarm } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
-import { createBatch, createGeneration, createJob, getJson, ingestGeneration, postJson, req } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, ingestGeneration, postJson, req, clearRequests } from './helpers';
 
 const BASE = 'https://chimera.test';
 
 beforeEach(async () => {
   // claim() はグローバルに最古の queued 行を掴む (test/requests.test.ts と同じ注記) — hub のテストも claim / stale-requeue を経由するので他テストの残骸を持ち込まない。
-  await env.DB.prepare('DELETE FROM requests').run();
+  await clearRequests();
 });
 
 async function connectWs(path: string): Promise<WebSocket> {
@@ -230,7 +230,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
 
     const done = await postJson(
       `/api/v1/requests/${requestId}`,
-      { status: 'done', worker_id: 'w-done', result: { batch_id: 'whatever', generation_ids: [] } },
+      { status: 'done', worker_id: 'w-done', result: { generation_ids: [] } },
       'PATCH',
     );
     expect(done.status).toBe(200);
@@ -345,14 +345,14 @@ describe('WorkerHub generation broadcast (docs/worker-protocol.md「hub → view
     const viewerT = trackMessages(viewer);
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const ingest = await ingestGeneration(job.body.id, { seed: 1, original_filename: 'out_00001_.png', comfy_output_index: 0 });
     expect(ingest.status).toBe(201);
 
     const msg = await viewerT.waitFor((m) => m.type === 'generation' && m.short_id === ingest.body.short_id);
     expect(msg.generation_id).toBe(ingest.body.id);
-    expect(msg.request_id).toBe(batch.body.id);
+    expect(msg.request_id).toBe(request.body.id);
     expect(msg).not.toHaveProperty('batch_id');
     expect(msg.refines_generation_short_id).toBeNull();
     expect(typeof msg.created_at).toBe('string');
@@ -365,12 +365,9 @@ describe('WorkerHub generation broadcast (docs/worker-protocol.md「hub → view
     const viewerT = trackMessages(viewer);
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
-    const { batch: sourceBatch, generation: sourceGen } = await createGeneration();
-    const refinedBatch = await createBatch({
-      refinement: { source_batch_id: sourceBatch.id, actor: 'claude', reason: 'finalize' },
-      references: [{ source_generation_id: sourceGen.id, purpose: 'rebuild' }],
-    });
-    const job = await createJob(refinedBatch.body.id);
+    const { generation: sourceGen } = await createGeneration();
+    const refinedRequest = await createRequest({ kind: 'finalize' });
+    const job = await createJob(refinedRequest.body.id, { source_generation_id: sourceGen.id });
     const ingest = await ingestGeneration(job.body.id, { seed: 1, original_filename: 'out_00001_.png', comfy_output_index: 0 });
     expect(ingest.status).toBe(201);
 
@@ -385,8 +382,8 @@ describe('WorkerHub generation broadcast (docs/worker-protocol.md「hub → view
     const viewerT = trackMessages(viewer);
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
     const metadata = { seed: 1, original_filename: 'out_00001_.png', comfy_output_index: 0 };
     const first = await ingestGeneration(job.body.id, metadata);
     expect(first.status).toBe(201);

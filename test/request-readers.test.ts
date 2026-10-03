@@ -1,8 +1,7 @@
-// Batch 廃止の段階 2 (docs/batch-removal.md): 読む側が Batch の行ではなく Request / Generation の列だけで動くことの検証。
-// 各テストは Generation を作ったあと stripBatchSide() で Batch 側の列と relation / reference を空にしてから読む。
+// 読む側が Request / Generation の列 (generations.refines_generation_id、request_references、requests の解決済みの値) だけで動くことの検証。
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson, stripBatchSide } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
 
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
@@ -26,23 +25,19 @@ async function rateGood(generationId: string): Promise<void> {
   expect((await postJson(`/api/v1/generations/${generationId}/rating`, { rating: 'good' }, 'PUT')).status).toBe(200);
 }
 
-/** raw Generation と、それを仕上げ元に持つ Generation (rebuild reference + refinement relation 経由で Request に写る)。 */
+/** raw Generation と、それを仕上げ元に持つ Generation (Job の source_generation_id が generations.refines_generation_id に写る)。 */
 async function createRefinedPair() {
-  const raw = await createGeneration({ batchOverrides: { recipe: 'yukari', parameters: { pose: 'lounge' } } });
+  const raw = await createGeneration({ requestOverrides: { recipe: 'yukari', parameters: { pose: 'lounge' } } });
   const refined = await createGeneration({
-    batchOverrides: {
-      parameters: { kind: 'hires-chain', base_generation: raw.generation.id },
-      refinement: { source_batch_id: raw.batch.id, actor: 'claude', reason: 'finalize' },
-      references: [{ source_generation_id: raw.generation.id, purpose: 'rebuild' }],
-    },
+    requestOverrides: { kind: 'finalize', parameters: { kind: 'hires-chain', base_generation: raw.generation.id } },
+    jobOverrides: { source_generation_id: raw.generation.id },
   });
   return { raw, refined };
 }
 
-describe('readers work without any Batch column or relation', () => {
+describe('readers work from Request and Generation columns', () => {
   it('gallery refines: origin filter, refines_generation_short_id and get_generation.refines_generation', async () => {
     const { raw, refined } = await createRefinedPair();
-    await stripBatchSide();
 
     const refinedList = await getJson<{ items: { short_id: string; refines_generation_short_id: string | null }[] }>(
       '/api/v1/generations?origin=refined&limit=200',
@@ -64,16 +59,15 @@ describe('readers work without any Batch column or relation', () => {
   it('lineage: refinement edge from generations.refines_generation_id and material edge from request_references', async () => {
     const { raw, refined } = await createRefinedPair();
     const material = await createGeneration({
-      batchOverrides: { references: [{ source_generation_id: raw.generation.id, purpose: 'composition', aspect: 'pose' }] },
+      requestOverrides: { references: [{ source_generation_id: raw.generation.id, purpose: 'composition', aspect: 'pose' }] },
     });
-    await stripBatchSide();
 
     const fromRefined = await mcpToolCall<{
       ancestors: { via: string; purpose_or_kind: string | null; request: { id: string } }[];
     }>('get_generation_lineage', { generation_id: refined.generation.id });
     expect(fromRefined.isError).toBe(false);
     expect(fromRefined.data?.ancestors).toEqual([
-      expect.objectContaining({ via: 'refinement', purpose_or_kind: 'finalize', request: expect.objectContaining({ id: raw.batch.id }) }),
+      expect.objectContaining({ via: 'refinement', purpose_or_kind: 'finalize', request: expect.objectContaining({ id: raw.request.id }) }),
     ]);
 
     const fromRaw = await mcpToolCall<{ descendants: { via: string; purpose_or_kind: string | null; request: { id: string } }[] }>(
@@ -82,15 +76,14 @@ describe('readers work without any Batch column or relation', () => {
     );
     expect(fromRaw.data?.descendants.map((n) => [n.request.id, n.via, n.purpose_or_kind]).sort()).toEqual(
       [
-        [refined.batch.id, 'refinement', 'finalize'],
-        [material.batch.id, 'reference', 'composition'],
+        [refined.request.id, 'refinement', 'finalize'],
+        [material.request.id, 'reference', 'composition'],
       ].sort(),
     );
   });
 
   it('derive_request resolves a refined Generation back to its raw Request', async () => {
     const { raw, refined } = await createRefinedPair();
-    await stripBatchSide();
 
     const call = await mcpToolCall<{ payload: { generation: { recipe: string; parameters: unknown } }; derived_from: { source: { id: string } } }>(
       'derive_request',
@@ -112,10 +105,9 @@ describe('readers work without any Batch column or relation', () => {
     await importCatalog(recipe);
     const patches = [{ target: 'prompt.positive.face', op: 'append', value: 'smile', reason: 'x' }];
     const { generation } = await createGeneration({
-      batchOverrides: { recipe, parameters: { pose: 'lounge' }, patches, pose_fingerprint: 'sha256:request-side' },
+      requestOverrides: { recipe, parameters: { pose: 'lounge' }, patches, pose_fingerprint: 'sha256:request-side' },
     });
     await rateGood(generation.id);
-    await stripBatchSide();
 
     const res = await postJson<{ version: number; base_fingerprint: string | null; patches: unknown[] }>('/api/v1/presets/promote', {
       generation_id: generation.id,
@@ -131,7 +123,7 @@ describe('readers work without any Batch column or relation', () => {
 
   it('promote_to_profile and the finalize profile expansion read the Request kind and recipe', async () => {
     const recipe = uniqueRecipe();
-    const source = await createGeneration({ batchOverrides: { recipe } });
+    const source = await createGeneration({ requestOverrides: { recipe } });
     const finalize = await postJson<{ id: string }>('/api/v1/requests', {
       kind: 'finalize',
       payload: { generation_id: source.generation.id, options: { denoise: 0.6 } },
@@ -139,9 +131,12 @@ describe('readers work without any Batch column or relation', () => {
       created_by: 'gui',
     });
     expect(finalize.status).toBe(201);
-    const delivered = await createGeneration({ batchOverrides: { recipe, idempotency_key: `request:${finalize.body.id}` } });
+    const delivered = await createGeneration({
+      requestId: finalize.body.id,
+      requestOverrides: { recipe },
+      jobOverrides: { source_generation_id: source.generation.id },
+    });
     await rateGood(delivered.generation.id);
-    await stripBatchSide();
 
     const promoted = await postJson<{ name: string; version: number }>('/api/v1/presets/promote-profile', {
       generation_id: delivered.generation.id,
@@ -167,9 +162,9 @@ describe('readers work without any Batch column or relation', () => {
   it('set_pose_reference checks recipe, pose and patches on the Request', async () => {
     const recipe = uniqueRecipe();
     await importCatalog(recipe);
-    const plain = await createGeneration({ batchOverrides: { recipe, parameters: { pose: 'lounge' } } });
+    const plain = await createGeneration({ requestOverrides: { recipe, parameters: { pose: 'lounge' } } });
     const patched = await createGeneration({
-      batchOverrides: {
+      requestOverrides: {
         recipe,
         parameters: { pose: 'lounge' },
         patches: [{ target: 'prompt.positive.face', op: 'append', value: 'smile', reason: 'x' }],
@@ -178,7 +173,6 @@ describe('readers work without any Batch column or relation', () => {
     });
     await rateGood(plain.generation.id);
     await rateGood(patched.generation.id);
-    await stripBatchSide();
 
     const rejected = await mcpToolCall('set_pose_reference', {
       recipe,
@@ -199,21 +193,20 @@ describe('readers work without any Batch column or relation', () => {
     expect(pinned.data?.reference.generation_id).toBe(plain.generation.id);
   });
 
-  it('A/B judgments resolve a Run through requests.run_id, with experiment_runs.batch_id empty', async () => {
+  it('A/B judgments resolve a Run through requests.run_id', async () => {
     const experiment = await postJson<{ id: string }>('/api/v1/experiments', { name: `ab-${crypto.randomUUID().slice(0, 8)}` });
     const baselineRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.body.id}/runs`, {});
     const armRun = await postJson<{ id: string; run_index: number }>(`/api/v1/experiments/${experiment.body.id}/runs`, {});
 
     const makeSide = async (runId: string) => {
-      const batch = await createBatch();
-      const job = await createJob(batch.body.id, { seed: 11 });
+      const request = await createRequest();
+      const job = await createJob(request.body.id, { seed: 11 });
       const generation = await ingestGeneration(job.body.id, { seed: 11, original_filename: `${runId}.png`, comfy_output_index: 0 });
-      await env.DB.prepare('UPDATE requests SET run_id = ? WHERE id = ?').bind(runId, batch.body.id).run();
-      return { requestId: batch.body.id, generation: generation.body };
+      await env.DB.prepare('UPDATE requests SET run_id = ? WHERE id = ?').bind(runId, request.body.id).run();
+      return { requestId: request.body.id, generation: generation.body };
     };
     const baseline = await makeSide(baselineRun.body.id);
     const arm = await makeSide(armRun.body.id);
-    await stripBatchSide();
 
     const judged = await postJson<{ winner: string }>(`/api/v1/experiments/${experiment.body.id}/judgments`, {
       baseline_run_id: baselineRun.body.id,
@@ -246,17 +239,17 @@ describe('readers work without any Batch column or relation', () => {
 
 describe('requests', () => {
   it('serializes short_id and filters by kind=import', async () => {
-    const { batch } = await createGeneration();
-    const one = await getJson<{ id: string; short_id: string | null }>(`/api/v1/requests/${batch.id}`);
-    expect(one.body.short_id).toBe(batch.short_id);
+    const { request } = await createGeneration();
+    const one = await getJson<{ id: string; short_id: string | null }>(`/api/v1/requests/${request.id}`);
+    expect(one.body.short_id).toBe(request.short_id);
 
-    await env.DB.prepare("UPDATE requests SET kind = 'import' WHERE id = ?").bind(batch.id).run();
+    await env.DB.prepare("UPDATE requests SET kind = 'import' WHERE id = ?").bind(request.id).run();
     const imports = await getJson<{ items: { id: string; kind: string }[] }>('/api/v1/requests?kind=import&limit=200');
     expect(imports.status).toBe(200);
-    expect(imports.body.items.map((i) => i.id)).toContain(batch.id);
+    expect(imports.body.items.map((i) => i.id)).toContain(request.id);
     const viaMcp = await mcpToolCall<{ items: { id: string }[] }>('list_requests', { kind: 'import' });
     expect(viaMcp.isError).toBe(false);
-    expect(viaMcp.data?.items.map((i) => i.id)).toContain(batch.id);
+    expect(viaMcp.data?.items.map((i) => i.id)).toContain(request.id);
   });
 
   it('accepts done for a Run-linked generate request without result.batch_id', async () => {

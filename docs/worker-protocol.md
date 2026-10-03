@@ -115,7 +115,7 @@ POST /api/v1/requests
 ```
 
 201 で行を返します。行には作成時に `short_id`（6 文字の英数小文字）を発行します。`short_id` は
-requests と batches の間で重複せず、Claim の応答と `GET /requests/{id}` にも含まれます。
+Claim の応答と `GET /requests/{id}` にも含まれます。
 `idempotency_key` の再送は、`kind` と payload の正規化ハッシュが
 一致するときだけ既存行を 200 で返し、同じキーで別の `kind` / payload が来たら 409 です
 （`requests.payload_hash` に保存）。Job の「同じ要求の再送は 200」と同じ契約で、
@@ -230,7 +230,7 @@ worker が書く遷移:
 
 ``` json
 { "status": "running", "worker_id": "gpu-box-1" }
-{ "status": "done", "worker_id": "gpu-box-1", "result": { "batch_id": "...", "generation_ids": ["..."] } }
+{ "status": "done", "worker_id": "gpu-box-1", "result": { "generation_ids": ["..."] } }
 { "status": "failed", "worker_id": "gpu-box-1", "error": "..." }
 { "status": "queued", "worker_id": "gpu-box-1" }
 ```
@@ -254,12 +254,8 @@ brain / GUI が書く遷移:
 queued 以外からの cancelled は 409。done / failed / cancelled は終端で、以後の
 PATCH は 409 です。
 
-`run_id` を持つ generate の `done` は、Run の結果をその Request の `run_id` で引くので
-`result.batch_id` を要りません。`result.batch_id` を添えたときは、chimera は requests 行の更新と
-`experiment_runs.batch_id` の attach を D1 の batch（単一トランザクション）で行います。
-Run に既に別の batch が付いていれば 409 で、requests 行も done にならず、解決できない
-`batch_id` は 404 です。worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要は
-ありません。
+`run_id` を持つ generate の `done` は、Run の結果をその Request の `run_id` で引くので、
+worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要はありません。
 
 ### Get Request
 
@@ -274,8 +270,7 @@ GET /api/v1/requests/{id}
 ```
 
 ingest した Generation の id です。finalize / repair / masked_redraw の Generation は、
-Job の `source_generation_id` を `refines_generation_id` として持ちます。`batch_id` は
-互換のため受理しますが、不要です。masked_redraw は元 Generation を変更せず、明示したマスク領域だけを worker が
+Job の `source_generation_id` を `refines_generation_id` として持ちます。masked_redraw は元 Generation を変更せず、明示したマスク領域だけを worker が
 `comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
 
 finalize / repair / masked_redraw の done はこれに加えて `resolved_options`
@@ -743,11 +738,6 @@ worker が claim した requests 行（`attempt >= 2`）に対して:
 
 finalize / repair / masked_redraw の再実行も同じ規則です。
 
-`/api/v1/batches` は段階 4 で撤去するまで互換のために受理しますが、worker は使いません。
-chimera は内部に、Request と同じ値を持つ互換用の Batch（`id` は Request の `id`、
-`idempotency_key` は `request:{id}`、`short_id` は Request のもの）を保ち、Request が done /
-failed になれば completed / failed にします。
-
 ## ExperimentRun 由来の generate
 
 案: 一本化する。Run を作ると chimera が `kind = generate` の requests 行を自動起票し、
@@ -765,13 +755,12 @@ worker は requests だけを見ます。
   `objective` を `request.instruction` と `semantic.summary` に写します。
   語彙の解釈はしません（詰め替えだけ）。
 - `idempotency_key` は `run:{run_id}`。Run は物理削除されず、1 Run につき起票は 1 回です。
-- `done` で `experiment_runs.batch_id` を attach するのは上記の通り chimera が行います。
 - `GET /api/v1/experiment-runs?pending=true` は残しますが、migration 後は
-  「`batch_id IS NULL` かつ requests 行を持たない Run」だけを返します。backfill 直後は空で、
+  「requests 行を持たない Run」だけを返します。backfill 直後は空で、
   以後も Run 作成時に自動起票される限り空です。段階 1 の watch（このエンドポイントを
   poll する版）が移行後も box で動き続けていても、同じ Run を requests 版と二重に
   実行することはありません。worker の切り替えが済んだら状況確認用の読み取りに留めます。
-- 移行: requests テーブルを作る migration で、`batch_id IS NULL` かつ Experiment が
+- 移行: requests テーブルを作る migration で、結果をまだ持たず Experiment が
   active / stabilized の既存 Run について requests 行を backfill します
   （`created_by = system`、payload は同じ規則）。順序は次の通りで、どの時点でも同じ Run を
   2 つの worker が取ることはありません。
@@ -877,7 +866,7 @@ hub → viewer:
 の外、[api.md](api.md#generation-ingest)) が新しい行を作ったときだけ送ります。同じ
 `(comfy_job_id, comfy_output_index)` の再送（200、既存行を返すだけ）では送りません。
 `refines_generation_short_id` はそのGenerationが`refines_generation_id`を持つときだけ
-non-nullです（[domain-model.md](domain-model.md#batch)）。Gallery のカードを差し込むための
+non-nullです（[domain-model.md](domain-model.md#generation)）。Gallery のカードを差し込むための
 通知で、`snapshot`と違いDO storageにキャッシュを持たず、接続中のviewerへその場でbroadcast
 するだけです（接続前に届いたものは取りこぼします — Gallery は元々ページ読み込み時点の
 一覧を持っているので、取りこぼしても再読み込みで揃います）。

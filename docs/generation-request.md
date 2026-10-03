@@ -13,7 +13,7 @@ chimera requests キュー
   ↓ claim
 worker（comfy-recipes watch）
   ↓ payload を request.json に書き出し comfy-recipes generate --request に渡す
-ComfyUI → chimera へ Batch / Job / Generation を ingest → Discord 通知
+ComfyUI → chimera へ resolution / Job / Generation を報告・ingest → Discord 通知
 ```
 
 ExperimentRun の作成時には chimera 自身が同じ形の request.json を組み立てて積みます
@@ -67,8 +67,8 @@ preset の pin と Run の所属だけで、それ以外のキーは解釈せず
   `generation`       必須   何をどう描くか（[generation](#generation)）
   `semantic`         必須   各 Generation に書き込む semantic（[semantic](#semantic)）
   `references`       任意   生成材料にした過去 Generation（[references](#references)）
-  `refinement`       任意   前 Batch を受けた再試行（[refinement](#refinement)）
-  `story`            任意   Story 上の続き（[story](#story)）
+  `refinement`       任意   受理して無視する（[refinement と story](#refinement-と-story)）
+  `story`            任意   受理して無視する（[refinement と story](#refinement-と-story)）
   `experiment`       任意   ExperimentRun の実行（[experiment](#experiment)）
 
 `references` / `refinement` / `story` / `experiment` は、キー省略と明示 `null` のどちらも
@@ -82,7 +82,7 @@ preset の pin と Run の所属だけで、それ以外のキーは解釈せず
   `count`         integer >= 1       Job 数
   `seeds`         integer[] / null   seed の明示（[Seeds](#seeds)）
 
-`instruction` は Batch の `raw_instruction` になります。
+`instruction` は Request の `raw_instruction` になります。
 
 ## generation
 
@@ -168,8 +168,8 @@ pose / costume などを足し、`patches` があればそれも足します。
   `aspect`          任意   参照した側面
   `instruction`     任意   何を採用したか
 
-各要素は Batch の BatchReference になります
-（[domain-model.md](domain-model.md#batchreference)）。
+各要素は Request の素材参照（`request_references`）になります
+（[domain-model.md](domain-model.md)）。`purpose = rebuild` は素材参照ではなく、Job の `source_generation_id`（仕上げ元）で表します。
 
 purpose 推奨値:
 
@@ -195,49 +195,10 @@ Experiment が `base_generation_id` を持つとき、Run 由来の request.json
 `rebuild` の Reference を自動で1件持ちます。brain が組み立てるものではありません
 （[experiment-agent.md](experiment-agent.md#base_generation_id)）。
 
-## refinement
+## refinement と story
 
-前 Batch を受けた再試行の場合だけ指定します。Batch の BatchRelation になります。
-
-``` json
-{
-  "source_batch_id": "B001",
-  "actor": "claude",
-  "reason": "手の破綻が多かったためpromptを修正"
-}
-```
-
-  キー                必須   内容
-  ------------------- ------ -------------------------------------
-  `source_batch_id`   必須   再試行元の Batch
-  `actor`             必須   `human` / `claude`
-  `reason`            任意   再試行の理由
-  `raw_instruction`   任意   再試行を指示した人間の元指示
-
-## story
-
-Story 上の続きの場合だけ指定します。Batch の StoryRelation になります。
-
-``` json
-{
-  "story_id": "story-id",
-  "previous_batch_ids": ["B042"],
-  "transition": {
-    "label": "夕方の海辺へ",
-    "description": "衣装と絵柄を維持しつつ、夕方の海辺へ場面を移す"
-  }
-}
-```
-
-  キー                   必須   内容
-  ---------------------- ------ -------------------------------------------------
-  `story_id`             必須   Story
-  `previous_batch_ids`   必須   直前の Batch（1件以上）
-  `transition`           任意   `label` / `description`（どちらも任意）
-  `raw_instruction`      任意   人間の元指示
-
-分岐と合流を表せるよう `previous_batch_ids` は配列です。`label` / `description` は brain
-が人間の会話から生成します。
+どちらも値の形を問わず受理し、何も記録しません。再試行の関係と Story は持たず、
+仕上げ元は Job の `source_generation_id` で表します。
 
 ## experiment
 
@@ -261,9 +222,8 @@ ExperimentRun を実行する request です。通常は Run 作成時に chimer
 patches として適用します。
 
 chimera は requests 行を作るとき、Run が存在しなければ 404、Run の Experiment が
-`experiment_id` と違えば 400 を返し、通れば行に `run_id` を記録します。その request が
-`done` になるとき、chimera は `result.batch_id` を同じトランザクションで
-`experiment_runs.batch_id` に付けます（[Update Request](worker-protocol.md#update-request)）。
+`experiment_id` と違えば 400 を返し、通れば行に `run_id` を記録します。Run の結果は
+その Request の `run_id` で引きます（[Update Request](worker-protocol.md#update-request)）。
 Run の代表 Generation は評価後に人間または agent が選ぶもので、worker は設定しません。
 
 ## Seeds
@@ -302,8 +262,7 @@ worker（claim 後、ComfyUI へ行く前）:
 -   `count >= 1`、`seeds` 指定時は `len(seeds) == count`。
 -   `parameters` の語彙、[併用できない組み合わせ](#併用できない組み合わせ)、patch の形。
 -   preset の受領時 lint と identity_tags の保持。
--   `references` の Generation、`refinement` の source Batch、`story` の Story と
-    previous Batch の存在（worker が Batch を作るとき chimera が 404 を返す）。
+-   `references` の Generation の存在（worker が resolution を報告するとき chimera が 404 を返す）。
 
-Batch / Job の idempotency key は worker が requests 行の `id` から導出するので、同じ
-request を再実行しても重複 Batch は作られません（[キーの導出](worker-protocol.md#キーの導出)）。
+Job の idempotency key は worker が requests 行の `id` から導出するので、同じ
+request を再実行しても重複 Job は作られません（[キーの導出](worker-protocol.md#キーの導出)）。

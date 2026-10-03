@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createGeneration, getJson, mcpToolCall, postJson, req } from './helpers';
+import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 import { listFinalizeProfiles } from '../src/lib/presets';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
@@ -53,7 +53,7 @@ interface RequestBody {
   status: string;
   payload: Record<string, unknown>;
   worker_id: string | null;
-  result: { batch_id: string; generation_ids: string[] } | null;
+  result: { generation_ids: string[] } | null;
 }
 
 async function claim(workerId: string): Promise<{ status: number; body: RequestBody | null }> {
@@ -76,7 +76,7 @@ async function setRatingGood(generationId: string): Promise<void> {
  * (delivered) Generation — the shape promote_to_profile / applyFinalizeProfile expect.
  */
 async function createFinalizeResult(recipe: string, options: Record<string, unknown> = {}) {
-  const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
+  const { generation: source } = await createGeneration({ requestOverrides: { recipe } });
 
   const finalizeReq = await postJson<RequestBody>('/api/v1/requests', {
     kind: 'finalize',
@@ -90,14 +90,15 @@ async function createFinalizeResult(recipe: string, options: Record<string, unkn
   expect(claimed.status).toBe(200);
   expect(claimed.body!.id).toBe(finalizeReq.body.id);
 
-  // worker と同じく、納品物の Batch は idempotency_key `request:{id}` でこの finalize request に紐づく。
-  const { batch: deliveredBatch, generation: delivered } = await createGeneration({
-    batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+  const { generation: delivered } = await createGeneration({
+    requestId: finalizeReq.body.id,
+    requestOverrides: { recipe },
+    jobOverrides: { source_generation_id: source.id },
   });
 
   const done = await postJson(
     `/api/v1/requests/${finalizeReq.body.id}`,
-    { status: 'done', worker_id: claimed.body!.worker_id, result: { batch_id: deliveredBatch.id, generation_ids: [delivered.id] } },
+    { status: 'done', worker_id: claimed.body!.worker_id, result: { generation_ids: [delivered.id] } },
     'PATCH',
   );
   expect(done.status).toBe(200);
@@ -106,7 +107,7 @@ async function createFinalizeResult(recipe: string, options: Record<string, unkn
 }
 
 beforeEach(async () => {
-  await env.DB.prepare('DELETE FROM requests').run();
+  await clearRequests();
 });
 
 describe('catalog dials passthrough', () => {
@@ -203,7 +204,7 @@ describe('finalize/repair/masked_redraw options accept dial words', () => {
 describe('finalize profile resolution (createRequest)', () => {
   it('resolves the latest active version and merges options, explicit keys (including null) winning', async () => {
     const recipe = uniqueRecipe();
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const { delivered } = await createFinalizeResult(recipe, { denoise: 0.7, repin: true });
     await setRatingGood(delivered.id);
@@ -231,7 +232,7 @@ describe('finalize profile resolution (createRequest)', () => {
 
   it('pins an explicit version, ignoring a later one', async () => {
     const recipe = uniqueRecipe();
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const { delivered: d1 } = await createFinalizeResult(recipe, { denoise: 0.6 });
     await setRatingGood(d1.id);
@@ -262,7 +263,7 @@ describe('finalize profile resolution (createRequest)', () => {
 
   it('404s an unknown profile name without creating a queued row', async () => {
     const recipe = uniqueRecipe();
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
     const res = await postJson('/api/v1/requests', {
       kind: 'finalize',
@@ -369,7 +370,7 @@ describe('promote_to_profile', () => {
 
   it('409s when the generation was not produced by a finalize request', async () => {
     const recipe = uniqueRecipe();
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
     await setRatingGood(generation.id);
     const res = await postJson('/api/v1/presets/promote-profile', {
       generation_id: generation.id,
@@ -397,7 +398,7 @@ describe('promote_to_profile', () => {
 describe('finalize_generation MCP tool profile field', () => {
   it('passes profile through and resolves it server-side, same as REST', async () => {
     const recipe = uniqueRecipe();
-    const { generation } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
     const { delivered } = await createFinalizeResult(recipe, { denoise: 0.6 });
     await setRatingGood(delivered.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: delivered.id, name: 'daily', idempotency_key: crypto.randomUUID() });
@@ -521,7 +522,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
 
   it('/g/{short_id} of the delivered row renders requested vs resolved options when the worker wrote resolved_options', async () => {
     const recipe = uniqueRecipe();
-    const { generation: source } = await createGeneration({ batchOverrides: { recipe } });
+    const { generation: source } = await createGeneration({ requestOverrides: { recipe } });
 
     const finalizeReq = await postJson<{ id: string }>('/api/v1/requests', {
       kind: 'finalize',
@@ -537,8 +538,10 @@ describe('result.resolved_options (worker-written, opaque)', () => {
       body: JSON.stringify({ worker_id: `worker-${crypto.randomUUID()}` }),
     });
     const claimedBody = (await claimed.json()) as { worker_id: string };
-    const { batch: deliveredBatch, generation: delivered } = await createGeneration({
-      batchOverrides: { recipe, idempotency_key: `request:${finalizeReq.body.id}` },
+    const { generation: delivered } = await createGeneration({
+      requestId: finalizeReq.body.id,
+      requestOverrides: { recipe },
+      jobOverrides: { source_generation_id: source.id },
     });
 
     const done = await postJson(
@@ -546,7 +549,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
       {
         status: 'done',
         worker_id: claimedBody.worker_id,
-        result: { batch_id: deliveredBatch.id, generation_ids: [delivered.id], resolved_options: { denoise: 0.65 } },
+        result: { generation_ids: [delivered.id], resolved_options: { denoise: 0.65 } },
       },
       'PATCH',
     );

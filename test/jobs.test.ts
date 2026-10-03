@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createBatch, createGeneration, createJob, getJson, postJson, setJobGraph } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, postJson, setJobGraph } from './helpers';
 
 const SAMPLE_GRAPH = {
   '3': { class_type: 'KSampler', inputs: { seed: 123, steps: 20 } },
@@ -9,8 +9,8 @@ const SAMPLE_GRAPH = {
 
 describe('Job graph', () => {
   it('stores and returns the posted ComfyUI graph on PATCH', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
 
     const patched = await postJson<{ status: string; comfy_prompt_id: string; graph: unknown }>(
       `/api/v1/jobs/${job.body.id}`,
@@ -23,8 +23,8 @@ describe('Job graph', () => {
   });
 
   it('leaves graph untouched when omitted from a later PATCH', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
 
     await postJson(`/api/v1/jobs/${job.body.id}`, { graph: SAMPLE_GRAPH }, 'PATCH');
     const second = await postJson<{ status: string; graph: unknown }>(
@@ -42,16 +42,6 @@ describe('Job graph', () => {
 
     const detail = await getJson<{ comfy_job: { graph: unknown } }>(`/api/v1/generations/${generation.id}`);
     expect(detail.body.comfy_job.graph).toEqual(SAMPLE_GRAPH);
-  });
-
-  it('surfaces the graph via the Batch detail jobs list', async () => {
-    const batch = await createBatch();
-    const job = await createJob(batch.body.id);
-    await postJson(`/api/v1/jobs/${job.body.id}`, { graph: SAMPLE_GRAPH }, 'PATCH');
-
-    const detail = await getJson<{ jobs: { id: string; graph: unknown }[] }>(`/api/v1/batches/${batch.body.id}`);
-    const found = detail.body.jobs.find((j) => j.id === job.body.id);
-    expect(found?.graph).toEqual(SAMPLE_GRAPH);
   });
 });
 

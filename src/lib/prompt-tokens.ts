@@ -1,4 +1,4 @@
-/** Pure tokenizer/diff for SD-style prompt strings (Batch detail Prompt chip display). Never throws -- unparsable input falls back to a single plain tag token. */
+/** Pure tokenizer/diff for SD-style prompt strings (Prompt chip display). Never throws -- unparsable input falls back to a single plain tag token. */
 
 export interface PromptToken {
   text: string;
