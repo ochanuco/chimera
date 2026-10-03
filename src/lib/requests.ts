@@ -229,6 +229,8 @@ export interface CreateRequestInput {
   payload?: JsonObject;
   /** kind=import の解決済みの値。import は done で作られ、worker は claim しない。 */
   resolution?: ResolutionInput;
+  /** kind=import だけが持てる。Run の結果として紐付け、Run を pending から外す。 */
+  run_id?: string;
   recipe_ref?: string;
   idempotency_key: string;
   created_by: RequestCreatedBy;
@@ -368,13 +370,19 @@ async function createImportRequest(
     schema_version: 1,
     request: { instruction: resolutionInput.raw_instruction ?? null },
   };
-  const payloadHash = await canonicalPayloadHash('import', { payload, resolution: resolutionInput });
+  const payloadHash = await canonicalPayloadHash('import', { payload, resolution: resolutionInput, run_id: input.run_id ?? null });
 
   const find = () => db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(input.idempotency_key).first<RequestRow>();
   const existing = await find();
   if (existing) return replayOrConflict(existing, 'import', payloadHash);
 
   const resolution = await normalizeResolution(db, resolutionInput, null);
+  if (input.run_id !== undefined) {
+    const run = await db.prepare('SELECT id FROM experiment_runs WHERE id = ?').bind(input.run_id).first();
+    if (!run) throw notFound(`experiment run '${input.run_id}'`);
+    const taken = await db.prepare('SELECT 1 FROM requests WHERE run_id = ?').bind(input.run_id).first();
+    if (taken) throw conflict('run already has a request');
+  }
   const id = uuidv7();
   const now = nowIso();
   const shortId = await createUniqueRequestShortId(db);
@@ -386,13 +394,14 @@ async function createImportRequest(
              id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
              claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
              short_id
-           ) VALUES (?, 'import', 'done', ?, ?, ?, NULL, NULL, 0, 3, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, 'import', 'done', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
         )
         .bind(
           id,
           JSON.stringify(payload),
           payloadHash,
           input.recipe_ref ?? options.defaultRecipeRef ?? 'production',
+          input.run_id ?? null,
           now,
           input.idempotency_key,
           input.created_by,
@@ -401,6 +410,16 @@ async function createImportRequest(
           shortId,
         ),
       ...(await resolutionStatements(db, { requestId: id, shortId, resolution, shadow: null, batchStatus: 'completed' })),
+      ...(input.run_id !== undefined
+        ? [
+            db
+              .prepare(
+                `UPDATE experiment_runs SET batch_id = (SELECT b.id FROM batches b WHERE b.idempotency_key = 'request:' || ?), updated_at = ?
+                 WHERE id = ? AND batch_id IS NULL`,
+              )
+              .bind(id, now, input.run_id),
+          ]
+        : []),
     ]);
   } catch (err) {
     const raced = await find();
