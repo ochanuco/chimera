@@ -11,16 +11,15 @@ import { ExperimentDetailPage, type ExperimentDetailData, type ExperimentJudgmen
 import { ExperimentAbPage, type AbPair, type ExperimentAbData } from '../ui/pages/ExperimentAb';
 import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
-import { ComparePage, type CompareItem, type CompareSemantic } from '../ui/pages/Compare';
+import { ComparePage } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
 import { queryGenerations } from '../lib/generations';
-import { parseJsonArray } from '../lib/preset-references';
-import { renderFactsForJob } from '../lib/render-facts';
+import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
 import { getCatalog } from '../lib/catalogs';
-import type { AppEnv, ComfyJobRow, ExperimentRunRow, GenerationRow } from '../types';
+import type { AppEnv, ExperimentRunRow, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 
 export const pages = new Hono<AppEnv>();
@@ -126,7 +125,14 @@ pages.get('/experiments/:id', async (c) => {
     ...data,
     base_generation_short_id: data.base_generation_id ? baseGenerationShortIds.get(data.base_generation_id) ?? null : null,
   };
-  return c.html(<ExperimentDetailPage path={c.req.path} experiment={experiment} judgments={judgments} />);
+  const compare = await buildExperimentCompare(
+    c.env.DB,
+    experiment.runs,
+    experiment.base_parameters,
+    parseSeedQuery(c.req.query('seed')),
+    new URL(c.req.url).origin,
+  );
+  return c.html(<ExperimentDetailPage path={c.req.path} experiment={experiment} judgments={judgments} compare={compare} />);
 });
 
 pages.get('/experiments/:id/ab', async (c) => {
@@ -310,34 +316,6 @@ pages.get('/check', async (c) => {
   return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} rows={viewRows} />);
 });
 
-/** Parses a Generation's semantic_json into CompareSemantic; NULL or unparseable JSON is treated as "not analyzed". */
-function parseCompareSemantic(row: GenerationRow): CompareSemantic | null {
-  if (!row.semantic_json) return null;
-  try {
-    const parsed = JSON.parse(row.semantic_json) as {
-      core?: Partial<CompareSemantic['core']>;
-      strengths?: string[];
-      defects?: string[];
-      attributes?: Record<string, unknown>;
-    };
-    return {
-      summary: row.summary,
-      core: {
-        pose: parsed.core?.pose ?? null,
-        expression: parsed.core?.expression ?? null,
-        outfit: parsed.core?.outfit ?? null,
-        style: parsed.core?.style ?? null,
-        composition: parsed.core?.composition ?? null,
-      },
-      strengths: parsed.strengths ?? [],
-      defects: parsed.defects ?? [],
-      attributes: parsed.attributes ?? {},
-    };
-  } catch {
-    return null;
-  }
-}
-
 pages.get('/compare', async (c) => {
   const idsParam = c.req.query('ids') ?? '';
   const requestedIds = idsParam
@@ -367,52 +345,7 @@ pages.get('/compare', async (c) => {
     rows.push(row);
   }
 
-  const requestIds = Array.from(new Set(rows.map((row) => row.request_id).filter((id): id is string => id !== null)));
-  const requestChangesById = new Map<string, { raw_instruction: string | null; patches_json: string | null }>();
-  if (requestIds.length > 0) {
-    const placeholders = requestIds.map(() => '?').join(', ');
-    const { results } = await c.env.DB.prepare(`SELECT id, raw_instruction, patches_json FROM requests WHERE id IN (${placeholders})`)
-      .bind(...requestIds)
-      .all<{ id: string; raw_instruction: string | null; patches_json: string | null }>();
-    for (const r of results ?? []) requestChangesById.set(r.id, r);
-  }
-
-  const jobIds = Array.from(new Set(rows.map((row) => row.comfy_job_id)));
-  const jobsById = new Map<string, ComfyJobRow>();
-  if (jobIds.length > 0) {
-    const placeholders = jobIds.map(() => '?').join(', ');
-    const { results } = await c.env.DB.prepare(`SELECT * FROM comfy_jobs WHERE id IN (${placeholders})`)
-      .bind(...jobIds)
-      .all<ComfyJobRow>();
-    for (const j of results ?? []) jobsById.set(j.id, j);
-  }
-  const renderFactsByGenerationId = new Map(
-    await Promise.all(
-      rows.map(async (row) => {
-        const job = jobsById.get(row.comfy_job_id);
-        return [row.id, job ? await renderFactsForJob(c.env.DB, job) : null] as const;
-      }),
-    ),
-  );
-
-  // Card-facing fields reuse the same queryGenerations the Gallery/Bookmarks list API builds
-  // them from, so Compare's cards never drift from those grids (docs/ui.md「Compare」).
-  const cardData = rows.length > 0 ? await queryGenerations(c.env.DB, { ids: rows.map((row) => row.id).join(',') }, origin) : { items: [] };
-  const cardByGenerationId = new Map(cardData.items.map((item) => [item.id, item]));
-
-  const items: CompareItem[] = rows.map((row) => {
-    const card = cardByGenerationId.get(row.id);
-    if (!card) throw new Error(`generation ${row.id} missing from its own queryGenerations lookup`);
-    return {
-      ...card,
-      seed: row.seed,
-      created_at: row.created_at,
-      raw_instruction: (row.request_id ? requestChangesById.get(row.request_id)?.raw_instruction : null) ?? null,
-      patches: parseJsonArray((row.request_id ? requestChangesById.get(row.request_id)?.patches_json : null) ?? null),
-      semantic: parseCompareSemantic(row),
-      render_facts: renderFactsByGenerationId.get(row.id) ?? null,
-    };
-  });
+  const items = await buildCompareItems(c.env.DB, rows, origin);
 
   return c.html(<ComparePage path={c.req.path} items={items} missingIds={missingIds} warning={warning} />);
 });

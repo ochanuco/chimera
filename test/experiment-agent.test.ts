@@ -231,6 +231,7 @@ describe('MCP server at /mcp', () => {
       [
         'list_experiments',
         'get_experiment',
+        'create_experiment',
         'create_run',
         'get_run',
         'get_generation_image',

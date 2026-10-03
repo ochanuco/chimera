@@ -11,13 +11,14 @@ import {
 } from '../schemas/experiments';
 import { assignTagSchema } from '../schemas/tags';
 import { uuidv7 } from '../lib/uuidv7';
-import { getGenerationByIdOrShortId, nowIso, parsePagination } from '../lib/db';
-import { createUniqueShortId } from '../lib/shortid';
+import { nowIso, parsePagination } from '../lib/db';
 import { EXPERIMENT_STATUS_TRANSITIONS } from '../lib/experiment-status';
 import { assignTag, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import {
+  assertCharacterExists,
+  createExperiment,
   createExperimentRun,
   decorateRuns,
   evaluationOverall,
@@ -30,6 +31,7 @@ import {
   listPromotions,
   listRuns,
   queryExperiments,
+  resolveBaseGenerationId,
   serializePendingRun,
   touchExperiment,
   updateExperimentRun,
@@ -43,7 +45,7 @@ import {
   serializeExperimentRun,
   serializePairwiseJudgment,
 } from '../lib/serialize';
-import type { AppEnv, ExperimentPromotionRow, ExperimentRow, ExperimentRunRow, PromotionStatus } from '../types';
+import type { AppEnv, ExperimentPromotionRow, ExperimentRunRow, PromotionStatus } from '../types';
 
 export const experiments = new Hono<AppEnv>();
 /** Mounted at /api/v1/experiment-runs: Run は Experiment を跨いで一意なので直接引ける。 */
@@ -70,64 +72,9 @@ async function getPromotionOr404(db: D1Database, id: string): Promise<Experiment
   return row;
 }
 
-async function assertCharacterExists(db: D1Database, characterId: string): Promise<void> {
-  const found = await db.prepare('SELECT 1 FROM characters WHERE id = ?').bind(characterId).first();
-  if (!found) throw notFound('character');
-}
-
-/** short_id / UUID どちらでも受け、他の FK と同様に UUID で保存する。 */
-async function resolveBaseGenerationId(db: D1Database, idOrShortId: string): Promise<string> {
-  const generation = await getGenerationByIdOrShortId(db, idOrShortId);
-  if (!generation) throw notFound('generation');
-  return generation.id;
-}
-
 experiments.post('/', async (c) => {
   const body = createExperimentSchema.parse(await c.req.json());
-  const db = c.env.DB;
-  if (body.character_id) await assertCharacterExists(db, body.character_id);
-  const baseGenerationId = body.base_generation_id ? await resolveBaseGenerationId(db, body.base_generation_id) : null;
-
-  const now = nowIso();
-  const row: ExperimentRow = {
-    id: uuidv7(),
-    short_id: await createUniqueShortId(db, 'experiments'),
-    name: body.name,
-    description: body.description ?? null,
-    note: body.note ?? null,
-    status: 'active',
-    base_recipe: body.base_recipe ?? null,
-    base_parameters_json: body.base_parameters ? JSON.stringify(body.base_parameters) : null,
-    base_generation_id: baseGenerationId,
-    character_id: body.character_id ?? null,
-    bookmark: 0,
-    created_at: now,
-    updated_at: now,
-    completed_at: null,
-  };
-  await db
-    .prepare(
-      `INSERT INTO experiments
-         (id, short_id, name, description, note, status, base_recipe, base_parameters_json, base_generation_id, character_id, bookmark, created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      row.id,
-      row.short_id,
-      row.name,
-      row.description,
-      row.note,
-      row.status,
-      row.base_recipe,
-      row.base_parameters_json,
-      row.base_generation_id,
-      row.character_id,
-      row.bookmark,
-      row.created_at,
-      row.updated_at,
-      row.completed_at,
-    )
-    .run();
+  const row = await createExperiment(c.env.DB, body);
   return c.json(serializeExperiment(row), 201);
 });
 
