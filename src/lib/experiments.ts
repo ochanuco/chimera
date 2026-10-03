@@ -17,7 +17,7 @@ import { isUuid, uuidv7 } from './uuidv7';
 import { resolveRequestRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
-import { createUniqueRequestShortId } from './shortid';
+import { createUniqueRequestShortId, createUniqueShortId } from './shortid';
 import {
   generationPreviewUrl,
   serializeExperiment,
@@ -45,6 +45,76 @@ export async function resolveGenerationOr404(db: D1Database, idOrShortId: string
   const generation = await getGenerationByIdOrShortId(db, idOrShortId);
   if (!generation) throw notFound(`generation '${idOrShortId}'`);
   return generation;
+}
+
+export async function assertCharacterExists(db: D1Database, characterId: string): Promise<void> {
+  const found = await db.prepare('SELECT 1 FROM characters WHERE id = ?').bind(characterId).first();
+  if (!found) throw notFound('character');
+}
+
+/** short_id / UUID どちらでも受け、他の FK と同様に UUID で保存する。 */
+export async function resolveBaseGenerationId(db: D1Database, idOrShortId: string): Promise<string> {
+  const generation = await getGenerationByIdOrShortId(db, idOrShortId);
+  if (!generation) throw notFound('generation');
+  return generation.id;
+}
+
+export interface CreateExperimentInput {
+  name: string;
+  description?: string;
+  note?: string;
+  base_recipe?: string;
+  base_parameters?: JsonObject;
+  base_generation_id?: string;
+  character_id?: string;
+}
+
+/** POST /api/v1/experiments と create_experiment MCP tool が共有する。常に status 'active' で作る。 */
+export async function createExperiment(db: D1Database, body: CreateExperimentInput): Promise<ExperimentRow> {
+  if (body.character_id) await assertCharacterExists(db, body.character_id);
+  const baseGenerationId = body.base_generation_id ? await resolveBaseGenerationId(db, body.base_generation_id) : null;
+
+  const now = nowIso();
+  const row: ExperimentRow = {
+    id: uuidv7(),
+    short_id: await createUniqueShortId(db, 'experiments'),
+    name: body.name,
+    description: body.description ?? null,
+    note: body.note ?? null,
+    status: 'active',
+    base_recipe: body.base_recipe ?? null,
+    base_parameters_json: body.base_parameters ? JSON.stringify(body.base_parameters) : null,
+    base_generation_id: baseGenerationId,
+    character_id: body.character_id ?? null,
+    bookmark: 0,
+    created_at: now,
+    updated_at: now,
+    completed_at: null,
+  };
+  await db
+    .prepare(
+      `INSERT INTO experiments
+         (id, short_id, name, description, note, status, base_recipe, base_parameters_json, base_generation_id, character_id, bookmark, created_at, updated_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      row.id,
+      row.short_id,
+      row.name,
+      row.description,
+      row.note,
+      row.status,
+      row.base_recipe,
+      row.base_parameters_json,
+      row.base_generation_id,
+      row.character_id,
+      row.bookmark,
+      row.created_at,
+      row.updated_at,
+      row.completed_at,
+    )
+    .run();
+  return row;
 }
 
 export async function listRuns(db: D1Database, experimentId: string): Promise<ExperimentRunRow[]> {
@@ -477,6 +547,88 @@ export async function createExperimentRun(
   await touchExperiment(db, experiment.id, now);
 
   return { row: await getRunOr404(db, id), created: true, request_id: requestId };
+}
+
+export interface ExperimentArmInput {
+  label: string;
+  instruction?: string;
+  patches?: JsonObject[];
+}
+
+export interface CreateExperimentWithArmsInput {
+  experiment: CreateExperimentInput;
+  arms: ExperimentArmInput[];
+  /** arm ごとの Run には `${idempotency_key}:arm:${index}` を使う。 */
+  idempotency_key: string;
+}
+
+export interface ExperimentArmRun {
+  row: ExperimentRunRow;
+  arm: string;
+  request_id: string | null;
+  /** この呼び出しで新規に作った Run か（通知対象の判定に使う）。 */
+  created: boolean;
+}
+
+function armIdempotencyKey(key: string, index: number): string {
+  return `${key}:arm:${index}`;
+}
+
+/** 既存 Run の variables.arm。arm 由来でない Run は null。 */
+function armLabelOf(run: ExperimentRunRow): string | null {
+  const variables = parseJsonObjectOrNull(run.variables_json);
+  return typeof variables?.arm === 'string' ? variables.arm : null;
+}
+
+/**
+ * create_experiment MCP tool の本体: Experiment を作り、arm ごとに Run を1件ずつ順に作る（Run 作成が request を自動起票する）。
+ * arm 0 の Run が既にあれば再送とみなし、Experiment を作り直さずに足りない arm だけを補う。
+ * 既存の arm 構成が今回の arms と食い違うなら 409。
+ */
+export async function createExperimentWithArms(
+  db: D1Database,
+  input: CreateExperimentWithArmsInput,
+  options: CreateExperimentRunOptions = {},
+): Promise<{ experiment: ExperimentRow; runs: ExperimentArmRun[]; created: boolean }> {
+  const { arms, idempotency_key: key } = input;
+  const first = await findRunByIdempotencyKey(db, armIdempotencyKey(key, 0));
+
+  let experiment: ExperimentRow;
+  if (first) {
+    experiment = await getExperimentOr404(db, first.experiment_id);
+    const prefix = `${key}:arm:`;
+    const armRuns = (await listRuns(db, experiment.id)).filter((r) => r.idempotency_key?.startsWith(prefix));
+    const existingByKey = new Map(armRuns.map((r) => [r.idempotency_key, r]));
+    const matches =
+      existingByKey.size <= arms.length &&
+      arms.every((arm, i) => {
+        const existing = existingByKey.get(armIdempotencyKey(key, i));
+        return !existing || armLabelOf(existing) === arm.label;
+      }) &&
+      Array.from(existingByKey.keys()).every((k) => arms.some((_, i) => armIdempotencyKey(key, i) === k));
+    if (!matches) {
+      throw conflict(`idempotency_key '${key}' was already used for a different set of arms`);
+    }
+  } else {
+    experiment = await createExperiment(db, input.experiment);
+  }
+
+  const runs: ExperimentArmRun[] = [];
+  for (const [index, arm] of arms.entries()) {
+    const result = await createExperimentRun(
+      db,
+      experiment,
+      {
+        overrides: { patches: arm.patches ?? [] },
+        objective: arm.instruction ?? arm.label,
+        variables: { arm: arm.label },
+        idempotency_key: armIdempotencyKey(key, index),
+      },
+      options,
+    );
+    runs.push({ row: result.row, arm: arm.label, request_id: result.request_id, created: result.created });
+  }
+  return { experiment, runs, created: first === null };
 }
 
 export interface UpdateExperimentRunInput {

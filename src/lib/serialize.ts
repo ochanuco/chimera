@@ -16,6 +16,10 @@ export function canonicalGenerationUrl(origin: string, shortId: string): string 
   return `${origin}/g/${shortId}`;
 }
 
+export function canonicalExperimentUrl(origin: string, shortId: string): string {
+  return `${origin}/experiments/${shortId}`;
+}
+
 export function generationImageUrl(origin: string, shortId: string): string {
   return `${origin}/g/${shortId}/image`;
 }

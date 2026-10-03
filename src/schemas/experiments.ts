@@ -4,6 +4,38 @@ import { z } from 'zod';
  * (docs/domain-model.md)。評価軸は Experiment/評価者ごとに変わるため、固定すると都度 migration が必要になる。 */
 export const jsonObject = z.record(z.string(), z.unknown());
 
+type PatchPath = (string | number)[];
+
+function checkPatches(patches: unknown, ctx: z.RefinementCtx, basePath: PatchPath): void {
+  if (!Array.isArray(patches)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'must be an array of patch objects, e.g. [{ target, op, reason, value? }]',
+      path: basePath,
+    });
+    return;
+  }
+  patches.forEach((patch, i) => {
+    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'each patch must be an object with target, op and reason',
+        path: [...basePath, i],
+      });
+      return;
+    }
+    for (const field of ['target', 'op', 'reason'] as const) {
+      const fieldValue = (patch as Record<string, unknown>)[field];
+      if (typeof fieldValue !== 'string' || fieldValue.length === 0) {
+        ctx.addIssue({ code: 'custom', message: 'must be a non-empty string', path: [...basePath, i, field] });
+      }
+    }
+  });
+}
+
+/** `overrides.patches` 単体の検証。Run を作る側 (create_experiment の arm) が overrides を組む前に同じ規則で弾く。 */
+export const patchesSchema = z.array(jsonObject).superRefine((patches, ctx) => checkPatches(patches, ctx, []));
+
 /** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は comfyui-recipes 側の
  * 実装に属するため検証しない — 保証するのは「diff の形をしているか」だけ (docs/experiment-agent.md)。
  * evaluation/decision はここを通さない（自由記述のまま）。 */
@@ -21,31 +53,7 @@ export const overridesSchema = jsonObject.superRefine((value, ctx) => {
   }
   if (!('patches' in value)) return;
 
-  const patches = value.patches;
-  if (!Array.isArray(patches)) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'must be an array of patch objects, e.g. [{ target, op, reason, value? }]',
-      path: ['patches'],
-    });
-    return;
-  }
-  patches.forEach((patch, i) => {
-    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'each patch must be an object with target, op and reason',
-        path: ['patches', i],
-      });
-      return;
-    }
-    for (const field of ['target', 'op', 'reason'] as const) {
-      const fieldValue = (patch as Record<string, unknown>)[field];
-      if (typeof fieldValue !== 'string' || fieldValue.length === 0) {
-        ctx.addIssue({ code: 'custom', message: 'must be a non-empty string', path: ['patches', i, field] });
-      }
-    }
-  });
+  checkPatches(value.patches, ctx, ['patches']);
 });
 
 export const experimentStatusSchema = z.enum(['active', 'stabilized', 'promoted', 'abandoned']);
@@ -64,12 +72,36 @@ const httpUrl = z.string().refine(
   { message: 'must be an http(s) URL' },
 );
 
+const seedsSchema = z.array(z.number().int().nonnegative()).min(1).max(16);
+
+/** base_parameters は語彙を解釈しない JSON blob だが、`seeds` だけは Run の request.seeds になる契約値なので形を検証する。
+ * seeds があるとき request.count は seeds.length で決まるため、食い違う `count` は受け付けない。 */
+export const baseParametersSchema = jsonObject.superRefine((value, ctx) => {
+  if (!('seeds' in value)) return;
+  const parsed = seedsSchema.safeParse(value.seeds);
+  if (!parsed.success) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'must be an array of 1-16 non-negative integers',
+      path: ['seeds'],
+    });
+    return;
+  }
+  if ('count' in value && value.count !== parsed.data.length) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `count (${String(value.count)}) must equal seeds length (${parsed.data.length}); omit count when seeds is given`,
+      path: ['count'],
+    });
+  }
+});
+
 export const createExperimentSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   note: z.string().optional(),
   base_recipe: z.string().optional(),
-  base_parameters: jsonObject.optional(),
+  base_parameters: baseParametersSchema.optional(),
   base_generation_id: z.string().min(1).optional(),
   character_id: z.string().min(1).optional(),
 });
@@ -80,7 +112,7 @@ export const updateExperimentSchema = z
     description: z.string().nullable().optional(),
     note: z.string().nullable().optional(),
     base_recipe: z.string().nullable().optional(),
-    base_parameters: jsonObject.nullable().optional(),
+    base_parameters: baseParametersSchema.nullable().optional(),
     base_generation_id: z.string().min(1).nullable().optional(),
     character_id: z.string().min(1).nullable().optional(),
     status: experimentStatusSchema.optional(),

@@ -31,6 +31,8 @@ export interface CompareItem extends GenerationCardData {
   patches: unknown[];
   semantic: CompareSemantic | null;
   render_facts: RenderFacts | null;
+  /** 結果の Generation がまだ無い列。画像もセル値も持たず、差分の対象にならない（Experiment Detail の Run 列）。 */
+  placeholder?: boolean;
 }
 
 interface CompareRow {
@@ -158,6 +160,7 @@ function buildDiffRow(label: string, cells: SemanticCell[]): CompareRow {
 /** Builds one semantic comparison row: "(not analyzed)" for an un-analyzed item, else extractRaw's value. */
 function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: CompareSemantic) => SemanticRaw): CompareRow {
   const cells: SemanticCell[] = items.map((item) => {
+    if (item.placeholder) return { display: NO_VALUE, raw: null, kind: 'text' };
     if (!item.semantic) return { display: NOT_ANALYZED, raw: null, kind: 'text' };
     const r = extractRaw(item.semantic);
     if (r === null) return { display: NO_VALUE, raw: null, kind: 'text' };
@@ -171,9 +174,11 @@ function buildSemanticRow(label: string, items: CompareItem[], extractRaw: (s: C
  * carries no graph, NO_VALUE when the graph doesn't populate this column. Null (row omitted) when every item lacks a value. */
 function buildRenderFactRow(
   column: RenderFactColumn,
+  items: CompareItem[],
   summaries: (Record<RenderFactColumn, string | null> | null)[],
 ): CompareRow | null {
-  const cells: SemanticCell[] = summaries.map((summary) => {
+  const cells: SemanticCell[] = summaries.map((summary, i) => {
+    if (items[i]!.placeholder) return { display: NO_VALUE, raw: null, kind: 'text' };
     if (!summary) return { display: NO_GRAPH, raw: null, kind: 'text' };
     const value = summary[column];
     return value === null ? { display: NO_VALUE, raw: null, kind: 'text' } : { display: value, raw: value, kind: 'text' };
@@ -184,6 +189,7 @@ function buildRenderFactRow(
 
 /** One item's pass-`passIndex` prompt text (positive/negative), "(no graph)" without a Job graph, `—` without that many passes. */
 function promptCell(item: CompareItem, passIndex: number, polarity: 'positive' | 'negative'): SemanticCell {
+  if (item.placeholder) return { display: NO_VALUE, raw: null, kind: 'text' };
   if (!item.render_facts) return { display: NO_GRAPH, raw: null, kind: 'text' };
   const text = item.render_facts.samplers[passIndex]?.prompt[polarity] ?? null;
   return text === null ? { display: NO_VALUE, raw: null, kind: 'text' } : { display: text, raw: text, kind: 'text' };
@@ -289,18 +295,23 @@ function sameChip(label: string, value: string): { text: string; title?: string 
 
 const CORE_FIELDS = ['pose', 'expression', 'outfit', 'style', 'composition'] as const;
 
-function CompareTable({ items, rows }: { items: CompareItem[]; rows: CompareRow[] }) {
+function CompareTable({ items, rows, headers }: { items: CompareItem[]; rows: CompareRow[]; headers?: string[] }) {
   return (
     <table class="compare-table">
       <thead>
         <tr>
           <th></th>
-          {items.map((item) => (
+          {items.map((item, i) => (
             <th>
-              <a class="thumb-link compare-head-link" href={`/g/${item.short_id}`}>
-                {item.short_id}
-                <img class="thumb-fg" src={item.thumbnail_url} alt="" hidden loading="lazy" />
-              </a>
+              {headers ? <div class="compare-head-label">{headers[i]}</div> : null}
+              {item.placeholder ? (
+                <span class="compare-head-pending">生成待ち</span>
+              ) : (
+                <a class="thumb-link compare-head-link" href={`/g/${item.short_id}`}>
+                  {item.short_id}
+                  <img class="thumb-fg" src={item.thumbnail_url} alt="" hidden loading="lazy" />
+                </a>
+              )}
             </th>
           ))}
         </tr>
@@ -333,28 +344,20 @@ function CompareTable({ items, rows }: { items: CompareItem[]; rows: CompareRow[
   );
 }
 
-export function ComparePage({
-  path,
-  items,
-  missingIds,
-  warning,
-}: {
-  path: string;
-  items: CompareItem[];
-  missingIds: string[];
-  warning?: string;
-}) {
+/** 2 列以上の Compare 本体（カード・全列同一バー・差分表）。/compare と Experiment Detail が共有する。
+ * headers があれば各列の見出し（Experiment では arm 名）としてカードと表ヘッダに出す。 */
+export function CompareView({ items, headers }: { items: CompareItem[]; headers?: string[] }) {
   const changeRows: CompareRow[] = [];
   const rows: CompareRow[] = [];
   const promptRows: CompareRow[] = [];
   if (items.length >= 2) {
     changeRows.push(...buildChangeRows(items));
     rows.push(buildBasicRow('seed', items, (i) => (i.seed != null ? String(i.seed) : null)));
-    rows.push(buildBasicRow('created', items, (i) => i.created_at.slice(0, 10)));
+    rows.push(buildBasicRow('created', items, (i) => (i.placeholder ? null : i.created_at.slice(0, 10))));
 
     const renderFactSummaries = items.map((item) => (item.render_facts ? summarizeRenderFacts(item.render_facts) : null));
     for (const column of RENDER_FACT_COLUMNS) {
-      const row = buildRenderFactRow(column, renderFactSummaries);
+      const row = buildRenderFactRow(column, items, renderFactSummaries);
       if (row) rows.push(row);
     }
 
@@ -403,6 +406,84 @@ export function ComparePage({
   const mainRows = changeRows.concat(rows);
 
   return (
+    <div id="compare-page">
+      <div class="compare-cols-picker">
+        <label for="compare-cols">Columns:</label>
+        <select id="compare-cols">
+          <option value="auto">Auto</option>
+          {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+            <option value={String(n)}>{n}</option>
+          ))}
+        </select>
+      </div>
+      <div class="compare-columns">
+        {items.map((item, i) => (
+          <div class="compare-col">
+            {headers ? <div class="compare-col-label">{headers[i]}</div> : null}
+            {item.placeholder ? <div class="card compare-placeholder">生成待ち</div> : <GenerationCard g={item} />}
+          </div>
+        ))}
+      </div>
+
+      {items.some((item) => !item.semantic && !item.placeholder) ? (
+        <p class="empty-state">
+          Some generations are not semantically analyzed yet — their semantic rows show "(not analyzed)". Run
+          semantic analysis (UC-11) to compare them.
+        </p>
+      ) : null}
+
+      {showLegend ? (
+        <p class="compare-legend">
+          全ての列に共通の部分はそのまま、一部の列とだけ一致する部分を<span class="tok-partial">黄</span>、その列にしかない部分を
+          <span class="tok-uniq">緑</span>で表示します。
+        </p>
+      ) : null}
+
+      {sameRows.length > 0 ? (
+        <div class="compare-same-bar">
+          <span class="compare-same-items">
+            <span>全列同一:</span>
+            {sameChips.map((chip) => (
+              <span class="compare-same-chip" title={chip.title}>
+                {chip.text}
+              </span>
+            ))}
+            {sameEmptyLabels.length > 0 ? <span class="compare-same-empty">値なし: {sameEmptyLabels.join(', ')}</span> : null}
+          </span>
+          <label>
+            <input type="checkbox" id="compare-show-same" /> 同一の行も表示
+          </label>
+        </div>
+      ) : null}
+
+      <div class="compare-table-wrap" id="compare-main-wrap">
+        <CompareTable items={items} rows={mainRows} headers={headers} />
+      </div>
+
+      {promptRows.length > 0 ? (
+        <details class="compare-prompts">
+          <summary>プロンプト全文（差分）を表示</summary>
+          <div class="compare-table-wrap">
+            <CompareTable items={items} rows={promptRows} headers={headers} />
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+export function ComparePage({
+  path,
+  items,
+  missingIds,
+  warning,
+}: {
+  path: string;
+  items: CompareItem[];
+  missingIds: string[];
+  warning?: string;
+}) {
+  return (
     <Layout title="Compare" path={path}>
       <h1>Compare</h1>
       {warning ? <p class="empty-state">{warning}</p> : null}
@@ -411,66 +492,7 @@ export function ComparePage({
       {items.length < 2 ? (
         <p class="empty-state">Select 2–9 generations from the Gallery to compare.</p>
       ) : (
-        <div id="compare-page">
-          <div class="compare-cols-picker">
-            <label for="compare-cols">Columns:</label>
-            <select id="compare-cols">
-              <option value="auto">Auto</option>
-              {[2, 3, 4, 5, 6, 7, 8].map((n) => (
-                <option value={String(n)}>{n}</option>
-              ))}
-            </select>
-          </div>
-          <div class="compare-columns">
-            {items.map((item) => (
-              <GenerationCard g={item} />
-            ))}
-          </div>
-
-          {items.some((item) => !item.semantic) ? (
-            <p class="empty-state">
-              Some generations are not semantically analyzed yet — their semantic rows show "(not analyzed)". Run
-              semantic analysis (UC-11) to compare them.
-            </p>
-          ) : null}
-
-          {showLegend ? (
-            <p class="compare-legend">
-              全ての列に共通の部分はそのまま、一部の列とだけ一致する部分を<span class="tok-partial">黄</span>、その列にしかない部分を
-              <span class="tok-uniq">緑</span>で表示します。
-            </p>
-          ) : null}
-
-          {sameRows.length > 0 ? (
-            <div class="compare-same-bar">
-              <span class="compare-same-items">
-                <span>全列同一:</span>
-                {sameChips.map((chip) => (
-                  <span class="compare-same-chip" title={chip.title}>
-                    {chip.text}
-                  </span>
-                ))}
-                {sameEmptyLabels.length > 0 ? <span class="compare-same-empty">値なし: {sameEmptyLabels.join(', ')}</span> : null}
-              </span>
-              <label>
-                <input type="checkbox" id="compare-show-same" /> 同一の行も表示
-              </label>
-            </div>
-          ) : null}
-
-          <div class="compare-table-wrap" id="compare-main-wrap">
-            <CompareTable items={items} rows={mainRows} />
-          </div>
-
-          {promptRows.length > 0 ? (
-            <details class="compare-prompts">
-              <summary>プロンプト全文（差分）を表示</summary>
-              <div class="compare-table-wrap">
-                <CompareTable items={items} rows={promptRows} />
-              </div>
-            </details>
-          ) : null}
-        </div>
+        <CompareView items={items} />
       )}
     </Layout>
   );

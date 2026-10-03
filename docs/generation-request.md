@@ -242,6 +242,9 @@ Job に記録します。
 }
 ```
 
+Experiment の `base_parameters.seeds` を持つ Run は、この `request.seeds` を全 Run で共有し、
+`count` は `seeds` の件数にします（[experiment-agent.md](experiment-agent.md#base_parametersseeds)）。
+
 ## Validation Principles
 
 検証は2か所で行います。chimera で落ちたものは requests 行にならず、worker で落ちたものは

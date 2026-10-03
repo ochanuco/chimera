@@ -5,7 +5,13 @@
 // 読み取り tool には readOnlyHint を付ける（annotation が無いと副作用ありとみなし、承認待ちで結果を返さない client がある）。
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { createExperimentRunSchema, experimentStatusSchema, jsonObject } from './schemas/experiments';
+import {
+  baseParametersSchema,
+  createExperimentRunSchema,
+  experimentStatusSchema,
+  jsonObject,
+  patchesSchema,
+} from './schemas/experiments';
 import {
   requestKindSchema,
   requestKindFilterSchema,
@@ -20,6 +26,7 @@ import {
 import { notFound } from './lib/errors';
 import {
   createExperimentRun,
+  createExperimentWithArms,
   getExperimentDetail,
   getExperimentOr404,
   getRunOr404,
@@ -52,7 +59,7 @@ import { createObservation, getObservation, listObservations } from './lib/obser
 import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
 import { notifyHub, type Waitable } from './lib/hub-notify';
-import { canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
+import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import { foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
@@ -125,6 +132,48 @@ function promptPartGuidance(identityOverrideField: string): string {
     'the worker then renders it and records identity_override and identity_removed in semantic.attributes. ' +
     'Never reuse render_facts prompts from get_generation where comfy_job.prompt_not_reusable is set. '
   );
+}
+
+const createExperimentInputSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    character_id: z.string().min(1).optional(),
+    recipe: z.string().min(1),
+    parameters: jsonObject.optional(),
+    seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
+    base_generation_id: z.string().min(1).optional(),
+    arms: z
+      .array(
+        z.object({
+          label: z.string().min(1),
+          instruction: z.string().min(1).optional(),
+          patches: patchesSchema.optional(),
+        }),
+      )
+      .min(1)
+      .max(9),
+    idempotency_key: z.string().min(1),
+  })
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.arms.forEach((arm, i) => {
+      if (seen.has(arm.label)) {
+        ctx.addIssue({ code: 'custom', message: `duplicate arm label '${arm.label}'`, path: ['arms', i, 'label'] });
+      }
+      seen.add(arm.label);
+    });
+    const merged = baseParametersSchema.safeParse(mergedBaseParameters(value));
+    if (!merged.success) {
+      for (const issue of merged.error.issues) {
+        ctx.addIssue({ code: 'custom', message: issue.message, path: ['parameters', ...issue.path] });
+      }
+    }
+  });
+
+/** create_experiment の parameters と seeds を、Experiment に保存する base_parameters にまとめる。 */
+function mergedBaseParameters(input: { parameters?: Record<string, unknown>; seeds?: number[] }): Record<string, unknown> {
+  return { ...(input.parameters ?? {}), ...(input.seeds ? { seeds: input.seeds } : {}) };
 }
 
 const createRunInputSchema = createExperimentRunSchema
@@ -303,7 +352,9 @@ const MCP_INSTRUCTIONS =
   '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
   'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
   '5. A finalized / repaired / masked_redraw Generation exposes its pre-finalize source as `refines_generation` ' +
-  '({id, short_id, rating}) in get_generation; it is null for a raw Generation.';
+  '({id, short_id, rating}) in get_generation; it is null for a raw Generation.\n' +
+  '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
+  'without patches, all sharing the same seeds. The experiment page shows the arms side by side per seed.';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
@@ -363,6 +414,61 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ id }) => {
       const experiment = await getExperimentOr404(db, id);
       return jsonResult(mcpOutputSchemas.get_experiment, await getExperimentDetail(db, experiment, origin));
+    },
+  );
+
+  server.registerTool(
+    'create_experiment',
+    {
+      outputSchema: mcpOutputSchemas.create_experiment,
+      description:
+        'Non-destructive: only adds a new Experiment and its Runs. Never deletes or overwrites existing data. Idempotent by idempotency_key. ' +
+        'This is the way to compare variants: one instruction = one Experiment. Each arm becomes one Run with its own generate request, ' +
+        'and the experiment page (url) lays the arms out as columns, one row of images per seed. ' +
+        'recipe and parameters (pose, costume, ... and optionally count) are shared by every arm; pass seeds so all arms render the same seeds ' +
+        'and the columns are comparable (seeds sets the request count, so omit count when giving seeds). ' +
+        'arms: 1-9 entries {label, instruction?, patches?}; label must be unique within the call and is the column header. ' +
+        'Include the control as an arm without patches. patches is a diff against the recipe, each {target, op, reason, value/old by op}; ' +
+        'change one aspect per arm with per-part targets "prompt.positive.<part>" (part names from get_catalog_pose `parts`) instead of replacing the whole prompt. ' +
+        'instruction is the arm\'s instruction text (defaults to the label). ' +
+        'Retrying with the same idempotency_key returns the original Experiment and Runs with created=false; the same key with different arms is a 409. ' +
+        'Returns the Experiment (id, short_id, url, compare_url) and per arm the Run id, request_id and request_short_id.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: createExperimentInputSchema,
+    },
+    async (input) => {
+      const { experiment, runs, created } = await createExperimentWithArms(
+        db,
+        {
+          experiment: {
+            name: input.name,
+            description: input.description,
+            base_recipe: input.recipe,
+            base_parameters: mergedBaseParameters(input),
+            base_generation_id: input.base_generation_id,
+            character_id: input.character_id,
+          },
+          arms: input.arms,
+          idempotency_key: input.idempotency_key,
+        },
+        { recipeRef: defaultRecipeRef(env) },
+      );
+      const outRuns = [];
+      for (const run of runs) {
+        let requestShortId: string | null = null;
+        if (run.request_id) {
+          const requestRow = await getRequestOr404(db, run.request_id);
+          requestShortId = requestRow.short_id;
+          if (run.created) notifyHubInBackground(env, 'queued', requestRow);
+        }
+        outRuns.push({ id: run.row.id, arm: run.arm, request_id: run.request_id, request_short_id: requestShortId });
+      }
+      const url = canonicalExperimentUrl(origin, experiment.short_id);
+      return jsonResult(mcpOutputSchemas.create_experiment, {
+        experiment: { id: experiment.id, short_id: experiment.short_id, url, compare_url: `${url}#experiment-compare` },
+        runs: outRuns,
+        created,
+      });
     },
   );
 
