@@ -237,6 +237,8 @@ export const createRequestSchema = z
     created_by: requestCreatedBySchema,
     /** import だけが done で作られる。他の kind は queued 固定で、指定できない。 */
     status: z.literal('done').optional(),
+    /** import だけが受ける。worker を通さずに描いた Run の結果を、この Request として Run に紐付ける。 */
+    run_id: z.string().min(1).optional(),
     ...resolutionBaseShape,
     parameters: jsonObject.optional(),
   })
@@ -253,6 +255,9 @@ export const createRequestSchema = z
     }
     if (value.status !== undefined) {
       ctx.addIssue({ code: 'custom', message: "status is only accepted for kind import", path: ['status'] });
+    }
+    if (value.run_id !== undefined) {
+      ctx.addIssue({ code: 'custom', message: 'run_id is only accepted for kind import', path: ['run_id'] });
     }
     for (const key of RESOLUTION_KEYS) {
       if ((value as Record<string, unknown>)[key] !== undefined) {
