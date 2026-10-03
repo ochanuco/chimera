@@ -567,7 +567,7 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意）
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
