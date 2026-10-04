@@ -131,8 +131,8 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
 Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize /
-repair、pin の再描画、hires 刷り直し（同 prompt・同 seed の `kind = generate`）だけ」は
-GUI のコードがそれらの form / ボタンしか持たないことで保っており、API が `created_by`
+repair と、pin の再描画（絵柄チェック）だけ」は GUI のコードがそれらの form / ボタンしか
+持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
 サーバー側で確定し、`created_by` ごとの `kind` / `generation.graph` の受理可否を設けます
@@ -436,7 +436,9 @@ worker は `failed` にします。`generation.identity_override` に理由の�
       "repair_denoise": null,
       "repair_pad": null,
       "repair_size": null,
-      "repair_lora": null
+      "repair_lora": null,
+      "hires": null,
+      "hires_denoise": null
     }
   }
 }
@@ -475,6 +477,8 @@ LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも fi
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
   repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。Anima の絵を deliver_only で使うときは worker が無視する。redraw と組み合わせるときは効く）
   repair_seeds        null | integer (1-8)      `--repair-seeds N`（`deliver_only` と `repair` / `repair_regions` を組み合わせた時だけ効く。seed ごとに1候補を作る数、worker 既定 4）
+  hires               null | 64 以上の integer  `--hires LONGEST`（元 Generation の保存済み ComfyUI graph に、長辺 LONGEST（各辺 8 の倍数）への LatentUpscale と同じ seed の KSampler（denoise = `hires_denoise`）を足して描き直し、残りの finalize をその絵に掛ける。prompt・LoRA・seed は graph のまま、canvas は直接変えない（同 seed でサイズだけ変えると構図が変わる）。graph-mode の元絵も対象。graph の無い import 画像、repair / masked_redraw 済みの raw、Anima 以外の絵、すでに hires 済みの graph は `failed`。`deliver_only` が必須で、`deliver_only: false` や描き直し系（denoise / route / finalizer / size / keep_regions / upscale）との併用、`repair` / `repair_regions` / `repair_seeds` との併用は `failed`。`deliver_size` は併用可（最後の拡大縮小）。中間の hires 絵は別 Generation にせず、finalize の raw 出力がそれになる。worker は解決後の `hires` / `hires_denoise` を finalize Request の parameters に記録する。null / 省略は off）
+  hires_denoise       null | number (0, 1]      `--hires-denoise 0.35`（hires の同 seed pass の denoise。null は 0.35、0.45 なら線まで描き直す。`hires` 無しで指定すると `failed`）
   deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / keep_regions / upscale との併用を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Job として記録する（raw + delivered を seed ごとに1組）。Anima 以外の絵は `deliver_only` でしか finalize できない）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
@@ -488,7 +492,8 @@ finalizer / keep_regions / upscale のいずれか（redraw の絵柄を変え�
 `deliver_only` の既定は外れ、通常どおり
 redraw します（ただし redraw が効くのは Anima の絵だけです）。`repair` /
 `repair_regions` はこの既定を外さず、`deliver_only` のまま masked reroll の候補を作る
-側に扱われます。明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
+側に扱われます。`hires` も既定を外さず、`deliver_only` のまま使います。
+明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
 `stroke_light: null` は方向性のない均一な紫縁、`backdrop: null` は背景なし（透過）を
 指します。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
 chimera の WebUI フォームのプリセットもここから取っています。
@@ -501,11 +506,15 @@ catalog が `recipes[].dials.finalize` として公開するもので、chimera 
 `failed`）。`profile` は [finalize profile](#finalize-profile) を参照してください。
 
 GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
-`backdrop` / `stroke_light` に加えて、repair のチェックボックスか描画した範囲を使った場合は
+`backdrop` / `stroke_light` に加えて、`hires` を選んだ場合は `hires` / `hires_denoise` を、repair のチェックボックスか描画した範囲を使った場合は
 `repair` / `repair_regions` / `repair_pad` / `repair_lora` を、`deliver_only` チェック中に
 それらを使った場合はさらに `repair_seeds` を持ち、他は省略します。`backdrop` は選んだカードの
 模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
-`#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。`recolor` は
+`#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。
+`hires` の select は `off`（既定、`hires` / `hires_denoise` とも省略）、`2048 · denoise 0.35`
+（`hires: 2048` / `hires_denoise: 0.35`）、`2048 · denoise 0.45`（`hires: 2048` /
+`hires_denoise: 0.45`）のいずれかです。hires を選んだまま `deliver_only` を外すか repair の
+部位・範囲を使うと、GUI は積まずに止めます。`recolor` は
 recipe を問わず選べます。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、
 チェックした分だけ `repair` に積みます。Generation Detail は画像上にドラッグした矩形を
@@ -787,15 +796,6 @@ worker は requests だけを見ます。
   `denoise` / `seeds` / `pad`（空 = worker 既定）、`regions`（1行1矩形のテキスト入力、
   空 = worker 自動検出）を持ち、同じく `POST /api/v1/requests`（`kind = repair`,
   `created_by = gui`）を積む。ボタン横の status 表示は Finalize と同じ。
-- Generation Detail: `hires 2048 で刷り直す` ボタン。denoise（`0.35` 構図を保つ（既定） /
-  `0.45` 線まで描き直す）を選び、`POST /api/v1/generations/{id}/hires`
-  （[api.md](api.md#hires-刷り直し)）が `kind = generate` を積む（`created_by = gui`）。
-  元 Generation を `resolveDerivationSource` で raw 起点まで遡り、その Request の recipe /
-  parameters / patches / preset pin を引き継いで `parameters.hires = 2048` と
-  `hires.denoise` の set patch を足し、seed は元 Generation と同じ 1 枚（`count = 1`）。canvas
-  は直接変えず（同 seed でサイズだけ変えると構図が変わる）、latent upscale のあと同 seed で
-  通し直す。graph-mode の元 Request は対象外（ボタンを出さず、API は 409）。GUI は prompt
-  を書かない。original が purge 済みでも prompt から再生成するので押せる。
 - finalize / repair はどちらも Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`

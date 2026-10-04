@@ -149,6 +149,22 @@ describe('finalizeOptionsSchema', () => {
     expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
   });
 
+  it('accepts hires / hires_denoise, null included', () => {
+    expect(finalizeOptionsSchema.safeParse({ hires: 2048, hires_denoise: 0.45 }).success).toBe(true);
+    expect(finalizeOptionsSchema.safeParse({ hires: null, hires_denoise: null }).success).toBe(true);
+    expect(finalizeOptionsSchema.safeParse({ hires_denoise: 1 }).success).toBe(true);
+  });
+
+  it.each([
+    ['a non-integer hires', { hires: 2048.5 }],
+    ['a string hires', { hires: '2048' }],
+    ['a hires below 64', { hires: 32 }],
+    ['hires_denoise 0', { hires_denoise: 0 }],
+    ['hires_denoise above 1', { hires_denoise: 1.1 }],
+  ])('rejects %s', (_label, options) => {
+    expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
+  });
+
   it('rejects handdrawn / toe_guard / lora_strength (dropped alongside the yukari-anima -> yukari rename)', () => {
     for (const key of ['handdrawn', 'toe_guard', 'lora_strength']) {
       const result = finalizeOptionsSchema.safeParse({ [key]: true });

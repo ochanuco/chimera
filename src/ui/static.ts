@@ -362,20 +362,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-published-pill { color: #4fd8a4; }
 .card-reference-pill { color: #b39bf5; }
 
-.hires-rerender-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
-.hires-denoise,
-.hires-rerender-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.15rem 0.6rem;
-  font-size: 0.8rem;
-  background: var(--bg-elevated);
-  color: var(--text);
-}
-.hires-rerender-btn { cursor: pointer; }
-.hires-rerender-btn:disabled { opacity: 0.6; cursor: default; }
-.hires-rerender-status { font-size: 0.8rem; color: var(--text-dim); }
-
 .pose-reference-row { margin: 0.5rem 0; }
 .pose-reference-btn {
   border: 1px solid var(--border);
@@ -1927,33 +1913,6 @@ export const appJs = `
     });
   }
 
-  function initHiresRerender() {
-    document.addEventListener('click', async function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('.hires-rerender-btn') : null;
-      if (!btn) return;
-      var row = btn.closest('.hires-rerender-row');
-      var generationId = row.getAttribute('data-generation-id');
-      var shortId = row.getAttribute('data-generation-short-id');
-      var denoise = Number(qs('.hires-denoise', row).value);
-      var status = qs('.hires-rerender-status', row);
-      btn.disabled = true;
-      status.textContent = 'Queueing…';
-      try {
-        var request = await api('/api/v1/generations/' + generationId + '/hires', 'POST', {
-          denoise: denoise,
-          idempotency_key: 'gui:hires:' + shortId + ':' + crypto.randomUUID(),
-        });
-        status.textContent = 'request ' + (request.short_id || request.id) + ' ' + request.status;
-        track('generation.hires', { generation_id: generationId, denoise: denoise, request_id: request.id });
-      } catch (e) {
-        status.textContent = 'failed: ' + e.message;
-        trackError('generation.hires', e, { generation_id: generationId, denoise: denoise });
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  }
-
   // dial group state lives in data-dial-mode: 'default'/'off' (no value sent), a word (sent as
   // that string), or 'custom' (read the number input).
   function dialGroupValue(form, key) {
@@ -2048,9 +2007,25 @@ export const appJs = `
     if (matched) syncFinalizeBackdropColor(form);
   }
 
+  // The hires select folds options.hires + options.hires_denoise into one control; a profile
+  // value the select has no choice for leaves the current selection alone.
+  function applyHiresToForm(form, options) {
+    var select = qs('select[name="hires"]', form);
+    if (!select) return;
+    var wanted = 'off';
+    if (options.hires !== null && options.hires !== undefined) {
+      var denoise = options.hires_denoise === null || options.hires_denoise === undefined ? 0.35 : options.hires_denoise;
+      wanted = options.hires + '-' + denoise;
+    }
+    var known = qsa('option', select).some(function (o) { return o.value === wanted; });
+    if (known) select.value = wanted;
+  }
+
   function applyProfileOptionsToForm(form, options) {
+    applyHiresToForm(form, options);
     Object.keys(options).forEach(function (key) {
       var value = options[key];
+      if (key === 'hires' || key === 'hires_denoise') return;
       if (key === 'backdrop') {
         applyBackdropToForm(form, value);
         return;
@@ -2347,6 +2322,13 @@ export const appJs = `
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
 
+    var hiresSelect = qs('select[name="hires"]', form);
+    if (hiresSelect && hiresSelect.value !== 'off') {
+      var hiresParts = hiresSelect.value.split('-');
+      options.hires = Number(hiresParts[0]);
+      options.hires_denoise = Number(hiresParts[1]);
+    }
+
     // repair (hands/feet + regions) applies in both deliver_only and redraw mode; only
     // denoise/repair_lora/repair_seeds differ by mode. A checked part with zero regions is fine
     // (the worker auto-detects); nothing checked and no regions omits every repair* key.
@@ -2359,6 +2341,11 @@ export const appJs = `
     // Drawn rectangles replace detection: DWPose circles added on top of a rectangle widen the mask
     // past the part and the reroll's palette seams show along the circle.
     if (regions.length > 0) repair = [];
+    // worker が hires を受けるのは deliver_only かつ repair 無しのときだけ。積んで failed を待つより先に止める。
+    if (options.hires !== undefined && (!deliverOnly || repairActive)) {
+      if (!quiet) alert('hires は deliver only のときだけ使え、repair（部位・範囲）とは併用できません');
+      return null;
+    }
     if (repairActive) {
       options.repair = repair;
       if (regions.length > 0) options.repair_regions = regions;
@@ -3623,7 +3610,6 @@ export const appJs = `
     initPublicationUrlSave();
     initPublicationRemove();
     initPoseReference();
-    initHiresRerender();
     initFinalize();
         initFinalizeBackdropColor();
     initFinalizeRepairRegions();
