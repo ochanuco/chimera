@@ -11,7 +11,6 @@ import { queryGenerations } from '../lib/generations';
 import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
 import { getCatalog, findFinalizeDials, findFinalizeDefaults, findBackdrops, type FinalizeDefaults } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
-import { canHiresRerender } from '../lib/hires-rerender';
 import { isFinalizeResult } from '../lib/promote';
 import type { FinalizeDials } from '../ui/finalize-options';
 import {
@@ -149,8 +148,6 @@ images.get('/:shortId', async (c) => {
   const canPromoteToProfile =
     data.rating === 'good' && (await isFinalizeResult(db, generation));
 
-  const hiresRerenderable = await canHiresRerender(db, generation);
-
   const producedByOptions = await findProducedByOptions(db, generation.id);
 
   const experimentRun = generation.request_id ? await getExperimentRunFamily(db, generation.request_id) : null;
@@ -171,7 +168,6 @@ images.get('/:shortId', async (c) => {
       finalizeRecipeRef={finalizeRecipeRef}
       finalizeCatalogVersion={finalizeCatalogVersion}
       canPromoteToProfile={canPromoteToProfile}
-      canHiresRerender={hiresRerenderable}
       producedByOptions={producedByOptions}
     />,
   );

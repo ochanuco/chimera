@@ -585,6 +585,15 @@ describe('Web GUI pages', () => {
     }
   });
 
+  it('the Finalize form offers a hires select that defaults to off', async () => {
+    const { generation } = await createGeneration();
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('name="hires"');
+    expect(html).toMatch(/<option value="off" selected/);
+    expect(html).toContain('<option value="2048-0.35">');
+    expect(html).toContain('<option value="2048-0.45">');
+  });
+
   it('the Finalize form group controls into three fieldsets', async () => {
     const { generation } = await createGeneration();
     for (const path of [`/g/${generation.short_id}`]) {
@@ -599,7 +608,7 @@ describe('Web GUI pages', () => {
   it('the Finalize form show a Japanese help marker for each control, sharing one between repair hands/feet', async () => {
     const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari' } });
     const genHtml = await (await req(`/g/${generation.short_id}`)).text();
-    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(11);
+    expect((genHtml.match(/class="finalize-help"/g) ?? []).length).toBe(12);
   });
 
   it('the Finalize form disable repair_pad/repair_lora until a repair region is checked', async () => {

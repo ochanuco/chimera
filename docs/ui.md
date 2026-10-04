@@ -407,13 +407,6 @@ rating/bookmark行の直後は「基準」行です。このGenerationがposeの
 その場で行をピルに書き換えます。recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでない
 Generationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
-次の行は`hires 刷り直し`です。denoise（`0.35 構図を保つ`が既定、`0.45 線まで描き直す`）の
-選択と`hires 2048 で刷り直す`ボタンを置き、`POST /api/v1/generations/{id}/hires`
-（[api.md](api.md#hires-刷り直し)）で同じ prompt・同じ seed の generate を積みます。押下ごとに
-`gui:hires:{short_id}:{uuid}`の idempotency key を作り、ボタン横に request の short_id と status
-（失敗時はエラー文）を出します。raw 起点が graph-mode の Generation には行ごと出さず、
-original が purge 済みでも出します（原画像ではなく prompt から再生成するため）。
-
 続く`公開`セクションは[Publication](domain-model.md#publication)
 が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
 `--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・
@@ -524,6 +517,14 @@ Finalizeセクションは、Generation Detailから積める唯一の生成要�
 描いた範囲があれば`repair` / `repair_regions`は変わらず積み、加えて候補数を指定する
 `repair_seeds`（既定`disabled`、部位チェックか範囲のどちらかがある間だけ有効）を積みます。
 外すとdenoise / keep_legwearが元の状態に戻り、`repair_seeds`は送らなくなります。
+
+`仕上げ`グループには`hires`のselectもあります。`off`（既定、`hires` / `hires_denoise`とも
+送らない）、`2048 · denoise 0.35 構図を保つ`、`2048 · denoise 0.45 線まで描き直す`の3択で、
+選ぶと`options`に`hires: 2048`と`hires_denoise: 0.35 | 0.45`を積みます。finalizeの前に
+元Generationのgraphに同じseedのhiresを足してworkerが描き直し、他のoptionはその絵に掛かります。
+hiresはdeliver only中だけ使え、repairとは併用できないので、hiresを選んだままdeliver onlyを外すか
+repairの部位・範囲を使うと、送信時にalertを出して積みません（プレビューは`送信内容: —`）。プロファイルを押すと、プロファイルの
+`hires` / `hires_denoise`がselectの選択肢に一致するときだけselectがそれに切り替わります。
 
 このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
