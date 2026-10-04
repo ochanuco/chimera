@@ -253,16 +253,16 @@ export function FinalizeFields({
             <option value="off" selected>
               off
             </option>
-            <option value="2048-0.35">2048 · denoise 0.35 構図を保つ</option>
             <option value="2048-0.45">2048 · denoise 0.45 線まで描き直す</option>
+            <option value="2048-0.35">2048 · denoise 0.35 構図を保つ</option>
           </select>
         </label>
         <span
           class="finalize-help"
           tabindex={0}
           role="note"
-          aria-label="元の graph に latent upscale と同じ seed の pass を足して描き直し、以降の設定はその絵に掛かる。canvas は直接変えない。deliver only 中だけ使え、repair とは併用できない。Anima の絵だけ"
-          data-help="元の graph に latent upscale と同じ seed の pass を足して描き直し、以降の設定はその絵に掛かる。canvas は直接変えない。deliver only 中だけ使え、repair とは併用できない。Anima の絵だけ"
+          aria-label="元の graph に latent upscale と同じ seed の pass を足して描き直し、以降の設定はその絵に掛かる。canvas は直接変えない。大きさは標準 canvas の画素数に合わせ、縦長は 1280x2048、正方形は約 1616 四方。deliver only 中だけ使え、repair とは併用できない。Anima の絵だけ"
+          data-help="元の graph に latent upscale と同じ seed の pass を足して描き直し、以降の設定はその絵に掛かる。canvas は直接変えない。大きさは標準 canvas の画素数に合わせ、縦長は 1280x2048、正方形は約 1616 四方。deliver only 中だけ使え、repair とは併用できない。Anima の絵だけ"
         >
           ?
         </span>
