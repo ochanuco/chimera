@@ -18,6 +18,11 @@ describe('served app.js', () => {
     expect(appJs).toContain('/pose-reference');
   });
 
+  it('wires up the hires rerender button against the hires endpoint', () => {
+    expect(appJs).toContain('initHiresRerender');
+    expect(appJs).toContain('/hires');
+  });
+
   it('resolves a tri-state dial group\'s "on" mode to boolean true, not the word "on"', () => {
     expect(appJs).toContain("if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;");
   });

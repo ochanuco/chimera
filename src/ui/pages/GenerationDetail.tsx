@@ -8,6 +8,7 @@ import type { BackdropOption } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults } from '../../lib/catalogs';
 import { NoteSection } from '../components/NoteSection';
+import { HiresRerenderRow } from '../components/HiresRerenderRow';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
 import { PublicationSection, type PublicationData } from '../components/PublicationSection';
@@ -165,6 +166,7 @@ export function GenerationDetailPage({
   finalizeRecipeRef = null,
   finalizeCatalogVersion = null,
   canPromoteToProfile,
+  canHiresRerender,
   producedByOptions,
 }: {
   path: string;
@@ -182,6 +184,8 @@ export function GenerationDetailPage({
   finalizeRecipeRef?: string | null;
   finalizeCatalogVersion?: string | null;
   canPromoteToProfile: boolean;
+  /** hires 刷り直しを出せるか (recipe-mode の raw 起点に遡れる)。graph-mode は false。 */
+  canHiresRerender?: boolean;
   /** このGeneration自身を産んだ finalize/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
 }) {
@@ -225,6 +229,8 @@ export function GenerationDetailPage({
           <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
 
           <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
+
+          {canHiresRerender ? <HiresRerenderRow generationId={data.id} shortId={data.short_id} /> : null}
 
           <PublicationSection generationId={data.id} publications={data.publications} />
 
