@@ -130,9 +130,9 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
-Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize
-だけ（手足の repair は finalize の option として乗せる）」は GUI のコードが finalize の
-form しか持たないことで保っており、API が `created_by`
+Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize /
+repair、pin の再描画、hires 刷り直し（同 prompt・同 seed の `kind = generate`）だけ」は
+GUI のコードがそれらの form / ボタンしか持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
 サーバー側で確定し、`created_by` ごとの `kind` / `generation.graph` の受理可否を設けます
@@ -787,6 +787,15 @@ worker は requests だけを見ます。
   `denoise` / `seeds` / `pad`（空 = worker 既定）、`regions`（1行1矩形のテキスト入力、
   空 = worker 自動検出）を持ち、同じく `POST /api/v1/requests`（`kind = repair`,
   `created_by = gui`）を積む。ボタン横の status 表示は Finalize と同じ。
+- Generation Detail: `hires 2048 で刷り直す` ボタン。denoise（`0.35` 構図を保つ（既定） /
+  `0.45` 線まで描き直す）を選び、`POST /api/v1/generations/{id}/hires`
+  （[api.md](api.md#hires-刷り直し)）が `kind = generate` を積む（`created_by = gui`）。
+  元 Generation を `resolveDerivationSource` で raw 起点まで遡り、その Request の recipe /
+  parameters / patches / preset pin を引き継いで `parameters.hires = 2048` と
+  `hires.denoise` の set patch を足し、seed は元 Generation と同じ 1 枚（`count = 1`）。canvas
+  は直接変えず（同 seed でサイズだけ変えると構図が変わる）、latent upscale のあと同 seed で
+  通し直す。graph-mode の元 Request は対象外（ボタンを出さず、API は 409）。GUI は prompt
+  を書かない。original が purge 済みでも prompt から再生成するので押せる。
 - finalize / repair はどちらも Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`

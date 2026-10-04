@@ -362,6 +362,20 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-published-pill { color: #4fd8a4; }
 .card-reference-pill { color: #b39bf5; }
 
+.hires-rerender-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
+.hires-denoise,
+.hires-rerender-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.hires-rerender-btn { cursor: pointer; }
+.hires-rerender-btn:disabled { opacity: 0.6; cursor: default; }
+.hires-rerender-status { font-size: 0.8rem; color: var(--text-dim); }
+
 .pose-reference-row { margin: 0.5rem 0; }
 .pose-reference-btn {
   border: 1px solid var(--border);
@@ -1909,6 +1923,33 @@ export const appJs = `
       } catch (e) {
         trackError('pose_reference.set', e, { generation_id: generationId });
         alert('failed to set pose reference: ' + e.message);
+      }
+    });
+  }
+
+  function initHiresRerender() {
+    document.addEventListener('click', async function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.hires-rerender-btn') : null;
+      if (!btn) return;
+      var row = btn.closest('.hires-rerender-row');
+      var generationId = row.getAttribute('data-generation-id');
+      var shortId = row.getAttribute('data-generation-short-id');
+      var denoise = Number(qs('.hires-denoise', row).value);
+      var status = qs('.hires-rerender-status', row);
+      btn.disabled = true;
+      status.textContent = 'Queueing…';
+      try {
+        var request = await api('/api/v1/generations/' + generationId + '/hires', 'POST', {
+          denoise: denoise,
+          idempotency_key: 'gui:hires:' + shortId + ':' + crypto.randomUUID(),
+        });
+        status.textContent = 'request ' + (request.short_id || request.id) + ' ' + request.status;
+        track('generation.hires', { generation_id: generationId, denoise: denoise, request_id: request.id });
+      } catch (e) {
+        status.textContent = 'failed: ' + e.message;
+        trackError('generation.hires', e, { generation_id: generationId, denoise: denoise });
+      } finally {
+        btn.disabled = false;
       }
     });
   }
@@ -3582,6 +3623,7 @@ export const appJs = `
     initPublicationUrlSave();
     initPublicationRemove();
     initPoseReference();
+    initHiresRerender();
     initFinalize();
         initFinalizeBackdropColor();
     initFinalizeRepairRegions();
