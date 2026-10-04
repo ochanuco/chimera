@@ -18,11 +18,6 @@ describe('served app.js', () => {
     expect(appJs).toContain('/pose-reference');
   });
 
-  it('wires up the hires rerender button against the hires endpoint', () => {
-    expect(appJs).toContain('initHiresRerender');
-    expect(appJs).toContain('/hires');
-  });
-
   it('resolves a tri-state dial group\'s "on" mode to boolean true, not the word "on"', () => {
     expect(appJs).toContain("if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;");
   });
@@ -54,6 +49,23 @@ describe('served app.js', () => {
     // repair_pad stays gated on a checked part specifically (not merely a drawn region), matching
     // the single-part repair endpoint's existing contract.
     expect(appJs).toContain("if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);");
+  });
+
+  it('finalizeOptionsFrom turns the hires select into options.hires / hires_denoise before the deliver_only branch, and omits both when off', () => {
+    expect(appJs).toContain("qs('select[name=\"hires\"]', form)");
+    expect(appJs).toContain("hiresSelect.value !== 'off'");
+    expect(appJs).toContain('options.hires = Number(hiresParts[0]);');
+    expect(appJs).toContain('options.hires_denoise = Number(hiresParts[1]);');
+    expect(appJs.indexOf('options.hires = Number')).toBeLessThan(appJs.indexOf('if (deliverOnly) {'));
+  });
+
+  it('finalizeOptionsFrom refuses hires outside deliver_only or alongside repair, before queueing', () => {
+    expect(appJs).toContain('if (options.hires !== undefined && (!deliverOnly || repairActive)) {');
+    expect(appJs.indexOf('options.hires !== undefined && (!deliverOnly')).toBeLessThan(appJs.indexOf('if (deliverOnly) {'));
+  });
+
+  it('restores the hires select from a profile\'s hires / hires_denoise', () => {
+    expect(appJs).toContain('function applyHiresToForm(form, options)');
   });
 
   it('finalizeOptionsFrom reads repair regions from the per-form region-drawing state', () => {

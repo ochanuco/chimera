@@ -1416,28 +1416,6 @@ MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — こ�
 （`created` / `recipe` / `kind` / `name` / `reference` / `source` / `superseded`）で、
 新規作成は 201、idempotency replay は 200 です。
 
-## hires 刷り直し
-
-``` text
-POST /api/v1/generations/{id}/hires   {denoise, idempotency_key?}
-```
-
-GUI の Generation Detail の`hires 2048 で刷り直す`ボタンが呼ぶ窓口です
-（[ui.md](ui.md#generation-detail)）。`denoise` は `0.35` か `0.45` のみで、それ以外は 400 です。
-
-この Generation を `resolveDerivationSource` で raw Generation と Request まで遡り、MCP
-`derive_request` と同じ組み立て（`buildDerivedRequestPayload`）で、元 Request の recipe /
-parameters / patches / preset pin を引き継ぎます。差分は `parameters.hires = 2048`、patches
-末尾の `{ target: "hires.denoise", op: "set", value: <denoise> }`、`count = 1`、
-`seeds = [元 Generation の seed]` です。seed が Generation に無ければ Job の seed
-を使い、どちらも無ければ 409 です。canvas は直接変えません（同 seed でサイズだけ変えると構図が
-変わる）。hires は latent upscale のあと同 seed で通し直す指定です。graph-mode の元 Request
-は 409 です。GUI は prompt を書きません。
-
-`kind = generate`、`created_by = 'gui'` で積みます。`idempotency_key` を省略するとサーバーが
-生成します（GUI は `gui:hires:{generation_short_id}:{uuid}` を送る）。レスポンスは request
-（`GET /api/v1/requests/{id}` と同じ形）で、新規作成は 201、idempotency replay は 200 です。
-
 ## 絵柄チェック
 
 ``` text

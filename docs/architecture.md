@@ -103,14 +103,11 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   semantic 判断を伴わない再実行（finalize / repair）を requests 行として積む。任意領域の
     garment inpaint は GUI に追加せず、semantic 判断主体が MCP の masked_redraw_generation
     を使う。
--   hires 刷り直し: 同じ prompt・同じ seed で hires 2048 を足した generate を requests 行として
-    積む（recipe-mode のみ、[api.md](api.md#hires-刷り直し)）。GUI は prompt を書かない。
 -   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 代表ポーズの pin を、今のカタログ既定で
     もう一度描く plain render を requests 行として積む。GUI は prompt を書かない。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（finalize / repair）と、pin の再描画（絵柄チェック）、同 prompt・同 seed の
-hires 刷り直しだけで、GUI が
+判断を伴わない再実行（finalize / repair）と、pin の再描画（絵柄チェック）だけで、GUI が
 触るのは自分の D1 の requests 行のみです。masked_redraw は MCP からのみ積み、worker が
 source Generation を変更せず、Job の `source_generation_id` で仕上げ元を指す新しい Generation を作ります。
 
