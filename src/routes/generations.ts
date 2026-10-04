@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPoseReferenceForGenerationSchema } from '../schemas/generations';
+import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPoseReferenceForGenerationSchema, hiresRerenderSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
 import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
@@ -8,9 +8,12 @@ import { uuidv7 } from '../lib/uuidv7';
 import { assignTag, removeTag } from '../lib/tags';
 import { createPublication, listPublicationsForGeneration, serializePublication } from '../lib/publications';
 import { setPoseReferenceForGeneration } from '../lib/preset-references';
+import { buildHiresRerenderPayload } from '../lib/hires-rerender';
+import { createRequest, defaultRecipeRef } from '../lib/requests';
+import { notifyHub, runInBackground } from '../lib/hub-notify';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
-import { serializeGenerationAsset } from '../lib/serialize';
+import { serializeGenerationAsset, serializeRequest } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
 import { buildContext, getGenerationDetail, queryGenerations } from '../lib/generations';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
@@ -172,6 +175,22 @@ generations.post('/:id/pose-reference', async (c) => {
     created_by: 'gui',
   });
   return c.json(result, result.created ? 201 : 200);
+});
+
+// GUI の「hires 刷り直し」窓口 (docs/worker-protocol.md「GUI」)。prompt は書かず、元 Request の recipe / parameters / patches を
+// 引き継いで同 seed の generate Request を積むだけ。created_by は 'gui' 固定。
+generations.post('/:id/hires', async (c) => {
+  const body = hiresRerenderSchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const payload = await buildHiresRerenderPayload(db, generation, body.denoise);
+  const { row, created } = await createRequest(
+    db,
+    { kind: 'generate', payload, idempotency_key: body.idempotency_key ?? `gui:hires:${generation.short_id}:${crypto.randomUUID()}`, created_by: 'gui' },
+    { defaultRecipeRef: defaultRecipeRef(c.env) },
+  );
+  if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
+  return c.json(serializeRequest(row), created ? 201 : 200);
 });
 
 async function getGenerationAsset(

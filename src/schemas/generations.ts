@@ -34,6 +34,12 @@ export const setPoseReferenceForGenerationSchema = z.object({
   idempotency_key: z.string().min(1).optional(),
 });
 
+/** POST /api/v1/generations/{id}/hires. denoise は GUI が出す 2 択だけ受ける。 */
+export const hiresRerenderSchema = z.object({
+  denoise: z.union([z.literal(0.35), z.literal(0.45)]),
+  idempotency_key: z.string().min(1).optional(),
+});
+
 export const updateGenerationSchema = z
   .object({
     note: z.string().nullable().optional(),

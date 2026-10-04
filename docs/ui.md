@@ -407,6 +407,13 @@ rating/bookmark行の直後は「基準」行です。このGenerationがposeの
 その場で行をピルに書き換えます。recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでない
 Generationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
+次の行は`hires 刷り直し`です。denoise（`0.35 構図を保つ`が既定、`0.45 線まで描き直す`）の
+選択と`hires 2048 で刷り直す`ボタンを置き、`POST /api/v1/generations/{id}/hires`
+（[api.md](api.md#hires-刷り直し)）で同じ prompt・同じ seed の generate を積みます。押下ごとに
+`gui:hires:{short_id}:{uuid}`の idempotency key を作り、ボタン横に request の short_id と status
+（失敗時はエラー文）を出します。raw 起点が graph-mode の Generation には行ごと出さず、
+original が purge 済みでも出します（原画像ではなく prompt から再生成するため）。
+
 続く`公開`セクションは[Publication](domain-model.md#publication)
 が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
 `--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・
