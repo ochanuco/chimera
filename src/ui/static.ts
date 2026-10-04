@@ -2014,7 +2014,7 @@ export const appJs = `
     if (!select) return;
     var wanted = 'off';
     if (options.hires !== null && options.hires !== undefined) {
-      var denoise = options.hires_denoise === null || options.hires_denoise === undefined ? 0.35 : options.hires_denoise;
+      var denoise = options.hires_denoise === null || options.hires_denoise === undefined ? 0.45 : options.hires_denoise;
       wanted = options.hires + '-' + denoise;
     }
     var known = qsa('option', select).some(function (o) { return o.value === wanted; });

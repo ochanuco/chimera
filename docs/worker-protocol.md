@@ -477,8 +477,8 @@ LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも fi
   repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
   repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。Anima の絵を deliver_only で使うときは worker が無視する。redraw と組み合わせるときは効く）
   repair_seeds        null | integer (1-8)      `--repair-seeds N`（`deliver_only` と `repair` / `repair_regions` を組み合わせた時だけ効く。seed ごとに1候補を作る数、worker 既定 4）
-  hires               null | 64 以上の integer  `--hires LONGEST`（元 Generation の保存済み ComfyUI graph に、長辺 LONGEST（各辺 8 の倍数）への LatentUpscale と同じ seed の KSampler（denoise = `hires_denoise`）を足して描き直し、残りの finalize をその絵に掛ける。prompt・LoRA・seed は graph のまま、canvas は直接変えない（同 seed でサイズだけ変えると構図が変わる）。graph-mode の元絵も対象。graph の無い import 画像、repair / masked_redraw 済みの raw、Anima 以外の絵、すでに hires 済みの graph は `failed`。`deliver_only` が必須で、`deliver_only: false` や描き直し系（denoise / route / finalizer / size / keep_regions / upscale）との併用、`repair` / `repair_regions` / `repair_seeds` との併用は `failed`。`deliver_size` は併用可（最後の拡大縮小）。中間の hires 絵は別 Generation にせず、finalize の raw 出力がそれになる。worker は解決後の `hires` / `hires_denoise` を finalize Request の parameters に記録する。null / 省略は off）
-  hires_denoise       null | number (0, 1]      `--hires-denoise 0.35`（hires の同 seed pass の denoise。null は 0.35、0.45 なら線まで描き直す。`hires` 無しで指定すると `failed`）
+  hires               null | 64 以上の integer  `--hires LONGEST`（元 Generation の保存済み ComfyUI graph に、標準 canvas（1024x1640）の長辺を LONGEST にしたときの画素数を元絵の縦横比のまま満たす大きさ（各辺 8 の倍数。LONGEST 2048 は縦長 1280x2048、横長 2048x1280、正方形 1616x1616）への LatentUpscale と同じ seed の KSampler（denoise = `hires_denoise`）を足して描き直し、残りの finalize をその絵に掛ける。prompt・LoRA・seed は graph のまま、canvas は直接変えない（同 seed でサイズだけ変えると構図が変わる）。graph-mode の元絵も対象。graph の無い import 画像、repair / masked_redraw 済みの raw、Anima 以外の絵、すでに hires 済みの graph は `failed`。`deliver_only` が必須で、`deliver_only: false` や描き直し系（denoise / route / finalizer / size / keep_regions / upscale）との併用、`repair` / `repair_regions` / `repair_seeds` との併用は `failed`。`deliver_size` は併用可（最後の拡大縮小）。中間の hires 絵は別 Generation にせず、finalize の raw 出力がそれになる。worker は解決後の `hires` / `hires_denoise` を finalize Request の parameters に記録する。null / 省略は off）
+  hires_denoise       null | number (0, 1]      `--hires-denoise 0.45`（hires の同 seed pass の denoise。null は 0.45 で線まで描き直す、0.35 なら構図を保つ。`hires` 無しで指定すると `failed`）
   deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / keep_regions / upscale との併用を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Job として記録する（raw + delivered を seed ごとに1組）。Anima 以外の絵は `deliver_only` でしか finalize できない）
 
 省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
@@ -511,9 +511,9 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 それらを使った場合はさらに `repair_seeds` を持ち、他は省略します。`backdrop` は選んだカードの
 模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
 `#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。
-`hires` の select は `off`（既定、`hires` / `hires_denoise` とも省略）、`2048 · denoise 0.35`
-（`hires: 2048` / `hires_denoise: 0.35`）、`2048 · denoise 0.45`（`hires: 2048` /
-`hires_denoise: 0.45`）のいずれかです。hires を選んだまま `deliver_only` を外すか repair の
+`hires` の select は `off`（既定、`hires` / `hires_denoise` とも省略）、`2048 · denoise 0.45`
+（`hires: 2048` / `hires_denoise: 0.45`）、`2048 · denoise 0.35`（`hires: 2048` /
+`hires_denoise: 0.35`）のいずれかです。hires を選んだまま `deliver_only` を外すか repair の
 部位・範囲を使うと、GUI は積まずに止めます。`recolor` は
 recipe を問わず選べます。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、

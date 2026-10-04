@@ -732,14 +732,16 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number), ' +
         'repair_seeds (only meaningful alongside deliver_only plus repair and/or repair_regions: how many delivery ' +
         'candidates to produce, one per seed, 1-8, worker default 4), ' +
-        'hires (integer >= 64: long side in px of a same-seed hires re-render done before the rest of finalize: the ' +
-        "worker adds a LatentUpscale to that long side plus a same-seed KSampler at hires_denoise to the source " +
+        'hires (integer >= 64: long side in px of a same-seed hires re-render done before the rest of finalize. The size ' +
+        'is the pixel area the standard 1024x1640 canvas has at that long side, with the source\'s own aspect ratio ' +
+        '(2048 gives 1280x2048 for a portrait, about 1616x1616 for a square): the ' +
+        "worker adds a LatentUpscale to that size plus a same-seed KSampler at hires_denoise to the source " +
         "Generation's stored ComfyUI graph — prompt, LoRAs and seed unchanged, canvas never changed directly — and the " +
         'other options apply to that render. Graph-mode sources work too; fails for import images without a graph, ' +
         'repaired / masked_redraw raws, non-Anima pictures and graphs already hires-ed. Requires deliver_only; fails ' +
         'with deliver_only false, with redraw options (denoise, route, finalizer, size, keep_regions, upscale) and with ' +
         'repair / repair_regions / repair_seeds; deliver_size is fine. null/omitted = off), ' +
-        'hires_denoise (denoise of that same-seed pass, above 0 up to 1, null = 0.35; 0.45 also redraws line art; ' +
+        'hires_denoise (denoise of that same-seed pass, above 0 up to 1, null = 0.45, which also redraws line art; 0.35 keeps the composition; ' +
         'fails without hires), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
         'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +

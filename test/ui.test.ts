@@ -590,8 +590,9 @@ describe('Web GUI pages', () => {
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('name="hires"');
     expect(html).toMatch(/<option value="off" selected/);
-    expect(html).toContain('<option value="2048-0.35">');
     expect(html).toContain('<option value="2048-0.45">');
+    expect(html).toContain('<option value="2048-0.35">');
+    expect(html.indexOf('value="2048-0.45"')).toBeLessThan(html.indexOf('value="2048-0.35"'));
   });
 
   it('the Finalize form group controls into three fieldsets', async () => {

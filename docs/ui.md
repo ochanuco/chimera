@@ -519,8 +519,10 @@ Finalizeセクションは、Generation Detailから積める唯一の生成要�
 外すとdenoise / keep_legwearが元の状態に戻り、`repair_seeds`は送らなくなります。
 
 `仕上げ`グループには`hires`のselectもあります。`off`（既定、`hires` / `hires_denoise`とも
-送らない）、`2048 · denoise 0.35 構図を保つ`、`2048 · denoise 0.45 線まで描き直す`の3択で、
-選ぶと`options`に`hires: 2048`と`hires_denoise: 0.35 | 0.45`を積みます。finalizeの前に
+送らない）、`2048 · denoise 0.45 線まで描き直す`、`2048 · denoise 0.35 構図を保つ`の3択で、
+選ぶと`options`に`hires: 2048`と`hires_denoise: 0.45 | 0.35`を積みます。`hires`の値は標準canvas
+（1024x1640）の長辺をその値にしたときの画素数を表し、元絵の縦横比のまま合わせるので、縦長は1280x2048、
+正方形は約1616四方になります。finalizeの前に
 元Generationのgraphに同じseedのhiresを足してworkerが描き直し、他のoptionはその絵に掛かります。
 hiresはdeliver only中だけ使え、repairとは併用できないので、hiresを選んだままdeliver onlyを外すか
 repairの部位・範囲を使うと、送信時にalertを出して積みません（プレビューは`送信内容: —`）。プロファイルを押すと、プロファイルの

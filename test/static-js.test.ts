@@ -66,6 +66,7 @@ describe('served app.js', () => {
 
   it('restores the hires select from a profile\'s hires / hires_denoise', () => {
     expect(appJs).toContain('function applyHiresToForm(form, options)');
+    expect(appJs).toContain("options.hires_denoise === undefined ? 0.45 : options.hires_denoise");
   });
 
   it('finalizeOptionsFrom reads repair regions from the per-form region-drawing state', () => {
