@@ -61,6 +61,8 @@ export const finalizeOptionsSchema = z
     keep_regions: z.array(repairRegionSchema).optional(),
     keep_strength: z.number().gt(0).lt(1).optional(),
     deliver_only: z.boolean().optional(),
+    hires: z.number().int().min(64).nullable().optional(),
+    hires_denoise: z.number().gt(0).lte(1).nullable().optional(),
   })
   .strict();
 
