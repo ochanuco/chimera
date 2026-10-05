@@ -133,7 +133,9 @@ function nearestStopIndex(stops: number[], value: number): number {
 }
 
 const DOF_HELP =
-  '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。背景もぼかすをオンにすると白フチ・紫フチ・影・背景までぼかす（透過納品とは併用できない）。off なら dof を送らない。部分描き直しとは併用できない';
+  '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。背景もぼかすをオンにすると白フチ・紫フチ・影・背景までぼかす（透過納品とは併用できない）。ファインダー表示は三分割グリッド・ピント位置の枠・シャッター速度と F 値のバーを納品画像に重ねる。ON/OFF 2枚なら重ねない絵と重ねた絵を両方納品する。off なら dof を送らない。部分描き直しとは併用できない';
+
+const DOF_VIEWFINDER_LABELS: Record<string, string> = { off: 'OFF', on: 'ON', both: 'ON/OFF 2枚' };
 
 /** Shared body of the Finalize form (GenerationDetail), rendered inside the caller's own `<form>`.
  * `dialsEnabled` gates the UI-level dial/profile treatment (denoise's word buttons still separately require catalog words — see DenoiseField). */
@@ -398,6 +400,18 @@ export function FinalizeFields({
           {dof.scope ? (
             <label>
               <input type="checkbox" name="dof_scope_all" checked={dof.scope.default === 'all'} disabled /> 背景もぼかす（白フチ・紫フチ・影・背景も）
+            </label>
+          ) : null}
+          {dof.viewfinder ? (
+            <label>
+              ファインダー表示{' '}
+              <select name="dof_viewfinder" disabled>
+                {dof.viewfinder.values.map((v) => (
+                  <option value={v} selected={v === dof.viewfinder!.default}>
+                    {DOF_VIEWFINDER_LABELS[v] ?? v}
+                  </option>
+                ))}
+              </select>
             </label>
           ) : null}
         </fieldset>
