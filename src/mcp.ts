@@ -748,6 +748,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'only inside the figure, the further from the focus point\'s depth the stronger; the cutout is taken from the ' +
         'pre-blur picture. Optional scope: "figure" blurs inside the figure only; "all" also blurs the white edge, ' +
         'purple stroke, shadow and backdrop, and fails with transparent: true, or with backdrop: null unless keep_scene is set (keep_scene plus "all" is fine). Omitted scope means "all", or "figure" for a transparent delivery. ' +
+        'Optional viewfinder: "off" (default), "on" draws a mirrorless viewfinder overlay (rule-of-thirds grid, a focus frame at focus, ' +
+        'a shutter/F-number/ISO bar) on the delivered image, "both" delivers the plain image and the overlaid one as two Generations. ' +
         'Unknown keys fail; fails with repair / repair_regions / repair_seeds. null/omitted = off), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
         'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +
