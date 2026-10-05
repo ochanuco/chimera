@@ -82,7 +82,7 @@ describe('served app.js', () => {
   });
 
   it('renders dof in the preview as f-number and focus, and restores it from a profile', () => {
-    expect(appJs).toContain("parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : ''));");
+    expect(appJs).toContain("parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));");
     expect(appJs).toContain('function applyDofToForm(form, options)');
     expect(appJs).toContain("key === 'hires_denoise' || key === 'dof'");
   });
@@ -98,6 +98,13 @@ describe('served app.js', () => {
     expect(appJs).toContain("scopeBox.disabled = !on || (!!backdropRadio && backdropRadio.value === 'transparent');");
     expect(appJs).toContain("if (scopeBox) scopeBox.checked = dof.scope === 'all';");
     expect(appJs).toMatch(/syncFinalizeBackdropColor\(form\);\n\s+applyDofMode\(form\);/);
+  });
+
+  it('sends dof.viewfinder only when the select is not off, disables it while dof is off, and restores it from a profile', () => {
+    expect(appJs).toContain("if (dofViewfinder && dofViewfinder.value !== 'off') options.dof.viewfinder = dofViewfinder.value;");
+    expect(appJs).toContain('if (viewfinderSelect) viewfinderSelect.disabled = !on;');
+    expect(appJs).toContain("if (viewfinderSelect) viewfinderSelect.value = dof.viewfinder === 'on' || dof.viewfinder === 'both' ? dof.viewfinder : 'off';");
+    expect(appJs).toContain("(value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : '')");
   });
 
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {

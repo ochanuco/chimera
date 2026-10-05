@@ -2058,6 +2058,8 @@ export const appJs = `
       }
       var scopeBox = dofScopeBox(form);
       if (scopeBox) scopeBox.checked = dof.scope === 'all';
+      var viewfinderSelect = dofViewfinderSelect(form);
+      if (viewfinderSelect) viewfinderSelect.value = dof.viewfinder === 'on' || dof.viewfinder === 'both' ? dof.viewfinder : 'off';
       setDofFocus(form, [dof.focus[0], dof.focus[1]]);
     } else {
       box.checked = false;
@@ -2180,6 +2182,10 @@ export const appJs = `
     return qs('input[name="dof_scope_all"]', form);
   }
 
+  function dofViewfinderSelect(form) {
+    return qs('select[name="dof_viewfinder"]', form);
+  }
+
   function dofStopsFor(form) {
     var slider = dofSlider(form);
     if (!slider) return [];
@@ -2217,6 +2223,8 @@ export const appJs = `
       var backdropRadio = qs('input[name="backdrop"]:checked', form);
       scopeBox.disabled = !on || (!!backdropRadio && backdropRadio.value === 'transparent');
     }
+    var viewfinderSelect = dofViewfinderSelect(form);
+    if (viewfinderSelect) viewfinderSelect.disabled = !on;
     var state = repairRegionState.get(form);
     if (state) {
       state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));
@@ -2495,6 +2503,8 @@ export const appJs = `
         if (!quiet) alert('背景もぼかすは透過納品とは併用できません');
         return null;
       }
+      var dofViewfinder = dofViewfinderSelect(form);
+      if (dofViewfinder && dofViewfinder.value !== 'off') options.dof.viewfinder = dofViewfinder.value;
     }
 
     // repair (hands/feet + regions) applies in both deliver_only and redraw mode; only
@@ -2677,7 +2687,7 @@ export const appJs = `
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
       if (key === 'dof') {
-        parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : ''));
+        parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
       } else if (value === true) {
         parts.push(key);
       } else if (Array.isArray(value)) {
