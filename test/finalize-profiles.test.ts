@@ -167,14 +167,14 @@ describe('finalizeOptionsSchema', () => {
 
   it('accepts dof with focus and f_number, null included', () => {
     expect(finalizeOptionsSchema.safeParse({ dof: { focus: [0.82, 0.55], f_number: 2.8 } }).success).toBe(true);
-    expect(finalizeOptionsSchema.safeParse({ dof: { focus: [0, 1], f_number: 0.7 } }).success).toBe(true);
+    expect(finalizeOptionsSchema.safeParse({ dof: { focus: [0, 1], f_number: 2.8 } }).success).toBe(true);
     expect(finalizeOptionsSchema.safeParse({ dof: null }).success).toBe(true);
   });
 
   it.each([
     ['dof without f_number', { dof: { focus: [0.5, 0.5] } }],
     ['dof without focus', { dof: { f_number: 2.8 } }],
-    ['f_number below 0.7', { dof: { focus: [0.5, 0.5], f_number: 0.5 } }],
+    ['f_number below 2.8', { dof: { focus: [0.5, 0.5], f_number: 2 } }],
     ['f_number above 22', { dof: { focus: [0.5, 0.5], f_number: 23 } }],
     ['focus outside 0..1', { dof: { focus: [1.2, 0.5], f_number: 2.8 } }],
     ['negative focus', { dof: { focus: [0.5, -0.1], f_number: 2.8 } }],
@@ -530,7 +530,7 @@ describe('findFinalizeDof', () => {
   it('extracts recipes[].finalize.dof.f_number; null when absent or malformed', async () => {
     const recipeRef = uniqueRecipeRef();
     const recipe = uniqueRecipe();
-    const fNumber = { min: 0.7, max: 22, default: 2.8, stops: [1.0, 1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0, 16.0] };
+    const fNumber = { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0] };
     await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDof(recipe, { f_number: fNumber, focus: 'fractions [x, y] of the source image' }), 'PUT');
     const found = await getCatalog(env.DB, recipeRef);
     expect(findFinalizeDof(found!.doc, recipe)).toEqual(fNumber);
