@@ -1,6 +1,6 @@
 import { FinalizeFields, type BackdropOption } from './FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
-import type { FinalizeDefaults } from '../../lib/catalogs';
+import type { FinalizeDefaults, FinalizeDof } from '../../lib/catalogs';
 
 export interface FinalizeRequestStatusLine {
   id: string;
@@ -21,6 +21,7 @@ export function FinalizeSection({
   showCreatedAt = true,
   dials = null,
   defaults = null,
+  dof = null,
   profiles = [],
   backdrops = [],
   recipeRef = null,
@@ -34,6 +35,7 @@ export function FinalizeSection({
   showCreatedAt?: boolean;
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
+  dof?: FinalizeDof | null;
   profiles?: FinalizeProfileOption[];
   backdrops?: BackdropOption[];
   recipeRef?: string | null;
@@ -54,6 +56,7 @@ export function FinalizeSection({
               submitLabel="Finalize"
               dials={dials}
               defaults={defaults}
+              dof={dof}
               profiles={profiles}
               backdrops={backdrops}
               recipeRef={recipeRef}
