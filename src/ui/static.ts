@@ -1001,7 +1001,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .repair-region-toggle[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: rgba(124, 156, 245, 0.18); }
 .repair-region-overlay { position: absolute; touch-action: none; cursor: crosshair; z-index: 1; }
 /* Drawing off: clicks/scroll fall through to the image; rects stay visible and removable. */
-.repair-region-overlay:not(.repair-region-drawing-on) { pointer-events: none; touch-action: auto; cursor: auto; }
+.repair-region-overlay:not(.repair-region-drawing-on):not(.dof-focus-on) { pointer-events: none; touch-action: auto; cursor: auto; }
+.repair-region-overlay.dof-focus-on:not(.repair-region-drawing-on) { cursor: crosshair; }
 .repair-region-overlay:not(.repair-region-drawing-on) .repair-region-remove { pointer-events: auto; }
 .repair-region-rect {
   position: absolute;
@@ -1026,6 +1027,23 @@ details.section .section-body { margin-top: 0.6rem; }
   padding: 0;
 }
 .repair-region-remove:hover { border-color: var(--bad); color: var(--bad); }
+.dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
+.dof-f-row { display: flex; align-items: center; gap: 0.4rem; }
+/* White ring with a dark halo so the marker reads on both light and dark pictures. */
+.dof-focus-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.75), inset 0 0 0 1.5px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+}
+.dof-focus-marker::before, .dof-focus-marker::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.75); }
+.dof-focus-marker::before { left: 50%; top: -5px; bottom: -5px; width: 1px; margin-left: -0.5px; }
+.dof-focus-marker::after { top: 50%; left: -5px; right: -5px; height: 1px; margin-top: -0.5px; }
 
 .backdrop-picker {
   flex-basis: 100%;
@@ -2021,11 +2039,33 @@ export const appJs = `
     if (known) select.value = wanted;
   }
 
+  // Absent/null dof unchecks; a stored focus is kept so re-checking restores it. The slider snaps to the nearest catalog stop.
+  function applyDofToForm(form, options) {
+    var box = dofBox(form);
+    if (!box) return;
+    var dof = options.dof;
+    if (dof && typeof dof === 'object' && Array.isArray(dof.focus) && typeof dof.f_number === 'number') {
+      box.checked = true;
+      var slider = dofSlider(form);
+      var stops = dofStopsFor(form);
+      if (slider && stops.length > 0) {
+        var best = 0;
+        stops.forEach(function (s, i) { if (Math.abs(s - dof.f_number) < Math.abs(stops[best] - dof.f_number)) best = i; });
+        slider.value = String(best);
+      }
+      setDofFocus(form, [dof.focus[0], dof.focus[1]]);
+    } else {
+      box.checked = false;
+      applyDofMode(form);
+    }
+  }
+
   function applyProfileOptionsToForm(form, options) {
     applyHiresToForm(form, options);
+    applyDofToForm(form, options);
     Object.keys(options).forEach(function (key) {
       var value = options[key];
-      if (key === 'hires' || key === 'hires_denoise') return;
+      if (key === 'hires' || key === 'hires_denoise' || key === 'dof') return;
       if (key === 'backdrop') {
         applyBackdropToForm(form, value);
         return;
@@ -2119,6 +2159,70 @@ export const appJs = `
     if (toggle) toggle.textContent = on ? '範囲指定 ON' : '範囲指定 OFF';
     var state = repairRegionState.get(form);
     if (state) state.overlay.classList.toggle('repair-region-drawing-on', on);
+    applyDofMode(form);
+  }
+
+  // Focus placement for dof reuses the repair-region overlay, so it is only live while 範囲指定 is off.
+  function dofBox(form) {
+    return qs('input[name="dof"]', form);
+  }
+
+  function dofSlider(form) {
+    return qs('input[name="dof_f_stop"]', form);
+  }
+
+  function dofStopsFor(form) {
+    var slider = dofSlider(form);
+    if (!slider) return [];
+    try { return JSON.parse(slider.getAttribute('data-dof-stops') || '[]'); } catch (e) { return []; }
+  }
+
+  function dofFNumber(form) {
+    var slider = dofSlider(form);
+    var stops = dofStopsFor(form);
+    return slider && stops.length > 0 ? stops[Number(slider.value)] : undefined;
+  }
+
+  function dofFocusFor(form) {
+    var state = repairRegionState.get(form);
+    return state && state.dofFocus ? state.dofFocus : null;
+  }
+
+  function renderDofReadouts(form) {
+    var fReadout = qs('[data-dof-f-readout]', form);
+    var f = dofFNumber(form);
+    if (fReadout && f !== undefined) fReadout.textContent = 'f/' + f;
+    var focusReadout = qs('[data-dof-focus-readout]', form);
+    var focus = dofFocusFor(form);
+    if (focusReadout) focusReadout.textContent = focus ? 'ピント: ' + focus[0] + ', ' + focus[1] : '';
+  }
+
+  function applyDofMode(form) {
+    var box = dofBox(form);
+    if (!box) return;
+    var on = box.checked;
+    var slider = dofSlider(form);
+    if (slider) slider.disabled = !on;
+    var state = repairRegionState.get(form);
+    if (state) {
+      state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));
+      if (state.dofMarker) {
+        var focus = state.dofFocus;
+        state.dofMarker.hidden = !(on && focus);
+        if (focus) {
+          state.dofMarker.style.left = focus[0] * 100 + '%';
+          state.dofMarker.style.top = focus[1] * 100 + '%';
+        }
+      }
+    }
+    renderDofReadouts(form);
+  }
+
+  function setDofFocus(form, focus) {
+    var state = repairRegionState.get(form);
+    if (!state) return;
+    state.dofFocus = focus;
+    applyDofMode(form);
   }
 
   // repair pad/lora/seeds enablement depends on regions too, so re-run the same sync here
@@ -2184,7 +2288,19 @@ export const appJs = `
     }
 
     overlay.addEventListener('pointerdown', function (ev) {
-      if (!repairRegionDrawingOn(form)) return;
+      if (!repairRegionDrawingOn(form)) {
+        var box = dofBox(form);
+        if (!box || !box.checked || ev.target !== overlay) return;
+        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+        var rect = overlay.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        ev.preventDefault();
+        var fx = Math.min(Math.max(Math.round(((ev.clientX - rect.left) / rect.width) * 10000) / 10000, 0), 1);
+        var fy = Math.min(Math.max(Math.round(((ev.clientY - rect.top) / rect.height) * 10000) / 10000, 0), 1);
+        setDofFocus(form, [fx, fy]);
+        renderFinalizePreview(form);
+        return;
+      }
       if (ev.target !== overlay) return; // an existing rect or its remove button, not the backdrop
       if (ev.pointerType === 'mouse' && ev.button !== 0) return;
       ev.preventDefault();
@@ -2255,7 +2371,13 @@ export const appJs = `
     overlay.className = 'repair-region-overlay';
     parent.insertBefore(overlay, img.nextSibling);
 
-    var state = { img: img, overlay: overlay, regions: [] };
+    var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null };
+    if (dofBox(form)) {
+      state.dofMarker = document.createElement('div');
+      state.dofMarker.className = 'dof-focus-marker';
+      state.dofMarker.hidden = true;
+      overlay.appendChild(state.dofMarker);
+    }
     syncRepairRegionOverlayGeometry(state);
     attachRepairRegionDrawing(state, form);
     repairRegionState.set(form, state);
@@ -2287,6 +2409,22 @@ export const appJs = `
       if (!form) return;
       var state = repairRegionState.get(form);
       if (state && state.clear) state.clear();
+    });
+  }
+
+  function initFinalizeDof() {
+    qsa('.finalize-form').forEach(applyDofMode);
+    document.addEventListener('change', function (ev) {
+      var box = ev.target;
+      if (!(box instanceof HTMLInputElement) || box.name !== 'dof') return;
+      var form = box.closest('.finalize-form');
+      if (form) applyDofMode(form);
+    });
+    document.addEventListener('input', function (ev) {
+      var slider = ev.target;
+      if (!(slider instanceof HTMLInputElement) || slider.name !== 'dof_f_stop') return;
+      var form = slider.closest('.finalize-form');
+      if (form) renderDofReadouts(form);
     });
   }
 
@@ -2329,6 +2467,16 @@ export const appJs = `
       options.hires_denoise = Number(hiresParts[1]);
     }
 
+    var dofCheck = dofBox(form);
+    if (dofCheck && dofCheck.checked) {
+      var dofFocus = dofFocusFor(form);
+      if (!dofFocus) {
+        if (!quiet) alert('ボケを使うときは画像をクリックしてピント位置を置いてください');
+        return null;
+      }
+      options.dof = { focus: [dofFocus[0], dofFocus[1]], f_number: dofFNumber(form) };
+    }
+
     // repair (hands/feet + regions) applies in both deliver_only and redraw mode; only
     // denoise/repair_lora/repair_seeds differ by mode. A checked part with zero regions is fine
     // (the worker auto-detects); nothing checked and no regions omits every repair* key.
@@ -2344,6 +2492,10 @@ export const appJs = `
     // worker が hires を受けるのは deliver_only かつ repair 無しのときだけ。積んで failed を待つより先に止める。
     if (options.hires !== undefined && (!deliverOnly || repairActive)) {
       if (!quiet) alert('hires は deliver only のときだけ使え、repair（部位・範囲）とは併用できません');
+      return null;
+    }
+    if (options.dof !== undefined && repairActive) {
+      if (!quiet) alert('ボケ（dof）は部分描き直し（部位・範囲）とは併用できません');
       return null;
     }
     if (repairActive) {
@@ -2503,7 +2655,9 @@ export const appJs = `
       if (key === 'backdrop') return;
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
-      if (value === true) {
+      if (key === 'dof') {
+        parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1]);
+      } else if (value === true) {
         parts.push(key);
       } else if (Array.isArray(value)) {
         parts.push(key + '=' + value.join('+'));
@@ -3613,6 +3767,7 @@ export const appJs = `
     initFinalize();
         initFinalizeBackdropColor();
     initFinalizeRepairRegions();
+    initFinalizeDof();
     initFinalizeRepairPad();
     initFinalizeDeliverOnly();
     initFinalizePreview();

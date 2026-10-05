@@ -63,6 +63,14 @@ export const finalizeOptionsSchema = z
     deliver_only: z.boolean().optional(),
     hires: z.number().int().min(64).nullable().optional(),
     hires_denoise: z.number().gt(0).lte(1).nullable().optional(),
+    dof: z
+      .object({
+        focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
+        f_number: z.number().min(0.7).max(22),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 
