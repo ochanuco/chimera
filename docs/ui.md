@@ -534,7 +534,11 @@ catalogの`recipes[].finalize.dof`があるrecipeだけ、`ボケ`グループ�
 保持します。F値のスライダーはcatalogの`finalize.dof.f_number.stops`の段に吸着し、既定はcatalogの
 `default`に最も近い段で、`f/2.8`のように表示します。チェックしたままピント位置が無いときと、repairの
 部位・範囲を使っているときは、送信時にalertを出して積みません（workerはdofとrepair系optionの併用を
-`failed`にします）。送るのは`dof: {focus: [x, y], f_number}`で、オフなら`dof`を送りません。
+`failed`にします）。catalogに`finalize.dof.scope`があるときだけ、`背景もぼかす`のチェックボックスも出します（既定は
+catalogの`default`）。オンにすると白フチ・紫フチ・影・背景までぼかし、`dof`がオフのときと`透過PNG`を
+選んでいるときは無効になります（workerは透過納品との併用を`failed`にします）。送るのは
+`dof: {focus: [x, y], f_number, scope}`（`scope`は`figure` / `all`で、チェックボックスが無いときは省略）で、
+オフなら`dof`を送りません。
 プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダーが切り替わります。
 
 このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの

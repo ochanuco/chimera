@@ -82,9 +82,22 @@ describe('served app.js', () => {
   });
 
   it('renders dof in the preview as f-number and focus, and restores it from a profile', () => {
-    expect(appJs).toContain("parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1]);");
+    expect(appJs).toContain("parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : ''));");
     expect(appJs).toContain('function applyDofToForm(form, options)');
     expect(appJs).toContain("key === 'hires_denoise' || key === 'dof'");
+  });
+
+  it('sends dof.scope only when the scope checkbox exists, and refuses scope all with transparent delivery', () => {
+    expect(appJs).toContain("if (dofScopeCheck) options.dof.scope = !dofScopeCheck.disabled && dofScopeCheck.checked ? 'all' : 'figure';");
+    expect(appJs).toContain("if (options.dof.scope === 'all' && backdrop === null) {");
+    expect(appJs).toContain("alert('背景もぼかすは透過納品とは併用できません');");
+    expect(appJs).toContain("(value.scope === 'all' ? ' · 背景も' : '')");
+  });
+
+  it('disables the dof scope checkbox while dof is off or delivery is transparent, and restores it from a profile', () => {
+    expect(appJs).toContain("scopeBox.disabled = !on || (!!backdropRadio && backdropRadio.value === 'transparent');");
+    expect(appJs).toContain("if (scopeBox) scopeBox.checked = dof.scope === 'all';");
+    expect(appJs).toMatch(/syncFinalizeBackdropColor\(form\);\n\s+applyDofMode\(form\);/);
   });
 
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
