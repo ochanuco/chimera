@@ -1324,6 +1324,36 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(plainHtml).not.toContain('dof_f_stop');
   });
 
+  it('renders the dof scope checkbox only when the catalog publishes finalize.dof.scope', async () => {
+    const dofCatalog = (recipe: string, scope?: unknown) => ({
+      schema_version: 1,
+      recipes: [
+        {
+          name: recipe,
+          poses: [],
+          finalize: {
+            dof: { f_number: { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0] }, ...(scope ? { scope } : {}) },
+          },
+        },
+      ],
+      patches: {},
+    });
+    const recipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/production`, dofCatalog(recipe, { values: ['figure', 'all'], default: 'figure' }), 'PUT');
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<input type="checkbox" name="dof_scope_all"[^>]*disabled/);
+    expect(html).not.toMatch(/name="dof_scope_all"[^>]*checked/);
+    expect(html).toContain('背景もぼかす');
+
+    const noScopeRecipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/production`, dofCatalog(noScopeRecipe), 'PUT');
+    const { generation: noScope } = await createGeneration({ requestOverrides: { recipe: noScopeRecipe } });
+    const noScopeHtml = await (await req(`/g/${noScope.short_id}`)).text();
+    expect(noScopeHtml).toContain('name="dof"');
+    expect(noScopeHtml).not.toContain('dof_scope_all');
+  });
+
   it('presets the checked backdrop radio from finalize.defaults.backdrop when it names a published pattern', async () => {
     const recipe = uniqueRecipe();
     await postJson(

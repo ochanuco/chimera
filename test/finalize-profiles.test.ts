@@ -171,6 +171,10 @@ describe('finalizeOptionsSchema', () => {
     expect(finalizeOptionsSchema.safeParse({ dof: null }).success).toBe(true);
   });
 
+  it.each(['figure', 'all'])('accepts dof scope %s', (scope) => {
+    expect(finalizeOptionsSchema.safeParse({ dof: { focus: [0.5, 0.5], f_number: 2.8, scope } }).success).toBe(true);
+  });
+
   it.each([
     ['dof without f_number', { dof: { focus: [0.5, 0.5] } }],
     ['dof without focus', { dof: { f_number: 2.8 } }],
@@ -179,6 +183,8 @@ describe('finalizeOptionsSchema', () => {
     ['focus outside 0..1', { dof: { focus: [1.2, 0.5], f_number: 2.8 } }],
     ['negative focus', { dof: { focus: [0.5, -0.1], f_number: 2.8 } }],
     ['focus with 3 elements', { dof: { focus: [0.5, 0.5, 0.5], f_number: 2.8 } }],
+    ['an unknown dof scope', { dof: { focus: [0.5, 0.5], f_number: 2.8, scope: 'background' } }],
+    ['a null dof scope', { dof: { focus: [0.5, 0.5], f_number: 2.8, scope: null } }],
     ['an unknown dof key', { dof: { focus: [0.5, 0.5], f_number: 2.8, strength: 1 } }],
   ])('rejects %s', (_label, options) => {
     expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
@@ -533,8 +539,21 @@ describe('findFinalizeDof', () => {
     const fNumber = { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0] };
     await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDof(recipe, { f_number: fNumber, focus: 'fractions [x, y] of the source image' }), 'PUT');
     const found = await getCatalog(env.DB, recipeRef);
-    expect(findFinalizeDof(found!.doc, recipe)).toEqual(fNumber);
+    expect(findFinalizeDof(found!.doc, recipe)).toEqual({ ...fNumber, scope: null });
     expect(findFinalizeDof(found!.doc, 'nonexistent-recipe')).toBeNull();
+
+    const scope = { values: ['figure', 'all'], default: 'figure' };
+    const scopedRef = uniqueRecipeRef();
+    const scopedRecipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${scopedRef}`, catalogWithDof(scopedRecipe, { f_number: fNumber, scope }), 'PUT');
+    expect(findFinalizeDof((await getCatalog(env.DB, scopedRef))!.doc, scopedRecipe)).toEqual({ ...fNumber, scope });
+
+    for (const badScope of [{ values: ['figure'], default: 'figure' }, { values: 'all', default: 'all' }, { values: ['all'] }, 'all']) {
+      const ref = uniqueRecipeRef();
+      const name = uniqueRecipe();
+      await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, scope: badScope }), 'PUT');
+      expect(findFinalizeDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null });
+    }
 
     const noDofRef = uniqueRecipeRef();
     const noDofRecipe = uniqueRecipe();
