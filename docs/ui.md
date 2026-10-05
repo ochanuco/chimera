@@ -537,7 +537,7 @@ catalogの`recipes[].finalize.dof`があるrecipeだけ、`ボケ`グループ�
 `failed`にします）。catalogに`finalize.dof.scope`があるときだけ、`背景もぼかす`のチェックボックスも出します（既定は
 catalogの`default`）。オンにすると白フチ・紫フチ・影・背景までぼかし、`dof`がオフのときと`透過PNG`を
 選んでいるときは無効になります（workerは透過納品との併用を`failed`にします）。送るのは
-`dof: {focus: [x, y], f_number, scope}`（`scope`は`figure` / `all`で、チェックボックスが無いときは省略）で、
+`dof: {focus: [x, y], f_number, scope}`（`scope`はチェックありなら`all`、なしか無効なら`figure`、チェックボックスが無いときは省略）で、
 オフなら`dof`を送りません。
 プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダーが切り替わります。
 

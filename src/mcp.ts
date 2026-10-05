@@ -746,8 +746,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'dof ({focus: [x, y], f_number}: depth-of-field blur. focus is fractions 0-1 of the source image width/height, ' +
         'f_number is 2.8-22 and required, smaller = more blur. The worker estimates depth (Depth Anything V2) and blurs ' +
         'only inside the figure, the further from the focus point\'s depth the stronger; the cutout is taken from the ' +
-        'pre-blur picture. Optional scope: "figure" (default) blurs inside the figure only; "all" also blurs the white edge, ' +
-        'purple stroke, shadow and backdrop, and fails with transparent: true, or with backdrop: null unless keep_scene is set (keep_scene plus "all" is fine). ' +
+        'pre-blur picture. Optional scope: "figure" blurs inside the figure only; "all" also blurs the white edge, ' +
+        'purple stroke, shadow and backdrop, and fails with transparent: true, or with backdrop: null unless keep_scene is set (keep_scene plus "all" is fine). Omitted scope means "all", or "figure" for a transparent delivery. ' +
         'Unknown keys fail; fails with repair / repair_regions / repair_seeds. null/omitted = off), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
         'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +
