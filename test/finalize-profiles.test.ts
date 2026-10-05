@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 import { listFinalizeProfiles } from '../src/lib/presets';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults } from '../src/lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, findFinalizeDof } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
 import { finalizeOptionsSchema } from '../src/schemas/requests';
 
@@ -161,6 +161,25 @@ describe('finalizeOptionsSchema', () => {
     ['a hires below 64', { hires: 32 }],
     ['hires_denoise 0', { hires_denoise: 0 }],
     ['hires_denoise above 1', { hires_denoise: 1.1 }],
+  ])('rejects %s', (_label, options) => {
+    expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
+  });
+
+  it('accepts dof with focus and f_number, null included', () => {
+    expect(finalizeOptionsSchema.safeParse({ dof: { focus: [0.82, 0.55], f_number: 2.8 } }).success).toBe(true);
+    expect(finalizeOptionsSchema.safeParse({ dof: { focus: [0, 1], f_number: 0.7 } }).success).toBe(true);
+    expect(finalizeOptionsSchema.safeParse({ dof: null }).success).toBe(true);
+  });
+
+  it.each([
+    ['dof without f_number', { dof: { focus: [0.5, 0.5] } }],
+    ['dof without focus', { dof: { f_number: 2.8 } }],
+    ['f_number below 0.7', { dof: { focus: [0.5, 0.5], f_number: 0.5 } }],
+    ['f_number above 22', { dof: { focus: [0.5, 0.5], f_number: 23 } }],
+    ['focus outside 0..1', { dof: { focus: [1.2, 0.5], f_number: 2.8 } }],
+    ['negative focus', { dof: { focus: [0.5, -0.1], f_number: 2.8 } }],
+    ['focus with 3 elements', { dof: { focus: [0.5, 0.5, 0.5], f_number: 2.8 } }],
+    ['an unknown dof key', { dof: { focus: [0.5, 0.5], f_number: 2.8, strength: 1 } }],
   ])('rejects %s', (_label, options) => {
     expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
   });
@@ -496,6 +515,43 @@ describe('lib helpers for the UI (listFinalizeProfiles / findFinalizeDials)', ()
     await postJson(`/api/v1/catalogs/${malformedRef}`, catalogWithFinalizeDefaults(malformedRecipe, 'not-an-object'), 'PUT');
     const foundMalformed = await getCatalog(env.DB, malformedRef);
     expect(findFinalizeDefaults(foundMalformed!.doc, malformedRecipe)).toBeNull();
+  });
+});
+
+describe('findFinalizeDof', () => {
+  function catalogWithDof(recipe: string, dof: unknown) {
+    return {
+      schema_version: 1,
+      recipes: [{ name: recipe, poses: [], finalize: { dof } }],
+      patches: {},
+    };
+  }
+
+  it('extracts recipes[].finalize.dof.f_number; null when absent or malformed', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const recipe = uniqueRecipe();
+    const fNumber = { min: 0.7, max: 22, default: 2.8, stops: [1.0, 1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0, 16.0] };
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDof(recipe, { f_number: fNumber, focus: 'fractions [x, y] of the source image' }), 'PUT');
+    const found = await getCatalog(env.DB, recipeRef);
+    expect(findFinalizeDof(found!.doc, recipe)).toEqual(fNumber);
+    expect(findFinalizeDof(found!.doc, 'nonexistent-recipe')).toBeNull();
+
+    const noDofRef = uniqueRecipeRef();
+    const noDofRecipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${noDofRef}`, catalogWithFinalizeDefaults(noDofRecipe, { repin: false }), 'PUT');
+    expect(findFinalizeDof((await getCatalog(env.DB, noDofRef))!.doc, noDofRecipe)).toBeNull();
+
+    for (const bad of [
+      { f_number: 'x' },
+      { f_number: { ...fNumber, stops: [] } },
+      { f_number: { ...fNumber, stops: ['a'] } },
+      { f_number: { ...fNumber, default: '2.8' } },
+    ]) {
+      const badRef = uniqueRecipeRef();
+      const badRecipe = uniqueRecipe();
+      await postJson(`/api/v1/catalogs/${badRef}`, catalogWithDof(badRecipe, bad), 'PUT');
+      expect(findFinalizeDof((await getCatalog(env.DB, badRef))!.doc, badRecipe)).toBeNull();
+    }
   });
 });
 

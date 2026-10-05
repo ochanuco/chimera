@@ -743,6 +743,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'repair / repair_regions / repair_seeds; deliver_size is fine. null/omitted = off), ' +
         'hires_denoise (denoise of that same-seed pass, above 0 up to 1, null = 0.45, which also redraws line art; 0.35 keeps the composition; ' +
         'fails without hires), ' +
+        'dof ({focus: [x, y], f_number}: depth-of-field blur. focus is fractions 0-1 of the source image width/height, ' +
+        'f_number is 0.7-22 and required, smaller = more blur. The worker estimates depth (Depth Anything V2) and blurs ' +
+        'only inside the figure, the further from the focus point\'s depth the stronger; the cutout is taken from the ' +
+        'pre-blur picture. Unknown keys fail; fails with repair / repair_regions / repair_seeds. null/omitted = off), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
         'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +
         'drawn with Anima can only be finalized this way — pass it explicitly there. For an Anima source, pass it ' +

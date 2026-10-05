@@ -6,7 +6,7 @@ import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { FinalizeSection } from '../components/FinalizeSection';
 import type { BackdropOption } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
-import type { FinalizeDefaults } from '../../lib/catalogs';
+import type { FinalizeDefaults, FinalizeDof } from '../../lib/catalogs';
 import { NoteSection } from '../components/NoteSection';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
@@ -160,6 +160,7 @@ export function GenerationDetailPage({
   finalizeRequests,
   finalizeDials,
   finalizeDefaults = null,
+  finalizeDof = null,
   finalizeProfiles,
   finalizeBackdrops = [],
   finalizeRecipeRef = null,
@@ -177,6 +178,7 @@ export function GenerationDetailPage({
   finalizeRequests: FinalizeRequestSummary[];
   finalizeDials: FinalizeDials | null;
   finalizeDefaults?: FinalizeDefaults | null;
+  finalizeDof?: FinalizeDof | null;
   finalizeProfiles: FinalizeProfileOption[];
   finalizeBackdrops?: BackdropOption[];
   finalizeRecipeRef?: string | null;
@@ -236,6 +238,7 @@ export function GenerationDetailPage({
             requests={finalizeRequests}
             dials={finalizeDials}
             defaults={finalizeDefaults}
+            dof={finalizeDof}
             profiles={finalizeProfiles}
             backdrops={finalizeBackdrops}
             recipeRef={finalizeRecipeRef}

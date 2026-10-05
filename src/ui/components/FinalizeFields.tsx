@@ -1,5 +1,5 @@
 import { dialWordsFor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
-import type { FinalizeDefaults } from '../../lib/catalogs';
+import type { FinalizeDefaults, FinalizeDof } from '../../lib/catalogs';
 
 export interface BackdropOption {
   name: string;
@@ -124,12 +124,24 @@ function DenoiseField({ dials }: { dials: FinalizeDials | null }) {
   );
 }
 
+function nearestStopIndex(stops: number[], value: number): number {
+  let best = 0;
+  stops.forEach((s, i) => {
+    if (Math.abs(s - value) < Math.abs(stops[best]! - value)) best = i;
+  });
+  return best;
+}
+
+const DOF_HELP =
+  '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。off なら dof を送らない。部分描き直しとは併用できない';
+
 /** Shared body of the Finalize form (GenerationDetail), rendered inside the caller's own `<form>`.
  * `dialsEnabled` gates the UI-level dial/profile treatment (denoise's word buttons still separately require catalog words — see DenoiseField). */
 export function FinalizeFields({
   submitLabel,
   dials = null,
   defaults = null,
+  dof = null,
   profiles = [],
   backdrops = [],
   recipeRef = null,
@@ -139,6 +151,8 @@ export function FinalizeFields({
   submitLabel: string;
   dials?: FinalizeDials | null;
   defaults?: FinalizeDefaults | null;
+  /** Catalog `finalize.dof.f_number`; the bokeh controls render only with this and `regionDrawing` (the focus point is placed on the image). */
+  dof?: FinalizeDof | null;
   profiles?: FinalizeProfileOption[];
   /** Catalog top-level `backdrops` (name/label only; thumbnail bytes come from backdropThumbnailUrl). Empty when the catalog predates this key, or there's no catalog. */
   backdrops?: BackdropOption[];
@@ -164,6 +178,8 @@ export function FinalizeFields({
   const rawBackdropDefault = typeof defaults?.backdrop === 'string' ? defaults.backdrop : null;
   const backdropDefault =
     rawBackdropDefault && backdropChoiceNames.includes(rawBackdropDefault) ? rawBackdropDefault : patternChoices[0]!.name;
+
+  const dofDefaultIndex = dof ? nearestStopIndex(dof.stops, dof.default) : 0;
 
   return (
     <>
@@ -349,6 +365,38 @@ export function FinalizeFields({
           ?
         </span>
       </fieldset>
+
+      {dof && regionDrawing ? (
+        <fieldset class="finalize-group">
+          <legend>ボケ</legend>
+          <label>
+            <input type="checkbox" name="dof" /> 被写界深度ボケ（dof）
+          </label>
+          <span class="finalize-help" tabindex={0} role="note" aria-label={DOF_HELP} data-help={DOF_HELP}>
+            ?
+          </span>
+          <div class="dof-tools" data-dof-tools>
+            <span class="repair-region-hint">画像をクリックしてピント位置を置く</span>
+            <span class="dof-focus-readout" data-dof-focus-readout></span>
+          </div>
+          <label class="dof-f-row">
+            F値{' '}
+            <input
+              type="range"
+              name="dof_f_stop"
+              min="0"
+              max={String(dof.stops.length - 1)}
+              step="1"
+              value={String(dofDefaultIndex)}
+              data-dof-stops={JSON.stringify(dof.stops)}
+              disabled
+            />{' '}
+            <span class="dof-f-readout" data-dof-f-readout>
+              f/{dof.stops[dofDefaultIndex]}
+            </span>
+          </label>
+        </fieldset>
+      ) : null}
 
       <fieldset class="finalize-group">
         <legend>部分描き直し</legend>

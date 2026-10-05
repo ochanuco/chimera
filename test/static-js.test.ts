@@ -69,6 +69,29 @@ describe('served app.js', () => {
     expect(appJs).toContain("options.hires_denoise === undefined ? 0.45 : options.hires_denoise");
   });
 
+  it('finalizeOptionsFrom builds options.dof from the placed focus and the slider stop, and refuses dof without a focus', () => {
+    expect(appJs).toContain('options.dof = { focus: [dofFocus[0], dofFocus[1]], f_number: dofFNumber(form) };');
+    expect(appJs).toContain('return slider && stops.length > 0 ? stops[Number(slider.value)] : undefined;');
+    expect(appJs).toContain("if (!quiet) alert('ボケを使うときは画像をクリックしてピント位置を置いてください');");
+    expect(appJs.indexOf('options.dof = {')).toBeLessThan(appJs.indexOf('if (deliverOnly) {'));
+  });
+
+  it('finalizeOptionsFrom refuses dof alongside repair, before queueing', () => {
+    expect(appJs).toContain('if (options.dof !== undefined && repairActive) {');
+    expect(appJs.indexOf('options.dof !== undefined && repairActive')).toBeLessThan(appJs.indexOf('options.repair = repair;'));
+  });
+
+  it('renders dof in the preview as f-number and focus, and restores it from a profile', () => {
+    expect(appJs).toContain("parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1]);");
+    expect(appJs).toContain('function applyDofToForm(form, options)');
+    expect(appJs).toContain("key === 'hires_denoise' || key === 'dof'");
+  });
+
+  it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
+    expect(appJs).toContain("state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));");
+    expect(appJs).toContain('setDofFocus(form, [fx, fy]);');
+  });
+
   it('finalizeOptionsFrom reads repair regions from the per-form region-drawing state', () => {
     expect(appJs).toContain('function regionsFor(form)');
     expect(appJs).toContain('var regions = regionsFor(form);');

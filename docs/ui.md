@@ -528,6 +528,15 @@ hiresはdeliver only中だけ使え、repairとは併用できないので、hir
 repairの部位・範囲を使うと、送信時にalertを出して積みません（プレビューは`送信内容: —`）。プロファイルを押すと、プロファイルの
 `hires` / `hires_denoise`がselectの選択肢に一致するときだけselectがそれに切り替わります。
 
+catalogの`recipes[].finalize.dof`があるrecipeだけ、`ボケ`グループを出します。`被写界深度ボケ（dof）`の
+チェックボックス（既定オフ）をオンにすると、`範囲指定`がOFFの間は画像をクリックしてピント位置を置け、
+クリックした位置にマーカーを出して`ピント: 0.82, 0.55`のように表示します。置いた位置はチェックを外しても
+保持します。F値のスライダーはcatalogの`finalize.dof.f_number.stops`の段に吸着し、既定はcatalogの
+`default`に最も近い段で、`f/2.8`のように表示します。チェックしたままピント位置が無いときと、repairの
+部位・範囲を使っているときは、送信時にalertを出して積みません（workerはdofとrepair系optionの併用を
+`failed`にします）。送るのは`dof: {focus: [x, y], f_number}`で、オフなら`dof`を送りません。
+プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダーが切り替わります。
+
 このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
 無いrecipeは数値入力とチェックボックスで表示します
