@@ -133,7 +133,7 @@ function nearestStopIndex(stops: number[], value: number): number {
 }
 
 const DOF_HELP =
-  '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。off なら dof を送らない。部分描き直しとは併用できない';
+  '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。背景もぼかすをオンにすると白フチ・紫フチ・影・背景までぼかす（透過納品とは併用できない）。off なら dof を送らない。部分描き直しとは併用できない';
 
 /** Shared body of the Finalize form (GenerationDetail), rendered inside the caller's own `<form>`.
  * `dialsEnabled` gates the UI-level dial/profile treatment (denoise's word buttons still separately require catalog words — see DenoiseField). */
@@ -395,6 +395,11 @@ export function FinalizeFields({
               f/{dof.stops[dofDefaultIndex]}
             </span>
           </label>
+          {dof.scope ? (
+            <label>
+              <input type="checkbox" name="dof_scope_all" checked={dof.scope.default === 'all'} disabled /> 背景もぼかす（白フチ・紫フチ・影・背景も）
+            </label>
+          ) : null}
         </fieldset>
       ) : null}
 

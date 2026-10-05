@@ -2022,7 +2022,10 @@ export const appJs = `
       r.checked = r.value === mode;
       if (r.checked) matched = true;
     });
-    if (matched) syncFinalizeBackdropColor(form);
+    if (matched) {
+      syncFinalizeBackdropColor(form);
+      applyDofMode(form);
+    }
   }
 
   // The hires select folds options.hires + options.hires_denoise into one control; a profile
@@ -2053,6 +2056,8 @@ export const appJs = `
         stops.forEach(function (s, i) { if (Math.abs(s - dof.f_number) < Math.abs(stops[best] - dof.f_number)) best = i; });
         slider.value = String(best);
       }
+      var scopeBox = dofScopeBox(form);
+      if (scopeBox) scopeBox.checked = dof.scope === 'all';
       setDofFocus(form, [dof.focus[0], dof.focus[1]]);
     } else {
       box.checked = false;
@@ -2171,6 +2176,10 @@ export const appJs = `
     return qs('input[name="dof_f_stop"]', form);
   }
 
+  function dofScopeBox(form) {
+    return qs('input[name="dof_scope_all"]', form);
+  }
+
   function dofStopsFor(form) {
     var slider = dofSlider(form);
     if (!slider) return [];
@@ -2203,6 +2212,11 @@ export const appJs = `
     var on = box.checked;
     var slider = dofSlider(form);
     if (slider) slider.disabled = !on;
+    var scopeBox = dofScopeBox(form);
+    if (scopeBox) {
+      var backdropRadio = qs('input[name="backdrop"]:checked', form);
+      scopeBox.disabled = !on || (!!backdropRadio && backdropRadio.value === 'transparent');
+    }
     var state = repairRegionState.get(form);
     if (state) {
       state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));
@@ -2475,6 +2489,12 @@ export const appJs = `
         return null;
       }
       options.dof = { focus: [dofFocus[0], dofFocus[1]], f_number: dofFNumber(form) };
+      var dofScopeCheck = dofScopeBox(form);
+      if (dofScopeCheck) options.dof.scope = !dofScopeCheck.disabled && dofScopeCheck.checked ? 'all' : 'figure';
+      if (options.dof.scope === 'all' && backdrop === null) {
+        if (!quiet) alert('背景もぼかすは透過納品とは併用できません');
+        return null;
+      }
     }
 
     // repair (hands/feet + regions) applies in both deliver_only and redraw mode; only
@@ -2555,6 +2575,7 @@ export const appJs = `
       var form = radio.closest('.finalize-form');
       if (!form) return;
       syncFinalizeBackdropColor(form);
+      applyDofMode(form);
       if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
     });
   }
@@ -2656,7 +2677,7 @@ export const appJs = `
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
       if (key === 'dof') {
-        parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1]);
+        parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : ''));
       } else if (value === true) {
         parts.push(key);
       } else if (Array.isArray(value)) {
