@@ -174,31 +174,39 @@ export interface FinalizeDof {
   max: number;
   default: number;
   stops: number[];
-  /** `finalize.dof.scope`; null when the catalog predates it or it is malformed (no "all" among values). */
-  scope: { values: string[]; default: string } | null;
+  /** `finalize.dof.scope`; null when the catalog predates it or it is malformed (no "all" among values, or a default outside values). */
+  scope: DofChoice | null;
+  /** `finalize.dof.viewfinder`; null when the catalog predates it or it is malformed (no "off" among values, or a default outside values). */
+  viewfinder: DofChoice | null;
 }
 
-/** `recipes[].finalize.dof` for one recipe name — the F-number range and stops FinalizeFields renders as a slider, plus the optional scope choice. null when f_number is absent or malformed. */
+export interface DofChoice {
+  values: string[];
+  default: string;
+}
+
+function parseDofChoice(raw: unknown, required: string): DofChoice | null {
+  const choice = raw as { values?: unknown; default?: unknown } | null | undefined;
+  if (!choice || typeof choice !== 'object') return null;
+  const { values } = choice;
+  if (!Array.isArray(values) || !values.every((v) => typeof v === 'string') || !values.includes(required)) return null;
+  if (typeof choice.default !== 'string' || !values.includes(choice.default)) return null;
+  return { values: values as string[], default: choice.default };
+}
+
+/** `recipes[].finalize.dof` for one recipe name — the F-number range and stops FinalizeFields renders as a slider, plus the optional scope and viewfinder choices. null when f_number is absent or malformed. */
 export function findFinalizeDof(doc: RecipeCatalogDoc, recipeName: string): FinalizeDof | null {
   const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
   if (!recipe) return null;
-  const dof = (recipe as { finalize?: { dof?: { f_number?: unknown; scope?: unknown } } }).finalize?.dof;
+  const dof = (recipe as { finalize?: { dof?: { f_number?: unknown; scope?: unknown; viewfinder?: unknown } } }).finalize?.dof;
   const f = dof?.f_number as { min?: unknown; max?: unknown; default?: unknown; stops?: unknown } | null | undefined;
   if (!f || typeof f !== 'object') return null;
   const { min, max, stops } = f;
   if (typeof min !== 'number' || typeof max !== 'number' || typeof f.default !== 'number') return null;
   if (!Array.isArray(stops) || stops.length === 0 || !stops.every((s) => typeof s === 'number')) return null;
-  const rawScope = dof?.scope as { values?: unknown; default?: unknown } | null | undefined;
-  const scope =
-    rawScope &&
-    typeof rawScope === 'object' &&
-    Array.isArray(rawScope.values) &&
-    rawScope.values.every((v) => typeof v === 'string') &&
-    rawScope.values.includes('all') &&
-    typeof rawScope.default === 'string'
-      ? { values: rawScope.values as string[], default: rawScope.default }
-      : null;
-  return { min, max, default: f.default, stops: stops as number[], scope };
+  const scope = parseDofChoice(dof?.scope, 'all');
+  const viewfinder = parseDofChoice(dof?.viewfinder, 'off');
+  return { min, max, default: f.default, stops: stops as number[], scope, viewfinder };
 }
 
 /** Looks up a single pose record (full body, prompts included) by recipe name + pose name. Either miss returns null. */

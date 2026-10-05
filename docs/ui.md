@@ -538,8 +538,10 @@ catalogの`recipes[].finalize.dof`があるrecipeだけ、`ボケ`グループ�
 catalogの`default`）。オンにすると白フチ・紫フチ・影・背景までぼかし、`dof`がオフのときと`透過PNG`を
 選んでいるときは無効になります（workerは透過納品との併用を`failed`にします）。送るのは
 `dof: {focus: [x, y], f_number, scope}`（`scope`はチェックありなら`all`、なしか無効なら`figure`、チェックボックスが無いときは省略）で、
-オフなら`dof`を送りません。
-プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダーが切り替わります。
+オフなら`dof`を送りません。catalogに`finalize.dof.viewfinder`があるときだけ、`ファインダー表示`のselect
+（`OFF` / `ON` / `ON/OFF 2枚`、既定はcatalogの`default`、`dof`がオフの間は無効）も出し、`OFF`以外を選んだときだけ
+`dof.viewfinder`に`on` / `both`を付けます。
+プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダー・背景もぼかす・ファインダー表示が切り替わります。
 
 このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも

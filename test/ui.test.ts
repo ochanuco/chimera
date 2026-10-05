@@ -1352,6 +1352,37 @@ describe('Finalize profiles and word dials (GUI)', () => {
     const noScopeHtml = await (await req(`/g/${noScope.short_id}`)).text();
     expect(noScopeHtml).toContain('name="dof"');
     expect(noScopeHtml).not.toContain('dof_scope_all');
+    expect(noScopeHtml).not.toContain('dof_viewfinder');
+  });
+
+  it('renders the dof viewfinder select only when the catalog publishes finalize.dof.viewfinder', async () => {
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      {
+        schema_version: 1,
+        recipes: [
+          {
+            name: recipe,
+            poses: [],
+            finalize: {
+              dof: {
+                f_number: { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0] },
+                viewfinder: { values: ['off', 'on', 'both'], default: 'off' },
+              },
+            },
+          },
+        ],
+        patches: {},
+      },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<select name="dof_viewfinder"[^>]*disabled/);
+    expect(html).toMatch(/<option value="off" selected[^>]*>OFF<\/option>/);
+    expect(html).toContain('<option value="on">ON</option>');
+    expect(html).toContain('<option value="both">ON/OFF 2枚</option>');
   });
 
   it('presets the checked backdrop radio from finalize.defaults.backdrop when it names a published pattern', async () => {
