@@ -1298,7 +1298,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
             name: recipe,
             poses: [],
             finalize: {
-              dof: { f_number: { min: 0.7, max: 22, default: 2.8, stops: [1.0, 1.4, 2.0, 2.8, 4.0] }, focus: 'fractions [x, y] of the source image' },
+              dof: { f_number: { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0] }, focus: 'fractions [x, y] of the source image' },
             },
           },
         ],
@@ -1310,8 +1310,8 @@ describe('Finalize profiles and word dials (GUI)', () => {
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toContain('<legend>ボケ</legend>');
     expect(html).toContain('name="dof"');
-    expect(html).toMatch(/<input type="range" name="dof_f_stop" min="0" max="4" step="1" value="3"/);
-    expect(html).toContain('data-dof-stops="[1,1.4,2,2.8,4]"');
+    expect(html).toMatch(/<input type="range" name="dof_f_stop" min="0" max="3" step="1" value="0"/);
+    expect(html).toContain('data-dof-stops="[2.8,4,5.6,8]"');
     expect(html).toContain('f/2.8');
     expect((html.match(/class="finalize-group"/g) ?? []).length).toBe(4);
     expect((html.match(/class="finalize-help"/g) ?? []).length).toBe(13);

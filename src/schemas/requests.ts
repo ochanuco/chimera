@@ -66,7 +66,7 @@ export const finalizeOptionsSchema = z
     dof: z
       .object({
         focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
-        f_number: z.number().min(0.7).max(22),
+        f_number: z.number().min(2.8).max(22),
       })
       .strict()
       .nullable()
