@@ -2208,7 +2208,7 @@ export const appJs = `
     return qs('select[name="light_from"]', form);
   }
 
-  // The worker forces stroke_light to the light direction, so the stroke_light control is locked while a scene is chosen.
+  // While a scene is chosen the worker makes the rim follow the light direction, so only none / even stay selectable in stroke_light.
   function applyLightMode(form) {
     var scene = lightSceneSelect(form);
     if (!scene) return;
@@ -2216,7 +2216,7 @@ export const appJs = `
     var fromSelect = lightFromSelect(form);
     if (fromSelect) fromSelect.disabled = !on;
     var stroke = qs('select[name="stroke_light"]', form);
-    if (stroke) stroke.disabled = on;
+    if (stroke) qsa('option', stroke).forEach(function (o) { o.disabled = on && o.value !== 'none' && o.value !== 'even'; });
   }
 
   function initFinalizeLight() {
@@ -2530,7 +2530,7 @@ export const appJs = `
       var lightFrom = lightFromSelect(form);
       options.light = { scene: lightScene.value };
       if (lightFrom) options.light.from = lightFrom.value;
-      delete options.stroke_light;
+      if (strokeLight !== 'none' && strokeLight !== 'even') delete options.stroke_light;
     }
 
     var hiresSelect = qs('select[name="hires"]', form);
