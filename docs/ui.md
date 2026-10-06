@@ -425,7 +425,9 @@ URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入�
 作って付与します。追加・削除ともリロードせずチップを書き換えます。
 
 `仕上げの解決値`セクションは、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
-だけ出し、要求した`options`（requested）とworkerが解決した値（resolved）をJSONのまま並べます。
+だけ出します。workerが解決した値（resolved）を1項目1行の表にし（`dof`はF値・ピント位置・ボケの範囲・
+ファインダーの行に分け、`stroke_light`・`light`・`backdrop`はFinalizeフォームと同じ語で表示）、
+要求した`options`（requested）とresolvedの生JSONは既定で畳んだ`Raw JSON`に入れます。
 
 親・子・兄弟は、FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、
 `family-strip`）で表示します。関係は 素材参照（Generation → Request、`request_references`）と
