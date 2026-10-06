@@ -107,6 +107,15 @@ describe('served app.js', () => {
     expect(appJs).toContain("(value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : '')");
   });
 
+  it('sends light without stroke_light, locks stroke_light and the direction select by scene, and restores it from a profile', () => {
+    expect(appJs).toContain('options.light = { scene: lightScene.value };');
+    expect(appJs).toContain('delete options.stroke_light;');
+    expect(appJs).toContain('if (fromSelect) fromSelect.disabled = !on;');
+    expect(appJs).toContain('if (stroke) stroke.disabled = on;');
+    expect(appJs).toContain('applyLightToForm(form, options);');
+    expect(appJs).toContain("parts.push('光源 '");
+  });
+
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
     expect(appJs).toContain("state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));");
     expect(appJs).toContain('setDofFocus(form, [fx, fy]);');

@@ -73,6 +73,14 @@ export const finalizeOptionsSchema = z
       .strict()
       .nullable()
       .optional(),
+    light: z
+      .object({
+        scene: z.enum(['sunset', 'moon']),
+        from: z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 

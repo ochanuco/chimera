@@ -2067,12 +2067,25 @@ export const appJs = `
     }
   }
 
+  // Absent/null light resets the scene to なし. The direction falls back to the catalog default when the stored one is not a listed choice.
+  function applyLightToForm(form, options) {
+    var scene = lightSceneSelect(form);
+    if (!scene) return;
+    var light = options.light;
+    var known = light && typeof light === 'object' && qsa('option', scene).some(function (o) { return o.value === light.scene; });
+    scene.value = known ? light.scene : '';
+    var fromSelect = lightFromSelect(form);
+    if (fromSelect && known && qsa('option', fromSelect).some(function (o) { return o.value === light.from; })) fromSelect.value = light.from;
+    applyLightMode(form);
+  }
+
   function applyProfileOptionsToForm(form, options) {
     applyHiresToForm(form, options);
     applyDofToForm(form, options);
+    applyLightToForm(form, options);
     Object.keys(options).forEach(function (key) {
       var value = options[key];
-      if (key === 'hires' || key === 'hires_denoise' || key === 'dof') return;
+      if (key === 'hires' || key === 'hires_denoise' || key === 'dof' || key === 'light') return;
       if (key === 'backdrop') {
         applyBackdropToForm(form, value);
         return;
@@ -2184,6 +2197,35 @@ export const appJs = `
 
   function dofViewfinderSelect(form) {
     return qs('select[name="dof_viewfinder"]', form);
+  }
+
+  function lightSceneSelect(form) {
+    return qs('select[name="light_scene"]', form);
+  }
+
+  function lightFromSelect(form) {
+    return qs('select[name="light_from"]', form);
+  }
+
+  // The worker forces stroke_light to the light direction, so the stroke_light control is locked while a scene is chosen.
+  function applyLightMode(form) {
+    var scene = lightSceneSelect(form);
+    if (!scene) return;
+    var on = scene.value !== '';
+    var fromSelect = lightFromSelect(form);
+    if (fromSelect) fromSelect.disabled = !on;
+    var stroke = qs('select[name="stroke_light"]', form);
+    if (stroke) stroke.disabled = on;
+  }
+
+  function initFinalizeLight() {
+    qsa('.finalize-form').forEach(applyLightMode);
+    document.addEventListener('change', function (ev) {
+      var select = ev.target;
+      if (!(select instanceof HTMLSelectElement) || select.name !== 'light_scene') return;
+      var form = select.closest('.finalize-form');
+      if (form) applyLightMode(form);
+    });
   }
 
   function dofStopsFor(form) {
@@ -2482,6 +2524,14 @@ export const appJs = `
       stroke_light: strokeLight === 'none' ? null : strokeLight,
     };
 
+    var lightScene = lightSceneSelect(form);
+    if (lightScene && lightScene.value !== '') {
+      var lightFrom = lightFromSelect(form);
+      options.light = { scene: lightScene.value };
+      if (lightFrom) options.light.from = lightFrom.value;
+      delete options.stroke_light;
+    }
+
     var hiresSelect = qs('select[name="hires"]', form);
     if (hiresSelect && hiresSelect.value !== 'off') {
       var hiresParts = hiresSelect.value.split('-');
@@ -2686,7 +2736,9 @@ export const appJs = `
       if (key === 'backdrop') return;
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
-      if (key === 'dof') {
+      if (key === 'light') {
+        parts.push('光源 ' + (value.scene === 'sunset' ? '夕日' : value.scene === 'moon' ? '月明かり' : value.scene) + (value.from ? ' · ' + ({ n: '上', ne: '右上', e: '右', se: '右下', s: '下', sw: '左下', w: '左', nw: '左上' }[value.from] || value.from) : ''));
+      } else if (key === 'dof') {
         parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
       } else if (value === true) {
         parts.push(key);
@@ -3799,6 +3851,7 @@ export const appJs = `
         initFinalizeBackdropColor();
     initFinalizeRepairRegions();
     initFinalizeDof();
+    initFinalizeLight();
     initFinalizeRepairPad();
     initFinalizeDeliverOnly();
     initFinalizePreview();
