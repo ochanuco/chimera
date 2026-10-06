@@ -66,7 +66,7 @@ export const finalizeOptionsSchema = z
     dof: z
       .object({
         focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
-        f_number: z.number().min(1.4).max(22),
+        f_number: z.number().min(1.4).max(30),
         scope: z.enum(['figure', 'all']).optional(),
         viewfinder: z.enum(['off', 'on', 'both']).optional(),
       })
