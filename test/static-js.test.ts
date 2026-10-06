@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appJs } from '../src/ui/static';
+import { appJs, styleCss } from '../src/ui/static';
 
 describe('served app.js', () => {
   // appJs is a template literal, so a stray '\n' or '\s' inside it silently
@@ -134,6 +134,17 @@ describe('served app.js', () => {
     expect(appJs).toContain("'（' + fromLabel + '）'");
     expect(appJs).toContain("parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());");
     expect(appJs).toContain("if (key === 'backdrop' || key === 'light' || key === 'stroke_light') return;");
+  });
+
+  it('draws a clipped, click-through dof guide circle sized by guide_radius_per_f * F * long side and updated with the focus, F and ボケ toggle', () => {
+    expect(appJs).toContain('function updateDofGuide(form)');
+    expect(appJs).toContain("slider.getAttribute('data-dof-guide-radius')");
+    expect(appJs).toContain('var d = 2 * k * f * Math.max(w, h);');
+    expect(appJs).toContain("var show = !!box && box.checked && !!focus && k > 0 && f !== undefined;");
+    expect(appJs).toContain("guideClip.className = 'dof-guide-clip';");
+    expect(appJs).toContain('var resync = function () { syncRepairRegionOverlayGeometry(state); updateDofGuide(form); };');
+    expect(styleCss).toMatch(/\.dof-guide-clip \{[^}]*overflow: hidden; pointer-events: none;/);
+    expect(styleCss).toMatch(/\.dof-guide-circle \{[^}]*pointer-events: none;/);
   });
 
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
