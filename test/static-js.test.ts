@@ -107,6 +107,12 @@ describe('served app.js', () => {
     expect(appJs).toContain("(value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : '')");
   });
 
+  it('sends the stroke_light select value as-is and restores a saved null as even', () => {
+    expect(appJs).toContain('stroke_light: strokeLight,');
+    expect(appJs).not.toContain("strokeLight === 'none'");
+    expect(appJs).toContain("if (select && key === 'stroke_light' && value === null) value = 'even';");
+  });
+
   it('sends light without stroke_light, locks stroke_light and the direction select by scene, and restores it from a profile', () => {
     expect(appJs).toContain('options.light = { scene: lightScene.value };');
     expect(appJs).toContain('delete options.stroke_light;');

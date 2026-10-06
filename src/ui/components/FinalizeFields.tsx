@@ -152,6 +152,7 @@ export function FinalizeFields({
   defaults = null,
   dof = null,
   light = null,
+  backdropColor = null,
   profiles = [],
   backdrops = [],
   recipeRef = null,
@@ -165,6 +166,8 @@ export function FinalizeFields({
   dof?: FinalizeDof | null;
   /** Catalog `finalize.light`; the 光源 block renders only with this. */
   light?: FinalizeLight | null;
+  /** Catalog `finalize.backdrop_color` (already validated as #RRGGBB); the solid-colour input starts from it, else #ffffff. */
+  backdropColor?: string | null;
   profiles?: FinalizeProfileOption[];
   /** Catalog top-level `backdrops` (name/label only; thumbnail bytes come from backdropThumbnailUrl). Empty when the catalog predates this key, or there's no catalog. */
   backdrops?: BackdropOption[];
@@ -177,11 +180,11 @@ export function FinalizeFields({
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
 
-  const strokeLightDirections = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+  const strokeLightValues = ['none', 'even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
   const strokeLightDefault =
-    typeof defaults?.stroke_light === 'string' && strokeLightDirections.includes(defaults.stroke_light)
+    typeof defaults?.stroke_light === 'string' && strokeLightValues.includes(defaults.stroke_light)
       ? defaults.stroke_light
-      : 'none';
+      : 'even';
 
   // Pattern choices: catalog backdrops when published, else the pre-thumbnail fallback of a single
   // unillustrated "stripes" card (needed for a catalog from a worker that predates this key).
@@ -325,7 +328,7 @@ export function FinalizeFields({
             <span class="backdrop-option-label">単色</span>
           </label>
         </div>
-        <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" hidden disabled />
+        <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" value={backdropColor ?? '#ffffff'} hidden disabled />
         <span
           class="finalize-help"
           tabindex={0}
@@ -339,7 +342,10 @@ export function FinalizeFields({
           縁の影の向き（stroke light）{' '}
           <select name="stroke_light">
             <option value="none" selected={strokeLightDefault === 'none'}>
-              none（一定の太さ）
+              none（縁無し）
+            </option>
+            <option value="even" selected={strokeLightDefault === 'even'}>
+              even（一定の太さ）
             </option>
             <option value="n" selected={strokeLightDefault === 'n'}>
               ↓

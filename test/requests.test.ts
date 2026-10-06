@@ -165,6 +165,21 @@ describe('POST /api/v1/requests', () => {
     expect(badRegion.status).toBe(400);
   });
 
+  it('finalize: stroke_light accepts none, even, a direction and null; rejects an unknown string', async () => {
+    const { generation } = await createGeneration();
+    for (const value of ['none', 'even', 'n', 'nw', null]) {
+      const res = await createFinalizeRequest(generation.id, {
+        payload: { generation_id: generation.id, options: { stroke_light: value } },
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.payload).toEqual({ generation_id: generation.id, options: { stroke_light: value } });
+    }
+    const bad = await createFinalizeRequest(generation.id, {
+      payload: { generation_id: generation.id, options: { stroke_light: 'sideways' } },
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it('finalize: repair_lora accepts true, a number, null, and a dial word; rejects a malformed string', async () => {
     const { generation } = await createGeneration();
 

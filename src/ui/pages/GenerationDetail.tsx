@@ -162,6 +162,7 @@ export function GenerationDetailPage({
   finalizeDefaults = null,
   finalizeDof = null,
   finalizeLight = null,
+  finalizeBackdropColor = null,
   finalizeProfiles,
   finalizeBackdrops = [],
   finalizeRecipeRef = null,
@@ -181,6 +182,7 @@ export function GenerationDetailPage({
   finalizeDefaults?: FinalizeDefaults | null;
   finalizeDof?: FinalizeDof | null;
   finalizeLight?: FinalizeLight | null;
+  finalizeBackdropColor?: string | null;
   finalizeProfiles: FinalizeProfileOption[];
   finalizeBackdrops?: BackdropOption[];
   finalizeRecipeRef?: string | null;
@@ -242,6 +244,7 @@ export function GenerationDetailPage({
             defaults={finalizeDefaults}
             dof={finalizeDof}
             light={finalizeLight}
+            backdropColor={finalizeBackdropColor}
             profiles={finalizeProfiles}
             backdrops={finalizeBackdrops}
             recipeRef={finalizeRecipeRef}

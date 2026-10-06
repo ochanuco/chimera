@@ -23,6 +23,7 @@ export function FinalizeSection({
   defaults = null,
   dof = null,
   light = null,
+  backdropColor = null,
   profiles = [],
   backdrops = [],
   recipeRef = null,
@@ -38,6 +39,7 @@ export function FinalizeSection({
   defaults?: FinalizeDefaults | null;
   dof?: FinalizeDof | null;
   light?: FinalizeLight | null;
+  backdropColor?: string | null;
   profiles?: FinalizeProfileOption[];
   backdrops?: BackdropOption[];
   recipeRef?: string | null;
@@ -60,6 +62,7 @@ export function FinalizeSection({
               defaults={defaults}
               dof={dof}
               light={light}
+              backdropColor={backdropColor}
               profiles={profiles}
               backdrops={backdrops}
               recipeRef={recipeRef}
