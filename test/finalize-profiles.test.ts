@@ -679,7 +679,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
     expect(await findProducingRequest(env.DB, unrelated.id)).toBeNull();
   });
 
-  it('/g/{short_id} of the delivered row renders requested vs resolved options when the worker wrote resolved_options', async () => {
+  it('/g/{short_id} of the delivered row renders the resolved options as rows, with the raw requested/resolved JSON folded, when the worker wrote resolved_options', async () => {
     const recipe = uniqueRecipe();
     const { generation: source } = await createGeneration({ requestOverrides: { recipe } });
 
@@ -708,7 +708,15 @@ describe('result.resolved_options (worker-written, opaque)', () => {
       {
         status: 'done',
         worker_id: claimedBody.worker_id,
-        result: { generation_ids: [delivered.id], resolved_options: { denoise: 0.65 } },
+        result: {
+          generation_ids: [delivered.id],
+          resolved_options: {
+            denoise: 0.65,
+            backdrop: null,
+            stroke_light: 'n',
+            dof: { focus: [0.37, 0.36], f_number: 2.2, scope: 'all', viewfinder: 'both' },
+          },
+        },
       },
       'PATCH',
     );
@@ -716,15 +724,21 @@ describe('result.resolved_options (worker-written, opaque)', () => {
 
     const html = await (await req(`/g/${delivered.short_id}`)).text();
     expect(html).toContain('仕上げの解決値');
-    expect(html).toContain('{&quot;denoise&quot;:&quot;tidy&quot;}');
-    expect(html).toContain('{&quot;denoise&quot;:0.65}');
+    expect(html).toContain('<td>denoise</td><td>0.65</td>');
+    expect(html).toContain('<td>背景</td><td>透過 PNG</td>');
+    expect(html).toContain('<td>紫縁</td><td>立体（上から）</td>');
+    expect(html).toContain('<td>F値</td><td>F2.2</td>');
+    expect(html).toContain('<td>ピント位置</td><td>x 0.37 · y 0.36</td>');
+    expect(html).toContain('<td>ボケの範囲</td><td>背景も</td>');
+    expect(html).toContain('<td>ファインダー</td><td>ON/OFF 2枚</td>');
+    expect(html).toContain('&quot;denoise&quot;: &quot;tidy&quot;');
 
     // The source's own page lists this request among those targeting it and shows the resolved
     // value too, but it's not the delivered row, so no 仕上げの解決値 section.
     const sourceHtml = await (await req(`/g/${source.short_id}`)).text();
     expect(sourceHtml).not.toContain('仕上げの解決値');
     expect(sourceHtml).toContain('resolved:');
-    expect(sourceHtml).toContain('{&quot;denoise&quot;:0.65}');
+    expect(sourceHtml).toContain('&quot;denoise&quot;:0.65');
   });
 
   it('a delivered row with no resolved_options written yet shows no 仕上げの解決値 section', async () => {
