@@ -2105,6 +2105,7 @@ export const appJs = `
         return;
       }
       var select = qs('select[name="' + key + '"]', form);
+      if (select && key === 'stroke_light' && value === null) value = 'even';
       if (select && typeof value === 'string') select.value = value;
     });
     syncFinalizeDeliverOnly(form);
@@ -2521,7 +2522,7 @@ export const appJs = `
       recolor: recolor ? recolor.checked : false,
       keep_legwear: keepLegwear,
       backdrop: backdrop,
-      stroke_light: strokeLight === 'none' ? null : strokeLight,
+      stroke_light: strokeLight,
     };
 
     var lightScene = lightSceneSelect(form);

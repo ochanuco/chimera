@@ -580,8 +580,11 @@ dial対応フォームに切り替わった時点で、catalogの語彙の有無
 カタログに`backdrops`が無い場合はサムネイル無しの`stripes`カード1枚だけに
 フォールバックします。既定の選択はcatalogの`finalize.defaults.backdrop`（無ければ
 先頭のパターン）に従います。`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
-現れます（空か形式違いなら送信せずalertします）。続けて`stroke light（影の向き）`の
-select（`none`既定と8方位）を持ちます。選択肢は矢印だけを出し、矢印は影が伸びる
+現れます。初期値はcatalogの`finalize.backdrop_color`（`#RRGGBB`のときだけ。無ければ`#ffffff`）で、
+空か形式違いなら送信せずalertします。続けて`stroke light（影の向き）`の
+select（`none（縁無し）`、`even（一定の太さ）`、8方位）を持ちます。既定の選択はcatalogの
+`finalize.defaults.stroke_light`（上記の値のどれかのとき。無ければ`even`）に従い、値はそのまま送ります。
+プロファイルに保存された古い`stroke_light: null`は`even`として選び直します。8方位の選択肢は矢印だけを出し、矢印は影が伸びる
 向きです。`→`なら影は右で、紫縁もその側が太くなります。送る値そのもの（`n`..`nw`）は
 光源の方位なので矢印とは逆を指しますが、これはworker / MCP / CLIと共通の語彙で、
 GUIだけ入れ替えると同じ値が画面とAPIで別物になるため対応は変えません。
