@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 import { listFinalizeProfiles } from '../src/lib/presets';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults, findFinalizeDof } from '../src/lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, findFinalizeDof, findFinalizeLight } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
 import { finalizeOptionsSchema } from '../src/schemas/requests';
 
@@ -192,6 +192,19 @@ describe('finalizeOptionsSchema', () => {
     ['an unknown dof viewfinder', { dof: { focus: [0.5, 0.5], f_number: 2.8, viewfinder: 'grid' } }],
     ['a boolean dof viewfinder', { dof: { focus: [0.5, 0.5], f_number: 2.8, viewfinder: true } }],
     ['an unknown dof key', { dof: { focus: [0.5, 0.5], f_number: 2.8, strength: 1 } }],
+  ])('rejects %s', (_label, options) => {
+    expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
+  });
+
+  it.each([{ scene: 'sunset' }, { scene: 'moon', from: 'ne' }, null])('accepts light %j', (light) => {
+    expect(finalizeOptionsSchema.safeParse({ light }).success).toBe(true);
+  });
+
+  it.each([
+    ['an unknown light scene', { light: { scene: 'noon' } }],
+    ['a light without scene', { light: { from: 'nw' } }],
+    ['an unknown light from', { light: { scene: 'sunset', from: 'up' } }],
+    ['an unknown light key', { light: { scene: 'sunset', strength: 1 } }],
   ])('rejects %s', (_label, options) => {
     expect(finalizeOptionsSchema.safeParse(options).success).toBe(false);
   });
@@ -590,6 +603,35 @@ describe('findFinalizeDof', () => {
       await postJson(`/api/v1/catalogs/${badRef}`, catalogWithDof(badRecipe, bad), 'PUT');
       expect(findFinalizeDof((await getCatalog(env.DB, badRef))!.doc, badRecipe)).toBeNull();
     }
+  });
+});
+
+describe('findFinalizeLight', () => {
+  const light = { scenes: ['sunset', 'moon'], from: ['e', 'n', 'ne', 'nw', 's', 'se', 'sw', 'w'], default_from: 'nw' };
+
+  async function lookup(value: unknown) {
+    const ref = uniqueRecipeRef();
+    const name = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${ref}`, { schema_version: 1, recipes: [{ name, poses: [], finalize: { light: value } }], patches: {} }, 'PUT');
+    return findFinalizeLight((await getCatalog(env.DB, ref))!.doc, name);
+  }
+
+  it('parses the published shape; null when absent or malformed', async () => {
+    expect(await lookup(light)).toEqual({ scenes: light.scenes, from: light.from, defaultFrom: 'nw' });
+    expect(await lookup(undefined)).toBeNull();
+    for (const bad of [
+      { ...light, scenes: [] },
+      { ...light, scenes: 'sunset' },
+      { ...light, from: [] },
+      { ...light, default_from: 'x' },
+      { ...light, default_from: undefined },
+      'sunset',
+    ]) {
+      expect(await lookup(bad)).toBeNull();
+    }
+    const ref = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${ref}`, { schema_version: 1, recipes: [{ name: 'only', poses: [], finalize: { light } }], patches: {} }, 'PUT');
+    expect(findFinalizeLight((await getCatalog(env.DB, ref))!.doc, 'nonexistent-recipe')).toBeNull();
   });
 });
 
