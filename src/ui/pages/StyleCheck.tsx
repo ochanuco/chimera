@@ -14,7 +14,7 @@ export interface StyleCheckRowView {
   pose: string;
   /** 無ければこの行は「pin 無し」で描けない。 */
   pin: GenerationCardData | null;
-  /** pin があるときだけ埋まる。今の catalog commit での plain render request、無ければ「まだ描いていない」。 */
+  /** pin があるときだけ埋まる。今の描画内容での plain render request、無ければ「まだ描いていない」。 */
   request: StyleCheckRowRequest | null;
 }
 
@@ -36,6 +36,9 @@ function StyleCheckResult({ row }: { row: StyleCheckRowView }) {
 function StyleCheckRow({ row }: { row: StyleCheckRowView }) {
   const compareIds =
     row.pin && row.request?.status === 'done' && row.request.resultCard ? `${row.pin.short_id},${row.request.resultCard.short_id}` : null;
+  const baseCompareIds = row.pin
+    ? [row.pin.short_id, row.request?.resultCard?.short_id].filter((id): id is string => Boolean(id)).join(',')
+    : null;
   return (
     <section class="style-check-row">
       <h2 class="style-check-row-title">
@@ -48,7 +51,7 @@ function StyleCheckRow({ row }: { row: StyleCheckRowView }) {
             <GenerationCard g={row.pin} />
           </div>
           <div class="style-check-cell">
-            <h3>今のカタログでの plain render</h3>
+            <h3>今の描画内容での plain render</h3>
             <div class="style-check-result" data-style-check-slot={row.pose}>
               <StyleCheckResult row={row} />
             </div>
@@ -61,6 +64,12 @@ function StyleCheckRow({ row }: { row: StyleCheckRowView }) {
         <p>
           <a href={`/compare?ids=${compareIds}`}>pin と比較</a>
         </p>
+      ) : null}
+      {baseCompareIds ? (
+        <form class="style-check-compare-add" data-style-check-compare-add data-base-ids={baseCompareIds}>
+          <input type="text" name="ids" placeholder="足す ID（カンマか空白区切り）" aria-label="比較に足す ID" />
+          <button type="submit">ID を足して比較</button>
+        </form>
       ) : null}
     </section>
   );

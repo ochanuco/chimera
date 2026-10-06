@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { styleCheckIdempotencyKey } from '../src/lib/style-check';
 import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
 // STYLE_CHECK_RECIPE/POSES (src/lib/style-check.ts) hardcode 'yukari', and defaultRecipeRef
@@ -8,14 +9,14 @@ import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } 
 const RECIPE = 'yukari';
 const RECIPE_REF = 'production';
 
-function sampleCatalog(gitCommit: string) {
+function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at camera') {
   return {
     schema_version: 1,
     recipes: [
       {
         name: RECIPE,
         poses: [
-          { name: 'bust', prompt: 'bust up, looking at camera' },
+          { name: 'bust', prompt: bustPrompt },
           { name: 'coffee', prompt: 'holding cup, cowboy shot' },
         ],
         costumes: [{ name: 'default', prompt: 'plain roomwear' }],
@@ -28,8 +29,8 @@ function sampleCatalog(gitCommit: string) {
   };
 }
 
-async function publishAndImport(gitCommit: string): Promise<void> {
-  const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(gitCommit), 'PUT');
+async function publishAndImport(gitCommit: string, bustPrompt?: string): Promise<void> {
+  const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(gitCommit, bustPrompt), 'PUT');
   expect(put.status).toBe(200);
   const imported = await postJson<{ imported: unknown[] }>('/api/v1/presets/import', { recipe_ref: RECIPE_REF });
   expect(imported.status).toBe(200);
@@ -86,7 +87,7 @@ describe('POST /api/v1/style-check/:recipe', () => {
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
-  it('enqueues one plain-render request per pinned pose at the default key; a second POST at the same catalog commit replays (created: false)', async () => {
+  it('enqueues one plain-render request per pinned pose at the default key; a second POST with the same render content replays (created: false)', async () => {
     await publishAndImport('abc1234');
     await pinPose('bust');
 
@@ -101,7 +102,7 @@ describe('POST /api/v1/style-check/:recipe', () => {
     const requestRow = await getJson<{ idempotency_key: string; payload: { generation: { parameters: unknown } } }>(
       `/api/v1/requests/${bustResult!.request_id}`,
     );
-    expect(requestRow.body.idempotency_key).toBe(`plain:${RECIPE}:bust:123:abc1234`);
+    expect(requestRow.body.idempotency_key).toMatch(new RegExp(`^style-check:${RECIPE}:bust:[0-9a-f]{64}$`));
     expect(requestRow.body.payload.generation.parameters).toEqual({ pose: 'bust' });
 
     const second = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
@@ -119,6 +120,79 @@ describe('POST /api/v1/style-check/:recipe', () => {
     expect(coffee).toBeTruthy();
     expect(coffee!.skipped).toBe('no_pin');
     expect(coffee!.request_id).toBeNull();
+  });
+});
+
+async function styleCheckKeys(): Promise<Record<string, string>> {
+  const { results } = await env.DB.prepare("SELECT idempotency_key FROM requests WHERE idempotency_key LIKE 'style-check:%'").all<{
+    idempotency_key: string;
+  }>();
+  const keys: Record<string, string> = {};
+  for (const r of results) keys[r.idempotency_key.split(':')[2]!] = r.idempotency_key;
+  return keys;
+}
+
+describe('style-check content key', () => {
+  beforeEach(async () => {
+    await clearRequests();
+    await env.DB.prepare('DELETE FROM preset_references').run();
+  });
+
+  async function keyFor(pose: string, seed: number): Promise<string> {
+    return styleCheckIdempotencyKey(env.DB, RECIPE_REF, RECIPE, pose, seed);
+  }
+
+  it('stays the same across a catalog commit change and changes when the pose prompt changes', async () => {
+    await publishAndImport('aaa1111');
+    const before = await keyFor('bust', 123);
+    const beforeCoffee = await keyFor('coffee', 123);
+
+    await publishAndImport('bbb2222');
+    expect(await keyFor('bust', 123)).toBe(before);
+
+    await publishAndImport('ccc3333', 'bust up, smiling');
+    expect(await keyFor('bust', 123)).not.toBe(before);
+    expect(await keyFor('coffee', 123)).toBe(beforeCoffee);
+    expect(await keyFor('bust', 124)).not.toBe(await keyFor('bust', 123));
+  });
+});
+
+describe('catalog PUT auto render', () => {
+  beforeEach(async () => {
+    await clearRequests();
+    await env.DB.prepare('DELETE FROM preset_references').run();
+  });
+
+  it('enqueues only the poses whose render content changed, and an identical PUT creates nothing', async () => {
+    await publishAndImport('aaa1111');
+    await pinPose('bust');
+    await pinPose('coffee');
+
+    const put = (commit: string, bustPrompt?: string) => postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(commit, bustPrompt), 'PUT');
+    const count = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM requests WHERE idempotency_key LIKE 'style-check:%'").first<{ n: number }>())!.n;
+
+    expect((await put('aaa1111')).status).toBe(200);
+    await vi.waitFor(async () => expect(await count()).toBe(2));
+
+    expect((await put('bbb2222')).status).toBe(200);
+    expect((await put('bbb2222')).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(await count()).toBe(2);
+    const keys = await styleCheckKeys();
+
+    expect((await put('ccc3333', 'bust up, smiling')).status).toBe(200);
+    await vi.waitFor(async () => expect(await count()).toBe(3));
+    const after = await styleCheckKeys();
+    expect(after.coffee).toBe(keys.coffee);
+    expect(after.bust).not.toBe(keys.bust);
+  });
+
+  it('does not render for a non-default recipe_ref', async () => {
+    await publishAndImport('aaa1111');
+    await pinPose('bust');
+    await postJson('/api/v1/catalogs/feature-branch', sampleCatalog('zzz9999'), 'PUT');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(Object.keys(await styleCheckKeys())).toEqual([]);
   });
 });
 
@@ -147,6 +221,18 @@ describe('GET /check', () => {
     const afterBody = await after.text();
     expect(afterBody).toContain(`data-request-id="${bustResult!.request_id}"`);
     expect(afterBody).toContain('request-status-queued');
+  });
+
+  it('keeps showing the existing render after a catalog commit change with the same pose content', async () => {
+    await publishAndImport('aaa1111');
+    await pinPose('bust');
+    const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
+    const bustResult = render.body.results.find((r) => r.pose === 'bust')!;
+
+    await publishAndImport('bbb2222');
+    const body = await (await req('/check')).text();
+    expect(body).toContain(`data-request-id="${bustResult.request_id}"`);
+    expect(body).toContain('ID を足して比較');
   });
 
   it('shows the resulting generation and a compare link once the plain-render request is done', async () => {

@@ -672,21 +672,31 @@ full      anyo
     `referenceView`）。[Gallery](#gallery)と同じ[GenerationCard](#gallery)（サムネイル・
     short_idリンク・基準ピル）で表示します。pinが無ければ行全体を「pin 無し」とだけ表示し、
     右カラムは出しません（描けないため）。
--   右: 今のカタログcommitでの、そのposeのplain render。default idempotency key
-    (`plain:<recipe>:<pose>:<seed>:<git_commit>` — MCP `plain_render`と同じ形、
-    `src/lib/plain-render.ts`の`plainRenderIdempotencyKey`)に一致するrequestを探すだけで
-    (積まない)、無ければ「まだ描いていない」と表示します。requestがqueued/runningなら
+-   右: 今の描画内容での、そのposeのplain render。idempotency key
+    (`style-check:<recipe>:<pose>:<sha256>`、`src/lib/style-check.ts`の
+    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「まだ
+    描いていない」と表示します。ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
+    カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
+    git commit・generated_at・patches・backdropsは入れないので、docsやfinalizeだけの
+    変更・worker再起動ではkeyが変わらず、右カラムは空になりません。requestがqueued/runningなら
     status行（[Finalize](#generation-detail)の`request-status-list`と同じ`<li
     data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
 -   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
     <結果のshort_id>`）を出します。
+-   pinがある行には入力欄と`ID を足して比較`ボタンを出します。pin・今の結果（あれば）の
+    short_idに、入力したID（カンマか空白区切り）を足した`/compare?ids=...`を開きます。
 
 ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
 （[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに1行、MCP
 `plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
 gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
-keyが上と同じ既定キーなので、同じカタログcommitへの連打は積み直さず既存行を返します
+keyが上と同じなので、描画内容が同じ間の連打は積み直さず既存行を返します
 （`created: false`）。
+
+recipe_refが`REQUESTS_DEFAULT_RECIPE_REF`（既定`production`）のカタログを
+`PUT /api/v1/catalogs/{recipe_ref}`で公開した直後にも、同じ描画をバックグラウンドで自動で
+積みます。描画内容が変わったposeだけがcreatedになり、commitだけの変更や同じカタログの
+再公開は何も積みません。失敗してもPUTは失敗しません。
 
 積んだ直後は応答のrequest idをその場の右カラムに挿し込むだけで、reloadしません
 （`data-style-check-slot="<pose>"`の要素を差し替える）。以後のrunning/doneは他ページと
