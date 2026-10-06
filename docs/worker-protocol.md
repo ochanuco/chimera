@@ -808,9 +808,9 @@ worker は requests だけを見ます。
   /api/v1/style-check/{recipe}` が pin を持つ pose ごとに `buildPlainRenderRequest`（MCP
   `plain_render` と同じ組み立て — pin の seed・recipe 既定のまま patches なし）で
   `kind = generate` を積む（`created_by = gui`）。GUI は prompt を一切書かない。pin が無い
-  pose は skip され、応答にその旨が残る。idempotency key は `plain_render` と同じ
-  `plain:<recipe>:<pose>:<seed>:<git_commit>` なので、同じ catalog commit への連打は
-  積み直さず既存行を返す。
+  pose は skip され、応答にその旨が残る。idempotency key は描画内容のハッシュ
+  `style-check:<recipe>:<pose>:<sha256>`（git commit は含めない）なので、描画内容が同じ間の
+  連打は積み直さず既存行を返す。既定 recipe_ref のカタログ PUT 後にも同じ処理が自動で走る。
 
 GUI が積んでよい操作の範囲は [architecture.md](architecture.md#web-gui) の Web GUI
 Responsibilities を参照してください。Compare が比較表示のみである点は変わりません。

@@ -2,7 +2,10 @@
 // 人間が見比べる。生成は plain_render (lib/plain-render.ts) と同じ経路 — このファイルは「どのポーズを並べるか」
 // の正本と、既存 request を探す/積むだけの薄い層。
 
-import { buildPlainRenderRequest, plainRenderIdempotencyKey } from './plain-render';
+import { buildPlainRenderRequest } from './plain-render';
+import { findCatalogPose, getCatalog } from './catalogs';
+import { getPresetRow } from './presets';
+import { stableStringify } from './json-canonical';
 import { createRequest, defaultRecipeRef } from './requests';
 import { getCurrentReference, referenceView, type PresetReferenceView } from './preset-references';
 import type { RequestRow } from '../types';
@@ -30,25 +33,58 @@ export const STYLE_CHECK_POSES: Record<string, StyleCheckPose[]> = {
   ],
 };
 
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 絵柄チェックの idempotency key: `style-check:<recipe>:<pose>:<sha256>`。ハッシュの入力は plain render が
+ * 描く内容だけ — pin の seed、pose の preset (版と本文)、カタログ上の pose レコード (prompt / negative / canvas など)、
+ * recipe 直下の pose 以外の定義 (parameters / costumes / expressions / parts / model など。`poses` と finalize 用の `dials` は除く)。
+ * git_commit・generated_at・patches・backdrops は入れないので、docs や finalize だけの変更では key が変わらない。
+ */
+export async function styleCheckIdempotencyKey(
+  db: D1Database,
+  recipeRef: string,
+  recipe: string,
+  pose: string,
+  seed: number,
+): Promise<string> {
+  const catalog = await getCatalog(db, recipeRef);
+  const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as Record<string, unknown> | undefined;
+  const { poses: _poses, dials: _dials, ...recipeLevel } = recipeEntry ?? {};
+  const preset = await getPresetRow(db, recipe, 'pose', pose);
+  const content = {
+    recipe,
+    pose,
+    seed,
+    preset: preset ? { version: preset.version, body: JSON.parse(preset.body_json) as unknown } : null,
+    pose_record: catalog ? findCatalogPose(catalog.doc, recipe, pose) : null,
+    recipe_level: recipeLevel,
+  };
+  return `style-check:${recipe}:${pose}:${await sha256Hex(stableStringify(content))}`;
+}
+
 export interface StyleCheckRow {
   framing: string;
   pose: string;
   /** 現在の pin。無ければこの pose の行は描けない (GET /check「pin 無し」)。 */
   pin: PresetReferenceView | null;
-  /** pin があるときだけ埋まる、今のカタログ commit での plain render の default idempotency key。 */
+  /** pin があるときだけ埋まる、今の描画内容での style-check idempotency key。 */
   idempotency_key: string | null;
   /** その key に一致する既存 request。無ければ「まだ描いていない」。 */
   request: RequestRow | null;
 }
 
 /**
- * GET /check が描く行データ: pose ごとに現在の pin と、今の catalog commit での plain render
+ * GET /check が描く行データ: pose ごとに現在の pin と、今の描画内容での plain render
  * request (あれば) を集める。何も積まない — 既存の request を探すだけ (createRequest は呼ばない)。
  */
 export async function loadStyleCheckRows(
   db: D1Database,
   recipe: string,
-  gitCommit: string | null,
+  recipeRef: string,
 ): Promise<StyleCheckRow[]> {
   const poses = STYLE_CHECK_POSES[recipe] ?? [];
   const rows: StyleCheckRow[] = [];
@@ -57,7 +93,7 @@ export async function loadStyleCheckRows(
     let idempotencyKey: string | null = null;
     let request: RequestRow | null = null;
     if (pin) {
-      idempotencyKey = plainRenderIdempotencyKey(recipe, pose, pin.seed, gitCommit);
+      idempotencyKey = await styleCheckIdempotencyKey(db, recipeRef, recipe, pose, pin.seed);
       request = await db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(idempotencyKey).first<RequestRow>();
     }
     rows.push({ framing, pose, pin, idempotency_key: idempotencyKey, request });
@@ -103,7 +139,8 @@ export async function renderStyleCheck(
       continue;
     }
 
-    const built = await buildPlainRenderRequest(db, { recipe, pose, recipe_ref: recipeRef });
+    const key = await styleCheckIdempotencyKey(db, recipeRef, recipe, pose, pin.seed);
+    const built = await buildPlainRenderRequest(db, { recipe, pose, recipe_ref: recipeRef, idempotency_key: key });
     const { row, created } = await createRequest(
       db,
       { kind: 'generate', payload: built.payload, recipe_ref: recipeRef, idempotency_key: built.idempotency_key, created_by: 'gui' },

@@ -288,7 +288,7 @@ pages.get('/check', async (c) => {
   const catalog = await getCatalog(c.env.DB, recipeRef);
   const gitCommit = catalog?.row.git_commit ?? null;
 
-  const rows = await loadStyleCheckRows(c.env.DB, recipe, gitCommit);
+  const rows = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
 
   const pinGenerationIds = rows.map((r) => r.pin?.generation_id).filter((id): id is string => Boolean(id));
   const resultGenerationIds = rows.map((r) => (r.request ? resolveDoneGenerationId(r.request) : null)).filter((id): id is string => Boolean(id));
