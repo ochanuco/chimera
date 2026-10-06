@@ -753,7 +753,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Unknown keys fail; fails with repair / repair_regions / repair_seeds. null/omitted = off), ' +
         'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: relights the delivered picture as a sunset or moonlit scene; ' +
         'from is the direction the light comes from, default "nw". Requires deliver_only, fails with repair / repair_regions, ' +
-        'and the worker forces stroke_light to from, so leave stroke_light out or set it to the same value. Unknown keys fail. null/omitted = off), ' +
+        'and the purple stroke follows from by default; stroke_light "none", "even" or null combines with light, while a direction different from from fails. Unknown keys fail. null/omitted = off), ' +
         'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
         'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +
         'drawn with Anima can only be finalized this way — pass it explicitly there. For an Anima source, pass it ' +
