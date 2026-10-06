@@ -546,7 +546,7 @@ catalogの`default`）。オンにすると白フチ・紫フチ・影・背景�
 catalogに`finalize.light`があるときだけ、`光源`グループを出します。`場面`のselect（`なし` / `夕日` / `月明かり`、
 既定は`なし`。未知の場面はcatalogの値のまま表示）と、光が来る向きのselect（`上` / `右上` / `右` / `右下` / `下` /
 `左下` / `左` / `左上`、既定はcatalogの`default_from`、`なし`の間は無効）です。場面を選ぶと`light: {scene, from}`を送り、
-`stroke_light`は送りません（workerが`from`に揃えるため、紫縁の向きのselectも無効にします）。`なし`なら`light`を送りません。
+stroke lightのselectが方位のときは`stroke_light`を送りません（workerが`from`に揃えるため、方位の選択肢は無効にします）。`none`か`even`を選んでいれば`light`と一緒に送ります。`なし`なら`light`を送りません。
 `light`は`deliver_only`のときだけ使え、repairとは併用できません（チェックはworkerが行います）。プロファイルを押すと、
 プロファイルの`light`に合わせて場面と向きが切り替わります（`light`が無いプロファイルは`なし`）。送信内容の表示は`光源 夕日 · 左上`の形です。
 

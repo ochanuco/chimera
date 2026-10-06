@@ -113,11 +113,11 @@ describe('served app.js', () => {
     expect(appJs).toContain("if (select && key === 'stroke_light' && value === null) value = 'even';");
   });
 
-  it('sends light without stroke_light, locks stroke_light and the direction select by scene, and restores it from a profile', () => {
+  it('sends light without a direction stroke_light, limits stroke_light to none/even and locks the direction select by scene, and restores it from a profile', () => {
     expect(appJs).toContain('options.light = { scene: lightScene.value };');
-    expect(appJs).toContain('delete options.stroke_light;');
     expect(appJs).toContain('if (fromSelect) fromSelect.disabled = !on;');
-    expect(appJs).toContain('if (stroke) stroke.disabled = on;');
+    expect(appJs).toContain("o.disabled = on && o.value !== 'none' && o.value !== 'even';");
+    expect(appJs).toContain("if (strokeLight !== 'none' && strokeLight !== 'even') delete options.stroke_light;");
     expect(appJs).toContain('applyLightToForm(form, options);');
     expect(appJs).toContain("parts.push('光源 '");
   });
