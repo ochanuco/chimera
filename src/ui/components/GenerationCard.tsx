@@ -1,3 +1,5 @@
+import { SafetyBadge, type SafetyView } from './SafetyBadge';
+
 export interface FinalizeRequestBadgeData {
   id: string;
   kind: 'finalize' | 'repair' | 'masked_redraw';
@@ -20,6 +22,8 @@ export interface GenerationCardData {
   refines_generation_short_id?: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published?: boolean;
+  /** WD tagger の判定 (docs/ui.md「Gallery」安全性ピル)。未採点/未対応の一覧は null/undefined。 */
+  safety?: SafetyView | null;
   /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (docs/ui.md「Gallery」進捗ピル)。無い/未対応の一覧はundefined。 */
   finalize_request?: FinalizeRequestBadgeData | null;
   /** このGenerationが pose の基準 render として pin されているか (docs/ui.md「Gallery」基準ピル)。無い/未対応の一覧はundefined。 */
@@ -91,8 +95,9 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
             {g.finalize_request ? <FinalizeBadge r={g.finalize_request} /> : null}
           </div>
         ) : null}
-        {g.published || g.reference ? (
+        {g.published || g.reference || (g.safety && g.safety.verdict !== 'none') ? (
           <div class="thumb-badges-bottom">
+            <SafetyBadge safety={g.safety} />
             {g.published ? (
               <span class="card-published-pill">
                 <SendIcon /> 公開済み

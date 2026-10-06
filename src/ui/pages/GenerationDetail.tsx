@@ -11,6 +11,7 @@ import { NoteSection } from '../components/NoteSection';
 import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
+import { SafetySection, type SafetyDetailData } from '../components/SafetyBadge';
 import { PublicationSection, type PublicationData } from '../components/PublicationSection';
 import { RatingBookmark } from '../components/RatingBookmark';
 import { TagsEditor } from '../components/TagsEditor';
@@ -51,6 +52,7 @@ export interface GenerationDetailData {
   } | null;
   siblings: { id: string; short_id: string; image_width: number | null; image_height: number | null; comfy_output_index: number | null }[];
   publications: PublicationData[];
+  safety: SafetyDetailData | null;
   pose_reference: PoseReferenceData | null;
   refines_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null } | null;
   comfy_job: {
@@ -233,7 +235,9 @@ export function GenerationDetailPage({
 
           <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
 
-          <PublicationSection generationId={data.id} publications={data.publications} />
+          <SafetySection safety={data.safety} />
+
+          <PublicationSection generationId={data.id} publications={data.publications} safety={data.safety} />
 
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />

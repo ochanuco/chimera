@@ -360,6 +360,24 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   text-overflow: ellipsis;
 }
 .card-published-pill { color: #4fd8a4; }
+.safety-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(18, 18, 20, 0.86);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.safety-badge-block { color: #fff; background: #d6383f; border-color: #d6383f; }
+.safety-badge-sensitive { color: #ff7b80; border-color: #ff7b80; }
+.safety-badge-caution { color: #f2c94c; border-color: #f2c94c; }
+.safety-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; font-size: 0.85rem; }
+.safety-row-label { color: var(--text-dim); }
+.safety-unrated, .safety-numbers { color: var(--text-dim); font-size: 0.8rem; }
+.safety-reasons { color: #ff7b80; font-size: 0.8rem; }
 .card-reference-pill { color: #b39bf5; }
 
 .pose-reference-row { margin: 0.5rem 0; }
@@ -1861,6 +1879,8 @@ export const appJs = `
       var generationId = section ? section.getAttribute('data-generation-id') : null;
       var input = qs('input[name="url"]', form);
       var url = (input.value || '').trim();
+      var safetyVerdict = section ? section.getAttribute('data-safety-verdict') : null;
+      if (safetyVerdict === 'block' && !confirm('この画像は「出さない」判定です（露出表現の疑い）。それでも公開を記録しますか？')) return;
       try {
         var publication = await api('/api/v1/generations/' + generationId + '/publications', 'POST', { url: url || null });
         var list = qs('.publication-list', section);
@@ -1869,6 +1889,9 @@ export const appJs = `
         }
         updatePublicationStatus(section, list ? list.children.length : 1);
         input.value = '';
+        if (publication.warning && publication.warning.verdict === 'sensitive') {
+          alert('センシティブ判定です。X では「センシティブな内容を含む」設定を付けて投稿してください。');
+        }
         track('publication.add', { generation_id: generationId, has_url: Boolean(url) });
       } catch (e) {
         trackError('publication.add', e, { generation_id: generationId });

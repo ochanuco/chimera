@@ -4,6 +4,7 @@ import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool 
 import { canonicalGenerationUrl, generationImageUrl, generationPreviewUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
+import { getSafetyForGeneration, serializeSafety, type SafetySummary } from './safety';
 import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
@@ -157,11 +158,12 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const [{ context, request }, job, publications, poseReference] = await Promise.all([
+  const [{ context, request }, job, publications, poseReference, safetyRow] = await Promise.all([
     loadBuiltContext(db, org, generation),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
     listPublicationsForGeneration(db, generation.id),
     getPoseReferenceOfGeneration(db, generation.id),
+    getSafetyForGeneration(db, generation.id),
   ]);
   const renderFacts = job ? await renderFactsForJob(db, job) : null;
   const refinesGeneration = generation.refines_generation_id
@@ -177,6 +179,7 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
     siblings: context.generations.filter((g) => g.id !== generation.id),
     publications: publications.map(serializePublication),
     pose_reference: poseReference,
+    safety: safetyRow ? serializeSafety(safetyRow, { includeTags: true }) : null,
     comfy_job: job
       ? {
           id: job.id,
@@ -213,6 +216,8 @@ export interface GenerationListItem {
   refines_generation_short_id: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published: boolean;
+  /** WD tagger の判定 (tags 抜き)。未採点は null。 */
+  safety: SafetySummary | null;
   /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (GenerationCardの進捗ピル)。無ければnull。 */
   finalize_request: GenerationFinalizeRequestBadge | null;
   /** このGenerationが pose の基準 render として pin されているか (preset_references, 現行行のみ)。無ければnull。 */
@@ -462,6 +467,7 @@ export async function queryGenerations(
       `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json,
          rg.short_id AS refines_generation_short_id,
          EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published,
+         gs.model AS safety_model, gs.rating_json AS safety_rating_json, gs.tags_json AS safety_tags_json, gs.rated_at AS safety_rated_at,
          (SELECT pr.recipe FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_recipe,
          (SELECT pr.name FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_pose
        FROM generations g
@@ -469,6 +475,7 @@ export async function queryGenerations(
        LEFT JOIN generation_tags gt ON gt.generation_id = g.id
        LEFT JOIN tags t ON t.id = gt.tag_id
        LEFT JOIN generations rg ON rg.id = g.refines_generation_id
+       LEFT JOIN generation_safety gs ON gs.generation_id = g.id
        ${where}
        GROUP BY g.id
        ORDER BY g.created_at DESC, g.id DESC
@@ -481,6 +488,10 @@ export async function queryGenerations(
         tag_names_json: string;
         refines_generation_short_id: string | null;
         is_published: number;
+        safety_model: string | null;
+        safety_rating_json: string | null;
+        safety_tags_json: string | null;
+        safety_rated_at: string | null;
         reference_recipe: string | null;
         reference_pose: string | null;
       }
@@ -519,6 +530,19 @@ export async function queryGenerations(
       original_purged_at: r.original_purged_at,
       refines_generation_short_id: r.refines_generation_short_id,
       published: toBool(r.is_published),
+      safety:
+        r.safety_model && r.safety_rating_json && r.safety_tags_json && r.safety_rated_at
+          ? serializeSafety(
+              {
+                generation_id: r.id,
+                model: r.safety_model,
+                rating_json: r.safety_rating_json,
+                tags_json: r.safety_tags_json,
+                rated_at: r.safety_rated_at,
+              },
+              { includeTags: false },
+            )
+          : null,
       finalize_request: finalizeRequests.get(r.id) ?? null,
       reference: r.reference_recipe && r.reference_pose ? { recipe: r.reference_recipe, pose: r.reference_pose } : null,
     };

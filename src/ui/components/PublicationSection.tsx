@@ -1,3 +1,5 @@
+import { SAFETY_LABELS, type SafetyView } from './SafetyBadge';
+
 export interface PublicationData {
   id: string;
   generation_id: string;
@@ -28,9 +30,24 @@ export function PublishIcon() {
 
 /** `公開` section (docs/ui.md「Generation Detail」節): rating/bookmark 行の直後に置く。JS側の書き換え
  * (initPublicationAdd 等, src/ui/static.ts) はこの markup と同じ形を組み立てる。 */
-export function PublicationSection({ generationId, publications }: { generationId: string; publications: PublicationData[] }) {
+export function PublicationSection({
+  generationId,
+  publications,
+  safety,
+}: {
+  generationId: string;
+  publications: PublicationData[];
+  safety?: SafetyView | null;
+}) {
+  const risky = safety && (safety.verdict === 'block' || safety.verdict === 'sensitive') ? safety : null;
   return (
-    <details class="section publication-section" open data-generation-id={generationId}>
+    <details
+      class="section publication-section"
+      open
+      data-generation-id={generationId}
+      data-safety-verdict={risky?.verdict}
+      data-safety-label={risky ? SAFETY_LABELS[risky.verdict as 'block' | 'sensitive'] : undefined}
+    >
       <summary>公開</summary>
       <div class="section-body">
         <p class={`publication-status${publications.length > 0 ? ' published' : ''}`}>
