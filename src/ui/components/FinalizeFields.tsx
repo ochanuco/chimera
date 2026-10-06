@@ -1,5 +1,5 @@
 import { dialWordsFor, type FinalizeDials, type FinalizeProfileOption } from '../finalize-options';
-import type { FinalizeDefaults, FinalizeDof } from '../../lib/catalogs';
+import type { FinalizeDefaults, FinalizeDof, FinalizeLight } from '../../lib/catalogs';
 
 export interface BackdropOption {
   name: string;
@@ -135,6 +135,13 @@ function nearestStopIndex(stops: number[], value: number): number {
 const DOF_HELP =
   '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。背景もぼかすをオンにすると白フチ・紫フチ・影・背景までぼかす（透過納品とは併用できない）。ファインダー表示は三分割グリッド・ピント位置の枠・シャッター速度と F 値のバーを納品画像に重ねる。ON/OFF 2枚なら重ねない絵と重ねた絵を両方納品する。off なら dof を送らない。部分描き直しとは併用できない';
 
+const LIGHT_HELP =
+  '納品画像を夕日や月明かりの場面として、光の向きに合わせて描き直す。光源はどちらから光が来るか。描き直さない（deliver only）のときだけ使え、部分描き直しとは併用できない。紫縁の光源方向は光源に合わせて決まるので、紫縁の光源は送らない。なしなら light を送らない';
+
+const LIGHT_SCENE_LABELS: Record<string, string> = { sunset: '夕日', moon: '月明かり' };
+
+const LIGHT_FROM_LABELS: Record<string, string> = { n: '上', ne: '右上', e: '右', se: '右下', s: '下', sw: '左下', w: '左', nw: '左上' };
+
 const DOF_VIEWFINDER_LABELS: Record<string, string> = { off: 'OFF', on: 'ON', both: 'ON/OFF 2枚' };
 
 /** Shared body of the Finalize form (GenerationDetail), rendered inside the caller's own `<form>`.
@@ -144,6 +151,7 @@ export function FinalizeFields({
   dials = null,
   defaults = null,
   dof = null,
+  light = null,
   profiles = [],
   backdrops = [],
   recipeRef = null,
@@ -155,6 +163,8 @@ export function FinalizeFields({
   defaults?: FinalizeDefaults | null;
   /** Catalog `finalize.dof.f_number`; the bokeh controls render only with this and `regionDrawing` (the focus point is placed on the image). */
   dof?: FinalizeDof | null;
+  /** Catalog `finalize.light`; the 光源 block renders only with this. */
+  light?: FinalizeLight | null;
   profiles?: FinalizeProfileOption[];
   /** Catalog top-level `backdrops` (name/label only; thumbnail bytes come from backdropThumbnailUrl). Empty when the catalog predates this key, or there's no catalog. */
   backdrops?: BackdropOption[];
@@ -414,6 +424,36 @@ export function FinalizeFields({
               </select>
             </label>
           ) : null}
+        </fieldset>
+      ) : null}
+
+      {light ? (
+        <fieldset class="finalize-group">
+          <legend>光源</legend>
+          <label>
+            場面{' '}
+            <select name="light_scene">
+              <option value="" selected>
+                なし
+              </option>
+              {light.scenes.map((s) => (
+                <option value={s}>{LIGHT_SCENE_LABELS[s] ?? s}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            光源{' '}
+            <select name="light_from" disabled>
+              {light.from.map((d) => (
+                <option value={d} selected={d === light.defaultFrom}>
+                  {LIGHT_FROM_LABELS[d] ?? d}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span class="finalize-help" tabindex={0} role="note" aria-label={LIGHT_HELP} data-help={LIGHT_HELP}>
+            ?
+          </span>
         </fieldset>
       ) : null}
 

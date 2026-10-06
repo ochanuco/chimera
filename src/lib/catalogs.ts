@@ -209,6 +209,25 @@ export function findFinalizeDof(doc: RecipeCatalogDoc, recipeName: string): Fina
   return { min, max, default: f.default, stops: stops as number[], scope, viewfinder };
 }
 
+export interface FinalizeLight {
+  scenes: string[];
+  from: string[];
+  defaultFrom: string;
+}
+
+/** `recipes[].finalize.light` for one recipe name — the scenes and light directions FinalizeFields renders as selects. null when absent or malformed (no scenes, no directions, or default_from outside from). */
+export function findFinalizeLight(doc: RecipeCatalogDoc, recipeName: string): FinalizeLight | null {
+  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
+  if (!recipe) return null;
+  const light = (recipe as { finalize?: { light?: { scenes?: unknown; from?: unknown; default_from?: unknown } } }).finalize?.light;
+  if (!light || typeof light !== 'object') return null;
+  const { scenes, from } = light;
+  const isNames = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every((s) => typeof s === 'string');
+  if (!isNames(scenes) || !isNames(from)) return null;
+  if (typeof light.default_from !== 'string' || !from.includes(light.default_from)) return null;
+  return { scenes, from, defaultFrom: light.default_from };
+}
+
 /** Looks up a single pose record (full body, prompts included) by recipe name + pose name. Either miss returns null. */
 export function findCatalogPose(doc: RecipeCatalogDoc, recipeName: string, poseName: string): unknown | null {
   const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
