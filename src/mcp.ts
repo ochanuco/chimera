@@ -706,8 +706,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'deliver_only also default to true; a redraw-shaping option (denoise, size, route, finalizer, ' +
         'keep_regions or upscale) turns deliver_only off and the redraw back on, while repair and ' +
         'repair_regions do not (they combine with deliver_only instead, see below). An explicit null ' +
-        'keeps its own distinct meaning rather than falling back to a default: stroke_light: null means a ' +
-        'uniform stroke with no directional shading, backdrop: null means no backdrop (transparent). Other ' +
+        'keeps its own distinct meaning rather than falling back to a default: backdrop: null means no ' +
+        'backdrop (transparent). Other ' +
         'fields: ' +
         'denoise (redraw strength; recipe default 0.4), ' +
         'repin (accent-compression recolor pass), recolor (palette recolor, accepted for any source), ' +
@@ -720,7 +720,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'or a #RRGGBB color; recipe default above, or null for none), ' +
         'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
         'deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
-        'stroke_light (purple-stroke light direction: n/ne/e/se/s/sw/w/nw; recipe default above, or null for a uniform stroke), ' +
+        'stroke_light (purple-stroke style: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; "even" (null is accepted as the same) is a uniform-width stroke; "none" is no purple stroke at all; recipe default above. The drop shadow appears only for a direction), ' +
         'keep_regions ([x0,y0,x1,y1] fraction rectangles the redraw keeps close to the source picture, through a ' +
         'feathered mask; omit for none — null is rejected; being redraw-shaping, it turns deliver_only off), ' +
         'keep_strength (how much the redraw still touches a keep_regions rectangle, above 0 and below 1, worker ' +

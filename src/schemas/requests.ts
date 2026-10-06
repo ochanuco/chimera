@@ -49,7 +49,7 @@ export const finalizeOptionsSchema = z
     backdrop: z.string().nullable().optional(),
     upscale: z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional(),
     deliver_size: z.number().int().nullable().optional(),
-    stroke_light: z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional(),
+    stroke_light: z.enum(['none', 'even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional(),
     repair: z.array(z.enum(['hands', 'feet'])).nullable().optional(),
     repair_regions: z.array(repairRegionSchema).nullable().optional(),
     repair_denoise: z.union([z.number().gt(0).lte(1), dialWord]).nullable().optional(),

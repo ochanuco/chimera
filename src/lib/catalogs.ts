@@ -169,6 +169,14 @@ export function findFinalizeDefaults(doc: RecipeCatalogDoc, recipeName: string):
   return defaults && typeof defaults === 'object' && !Array.isArray(defaults) ? (defaults as FinalizeDefaults) : null;
 }
 
+/** `recipes[].finalize.backdrop_color` for one recipe name — the solid-colour backdrop's initial value. null when absent or not `#RRGGBB`. */
+export function findFinalizeBackdropColor(doc: RecipeCatalogDoc, recipeName: string): string | null {
+  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
+  if (!recipe) return null;
+  const color = (recipe as { finalize?: { backdrop_color?: unknown } }).finalize?.backdrop_color;
+  return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
+
 export interface FinalizeDof {
   min: number;
   max: number;

@@ -1226,14 +1226,67 @@ describe('Finalize profiles and word dials (GUI)', () => {
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
     expect(html).toMatch(/<option value="n"[^>]*selected/);
-    expect(html).not.toMatch(/<option value="none"[^>]*selected/);
+    expect(html).not.toMatch(/<option value="even"[^>]*selected/);
+  });
+
+  it('the stroke_light select offers none（縁無し） and even（一定の太さ） before the arrows', async () => {
+    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<option value="none"[^>]*>\s*none（縁無し）/);
+    expect(html).toMatch(/<option value="even"[^>]*>\s*even（一定の太さ）/);
+    expect(html.indexOf('<option value="even"')).toBeLessThan(html.indexOf('<option value="n"'));
+  });
+
+  it('a recipe whose catalog stroke_light default is not a valid value falls back to even', async () => {
+    const recipe = uniqueRecipe();
+    await publishFinalizeDefaults(recipe, { stroke_light: 'sideways' });
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/<option value="even"[^>]*selected/);
+  });
+
+  it('a recipe whose catalog stroke_light default is none or even presets that option', async () => {
+    for (const value of ['none', 'even']) {
+      const recipe = uniqueRecipe();
+      await publishFinalizeDefaults(recipe, { stroke_light: value });
+      const { generation } = await createGeneration({ requestOverrides: { recipe } });
+      const html = await (await req(`/g/${generation.short_id}`)).text();
+      expect(html).toMatch(new RegExp(`<option value="${value}"[^>]*selected`));
+    }
+  });
+
+  it('the solid-colour backdrop input starts from the catalog finalize.backdrop_color', async () => {
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      { schema_version: 1, recipes: [{ name: recipe, poses: [], finalize: { backdrop_color: '#a1b2c3' } }], patches: {} },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/name="backdrop_color"[^>]*value="#a1b2c3"/);
+  });
+
+  it('the solid-colour backdrop input falls back to #ffffff when the catalog has no valid backdrop_color', async () => {
+    const noCatalog = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
+    expect(await (await req(`/g/${noCatalog.generation.short_id}`)).text()).toMatch(/name="backdrop_color"[^>]*value="#ffffff"/);
+
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      { schema_version: 1, recipes: [{ name: recipe, poses: [], finalize: { backdrop_color: 'red' } }], patches: {} },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    expect(await (await req(`/g/${generation.short_id}`)).text()).toMatch(/name="backdrop_color"[^>]*value="#ffffff"/);
   });
 
   it('a recipe with no published catalog finalize.defaults keeps the stroke_light select and backdrop picker on their defaults', async () => {
     const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toMatch(/<option value="none"[^>]*selected/);
+    expect(html).toMatch(/<option value="even"[^>]*selected/);
     expect(html).toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
   });
 
