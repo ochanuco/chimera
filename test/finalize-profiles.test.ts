@@ -182,7 +182,7 @@ describe('finalizeOptionsSchema', () => {
   it.each([
     ['dof without f_number', { dof: { focus: [0.5, 0.5] } }],
     ['dof without focus', { dof: { f_number: 2.8 } }],
-    ['f_number below 2.8', { dof: { focus: [0.5, 0.5], f_number: 2 } }],
+    ['f_number below 1.4', { dof: { focus: [0.5, 0.5], f_number: 1.3 } }],
     ['f_number above 22', { dof: { focus: [0.5, 0.5], f_number: 23 } }],
     ['focus outside 0..1', { dof: { focus: [1.2, 0.5], f_number: 2.8 } }],
     ['negative focus', { dof: { focus: [0.5, -0.1], f_number: 2.8 } }],
