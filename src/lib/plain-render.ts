@@ -19,7 +19,7 @@ export interface PlainRenderRequestBuild {
   reference: PresetReferenceView | null;
 }
 
-/** Default idempotency key for a plain render: replays at the same (recipe, pose, seed, catalog commit). Shared with lib/style-check.ts, which looks a request up by this same key without enqueuing. */
+/** Default idempotency key for a plain render: replays at the same (recipe, pose, seed, catalog commit). */
 export function plainRenderIdempotencyKey(recipe: string, pose: string, seed: number, gitCommit: string | null): string {
   return `plain:${recipe}:${pose}:${seed}:${gitCommit ?? 'unknown'}`;
 }

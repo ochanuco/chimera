@@ -1135,6 +1135,8 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .style-check-render-btn:disabled { opacity: 0.6; cursor: default; }
 .style-check-row { margin: 1.5rem 0; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.style-check-compare-add { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.style-check-compare-add input { flex: 1; max-width: 22rem; }
 .style-check-row-title { margin-bottom: 0.6rem; }
 .style-check-row-pose { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
 .style-check-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 260px)); gap: 1rem; }
@@ -2994,6 +2996,18 @@ export const appJs = `
     });
   }
 
+  // /check の行ごとの入力欄: pin・今の結果に入力した ID を足して /compare を開く。
+  function initStyleCheckCompareAdd() {
+    document.addEventListener('submit', function (ev) {
+      var form = ev.target.closest('[data-style-check-compare-add]');
+      if (!form) return;
+      ev.preventDefault();
+      var extra = form.elements.ids.value.split(/[\\s,]+/).filter(Boolean);
+      var ids = form.getAttribute('data-base-ids').split(',').concat(extra);
+      window.location.href = '/compare?ids=' + ids.map(encodeURIComponent).join(',');
+    });
+  }
+
   // /api/v1/requests/ws への接続を1本だけ共有する (docs/worker-protocol.md)。requestLive と
   // gallery live insertion はここに message type 別のハンドラを登録するだけ。再接続は 1s→2s→4s…上限30s。
   var viewerSocket = { ws: null, connecting: false, backoff: 1000, handlers: {} };
@@ -3941,6 +3955,7 @@ export const appJs = `
     initProfileButtons();
     initPromoteToProfile();
     initStyleCheck();
+    initStyleCheckCompareAdd();
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
