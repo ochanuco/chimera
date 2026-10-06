@@ -493,6 +493,7 @@ export async function clearGenerationData(): Promise<void> {
     env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
     env.DB.prepare('UPDATE requests SET run_id = NULL'),
     env.DB.prepare('DELETE FROM generation_assets'),
+    env.DB.prepare('DELETE FROM generation_safety'),
     env.DB.prepare('DELETE FROM pairwise_judgments'),
     env.DB.prepare('DELETE FROM experiment_promotions'),
     env.DB.prepare('DELETE FROM experiment_runs'),

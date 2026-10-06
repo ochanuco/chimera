@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPoseReferenceForGenerationSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
+import { putSafetySchema } from '../schemas/safety';
+import { putSafety, publishWarningFor, serializeSafety } from '../lib/safety';
 import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
 import { nowIso, getGenerationByIdOrShortId } from '../lib/db';
 import { uuidv7 } from '../lib/uuidv7';
@@ -111,6 +113,14 @@ generations.put('/:id/rating', async (c) => {
   return c.json({ rating: body.rating });
 });
 
+generations.put('/:id/safety', async (c) => {
+  const body = putSafetySchema.parse(await c.req.json());
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  const row = await putSafety(db, generation.id, body);
+  return c.json(serializeSafety(row, { includeTags: true }));
+});
+
 generations.put('/:id/bookmark', async (c) => {
   const generation = await getGenerationOr404(c.env.DB, c.req.param('id'));
   await setBookmark(c.env.DB, 'generations', generation.id, true);
@@ -157,7 +167,8 @@ generations.post('/:id/publications', async (c) => {
     createdBy: 'gui',
     idempotencyKey: body.idempotency_key,
   });
-  return c.json(serializePublication(row), created ? 201 : 200);
+  const warning = await publishWarningFor(db, generation.id);
+  return c.json({ ...serializePublication(row), warning }, created ? 201 : 200);
 });
 
 // GUI の「基準にする」窓口 (docs/domain-model.md「基準 render の pin」)。MCP set_pose_reference と違い

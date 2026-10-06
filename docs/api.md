@@ -1396,6 +1396,35 @@ DELETE /api/v1/publications/{id}                      204
 /api/v1/generations/{id}` は `publications` 配列（`GET
 .../publications` と同じ形）を持ちます。
 
+`POST .../publications` と MCP `record_publication` のレスポンスには `warning` が付きます。
+Generation の安全性判定（[Safety](#safety)）が `block` または `sensitive` のとき
+`{verdict, reasons, message}`、それ以外は `null` です。警告があっても記録は拒否されません。
+
+## Safety
+
+X に出せる画像かどうかの判定用スコアです。worker が WD tagger の生スコアを送り、chimera が保存して
+閾値を持ちます。判定は読み出し時に保存値から計算するので、閾値を変えれば再採点なしで過去分にも効きます
+（閾値は `src/lib/safety.ts`）。
+
+``` text
+PUT /api/v1/generations/{id}/safety
+{"model": "...", "rating": {"general","sensitive","questionable","explicit"}, "tags": {"<tag>": prob}}
+```
+
+`id` は UUID / short_id どちらでも可。再送は上書きで `rated_at` を更新します。形が不正なら400、未知の
+Generation は404。レスポンスと `GET /api/v1/generations/{id}`・MCP `get_generation` の `safety` は
+`{model, rating, verdict, reasons, rated_at, tags}`、未採点は `null`。一覧（REST `items[]`・MCP
+`list_generations`）の `safety` は `tags` を含みません。
+
+判定は先に当たった順です。
+
+| verdict | 条件 |
+| --- | --- |
+| `block`（出さない） | 露出系タグ（nipples, areolae, pussy, penis, anus, completely_nude, nude, topless, bottomless, breasts_out）のいずれかが 0.15 以上 |
+| `sensitive`（センシティブ） | rating.questionable が 0.15 以上 |
+| `caution`（注意） | rating.sensitive が 0.95 以上 |
+| `none` | 上記以外 |
+
 ## Pose Reference Pin
 
 ``` text

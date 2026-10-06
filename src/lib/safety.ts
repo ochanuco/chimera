@@ -1,0 +1,109 @@
+// Content-rating (X 投稿可否) の判定。worker が WD tagger の生スコアを PUT し、閾値はここだけが持つ。
+
+import { nowIso } from './db';
+import type { GenerationSafetyRow } from '../types';
+
+export const EXPOSURE_TAGS = [
+  'nipples',
+  'areolae',
+  'pussy',
+  'penis',
+  'anus',
+  'completely_nude',
+  'nude',
+  'topless',
+  'bottomless',
+  'breasts_out',
+] as const;
+
+export const BLOCK_TAG_THRESHOLD = 0.15;
+export const SENSITIVE_QUESTIONABLE_THRESHOLD = 0.15;
+export const CAUTION_SENSITIVE_THRESHOLD = 0.95;
+
+export type SafetyVerdict = 'block' | 'sensitive' | 'caution' | 'none';
+
+export interface SafetyRating {
+  general: number;
+  sensitive: number;
+  questionable: number;
+  explicit: number;
+}
+
+export interface SafetyVerdictResult {
+  verdict: SafetyVerdict;
+  reasons: string[];
+}
+
+const fmt = (n: number) => n.toFixed(2);
+
+/** 先に当たった順 block > sensitive > caution > none。 */
+export function computeSafetyVerdict(rating: SafetyRating, tags: Record<string, number>): SafetyVerdictResult {
+  const exposure = EXPOSURE_TAGS.filter((t) => (tags[t] ?? 0) >= BLOCK_TAG_THRESHOLD).map((t) => `${t} ${fmt(tags[t]!)}`);
+  if (exposure.length > 0) return { verdict: 'block', reasons: exposure };
+  if (rating.questionable >= SENSITIVE_QUESTIONABLE_THRESHOLD) {
+    return { verdict: 'sensitive', reasons: [`questionable ${fmt(rating.questionable)}`] };
+  }
+  if (rating.sensitive >= CAUTION_SENSITIVE_THRESHOLD) {
+    return { verdict: 'caution', reasons: [`sensitive ${fmt(rating.sensitive)}`] };
+  }
+  return { verdict: 'none', reasons: [] };
+}
+
+export function serializeSafety(row: GenerationSafetyRow, opts: { includeTags: boolean }) {
+  const rating = JSON.parse(row.rating_json) as SafetyRating;
+  const tags = JSON.parse(row.tags_json) as Record<string, number>;
+  const { verdict, reasons } = computeSafetyVerdict(rating, tags);
+  return {
+    model: row.model,
+    rating,
+    verdict,
+    reasons,
+    rated_at: row.rated_at,
+    ...(opts.includeTags ? { tags } : {}),
+  };
+}
+
+export type SafetySummary = ReturnType<typeof serializeSafety>;
+
+export async function getSafetyForGeneration(db: D1Database, generationId: string): Promise<GenerationSafetyRow | null> {
+  return db.prepare('SELECT * FROM generation_safety WHERE generation_id = ?').bind(generationId).first<GenerationSafetyRow>();
+}
+
+export async function putSafety(
+  db: D1Database,
+  generationId: string,
+  input: { model: string; rating: SafetyRating; tags: Record<string, number> },
+): Promise<GenerationSafetyRow> {
+  const row: GenerationSafetyRow = {
+    generation_id: generationId,
+    model: input.model,
+    rating_json: JSON.stringify(input.rating),
+    tags_json: JSON.stringify(input.tags),
+    rated_at: nowIso(),
+  };
+  await db
+    .prepare(
+      `INSERT INTO generation_safety (generation_id, model, rating_json, tags_json, rated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(generation_id) DO UPDATE SET model = excluded.model, rating_json = excluded.rating_json,
+         tags_json = excluded.tags_json, rated_at = excluded.rated_at`,
+    )
+    .bind(row.generation_id, row.model, row.rating_json, row.tags_json, row.rated_at)
+    .run();
+  return row;
+}
+
+export type PublishWarning = { verdict: 'block' | 'sensitive'; reasons: string[]; message: string };
+
+const WARNING_MESSAGES = {
+  block: '露出表現の疑いが高いため、X に出さない方がよい画像です',
+  sensitive: 'X のセンシティブ設定（センシティブな内容を含む）を付けて投稿してください',
+} as const;
+
+/** 公開記録時の警告。block / sensitive 以外は null。 */
+export async function publishWarningFor(db: D1Database, generationId: string): Promise<PublishWarning | null> {
+  const row = await getSafetyForGeneration(db, generationId);
+  if (!row) return null;
+  const { verdict, reasons } = serializeSafety(row, { includeTags: false });
+  if (verdict !== 'block' && verdict !== 'sensitive') return null;
+  return { verdict, reasons, message: WARNING_MESSAGES[verdict] };
+}
