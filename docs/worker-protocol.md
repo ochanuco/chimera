@@ -430,7 +430,7 @@ worker は `failed` にします。`generation.identity_override` に理由の�
       "backdrop": null,
       "upscale": null,
       "deliver_size": null,
-      "stroke_light": null,
+      "stroke_light": "even",
       "repair": null,
       "repair_regions": null,
       "repair_denoise": null,
@@ -468,7 +468,7 @@ LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも fi
   backdrop            null | string             `--backdrop #RRGGBB`
   upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
   deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
-  stroke_light        null | "n".."nw"          `--stroke-light DIR`（8 方位、紫縁を光源側で細く影側で太く）
+  stroke_light        null | "none" | "even" | "n".."nw"  `--stroke-light VALUE`（`"none"` は紫縁なし、`"even"` は一定の太さの紫縁で、`null` も `"even"` と同じに扱う。8 方位は紫縁を光源側で細く影側で太くし、落ち影も方位のときだけ付く）
   keep_regions        array\<[x0, y0, x1, y1]\>  `--keep-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1。redraw のとき、この矩形の中だけ元の絵をぼかした mask 越しに残す。redraw の絵柄を変える option なので `deliver_only` の既定を外す。null は worker が型エラーにするので、無しはキー省略で表す）
   keep_strength       number (0 より大きく 1 未満)  `--keep-strength 0.25`（`keep_regions` の中に redraw がどれだけ触るか。worker 既定 0.25。`keep_regions` が無ければ意味を持たない。null は不可）
   repair              null | array\<"hands" \| "feet"\>  `--repair hands,feet`（同じ finalize request に相乗りする repair。null / 省略 / 空配列は off）
@@ -497,8 +497,8 @@ redraw します（ただし redraw が効くのは Anima の絵だけです）�
 `repair_regions` はこの既定を外さず、`deliver_only` のまま masked reroll の候補を作る
 側に扱われます。`hires` も既定を外さず、`deliver_only` のまま使います。
 明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
-`stroke_light: null` は方向性のない均一な紫縁、`backdrop: null` は背景なし（透過）を
-指します。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
+`backdrop: null` は背景なし（透過）を指します。`stroke_light` は `"none"` が紫縁なし、
+`"even"`（`null` も同じ）が方向性のない均一な紫縁です。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
 chimera の WebUI フォームのプリセットもここから取っています。
 
 `denoise` / `keep_legwear` / `repair_denoise` /
@@ -513,7 +513,7 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 `repair` / `repair_regions` / `repair_pad` / `repair_lora` を、`deliver_only` チェック中に
 それらを使った場合はさらに `repair_seeds` を持ち、他は省略します。`backdrop` は選んだカードの
 模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
-`#RRGGBB` で、`stroke_light` は `none`（既定）→ `null`、それ以外は選んだ方位です。
+`#RRGGBB` で、`stroke_light` は select の値（`none` / `even` / 8 方位、既定は catalog の `finalize.defaults.stroke_light`、無ければ `even`）をそのまま送ります。
 `hires` の select は `off`（既定、`hires` / `hires_denoise` とも省略）、`2048 · denoise 0.45`
 （`hires: 2048` / `hires_denoise: 0.45`）、`2048 · denoise 0.35`（`hires: 2048` /
 `hires_denoise: 0.35`）のいずれかです。hires を選んだまま `deliver_only` を外すか repair の
