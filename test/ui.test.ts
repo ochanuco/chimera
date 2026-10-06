@@ -360,6 +360,20 @@ describe('Web GUI pages', () => {
     expect(rawHtml).not.toContain('detail-from');
   });
 
+  it('GET /g/:short_id collapses the Finalize section only for a refined Generation', async () => {
+    const { generation: source } = await createGeneration();
+    const refined = await createGeneration({
+      jobOverrides: { source_generation_id: source.id },
+    });
+
+    const refinedHtml = await (await req(`/g/${refined.generation.short_id}`)).text();
+    expect(refinedHtml).toContain('<details class="section"><summary>Finalize</summary>');
+    expect(refinedHtml).toContain('finalize-form');
+
+    const rawHtml = await (await req(`/g/${source.short_id}`)).text();
+    expect(rawHtml).toContain('<details class="section" open=""><summary>Finalize</summary>');
+  });
+
   it('GET /g/:short_id?partial=lightbox no longer returns a fragment -- the lightbox was dropped, so it renders the normal full page', async () => {
     const { generation } = await createGeneration();
     const res = await req(`/g/${generation.short_id}?partial=lightbox`);

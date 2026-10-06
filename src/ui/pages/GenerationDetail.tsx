@@ -8,6 +8,7 @@ import type { BackdropOption } from '../components/FinalizeFields';
 import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
 import type { FinalizeDefaults, FinalizeDof, FinalizeLight } from '../../lib/catalogs';
 import { NoteSection } from '../components/NoteSection';
+import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
 import { PublicationSection, type PublicationData } from '../components/PublicationSection';
@@ -240,6 +241,7 @@ export function GenerationDetailPage({
           <FinalizeSection
             shortId={data.short_id}
             requests={finalizeRequests}
+            open={!data.refines_generation}
             dials={finalizeDials}
             defaults={finalizeDefaults}
             dof={finalizeDof}
@@ -257,16 +259,7 @@ export function GenerationDetailPage({
             <details class="section" open>
               <summary>仕上げの解決値</summary>
               <div class="section-body">
-                <table class="kv-table">
-                  <tr>
-                    <td>requested</td>
-                    <td>{JSON.stringify(producedByOptions.requested ?? {})}</td>
-                  </tr>
-                  <tr>
-                    <td>resolved</td>
-                    <td>{JSON.stringify(producedByOptions.resolved)}</td>
-                  </tr>
-                </table>
+                <ResolvedOptionsTable requested={producedByOptions.requested} resolved={producedByOptions.resolved} />
               </div>
             </details>
           ) : null}

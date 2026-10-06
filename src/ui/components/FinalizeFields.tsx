@@ -138,9 +138,9 @@ const DOF_HELP =
 const LIGHT_HELP =
   '光の向きは、紫縁の太い側・落ち影・光源の光の向きをまとめて決める。光源を選ぶと描き直しで光を入れる（描き直さない deliver only のときだけ。部分描き直しとは併用できない）';
 
-const LIGHT_SCENE_LABELS: Record<string, string> = { sunset: '夕日', moon: '月明かり' };
+export const LIGHT_SCENE_LABELS: Record<string, string> = { sunset: '夕日', moon: '月明かり' };
 
-const LIGHT_FROM_CHOICES: [string, string][] = [
+export const LIGHT_FROM_CHOICES: [string, string][] = [
   ['nw', '左上から'],
   ['n', '上から'],
   ['ne', '右上から'],
@@ -151,7 +151,7 @@ const LIGHT_FROM_CHOICES: [string, string][] = [
   ['se', '右下から'],
 ];
 
-const DOF_VIEWFINDER_LABELS: Record<string, string> = { off: 'OFF', on: 'ON', both: 'ON/OFF 2枚' };
+export const DOF_VIEWFINDER_LABELS: Record<string, string> = { off: 'OFF', on: 'ON', both: 'ON/OFF 2枚' };
 
 /** Shared body of the Finalize form (GenerationDetail), rendered inside the caller's own `<form>`.
  * `dialsEnabled` gates the UI-level dial/profile treatment (denoise's word buttons still separately require catalog words — see DenoiseField). */
