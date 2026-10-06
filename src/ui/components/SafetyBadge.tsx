@@ -61,7 +61,7 @@ function reasonText(safety: SafetyDetailData): string | null {
   return null;
 }
 
-/** 詳細ページの `安全性` 行。判定の理由と 4 区分の確率を % で出す。未採点は「未採点」。 */
+/** 詳細ページの `安全性` 行。総合判定だけ見せ、理由と 4 区分の % は折りたたむ。未採点は「未採点」。 */
 export function SafetySection({ safety }: { safety: SafetyDetailData | null | undefined }) {
   if (!safety) {
     return (
@@ -72,12 +72,15 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
   }
   const reason = reasonText(safety);
   return (
-    <div class="safety-row">
-      <span class="safety-row-label">安全性</span> <SafetyBadge safety={safety} />
-      {reason ? <span class="safety-reasons">{reason}</span> : null}
-      <span class="safety-numbers">
+    <details class="safety-row">
+      <summary>
+        <span class="safety-row-label">安全性</span>{' '}
+        {safety.verdict === 'none' ? <span class="safety-ok">問題なし</span> : <SafetyBadge safety={safety} />}
+      </summary>
+      {reason ? <p class="safety-reasons">{reason}</p> : null}
+      <p class="safety-numbers">
         {RATING_LABELS.map(([key, label]) => `${label} ${pct(safety.rating[key])}`).join(' · ')}
-      </span>
-    </div>
+      </p>
+    </details>
   );
 }
