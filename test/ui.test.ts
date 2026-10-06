@@ -1385,6 +1385,41 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).toContain('<option value="both">ON/OFF 2枚</option>');
   });
 
+  it('renders the 光源 block only when the catalog publishes finalize.light, with the direction select disabled until a scene is chosen', async () => {
+    const recipe = uniqueRecipe();
+    await postJson(
+      `/api/v1/catalogs/production`,
+      {
+        schema_version: 1,
+        recipes: [
+          {
+            name: recipe,
+            poses: [],
+            finalize: { light: { scenes: ['sunset', 'moon', 'dawn'], from: ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'], default_from: 'nw' } },
+          },
+        ],
+        patches: {},
+      },
+      'PUT',
+    );
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('<legend>光源</legend>');
+    expect(html).toMatch(/<option value="" selected[^>]*>\s*なし\s*<\/option>/);
+    expect(html).toContain('<option value="sunset">夕日</option>');
+    expect(html).toContain('<option value="moon">月明かり</option>');
+    expect(html).toContain('<option value="dawn">dawn</option>');
+    expect(html).toMatch(/<select name="light_from"[^>]*disabled/);
+    expect(html).toMatch(/<option value="nw" selected[^>]*>左上<\/option>/);
+
+    const plainRecipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/production`, { schema_version: 1, recipes: [{ name: plainRecipe, poses: [] }], patches: {} }, 'PUT');
+    const { generation: plain } = await createGeneration({ requestOverrides: { recipe: plainRecipe } });
+    const plainHtml = await (await req(`/g/${plain.short_id}`)).text();
+    expect(plainHtml).not.toContain('light_scene');
+    expect(plainHtml).not.toContain('light_from');
+  });
+
   it('presets the checked backdrop radio from finalize.defaults.backdrop when it names a published pattern', async () => {
     const recipe = uniqueRecipe();
     await postJson(

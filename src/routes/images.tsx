@@ -9,7 +9,7 @@ import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
 import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults, findFinalizeDof, findBackdrops, type FinalizeDefaults, type FinalizeDof } from '../lib/catalogs';
+import { getCatalog, findFinalizeDials, findFinalizeDefaults, findFinalizeDof, findFinalizeLight, findBackdrops, type FinalizeDefaults, type FinalizeDof, type FinalizeLight } from '../lib/catalogs';
 import { listFinalizeProfiles } from '../lib/presets';
 import { isFinalizeResult } from '../lib/promote';
 import type { FinalizeDials } from '../ui/finalize-options';
@@ -139,6 +139,7 @@ images.get('/:shortId', async (c) => {
   const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
   const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
   const finalizeDof: FinalizeDof | null = recipe && catalogDoc ? findFinalizeDof(catalogDoc.doc, recipe) : null;
+  const finalizeLight: FinalizeLight | null = recipe && catalogDoc ? findFinalizeLight(catalogDoc.doc, recipe) : null;
   // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
   const finalizeBackdrops = catalogDoc ? findBackdrops(catalogDoc.doc).map(({ name, label }) => ({ name, label })) : [];
   const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
@@ -165,6 +166,7 @@ images.get('/:shortId', async (c) => {
       finalizeDials={finalizeDials}
       finalizeDefaults={finalizeDefaults}
       finalizeDof={finalizeDof}
+      finalizeLight={finalizeLight}
       finalizeProfiles={finalizeProfiles}
       finalizeBackdrops={finalizeBackdrops}
       finalizeRecipeRef={finalizeRecipeRef}

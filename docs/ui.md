@@ -543,6 +543,13 @@ catalogの`default`）。オンにすると白フチ・紫フチ・影・背景�
 `dof.viewfinder`に`on` / `both`を付けます。
 プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダー・背景もぼかす・ファインダー表示が切り替わります。
 
+catalogに`finalize.light`があるときだけ、`光源`グループを出します。`場面`のselect（`なし` / `夕日` / `月明かり`、
+既定は`なし`。未知の場面はcatalogの値のまま表示）と、光が来る向きのselect（`上` / `右上` / `右` / `右下` / `下` /
+`左下` / `左` / `左上`、既定はcatalogの`default_from`、`なし`の間は無効）です。場面を選ぶと`light: {scene, from}`を送り、
+`stroke_light`は送りません（workerが`from`に揃えるため、紫縁の向きのselectも無効にします）。`なし`なら`light`を送りません。
+`light`は`deliver_only`のときだけ使え、repairとは併用できません（チェックはworkerが行います）。プロファイルを押すと、
+プロファイルの`light`に合わせて場面と向きが切り替わります（`light`が無いプロファイルは`なし`）。送信内容の表示は`光源 夕日 · 左上`の形です。
+
 このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
 どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
 無いrecipeは数値入力とチェックボックスで表示します
