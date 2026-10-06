@@ -186,6 +186,8 @@ export interface FinalizeDof {
   scope: DofChoice | null;
   /** `finalize.dof.viewfinder`; null when the catalog predates it or it is malformed (no "off" among values, or a default outside values). */
   viewfinder: DofChoice | null;
+  /** `finalize.dof.guide_radius_per_f`: radius of the in-focus guide circle as a fraction of the long side, per unit of F. null when absent or not a positive number. */
+  guideRadiusPerF: number | null;
 }
 
 export interface DofChoice {
@@ -206,7 +208,7 @@ function parseDofChoice(raw: unknown, required: string): DofChoice | null {
 export function findFinalizeDof(doc: RecipeCatalogDoc, recipeName: string): FinalizeDof | null {
   const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
   if (!recipe) return null;
-  const dof = (recipe as { finalize?: { dof?: { f_number?: unknown; scope?: unknown; viewfinder?: unknown } } }).finalize?.dof;
+  const dof = (recipe as { finalize?: { dof?: { f_number?: unknown; scope?: unknown; viewfinder?: unknown; guide_radius_per_f?: unknown } } }).finalize?.dof;
   const f = dof?.f_number as { min?: unknown; max?: unknown; default?: unknown; stops?: unknown } | null | undefined;
   if (!f || typeof f !== 'object') return null;
   const { min, max, stops } = f;
@@ -214,7 +216,9 @@ export function findFinalizeDof(doc: RecipeCatalogDoc, recipeName: string): Fina
   if (!Array.isArray(stops) || stops.length === 0 || !stops.every((s) => typeof s === 'number')) return null;
   const scope = parseDofChoice(dof?.scope, 'all');
   const viewfinder = parseDofChoice(dof?.viewfinder, 'off');
-  return { min, max, default: f.default, stops: stops as number[], scope, viewfinder };
+  const guide = dof?.guide_radius_per_f;
+  const guideRadiusPerF = typeof guide === 'number' && Number.isFinite(guide) && guide > 0 ? guide : null;
+  return { min, max, default: f.default, stops: stops as number[], scope, viewfinder, guideRadiusPerF };
 }
 
 export interface FinalizeLight {
