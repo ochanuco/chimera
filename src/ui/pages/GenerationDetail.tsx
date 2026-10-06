@@ -240,6 +240,7 @@ export function GenerationDetailPage({
           <FinalizeSection
             shortId={data.short_id}
             requests={finalizeRequests}
+            open={!data.refines_generation}
             dials={finalizeDials}
             defaults={finalizeDefaults}
             dof={finalizeDof}

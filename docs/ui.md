@@ -384,7 +384,8 @@ Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
-Workflow の Raw graph）のみ既定で畳みます。
+Workflow の Raw graph）と、finalize / repair / masked_redraw の出力（`refines_generation`
+があるGeneration）のFinalizeセクションは既定で畳みます。
 
 ``` text
 Finalize
