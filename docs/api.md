@@ -1426,9 +1426,12 @@ POST /api/v1/style-check/{recipe}
 はありません。`recipe` の代表ポーズ一覧（`src/lib/style-check.ts` の `STYLE_CHECK_POSES`、
 今は `yukari` のみ）を pin を持つものだけ対象に、MCP `plain_render` と同じ組み立て
 （`buildPlainRenderRequest` → `createRequest`）で `kind = generate` の request を積みます。
-`created_by` は `'gui'` 固定、idempotency key は `plain_render` と同じ既定キー
-`plain:<recipe>:<pose>:<seed>:<git_commit>` なので、同じカタログ commit への連打は
-積み直さず既存行を返します。
+`created_by` は `'gui'` 固定、idempotency key は
+`style-check:<recipe>:<pose>:<sha256>` です。sha256 は pin の seed・pose の Preset・カタログ上の
+pose レコード・recipe 直下の pose 以外の定義（`poses` と `dials` を除く）の canonical JSON で、
+git commit は含みません。描画内容が同じ間の連打は積み直さず既存行を返します。
+`recipe_ref` が `REQUESTS_DEFAULT_RECIPE_REF` のカタログの `PUT` 後にも同じ処理が
+バックグラウンドで走り、描画内容が変わった pose だけが積まれます。
 
 ``` json
 {
