@@ -375,6 +375,10 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .safety-badge-sensitive { color: #ff7b80; border-color: #ff7b80; }
 .safety-badge-caution { color: #f2c94c; border-color: #f2c94c; }
 .safety-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; font-size: 0.85rem; }
+details.safety-row { display: block; }
+details.safety-row summary { cursor: pointer; }
+details.safety-row p { margin: 0.25rem 0 0 1rem; }
+.safety-ok { color: var(--text-dim); }
 .safety-row-label { color: var(--text-dim); }
 .safety-unrated, .safety-numbers { color: var(--text-dim); font-size: 0.8rem; }
 .safety-reasons { color: #ff7b80; font-size: 0.8rem; }

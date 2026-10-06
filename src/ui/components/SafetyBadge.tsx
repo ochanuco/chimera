@@ -1,3 +1,9 @@
+import {
+  BLOCK_TAG_THRESHOLD,
+  CAUTION_SENSITIVE_THRESHOLD,
+  SENSITIVE_QUESTIONABLE_THRESHOLD,
+} from '../../lib/safety';
+
 export type SafetyVerdictView = 'block' | 'sensitive' | 'caution' | 'none';
 
 export interface SafetyView {
@@ -27,7 +33,35 @@ export function SafetyBadge({ safety }: { safety: SafetyView | null | undefined 
   );
 }
 
-/** 詳細ページの `安全性` 行。4 つの数値と判定理由を出す。未採点は「未採点」。 */
+const RATING_LABELS: [keyof SafetyDetailData['rating'], string][] = [
+  ['general', '全年齢'],
+  ['sensitive', '少し際どい'],
+  ['questionable', 'かなり際どい'],
+  ['explicit', '成人向け'],
+];
+
+const pct = (value: number) => `${Math.round(value * 100)}%`;
+
+/** reasons は API 互換のため `name 0.47` 形式のまま。表示だけ日本語と % に直す。 */
+function reasonText(safety: SafetyDetailData): string | null {
+  const { verdict, rating, reasons } = safety;
+  if (verdict === 'block') {
+    const tags = reasons.map((r) => {
+      const [name, value] = r.split(' ');
+      return `${name} ${pct(Number(value))}`;
+    });
+    return `露出タグ ${tags.join(', ')}（${pct(BLOCK_TAG_THRESHOLD)} 以上で出さない）`;
+  }
+  if (verdict === 'sensitive') {
+    return `かなり際どい ${pct(rating.questionable)}（${pct(SENSITIVE_QUESTIONABLE_THRESHOLD)} 以上でセンシティブ）`;
+  }
+  if (verdict === 'caution') {
+    return `少し際どい ${pct(rating.sensitive)}（${pct(CAUTION_SENSITIVE_THRESHOLD)} 以上で注意）`;
+  }
+  return null;
+}
+
+/** 詳細ページの `安全性` 行。総合判定だけ見せ、理由と 4 区分の % は折りたたむ。未採点は「未採点」。 */
 export function SafetySection({ safety }: { safety: SafetyDetailData | null | undefined }) {
   if (!safety) {
     return (
@@ -36,15 +70,17 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
       </p>
     );
   }
-  const { rating } = safety;
+  const reason = reasonText(safety);
   return (
-    <div class="safety-row">
-      <span class="safety-row-label">安全性</span> <SafetyBadge safety={safety} />
-      <span class="safety-numbers">
-        general {rating.general.toFixed(3)} · sensitive {rating.sensitive.toFixed(3)} · questionable{' '}
-        {rating.questionable.toFixed(3)} · explicit {rating.explicit.toFixed(3)}
-      </span>
-      {safety.reasons.length > 0 ? <span class="safety-reasons">{safety.reasons.join(', ')}</span> : null}
-    </div>
+    <details class="safety-row">
+      <summary>
+        <span class="safety-row-label">安全性</span>{' '}
+        {safety.verdict === 'none' ? <span class="safety-ok">問題なし</span> : <SafetyBadge safety={safety} />}
+      </summary>
+      {reason ? <p class="safety-reasons">{reason}</p> : null}
+      <p class="safety-numbers">
+        {RATING_LABELS.map(([key, label]) => `${label} ${pct(safety.rating[key])}`).join(' · ')}
+      </p>
+    </details>
   );
 }
