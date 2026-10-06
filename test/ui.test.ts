@@ -580,7 +580,8 @@ describe('Web GUI pages', () => {
       expect(html).toContain('data-backdrop-value="transparent"');
       expect(html).toContain('data-backdrop-value="color"');
       expect(html).toContain('name="backdrop_color"');
-      expect(html).toContain('name="stroke_light"');
+      expect(html).toContain('name="stroke_style"');
+      expect(html).toContain('name="light_from"');
       expect(html).toContain('<option value="nw"');
     }
   });
@@ -1219,41 +1220,54 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).not.toMatch(/name="repin"[^>]*checked/);
   });
 
-  it('a recipe with published catalog finalize.defaults presets the stroke_light select', async () => {
+  function selectedOf(html: string, name: string): string | null {
+    const select = html.match(new RegExp(`<select name="${name}"[^>]*>([\\s\\S]*?)</select>`));
+    const option = select?.[1]?.match(/<option value="([^"]*)"[^>]*selected/);
+    return option ? option[1]! : null;
+  }
+
+  async function finalizeFormHtml(finalize: Record<string, unknown> | null): Promise<string> {
     const recipe = uniqueRecipe();
-    await publishFinalizeDefaults(recipe, { stroke_light: 'n' });
+    await postJson(
+      `/api/v1/catalogs/production`,
+      { schema_version: 1, recipes: [{ name: recipe, poses: [], ...(finalize ? { finalize } : {}) }], patches: {} },
+      'PUT',
+    );
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    return (await req(`/g/${generation.short_id}`)).text();
+  }
 
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toMatch(/<option value="n"[^>]*selected/);
-    expect(html).not.toMatch(/<option value="even"[^>]*selected/);
+  it('a catalog stroke_light direction default selects 立体 and that 光の向き, with the direction select enabled', async () => {
+    const html = await finalizeFormHtml({ defaults: { stroke_light: 'n' } });
+    expect(selectedOf(html, 'stroke_style')).toBe('dir');
+    expect(selectedOf(html, 'light_from')).toBe('n');
+    expect(html).not.toMatch(/<select name="light_from"[^>]*disabled/);
   });
 
-  it('the stroke_light select offers none（縁無し） and even（一定の太さ） before the arrows', async () => {
-    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toMatch(/<option value="none"[^>]*>\s*none（縁無し）/);
-    expect(html).toMatch(/<option value="even"[^>]*>\s*even（一定の太さ）/);
-    expect(html.indexOf('<option value="even"')).toBeLessThan(html.indexOf('<option value="n"'));
+  it('with no catalog stroke_light default the 紫縁 is 均等 and the 光の向き is disabled', async () => {
+    const html = await finalizeFormHtml(null);
+    expect(selectedOf(html, 'stroke_style')).toBe('even');
+    expect(selectedOf(html, 'light_from')).toBe('n');
+    expect(html).toMatch(/<select name="light_from"[^>]*disabled/);
   });
 
-  it('a recipe whose catalog stroke_light default is not a valid value falls back to even', async () => {
-    const recipe = uniqueRecipe();
-    await publishFinalizeDefaults(recipe, { stroke_light: 'sideways' });
-    const { generation } = await createGeneration({ requestOverrides: { recipe } });
-
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toMatch(/<option value="even"[^>]*selected/);
-  });
-
-  it('a recipe whose catalog stroke_light default is none or even presets that option', async () => {
-    for (const value of ['none', 'even']) {
-      const recipe = uniqueRecipe();
-      await publishFinalizeDefaults(recipe, { stroke_light: value });
-      const { generation } = await createGeneration({ requestOverrides: { recipe } });
-      const html = await (await req(`/g/${generation.short_id}`)).text();
-      expect(html).toMatch(new RegExp(`<option value="${value}"[^>]*selected`));
+  it('a catalog stroke_light of none or even selects 無し / 均等 and takes the 光の向き from light.default_from', async () => {
+    const light = { scenes: ['sunset'], from: ['nw', 'n', 'se'], default_from: 'se' };
+    for (const [value, style] of [['none', 'none'], ['even', 'even'], ['sideways', 'even']] as const) {
+      const html = await finalizeFormHtml({ defaults: { stroke_light: value }, light });
+      expect(selectedOf(html, 'stroke_style')).toBe(style);
+      expect(selectedOf(html, 'light_from')).toBe('se');
     }
+  });
+
+  it('the 光の向き select offers the eight 「〜から」 choices and the 紫縁 select 立体 / 均等 / 無し', async () => {
+    const html = await finalizeFormHtml(null);
+    const labels = [...html.matchAll(/<option value="(nw|n|ne|w|e|sw|s|se)"[^>]*>\s*([^<\s]+)\s*</g)].map((m) => `${m[1]}:${m[2]}`);
+    expect(labels).toEqual(['nw:左上から', 'n:上から', 'ne:右上から', 'w:左から', 'e:右から', 'sw:左下から', 's:下から', 'se:右下から']);
+    expect(html).toMatch(/<option value="dir"[^>]*>\s*立体/);
+    expect(html).toMatch(/<option value="even"[^>]*>\s*均等/);
+    expect(html).toMatch(/<option value="none"[^>]*>\s*無し/);
+    expect(html).not.toContain('stroke light');
   });
 
   it('the solid-colour backdrop input starts from the catalog finalize.backdrop_color', async () => {
@@ -1282,11 +1296,11 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(await (await req(`/g/${generation.short_id}`)).text()).toMatch(/name="backdrop_color"[^>]*value="#ffffff"/);
   });
 
-  it('a recipe with no published catalog finalize.defaults keeps the stroke_light select and backdrop picker on their defaults', async () => {
+  it('a recipe with no published catalog finalize.defaults keeps the 紫縁 select and backdrop picker on their defaults', async () => {
     const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
 
     const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toMatch(/<option value="even"[^>]*selected/);
+    expect(selectedOf(html, 'stroke_style')).toBe('even');
     expect(html).toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
   });
 
@@ -1438,7 +1452,7 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).toContain('<option value="both">ON/OFF 2枚</option>');
   });
 
-  it('renders the 光源 block only when the catalog publishes finalize.light, with the direction select disabled until a scene is chosen', async () => {
+  it('renders the 光源 block only when the catalog publishes finalize.light, with 光の向き disabled while 紫縁 is not 立体 and no scene is chosen', async () => {
     const recipe = uniqueRecipe();
     await postJson(
       `/api/v1/catalogs/production`,
@@ -1460,22 +1474,23 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(html).not.toContain('<legend>光源</legend>');
     const deliveryLook = html.slice(html.indexOf('<legend>納品の見た目</legend>'));
     const fieldset = deliveryLook.slice(0, deliveryLook.indexOf('</fieldset>'));
-    expect(fieldset.indexOf('name="stroke_light"')).toBeGreaterThan(-1);
-    expect(fieldset.indexOf('name="light_scene"')).toBeGreaterThan(fieldset.indexOf('name="stroke_light"'));
+    expect(fieldset.indexOf('name="light_scene"')).toBeGreaterThan(-1);
     expect(fieldset.indexOf('name="light_from"')).toBeGreaterThan(fieldset.indexOf('name="light_scene"'));
+    expect(fieldset.indexOf('name="stroke_style"')).toBeGreaterThan(fieldset.indexOf('name="light_from"'));
+    expect(fieldset.match(/class="finalize-help"/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
     expect(html).toMatch(/<option value="" selected[^>]*>\s*なし\s*<\/option>/);
     expect(html).toContain('<option value="sunset">夕日</option>');
     expect(html).toContain('<option value="moon">月明かり</option>');
     expect(html).toContain('<option value="dawn">dawn</option>');
     expect(html).toMatch(/<select name="light_from"[^>]*disabled/);
-    expect(html).toMatch(/<option value="nw" selected[^>]*>左上<\/option>/);
+    expect(selectedOf(html, 'light_from')).toBe('nw');
 
     const plainRecipe = uniqueRecipe();
     await postJson(`/api/v1/catalogs/production`, { schema_version: 1, recipes: [{ name: plainRecipe, poses: [] }], patches: {} }, 'PUT');
     const { generation: plain } = await createGeneration({ requestOverrides: { recipe: plainRecipe } });
     const plainHtml = await (await req(`/g/${plain.short_id}`)).text();
     expect(plainHtml).not.toContain('light_scene');
-    expect(plainHtml).not.toContain('light_from');
+    expect(plainHtml).toContain('name="light_from"');
   });
 
   it('presets the checked backdrop radio from finalize.defaults.backdrop when it names a published pattern', async () => {
