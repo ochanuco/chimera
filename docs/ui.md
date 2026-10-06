@@ -408,6 +408,11 @@ rating/bookmark行の直後は「基準」行です。このGenerationがposeの
 その場で行をピルに書き換えます。recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでない
 Generationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
+rating/bookmark行・基準行の下に`安全性`行を置きます（[Safety](api.md#safety)）。判定が`none`でなければ
+`出さない`（赤塗り）・`センシティブ`（赤）・`注意`（黄）のピルと理由、続けて4つのrating値を出し、未採点は`未採点`です。
+同じピルをGalleryなどのサムネイル左下（`公開済み`の隣）にも出します。判定が`block`のGenerationで
+`公開を記録`を押すと確認ダイアログを出し、`sensitive`では記録後にXのセンシティブ設定を付ける注意を出します。
+
 続く`公開`セクションは[Publication](domain-model.md#publication)
 が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
 `--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・

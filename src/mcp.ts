@@ -58,6 +58,7 @@ import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrC
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
+import { publishWarningFor } from './lib/safety';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
@@ -939,6 +940,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           bookmark: item.bookmark,
           tags: item.tags,
           published: item.published,
+          safety: item.safety,
           reference: item.reference,
           summary: item.summary,
           character: item.character,
@@ -1365,7 +1367,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.record_publication,
       description:
         'Non-destructive: only records that a Generation was posted (docs/domain-model.md#publication). Never deletes, ' +
-        'overwrites, or sends anything — it does not post to X itself, it just records that a posting happened. url is ' +
+        'overwrites, or sends anything — it does not post to X itself, it just records that a posting happened. The response carries `warning` (non-null when the Generation content-rating verdict is block or sensitive; the posting is still recorded, never rejected). url is ' +
         'optional and can be filled in later (PATCH /api/v1/publications/{id} or the Generation Detail page). Pass a ' +
         'fresh idempotency_key per posting you intend to record; resending the same key returns the row it already made.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1379,7 +1381,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         createdBy: 'mcp',
         idempotencyKey: idempotency_key,
       });
-      return jsonResult(mcpOutputSchemas.record_publication, serializePublication(row));
+      const warning = await publishWarningFor(db, generation.id);
+      return jsonResult(mcpOutputSchemas.record_publication, { ...serializePublication(row), warning });
     },
   );
 
