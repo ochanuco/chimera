@@ -136,11 +136,20 @@ const DOF_HELP =
   '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。背景もぼかすをオンにすると白フチ・紫フチ・影・背景までぼかす（透過納品とは併用できない）。ファインダー表示は三分割グリッド・ピント位置の枠・シャッター速度と F 値のバーを納品画像に重ねる。ON/OFF 2枚なら重ねない絵と重ねた絵を両方納品する。off なら dof を送らない。部分描き直しとは併用できない';
 
 const LIGHT_HELP =
-  '納品画像を夕日や月明かりの場面として、光の向きに合わせて描き直す。光源はどちらから光が来るか。描き直さない（deliver only）のときだけ使え、部分描き直しとは併用できない。紫縁の光源方向は光源に合わせて決まるので、紫縁の光源は送らない。なしなら light を送らない';
+  '光の向きは、紫縁の太い側・落ち影・光源の光の向きをまとめて決める。光源を選ぶと描き直しで光を入れる（描き直さない deliver only のときだけ。部分描き直しとは併用できない）';
 
 const LIGHT_SCENE_LABELS: Record<string, string> = { sunset: '夕日', moon: '月明かり' };
 
-const LIGHT_FROM_LABELS: Record<string, string> = { n: '上', ne: '右上', e: '右', se: '右下', s: '下', sw: '左下', w: '左', nw: '左上' };
+const LIGHT_FROM_CHOICES: [string, string][] = [
+  ['nw', '左上から'],
+  ['n', '上から'],
+  ['ne', '右上から'],
+  ['w', '左から'],
+  ['e', '右から'],
+  ['sw', '左下から'],
+  ['s', '下から'],
+  ['se', '右下から'],
+];
 
 const DOF_VIEWFINDER_LABELS: Record<string, string> = { off: 'OFF', on: 'ON', both: 'ON/OFF 2枚' };
 
@@ -180,11 +189,12 @@ export function FinalizeFields({
 }) {
   const dialsEnabled = (dials !== null && Object.keys(dials).length > 0) || profiles.length > 0;
 
-  const strokeLightValues = ['none', 'even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
-  const strokeLightDefault =
-    typeof defaults?.stroke_light === 'string' && strokeLightValues.includes(defaults.stroke_light)
-      ? defaults.stroke_light
-      : 'even';
+  const lightFromValues = LIGHT_FROM_CHOICES.map(([value]) => value);
+  const catalogStroke = typeof defaults?.stroke_light === 'string' ? defaults.stroke_light : null;
+  const strokeStyleDefault = catalogStroke && lightFromValues.includes(catalogStroke) ? 'dir' : catalogStroke === 'none' ? 'none' : 'even';
+  const lightFromDefault =
+    strokeStyleDefault === 'dir' ? catalogStroke : light && lightFromValues.includes(light.defaultFrom) ? light.defaultFrom : 'n';
+  const lightFromDisabled = strokeStyleDefault !== 'dir';
 
   // Pattern choices: catalog backdrops when published, else the pre-thumbnail fallback of a single
   // unillustrated "stripes" card (needed for a catalog from a worker that predates this key).
@@ -338,54 +348,10 @@ export function FinalizeFields({
         >
           ?
         </span>
-        <label>
-          縁の影の向き（stroke light）{' '}
-          <select name="stroke_light">
-            <option value="none" selected={strokeLightDefault === 'none'}>
-              none（縁無し）
-            </option>
-            <option value="even" selected={strokeLightDefault === 'even'}>
-              even（一定の太さ）
-            </option>
-            <option value="n" selected={strokeLightDefault === 'n'}>
-              ↓
-            </option>
-            <option value="ne" selected={strokeLightDefault === 'ne'}>
-              ↙
-            </option>
-            <option value="e" selected={strokeLightDefault === 'e'}>
-              ←
-            </option>
-            <option value="se" selected={strokeLightDefault === 'se'}>
-              ↖
-            </option>
-            <option value="s" selected={strokeLightDefault === 's'}>
-              ↑
-            </option>
-            <option value="sw" selected={strokeLightDefault === 'sw'}>
-              ↗
-            </option>
-            <option value="w" selected={strokeLightDefault === 'w'}>
-              →
-            </option>
-            <option value="nw" selected={strokeLightDefault === 'nw'}>
-              ↘
-            </option>
-          </select>
-        </label>
-        <span
-          class="finalize-help"
-          tabindex={0}
-          role="note"
-          aria-label="矢印は影が伸びる向き。紫縁はその側が太く、反対の光源側が細くなる。none なら一定の太さ"
-          data-help="矢印は影が伸びる向き。紫縁はその側が太く、反対の光源側が細くなる。none なら一定の太さ"
-        >
-          ?
-        </span>
-        {light ? (
-          <>
-            <label>
-              光源の場面{' '}
+        <div class="light-grid">
+          {light ? (
+            <label class="light-row">
+              <span>光源</span>
               <select name="light_scene">
                 <option value="" selected>
                   なし
@@ -395,21 +361,35 @@ export function FinalizeFields({
                 ))}
               </select>
             </label>
-            <label>
-              光源の向き{' '}
-              <select name="light_from" disabled>
-                {light.from.map((d) => (
-                  <option value={d} selected={d === light.defaultFrom}>
-                    {LIGHT_FROM_LABELS[d] ?? d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span class="finalize-help" tabindex={0} role="note" aria-label={LIGHT_HELP} data-help={LIGHT_HELP}>
-              ?
-            </span>
-          </>
-        ) : null}
+          ) : null}
+          <label class="light-row">
+            <span>光の向き</span>
+            <select name="light_from" disabled={lightFromDisabled}>
+              {LIGHT_FROM_CHOICES.map(([value, label]) => (
+                <option value={value} selected={value === lightFromDefault}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="light-row">
+            <span>紫縁</span>
+            <select name="stroke_style">
+              <option value="dir" selected={strokeStyleDefault === 'dir'}>
+                立体
+              </option>
+              <option value="even" selected={strokeStyleDefault === 'even'}>
+                均等
+              </option>
+              <option value="none" selected={strokeStyleDefault === 'none'}>
+                無し
+              </option>
+            </select>
+          </label>
+          <span class="finalize-help" tabindex={0} role="note" aria-label={LIGHT_HELP} data-help={LIGHT_HELP}>
+            ?
+          </span>
+        </div>
       </fieldset>
 
       {dof && regionDrawing ? (
