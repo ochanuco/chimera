@@ -129,6 +129,13 @@ describe('served app.js', () => {
     expect(appJs).toContain("parts.push('光源 '");
   });
 
+  it('describes 光源 / 光の向き / 紫縁 in the send preview with the form wording instead of stroke_light', () => {
+    expect(appJs).toContain("parts.push('光の向き ' + fromLabel);");
+    expect(appJs).toContain("'（' + fromLabel + '）'");
+    expect(appJs).toContain("parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());");
+    expect(appJs).toContain("if (key === 'backdrop' || key === 'light' || key === 'stroke_light') return;");
+  });
+
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
     expect(appJs).toContain("state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));");
     expect(appJs).toContain('setDofFocus(form, [fx, fy]);');

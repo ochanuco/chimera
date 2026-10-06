@@ -2767,13 +2767,20 @@ export const appJs = `
     if (profile) parts.push('profile ' + profile.name + (profile.version !== undefined ? ' v' + profile.version : ''));
     // backdrop is always sent and always meaningful, null included: null is the transparent choice.
     parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
+    var fromSelect = lightFromSelect(form);
+    var styleSelect = qs('select[name="stroke_style"]', form);
+    var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
+    if (options.light) {
+      parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
+    } else if (fromSelect && !fromSelect.disabled) {
+      parts.push('光の向き ' + fromLabel);
+    }
+    if (styleSelect) parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());
     Object.keys(options).forEach(function (key) {
-      if (key === 'backdrop') return;
+      if (key === 'backdrop' || key === 'light' || key === 'stroke_light') return;
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
-      if (key === 'light') {
-        parts.push('光源 ' + (value.scene === 'sunset' ? '夕日' : value.scene === 'moon' ? '月明かり' : value.scene) + (value.from ? ' · ' + ({ n: '上', ne: '右上', e: '右', se: '右下', s: '下', sw: '左下', w: '左', nw: '左上' }[value.from] || value.from) : ''));
-      } else if (key === 'dof') {
+      if (key === 'dof') {
         parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
       } else if (value === true) {
         parts.push(key);
