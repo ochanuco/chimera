@@ -1457,7 +1457,12 @@ describe('Finalize profiles and word dials (GUI)', () => {
     );
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toContain('<legend>光源</legend>');
+    expect(html).not.toContain('<legend>光源</legend>');
+    const deliveryLook = html.slice(html.indexOf('<legend>納品の見た目</legend>'));
+    const fieldset = deliveryLook.slice(0, deliveryLook.indexOf('</fieldset>'));
+    expect(fieldset.indexOf('name="stroke_light"')).toBeGreaterThan(-1);
+    expect(fieldset.indexOf('name="light_scene"')).toBeGreaterThan(fieldset.indexOf('name="stroke_light"'));
+    expect(fieldset.indexOf('name="light_from"')).toBeGreaterThan(fieldset.indexOf('name="light_scene"'));
     expect(html).toMatch(/<option value="" selected[^>]*>\s*なし\s*<\/option>/);
     expect(html).toContain('<option value="sunset">夕日</option>');
     expect(html).toContain('<option value="moon">月明かり</option>');

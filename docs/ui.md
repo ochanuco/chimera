@@ -543,8 +543,8 @@ catalogの`default`）。オンにすると白フチ・紫フチ・影・背景�
 `dof.viewfinder`に`on` / `both`を付けます。
 プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダー・背景もぼかす・ファインダー表示が切り替わります。
 
-catalogに`finalize.light`があるときだけ、`光源`グループを出します。`場面`のselect（`なし` / `夕日` / `月明かり`、
-既定は`なし`。未知の場面はcatalogの値のまま表示）と、光が来る向きのselect（`上` / `右上` / `右` / `右下` / `下` /
+catalogに`finalize.light`があるときだけ、`納品の見た目`グループの`stroke light`の隣に、同じ階層の項目として`光源の場面`と`光源の向き`を出します。`光源の場面`のselect（`なし` / `夕日` / `月明かり`、
+既定は`なし`。未知の場面はcatalogの値のまま表示）と、光が来る向きの`光源の向き`のselect（`上` / `右上` / `右` / `右下` / `下` /
 `左下` / `左` / `左上`、既定はcatalogの`default_from`、`なし`の間は無効）です。場面を選ぶと`light: {scene, from}`を送り、
 stroke lightのselectが方位のときは`stroke_light`を送りません（workerが`from`に揃えるため、方位の選択肢は無効にします）。`none`か`even`を選んでいれば`light`と一緒に送ります。`なし`なら`light`を送りません。
 `light`は`deliver_only`のときだけ使え、repairとは併用できません（チェックはworkerが行います）。プロファイルを押すと、

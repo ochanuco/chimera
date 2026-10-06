@@ -519,7 +519,7 @@ GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（tr
 `hires_denoise: 0.35`）のいずれかです。hires を選んだまま `deliver_only` を外すか repair の
 部位・範囲を使うと、GUI は積まずに止めます。`dof` はピント位置を画像上に置いたときだけ
 `{focus: [x, y], f_number}` を積み（catalog が `dof.scope` を公開しているときは `scope` も付け、`dof.viewfinder` を公開していて `"off"` 以外を選んだときは `viewfinder` も付けます。置かずにチェックすると積まずに止めます）、repair の部位・範囲との併用も
-GUI が積まずに止めます。`scope: "all"` と透過納品の併用も止めます。catalog が `finalize.light` を公開しているときだけ、`光源` の `場面` select（`なし` / `夕日` / `月明かり`、既定は `なし`）と `光源` の向き select を出し、場面を選んだときだけ `light: {scene, from}` を積みます。このとき stroke light の select が方位なら `stroke_light` は積まず（方位の選択肢は無効にします）、worker が `from` に揃えます。`none` / `even` を選んでいれば `light` と一緒に積みます。`recolor` は
+GUI が積まずに止めます。`scope: "all"` と透過納品の併用も止めます。catalog が `finalize.light` を公開しているときだけ、`納品の見た目` の stroke light の隣に、`光源の場面` select（`なし` / `夕日` / `月明かり`、既定は `なし`）と `光源の向き` select を出し、場面を選んだときだけ `light: {scene, from}` を積みます。このとき stroke light の select が方位なら `stroke_light` は積まず（方位の選択肢は無効にします）、worker が `from` に揃えます。`none` / `even` を選んでいれば `light` と一緒に積みます。`recolor` は
 recipe を問わず選べます。`denoise` の入力欄は空が既定で、空のまま積めば
 `null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、
 チェックした分だけ `repair` に積みます。Generation Detail は画像上にドラッグした矩形を
