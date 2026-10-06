@@ -164,7 +164,7 @@ export function FinalizeFields({
   defaults?: FinalizeDefaults | null;
   /** Catalog `finalize.dof.f_number`; the bokeh controls render only with this and `regionDrawing` (the focus point is placed on the image). */
   dof?: FinalizeDof | null;
-  /** Catalog `finalize.light`; the 光源 block renders only with this. */
+  /** Catalog `finalize.light`; the 光源 controls (inside 納品の見た目) render only with this. */
   light?: FinalizeLight | null;
   /** Catalog `finalize.backdrop_color` (already validated as #RRGGBB); the solid-colour input starts from it, else #ffffff. */
   backdropColor?: string | null;
@@ -382,6 +382,34 @@ export function FinalizeFields({
         >
           ?
         </span>
+        {light ? (
+          <>
+            <label>
+              光源の場面{' '}
+              <select name="light_scene">
+                <option value="" selected>
+                  なし
+                </option>
+                {light.scenes.map((s) => (
+                  <option value={s}>{LIGHT_SCENE_LABELS[s] ?? s}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              光源の向き{' '}
+              <select name="light_from" disabled>
+                {light.from.map((d) => (
+                  <option value={d} selected={d === light.defaultFrom}>
+                    {LIGHT_FROM_LABELS[d] ?? d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span class="finalize-help" tabindex={0} role="note" aria-label={LIGHT_HELP} data-help={LIGHT_HELP}>
+              ?
+            </span>
+          </>
+        ) : null}
       </fieldset>
 
       {dof && regionDrawing ? (
@@ -430,36 +458,6 @@ export function FinalizeFields({
               </select>
             </label>
           ) : null}
-        </fieldset>
-      ) : null}
-
-      {light ? (
-        <fieldset class="finalize-group">
-          <legend>光源</legend>
-          <label>
-            場面{' '}
-            <select name="light_scene">
-              <option value="" selected>
-                なし
-              </option>
-              {light.scenes.map((s) => (
-                <option value={s}>{LIGHT_SCENE_LABELS[s] ?? s}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            光源{' '}
-            <select name="light_from" disabled>
-              {light.from.map((d) => (
-                <option value={d} selected={d === light.defaultFrom}>
-                  {LIGHT_FROM_LABELS[d] ?? d}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span class="finalize-help" tabindex={0} role="note" aria-label={LIGHT_HELP} data-help={LIGHT_HELP}>
-            ?
-          </span>
         </fieldset>
       ) : null}
 
