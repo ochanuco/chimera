@@ -935,6 +935,17 @@ details.section .section-body { margin-top: 0.6rem; }
   font-size: 0.85rem;
 }
 .finalize-form input[name="backdrop_color"] { width: 6.5rem; }
+.light-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 14rem) auto;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  flex-basis: 100%;
+}
+.light-row { display: contents; }
+.light-row > span { grid-column: 1; }
+.light-row > select { grid-column: 2; }
+.light-grid .finalize-help { grid-column: 3; grid-row: 1; }
 .finalize-form input:disabled { opacity: 0.5; cursor: not-allowed; }
 .finalize-group {
   display: flex;
@@ -2067,25 +2078,51 @@ export const appJs = `
     }
   }
 
-  // Absent/null light resets the scene to なし. The direction falls back to the catalog default when the stored one is not a listed choice.
+  function selectHasValue(select, value) {
+    return qsa('option', select).some(function (o) { return o.value === value; });
+  }
+
+  // A stored stroke_light direction selects 立体 and the 光の向き; even / null select 均等; none selects 無し.
+  // A key absent from the options leaves the rim style alone, unless a light scene (whose rim follows its direction) says 立体.
+  function applyStrokeToForm(form, options) {
+    var style = qs('select[name="stroke_style"]', form);
+    var fromSelect = lightFromSelect(form);
+    if (!style) return;
+    var stroke = options.stroke_light;
+    var light = options.light;
+    if (stroke === 'none' || stroke === 'even') {
+      style.value = stroke;
+    } else if (stroke === null) {
+      style.value = 'even';
+    } else if (typeof stroke === 'string' && fromSelect && selectHasValue(fromSelect, stroke)) {
+      style.value = 'dir';
+      fromSelect.value = stroke;
+    } else if (stroke === undefined && light && typeof light === 'object') {
+      style.value = 'dir';
+    }
+  }
+
+  // Absent/null light resets the scene to なし. The light direction is only taken when it is a listed choice.
   function applyLightToForm(form, options) {
     var scene = lightSceneSelect(form);
-    if (!scene) return;
     var light = options.light;
-    var known = light && typeof light === 'object' && qsa('option', scene).some(function (o) { return o.value === light.scene; });
-    scene.value = known ? light.scene : '';
+    if (scene) {
+      var known = light && typeof light === 'object' && selectHasValue(scene, light.scene);
+      scene.value = known ? light.scene : '';
+    }
     var fromSelect = lightFromSelect(form);
-    if (fromSelect && known && qsa('option', fromSelect).some(function (o) { return o.value === light.from; })) fromSelect.value = light.from;
+    if (fromSelect && light && typeof light === 'object' && selectHasValue(fromSelect, light.from)) fromSelect.value = light.from;
     applyLightMode(form);
   }
 
   function applyProfileOptionsToForm(form, options) {
     applyHiresToForm(form, options);
     applyDofToForm(form, options);
+    applyStrokeToForm(form, options);
     applyLightToForm(form, options);
     Object.keys(options).forEach(function (key) {
       var value = options[key];
-      if (key === 'hires' || key === 'hires_denoise' || key === 'dof' || key === 'light') return;
+      if (key === 'hires' || key === 'hires_denoise' || key === 'dof' || key === 'light' || key === 'stroke_light') return;
       if (key === 'backdrop') {
         applyBackdropToForm(form, value);
         return;
@@ -2105,7 +2142,6 @@ export const appJs = `
         return;
       }
       var select = qs('select[name="' + key + '"]', form);
-      if (select && key === 'stroke_light' && value === null) value = 'even';
       if (select && typeof value === 'string') select.value = value;
     });
     syncFinalizeDeliverOnly(form);
@@ -2208,22 +2244,20 @@ export const appJs = `
     return qs('select[name="light_from"]', form);
   }
 
-  // While a scene is chosen the worker makes the rim follow the light direction, so only none / even stay selectable in stroke_light.
+  // The one direction select drives the rim (立体) and the light; with no scene and a non-立体 rim it affects nothing.
   function applyLightMode(form) {
     var scene = lightSceneSelect(form);
-    if (!scene) return;
-    var on = scene.value !== '';
+    var style = qs('select[name="stroke_style"]', form);
     var fromSelect = lightFromSelect(form);
-    if (fromSelect) fromSelect.disabled = !on;
-    var stroke = qs('select[name="stroke_light"]', form);
-    if (stroke) qsa('option', stroke).forEach(function (o) { o.disabled = on && o.value !== 'none' && o.value !== 'even'; });
+    if (!fromSelect) return;
+    fromSelect.disabled = (!scene || scene.value === '') && !!style && style.value !== 'dir';
   }
 
   function initFinalizeLight() {
     qsa('.finalize-form').forEach(applyLightMode);
     document.addEventListener('change', function (ev) {
       var select = ev.target;
-      if (!(select instanceof HTMLSelectElement) || select.name !== 'light_scene') return;
+      if (!(select instanceof HTMLSelectElement) || (select.name !== 'light_scene' && select.name !== 'stroke_style')) return;
       var form = select.closest('.finalize-form');
       if (form) applyLightMode(form);
     });
@@ -2507,7 +2541,9 @@ export const appJs = `
         return null;
       }
     }
-    var strokeLight = qs('select[name="stroke_light"]', form).value;
+    var strokeStyle = qs('select[name="stroke_style"]', form).value;
+    var lightFrom = lightFromSelect(form).value;
+    var strokeLight = strokeStyle === 'dir' ? lightFrom : strokeStyle;
 
     var deliverOnlyBox = qs('input[name="deliver_only"]', form);
     var deliverOnly = !!(deliverOnlyBox && deliverOnlyBox.checked);
@@ -2527,10 +2563,8 @@ export const appJs = `
 
     var lightScene = lightSceneSelect(form);
     if (lightScene && lightScene.value !== '') {
-      var lightFrom = lightFromSelect(form);
-      options.light = { scene: lightScene.value };
-      if (lightFrom) options.light.from = lightFrom.value;
-      if (strokeLight !== 'none' && strokeLight !== 'even') delete options.stroke_light;
+      options.light = { scene: lightScene.value, from: lightFrom };
+      if (strokeStyle === 'dir') delete options.stroke_light;
     }
 
     var hiresSelect = qs('select[name="hires"]', form);
@@ -2733,13 +2767,20 @@ export const appJs = `
     if (profile) parts.push('profile ' + profile.name + (profile.version !== undefined ? ' v' + profile.version : ''));
     // backdrop is always sent and always meaningful, null included: null is the transparent choice.
     parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
+    var fromSelect = lightFromSelect(form);
+    var styleSelect = qs('select[name="stroke_style"]', form);
+    var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
+    if (options.light) {
+      parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
+    } else if (fromSelect && !fromSelect.disabled) {
+      parts.push('光の向き ' + fromLabel);
+    }
+    if (styleSelect) parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());
     Object.keys(options).forEach(function (key) {
-      if (key === 'backdrop') return;
+      if (key === 'backdrop' || key === 'light' || key === 'stroke_light') return;
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
-      if (key === 'light') {
-        parts.push('光源 ' + (value.scene === 'sunset' ? '夕日' : value.scene === 'moon' ? '月明かり' : value.scene) + (value.from ? ' · ' + ({ n: '上', ne: '右上', e: '右', se: '右下', s: '下', sw: '左下', w: '左', nw: '左上' }[value.from] || value.from) : ''));
-      } else if (key === 'dof') {
+      if (key === 'dof') {
         parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
       } else if (value === true) {
         parts.push(key);

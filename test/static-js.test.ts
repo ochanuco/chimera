@@ -107,19 +107,33 @@ describe('served app.js', () => {
     expect(appJs).toContain("(value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : '')");
   });
 
-  it('sends the stroke_light select value as-is and restores a saved null as even', () => {
+  it('maps 紫縁 and 光の向き to stroke_light: 立体 sends the direction, 均等 / 無し send even / none', () => {
+    expect(appJs).toContain("var strokeStyle = qs('select[name=\"stroke_style\"]', form).value;");
+    expect(appJs).toContain("var strokeLight = strokeStyle === 'dir' ? lightFrom : strokeStyle;");
     expect(appJs).toContain('stroke_light: strokeLight,');
-    expect(appJs).not.toContain("strokeLight === 'none'");
-    expect(appJs).toContain("if (select && key === 'stroke_light' && value === null) value = 'even';");
   });
 
-  it('sends light without a direction stroke_light, limits stroke_light to none/even and locks the direction select by scene, and restores it from a profile', () => {
-    expect(appJs).toContain('options.light = { scene: lightScene.value };');
-    expect(appJs).toContain('if (fromSelect) fromSelect.disabled = !on;');
-    expect(appJs).toContain("o.disabled = on && o.value !== 'none' && o.value !== 'even';");
-    expect(appJs).toContain("if (strokeLight !== 'none' && strokeLight !== 'even') delete options.stroke_light;");
+  it('sends light with the shared direction, omits stroke_light only for 立体, and disables 光の向き only with no scene and a non-立体 rim', () => {
+    expect(appJs).toContain('options.light = { scene: lightScene.value, from: lightFrom };');
+    expect(appJs).toContain("if (strokeStyle === 'dir') delete options.stroke_light;");
+    expect(appJs).toContain("fromSelect.disabled = (!scene || scene.value === '') && !!style && style.value !== 'dir';");
+    expect(appJs).toContain("select.name !== 'light_scene' && select.name !== 'stroke_style'");
+  });
+
+  it('restores stroke_light and light from a profile: direction -> 立体 + 光の向き, even/null -> 均等, none -> 無し', () => {
+    expect(appJs).toContain('applyStrokeToForm(form, options);');
     expect(appJs).toContain('applyLightToForm(form, options);');
+    expect(appJs).toContain("} else if (stroke === null) {\n      style.value = 'even';");
+    expect(appJs).toContain("style.value = 'dir';\n      fromSelect.value = stroke;");
+    expect(appJs).toContain("key === 'stroke_light') return;");
     expect(appJs).toContain("parts.push('光源 '");
+  });
+
+  it('describes 光源 / 光の向き / 紫縁 in the send preview with the form wording instead of stroke_light', () => {
+    expect(appJs).toContain("parts.push('光の向き ' + fromLabel);");
+    expect(appJs).toContain("'（' + fromLabel + '）'");
+    expect(appJs).toContain("parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());");
+    expect(appJs).toContain("if (key === 'backdrop' || key === 'light' || key === 'stroke_light') return;");
   });
 
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
