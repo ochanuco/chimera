@@ -415,12 +415,14 @@ export function FinalizeFields({
               step="1"
               value={String(dofDefaultIndex)}
               data-dof-stops={JSON.stringify(dof.stops)}
+              data-dof-guide-radius={dof.guideRadiusPerF !== null ? String(dof.guideRadiusPerF) : undefined}
               disabled
             />{' '}
             <span class="dof-f-readout" data-dof-f-readout>
               f/{dof.stops[dofDefaultIndex]}
             </span>
           </label>
+          {dof.guideRadiusPerF !== null ? <span class="repair-region-hint">円はくっきり見える範囲の目安（奥行きは見ていない）</span> : null}
           {dof.scope ? (
             <label>
               <input type="checkbox" name="dof_scope_all" checked={dof.scope.default === 'all'} disabled /> 背景もぼかす（白フチ・紫フチ・影・背景も）
