@@ -1040,6 +1040,17 @@ details.section .section-body { margin-top: 0.6rem; }
 .repair-region-remove:hover { border-color: var(--bad); color: var(--bad); }
 .dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .dof-f-row { display: flex; align-items: center; gap: 0.4rem; }
+/* The guide circle sits in a clip box so it never draws outside the picture. */
+.dof-guide-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.dof-guide-circle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
 /* White ring with a dark halo so the marker reads on both light and dark pictures. */
 .dof-focus-marker {
   position: absolute;
@@ -2280,6 +2291,27 @@ export const appJs = `
     return state && state.dofFocus ? state.dofFocus : null;
   }
 
+  // Radius = guide_radius_per_f * F * long side of the displayed image; hidden while ボケ is off, no focus is set, or the catalog has no coefficient.
+  function updateDofGuide(form) {
+    var state = repairRegionState.get(form);
+    if (!state || !state.dofGuide) return;
+    var box = dofBox(form);
+    var slider = dofSlider(form);
+    var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
+    var f = dofFNumber(form);
+    var focus = state.dofFocus;
+    var show = !!box && box.checked && !!focus && k > 0 && f !== undefined;
+    state.dofGuide.hidden = !show;
+    if (!show) return;
+    var w = state.img.offsetWidth;
+    var h = state.img.offsetHeight;
+    var d = 2 * k * f * Math.max(w, h);
+    state.dofGuide.style.width = d + 'px';
+    state.dofGuide.style.height = d + 'px';
+    state.dofGuide.style.left = (focus[0] * w - d / 2) + 'px';
+    state.dofGuide.style.top = (focus[1] * h - d / 2) + 'px';
+  }
+
   function renderDofReadouts(form) {
     var fReadout = qs('[data-dof-f-readout]', form);
     var f = dofFNumber(form);
@@ -2287,6 +2319,7 @@ export const appJs = `
     var focusReadout = qs('[data-dof-focus-readout]', form);
     var focus = dofFocusFor(form);
     if (focusReadout) focusReadout.textContent = focus ? 'ピント: ' + focus[0] + ', ' + focus[1] : '';
+    updateDofGuide(form);
   }
 
   function applyDofMode(form) {
@@ -2470,8 +2503,15 @@ export const appJs = `
     overlay.className = 'repair-region-overlay';
     parent.insertBefore(overlay, img.nextSibling);
 
-    var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null };
+    var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null, dofGuide: null };
     if (dofBox(form)) {
+      var guideClip = document.createElement('div');
+      guideClip.className = 'dof-guide-clip';
+      state.dofGuide = document.createElement('div');
+      state.dofGuide.className = 'dof-guide-circle';
+      state.dofGuide.hidden = true;
+      guideClip.appendChild(state.dofGuide);
+      overlay.appendChild(guideClip);
       state.dofMarker = document.createElement('div');
       state.dofMarker.className = 'dof-focus-marker';
       state.dofMarker.hidden = true;
@@ -2482,7 +2522,7 @@ export const appJs = `
     repairRegionState.set(form, state);
     applyRepairRegionDrawingMode(form);
 
-    var resync = function () { syncRepairRegionOverlayGeometry(state); };
+    var resync = function () { syncRepairRegionOverlayGeometry(state); updateDofGuide(form); };
     img.addEventListener('load', resync);
     window.addEventListener('resize', resync);
     if (window.ResizeObserver) new ResizeObserver(resync).observe(img);

@@ -558,33 +558,40 @@ describe('findFinalizeDof', () => {
     const fNumber = { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0] };
     await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDof(recipe, { f_number: fNumber, focus: 'fractions [x, y] of the source image' }), 'PUT');
     const found = await getCatalog(env.DB, recipeRef);
-    expect(findFinalizeDof(found!.doc, recipe)).toEqual({ ...fNumber, scope: null, viewfinder: null });
+    expect(findFinalizeDof(found!.doc, recipe)).toEqual({ ...fNumber, scope: null, viewfinder: null, guideRadiusPerF: null });
     expect(findFinalizeDof(found!.doc, 'nonexistent-recipe')).toBeNull();
 
     const scope = { values: ['figure', 'all'], default: 'figure' };
     const scopedRef = uniqueRecipeRef();
     const scopedRecipe = uniqueRecipe();
     await postJson(`/api/v1/catalogs/${scopedRef}`, catalogWithDof(scopedRecipe, { f_number: fNumber, scope }), 'PUT');
-    expect(findFinalizeDof((await getCatalog(env.DB, scopedRef))!.doc, scopedRecipe)).toEqual({ ...fNumber, scope, viewfinder: null });
+    expect(findFinalizeDof((await getCatalog(env.DB, scopedRef))!.doc, scopedRecipe)).toEqual({ ...fNumber, scope, viewfinder: null, guideRadiusPerF: null });
 
     const viewfinder = { values: ['off', 'on', 'both'], default: 'off' };
     const viewfinderRef = uniqueRecipeRef();
     const viewfinderRecipe = uniqueRecipe();
     await postJson(`/api/v1/catalogs/${viewfinderRef}`, catalogWithDof(viewfinderRecipe, { f_number: fNumber, scope, viewfinder }), 'PUT');
-    expect(findFinalizeDof((await getCatalog(env.DB, viewfinderRef))!.doc, viewfinderRecipe)).toEqual({ ...fNumber, scope, viewfinder });
+    expect(findFinalizeDof((await getCatalog(env.DB, viewfinderRef))!.doc, viewfinderRecipe)).toEqual({ ...fNumber, scope, viewfinder, guideRadiusPerF: null });
 
     for (const badViewfinder of [{ values: ['on', 'both'], default: 'on' }, { values: ['off', 'on'], default: 'both' }, { values: ['off'] }, 'on']) {
       const ref = uniqueRecipeRef();
       const name = uniqueRecipe();
       await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, viewfinder: badViewfinder }), 'PUT');
-      expect(findFinalizeDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null, viewfinder: null });
+      expect(findFinalizeDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null, viewfinder: null, guideRadiusPerF: null });
     }
 
     for (const badScope of [{ values: ['figure'], default: 'figure' }, { values: 'all', default: 'all' }, { values: ['all'] }, 'all']) {
       const ref = uniqueRecipeRef();
       const name = uniqueRecipe();
       await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, scope: badScope }), 'PUT');
-      expect(findFinalizeDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null, viewfinder: null });
+      expect(findFinalizeDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null, viewfinder: null, guideRadiusPerF: null });
+    }
+
+    for (const [raw, expected] of [[0.0417, 0.0417], [0, null], [-1, null], ['0.04', null]] as const) {
+      const ref = uniqueRecipeRef();
+      const name = uniqueRecipe();
+      await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, guide_radius_per_f: raw }), 'PUT');
+      expect(findFinalizeDof((await getCatalog(env.DB, ref))!.doc, name)?.guideRadiusPerF).toBe(expected);
     }
 
     const noDofRef = uniqueRecipeRef();

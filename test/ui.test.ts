@@ -1391,6 +1391,30 @@ describe('Finalize profiles and word dials (GUI)', () => {
     expect(plainHtml).not.toContain('dof_f_stop');
   });
 
+  it('threads finalize.dof.guide_radius_per_f into the F slider and shows the guide help only then', async () => {
+    const dofCatalog = (recipe: string, extra: Record<string, unknown>) => ({
+      schema_version: 1,
+      recipes: [
+        { name: recipe, poses: [], finalize: { dof: { f_number: { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0] }, ...extra } } },
+      ],
+      patches: {},
+    });
+    const withGuide = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/production`, dofCatalog(withGuide, { guide_radius_per_f: 0.0417 }), 'PUT');
+    const { generation } = await createGeneration({ requestOverrides: { recipe: withGuide } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toMatch(/name="dof_f_stop"[^>]*data-dof-guide-radius="0.0417"/);
+    expect(html).toContain('円はくっきり見える範囲の目安（奥行きは見ていない）');
+
+    const without = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/production`, dofCatalog(without, {}), 'PUT');
+    const { generation: plain } = await createGeneration({ requestOverrides: { recipe: without } });
+    const plainHtml = await (await req(`/g/${plain.short_id}`)).text();
+    expect(plainHtml).toContain('name="dof_f_stop"');
+    expect(plainHtml).not.toContain('data-dof-guide-radius');
+    expect(plainHtml).not.toContain('円はくっきり見える範囲の目安');
+  });
+
   it('renders the dof scope checkbox only when the catalog publishes finalize.dof.scope', async () => {
     const dofCatalog = (recipe: string, scope?: unknown) => ({
       schema_version: 1,
