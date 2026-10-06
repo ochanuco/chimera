@@ -272,6 +272,14 @@ export interface GenerationPublicationRow {
   updated_at: string;
 }
 
+export interface GenerationSafetyRow {
+  generation_id: string;
+  model: string;
+  rating_json: string;
+  tags_json: string;
+  rated_at: string;
+}
+
 export type ObservationOutcome = 'accepted' | 'rejected' | 'inconclusive';
 export type ObservationSource = 'import' | 'mcp' | 'gui';
 

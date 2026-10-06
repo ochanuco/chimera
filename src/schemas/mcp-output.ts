@@ -115,6 +115,23 @@ const publicationSchema = z.looseObject({
   updated_at: z.string(),
 });
 
+/** serializeSafety (lib/safety.ts)。tags は get_generation だけが持つ。 */
+const safetySchema = z.looseObject({
+  model: z.string(),
+  rating: z.looseObject({ general: z.number(), sensitive: z.number(), questionable: z.number(), explicit: z.number() }),
+  verdict: z.enum(['block', 'sensitive', 'caution', 'none']),
+  reasons: z.array(z.string()),
+  rated_at: z.string(),
+  tags: z.record(z.string(), z.number()).optional(),
+});
+
+/** publishWarningFor (lib/safety.ts)。 */
+const publishWarningSchema = z.looseObject({
+  verdict: z.enum(['block', 'sensitive']),
+  reasons: z.array(z.string()),
+  message: z.string(),
+});
+
 /** serializeObservation (lib/observations.ts)。 */
 const observationSchema = z.looseObject({
   id: z.string(),
@@ -237,6 +254,7 @@ export const mcpOutputSchemas = {
         bookmark: z.boolean(),
         tags: z.array(z.string()),
         published: z.boolean(),
+        safety: safetySchema.nullable().optional(),
         reference: z.looseObject({ recipe: z.string(), pose: z.string() }).nullable().optional(),
         summary: z.string().nullable(),
         character: z.looseObject({ id: z.string(), name: z.string().nullable() }).nullable(),
@@ -294,6 +312,7 @@ export const mcpOutputSchemas = {
     references: z.unknown().optional(),
     publications: z.array(publicationSchema).optional(),
     pose_reference: z.unknown().optional(),
+    safety: safetySchema.nullable().optional(),
     original_filename: z.string().nullable().optional(),
   }),
 
@@ -355,5 +374,5 @@ export const mcpOutputSchemas = {
   get_observation: observationSchema,
   record_observation: observationSchema,
 
-  record_publication: publicationSchema,
+  record_publication: publicationSchema.extend({ warning: publishWarningSchema.nullable().optional() }),
 } as const;
