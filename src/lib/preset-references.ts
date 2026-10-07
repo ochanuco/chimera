@@ -44,7 +44,7 @@ export interface DrawnPoseView {
 
 /**
  * The pose a Request drew plus that pose's current pin, for get_generation. null when the Request
- * names no recipe or pose (graph-mode, finalize / repair payloads). Distinct from `pose_reference`, which
+ * names no recipe or pose (graph-mode, redraw / deliver / repair payloads). Distinct from `pose_reference`, which
  * says whether a Generation is itself a pin.
  */
 export async function drawnPoseView(
@@ -168,7 +168,7 @@ async function toResult(
 /**
  * Pins `generation_id` as the baseline render for `recipe`/`pose`. Checks, in order: idempotency replay
  * (same recipe/pose/generation returns the existing row, a different one 409s) → pose must already exist
- * as a Preset → generation must resolve with rating=good → finalize/repair outputs resolve to their raw
+ * as a Preset → generation must resolve with rating=good → redraw/deliver/repair outputs resolve to their raw
  * Generation (resolveDerivationSource, same as derive_request) → resolved Request must be a *plain render*
  * of recipe/pose (same recipe, drew this pose, no patches, request didn't override the prompt — every
  * failing rule collected into one 409) → seed comes from the resolved Generation's comfy_job.

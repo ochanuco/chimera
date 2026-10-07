@@ -14,7 +14,7 @@ Progressive disclosure
 ```
 
 Web GUI は ComfyUI へ到達せず、prompt も書きません。GUI が積むのは semantic 判断を伴わない
-再実行（finalize / repair）と、[絵柄チェック](#絵柄チェック)の pin 再描画の requests 行だけで、
+再実行（redraw / deliver / repair）と、[絵柄チェック](#絵柄チェック)の pin 再描画の requests 行だけで、
 Compare は semantic metadata の diff を表示するところまでです（不変条件の正本は
 [architecture.md](architecture.md#web-gui)、requests の契約は [worker-protocol.md](worker-protocol.md)）。
 
@@ -60,13 +60,13 @@ pillはdotとテキストで状態を表します。
 -   幅600px以下では日本語ラベルと区切りを落とし、色分けした数字だけを表示する
 
 pillは`<details><summary>`で開閉し、開くと`More`と同じ見た目のパネルが現れます。パネルは
-1行 = 1グループで、finalize/repair/masked_redrawは仕上げ元Generationが属するRequest単位、
+1行 = 1グループで、redraw/deliver/repair/masked_redraw（と古いfinalize）は仕上げ元Generationが属するRequest単位、
 run_idを持つgenerateはExperiment単位、run_idの無いgenerateはrequest単位にまとめます
 （集計規則は[api.md](api.md#summary)）。各行はサムネイル・Request（仕上げ元のRequest）または
 Experimentのshort_id・kind別件数・状態別件数を表示し、遷移先（仕上げ元Requestの最初の
 Generation `/g/{short_id}` またはExperiment詳細 `/experiments/{short_id}`）があればリンク、
 無ければリンクなしの行です。パネルは表示・
-遷移専用で、finalize/repairのような再実行やcancelledなどの操作は一切持ちません。パネル
+遷移専用で、redraw/deliverのような再実行やcancelledなどの操作は一切持ちません。パネル
 末尾にworker接続数（`worker N 台接続中` / `worker 未接続`）を出します。グループが無ければ
 「キューは空です」と表示します。
 
@@ -100,12 +100,12 @@ Request の `short_id` から最初の Generation の `/g/` へ 302 で飛ばし
 nav直下にsticky なツールバーを持ちます。
 
 ``` text
-[ finalize以外 | finalize | すべて ]   bad も表示 ☐   [ 絞り込み ▾ ]
+[ 納品以外 | 納品 | すべて ]   bad も表示 ☐   [ 絞り込み ▾ ]
 ```
 
-`view` は3値の切り替えです。既定は `view=all`（raw / finalize済み両方）で、
-`view=raw`（finalize/repair/masked_redrawの出力ではない raw Generationのみ）、
-`view=refined`（finalize済みの出力のみ）へ絞り込めます。raw / finalize済みの判定は Generation の
+`view` は3値の切り替えです。ラベルは `納品以外` / `納品` / `すべて` で、既定は `view=all`（raw / 仕上げ済み両方）、
+`view=raw`（redraw/deliver/repair/masked_redrawの出力ではない raw Generationのみ）、
+`view=refined`（仕上げ済みの出力のみ）へ絞り込めます。判定は Generation の
 `refines_generation_id`（[domain-model.md](domain-model.md#generation)）です。
 
 「bad も表示」は既定で隠している bad rating の Generation を表示に加えるトグルです
@@ -242,7 +242,7 @@ barより下です。レールがあるページではブラウザのスクロ�
 対象は`ids`・Tag・Rating・Bookmarked only・公開済みのみ・基準のみのいずれも指定していない既定表示だけで
 （`view`・`bad`は絞り込みに数えません）、その条件下でだけクライアントはviewer WebSocket
 （`/api/v1/requests/ws`、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）を開き
-（[Generation Detail](#generation-detail)のFinalizeで説明したrequest live接続を共有します）、
+（[Generation Detail](#generation-detail)のRequestsで説明したrequest live接続を共有します）、
 `generation`メッセージを受けます。
 
 現在の`view`で受理できるものだけを扱います — `raw`は`refines_generation_short_id`が
@@ -284,13 +284,13 @@ request live更新と同じ指数バックオフ（1s→2s→…上限30s）で�
 short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
 変えて末尾に✓を出します。サムネイルは[Generation Detail](#generation-detail)への素のリンク
 `<a href="/g/{short_id}">`です。サムネイル左上には
-（上から順に、両方あれば縦に積みます）、このGenerationがfinalize/repair/
+（上から順に、両方あれば縦に積みます）、このGenerationがredraw/deliver/repair/
 masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
 橙文字、short_idは等幅）。バッジはクリックで元のshort_idをコピーし（遷移しない）、コピー後は
 short_idのボタンと同じく0.9秒間`--good`色に変えて✓を出します。サムネイルのリンク内なので
 `<button>`ではなく`role="button"`・`tabindex="0"`の`<span>`で、Enter / Spaceでも動きます。
-このGenerationを対象にした最新のfinalize/repair/masked_redraw
-requestがあるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
+このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw（と古いfinalize）
+request（JSONのフィールド名は`finalize_request`のまま）があるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
 1件以上あるとき送信アイコン付きの`公開済み`ピルを、このGenerationがpose の基準 render として
 pin されているとき`基準 <pose名>`ピル（[domain-model.md](domain-model.md#基準-render-の-pin)）を、両方
 あれば横並びで重ねます。幅600px以下ではbookmarkをサムネイル
@@ -300,13 +300,13 @@ short_idのボタンも高さ2.75rem以上にします。`card-row`の高さは�
 読み込み前のスケルトンと同じ外寸にするためです（[Gallery timeline](#gallery-timeline)）。
 
 進捗ピル（`rgba(18,18,20,0.86)`地・`--border`の1px枠・角丸999px、テキストはstatusごとに
-色分け）はkind（`finalize`/`repair`/`masked redraw`）とstatusから組み立てます。
+色分け）はkind（`描き直し`/`納品`/`repair`/`masked redraw`、古い行は`finalize`）とstatusから組み立てます。
 
 ``` text
-finalize · queued                      ← --accent
+納品 · queued                          ← --accent
 repair · running 3/10                  ← --neutral（step/totalはprogressメッセージが届いてから）
 masked redraw · done → xyz789          ← --good、xyz789は等幅
-finalize · failed                      ← --bad
+描き直し · failed                      ← --bad
 ```
 
 `[data-request-id]`要素なので、[Generation Detail](#generation-detail)のrequest live更新が
@@ -319,7 +319,7 @@ short_idを取得して`kind · done → <short_id>`に差し替えます）。
 ``` text
 [ IMAGE ]
  from abc123          ← rawを書き換えた出力のときだけ
- finalize · queued    ← finalize/repair/masked_redraw requestがあるときだけ
+ 納品 · queued        ← redraw/deliver/repair/masked_redraw requestがあるときだけ
  公開済み             ← Publicationが1件以上あるときだけ
 
 abc123                    🔖   ← short_idはクリックでコピー
@@ -470,24 +470,30 @@ telemetry `compare.add`）。
 [ IMAGE ] | #pose-good ×  #outfit-good ×   [add tag] [+]
 ```
 
-見出しのshort_idとコピーボタンの隣には、このGenerationがfinalize / repair /
+見出しのshort_idとコピーボタンの隣には、このGenerationがredraw / deliver / repair /
 masked_redrawで書き換えた元のraw Generationがあるとき、小さな`--text-dim`色の
 `from <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
 rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refines_generation`）。
 
-originalが保持期間ジョブでpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
+originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
-`原寸は破棄済み（preview のみ）`と添えます。Finalizeセクションはfinalizeフォームを出さず、代わりに
-「原寸は破棄済みのため finalize / repair / masked redraw は積めません。」という一文を表示します
-（profile登録フォームと進捗履歴のrequest一覧は表示したままです）。
+`原寸は破棄済み（preview のみ）`と添えます。RedrawセクションとDeliverセクションは出さず、代わりに
+「原寸は破棄済みのため描き直し・納品は積めません。」という一文を表示します
+（Requestsセクションは表示したままです）。
+
+納品済みの絵（deliver / 古いfinalizeが産んだGeneration、`parameters.kind`が`deliver` / `hires-chain`のrequestが産んだGeneration、
+`deliver_only`のrepairが産んだGeneration）でも、RedrawセクションとDeliverセクションは出さず、
+「納品済みの絵なので、描き直し・納品は元の絵から行います。」という一文を表示します
+（workerは納品済みの絵を描き直し・納品の入力にできません）。判定は`isDeliveredRequest`（`src/lib/requests.ts`）です。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
-Workflow の Raw graph）と、finalize / repair / masked_redraw の出力（`refines_generation`
-があるGeneration）のFinalizeセクションは既定で畳みます。
+Workflow の Raw graph）だけ既定で畳みます。
 
 ``` text
-Finalize
+描き直し（Redraw）
+納品（Deliver）
+Requests
 仕上げの解決値
 Summary
 Semantic
@@ -546,7 +552,7 @@ URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入�
 
 `仕上げの解決値`セクションは、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
 だけ出します。workerが解決した値（resolved）を1項目1行の表にし（`dof`はF値・ピント位置・ボケの範囲・
-ファインダーの行に分け、`stroke_light`・`light`・`backdrop`はFinalizeフォームと同じ語で表示）、
+ファインダーの行に分け、`stroke_light`・`light`・`backdrop`はDeliverフォームと同じ語で、redrawの`method`・`scene`・`from`・`keep_regions`も表示。古いfinalizeの行もそのまま読めます）、
 要求した`options`（requested）とresolvedの生JSONは既定で畳んだ`Raw JSON`に入れます。
 
 親・子・兄弟は、FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、
@@ -624,151 +630,94 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-Finalizeセクションは、Generation Detailから積める唯一の生成要求です（範囲は
-[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。フォームは3つの
-`fieldset`（`仕上げ` / `納品の見た目` / `部分描き直し`）にグループ化されます。各
-コントロール名自体は`comfy-recipes` CLIのフラグ名（worker-protocol.md参照）に
-揃えて英語のままとし、ラベル直後に`?`の`finalize-help`マーカーを添えます。マーカーは
-ホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけのCSS実装（JS不使用）で、
-`repair hands` / `repair feet`は1つのマーカーを共有します。
+RedrawセクションとDeliverセクションは、Generation Detailから積める生成要求です（範囲は
+[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。repair /
+masked_redrawのための独立したフォームはGUIに無く、API / MCPからだけ積めます。2つのフォームは
+`option-form`クラスを共有し（`redraw-form` / `deliver-form`、`data-request-kind`で種類を持つ）、
+`fieldset`は`option-group`、各コントロールの直後の`?`は`option-help`マーカー、送信ボタンの上の
+一行は`option-preview`です。マーカーはホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけの
+CSS実装（JS不使用）です。
 
-`仕上げ`グループの先頭に`deliver only (no redraw)`のチェックボックスがあります
-（既定off、dial対応の有無に関わらず常に表示）。チェックすると`options`に
-`deliver_only: true`を積み、`denoise` / `repair_lora`のキーは送りません
-（`keep_legwear`も一緒に`disabled`になります）。`repair hands` / `repair feet` /
-`repair pad`とregion描画（後述）はdeliver only中も使えます — チェックした部位・
-描いた範囲があれば`repair` / `repair_regions`は変わらず積み、加えて候補数を指定する
-`repair_seeds`（既定`disabled`、部位チェックか範囲のどちらかがある間だけ有効）を積みます。
-外すとdenoise / keep_legwearが元の状態に戻り、`repair_seeds`は送らなくなります。
+#### Redraw
 
-`仕上げ`グループには`hires`のselectもあります。`off`（既定、`hires` / `hires_denoise`とも
-送らない）、`2048 · denoise 0.45 線まで描き直す`、`2048 · denoise 0.35 構図を保つ`の3択で、
-選ぶと`options`に`hires: 2048`と`hires_denoise: 0.45 | 0.35`を積みます。`hires`の値は標準canvas
-（1024x1640）の長辺をその値にしたときの画素数を表し、元絵の縦横比のまま合わせるので、縦長は1280x2048、
-正方形は約1616四方になります。finalizeの前に
-元Generationのgraphに同じseedのhiresを足してworkerが描き直し、他のoptionはその絵に掛かります。
-hiresはdeliver only中だけ使え、repairとは併用できないので、hiresを選んだままdeliver onlyを外すか
-repairの部位・範囲を使うと、送信時にalertを出して積みません（プレビューは`送信内容: —`）。プロファイルを押すと、プロファイルの
-`hires` / `hires_denoise`がselectの選択肢に一致するときだけselectがそれに切り替わります。
+絵を変える操作を1回の request で1つだけ積みます。先頭の`方法`グループのラジオ（`redraw_method`）で
+`canvas` / `hires` / `light`を選び、選んだ方法のfieldsetだけを出します（他は`hidden`）。
+送るのは`options: {method, ...}`で、空欄のフィールドは送らず、recipeの既定を使わせます。
 
-catalogの`recipes[].finalize.dof`があるrecipeだけ、`ボケ`グループを出します。`被写界深度ボケ（dof）`の
-チェックボックス（既定オフ）をオンにすると、`範囲指定`がOFFの間は画像をクリックしてピント位置を置け、
-クリックした位置にマーカーを出して`ピント: 0.82, 0.55`のように表示します。置いた位置はチェックを外しても
-保持します。F値のスライダーはcatalogの`finalize.dof.f_number.stops`の段に吸着し、既定はcatalogの
-`default`に最も近い段で、`f/2.8`のように表示します。チェックしたままピント位置が無いときと、repairの
-部位・範囲を使っているときは、送信時にalertを出して積みません（workerはdofとrepair系optionの併用を
-`failed`にします）。catalogに`finalize.dof.scope`があるときだけ、`背景もぼかす`のチェックボックスも出します（既定は
-catalogの`default`）。オンにすると白フチ・紫フチ・影・背景までぼかし、`dof`がオフのときと`透過PNG`を
-選んでいるときは無効になります（workerは透過納品との併用を`failed`にします）。送るのは
-`dof: {focus: [x, y], f_number, scope}`（`scope`はチェックありなら`all`、なしか無効なら`figure`、チェックボックスが無いときは省略）で、
-オフなら`dof`を送りません。catalogに`finalize.dof.viewfinder`があるときだけ、`ファインダー表示`のselect
-（`OFF` / `ON` / `ON/OFF 2枚`、既定はcatalogの`default`、`dof`がオフの間は無効）も出し、`OFF`以外を選んだときだけ
-`dof.viewfinder`に`on` / `both`を付けます。
-catalogに`finalize.dof.guide_radius_per_f`があるときだけ、ピント位置を中心にくっきり見える範囲の目安の円を画像の上に描きます。半径は`guide_radius_per_f` × F値 × 表示中の画像の長辺で、画像の大きさに合わせて拡縮し、画像の外にはみ出さないよう切り取ります。ピント位置かF値を変えるたびに描き直し、`dof`がオフかピント位置が無いときは隠します。細い白線に黒い縁取りと薄い塗りで、クリックは受けません。F値の近くに「円はくっきり見える範囲の目安（奥行きは見ていない）」と注記します。係数が無ければ円も注記も出しません。
-プロファイルを押すと、プロファイルの`dof`に合わせてチェック・ピント位置・スライダー・背景もぼかす・ファインダー表示が切り替わります。
+-   `canvas`: `denoise`（catalogの`dials.redraw.denoise`があればwordボタンの列＋`既定`＋`custom`、無ければ数値入力）、
+    `size`（長辺の数値入力）、`route`（`既定` / `latent` / `pixel`）、画像の上にドラッグして矩形を描く
+    `範囲指定`（`keep_regions`）と`keep_strength`。placeholderと`route`の初期値はcatalogの
+    `redraw.defaults.canvas`です。範囲の描画は`repair-region-overlay`をJSで画像に重ねて行い（`範囲指定`トグルがONの間だけ
+    ドラッグ1回が矩形1つ、右上の消去ボタンと`範囲をすべて消す`で削除）、矩形は表示中の画像に対する分数
+    `[x0, y0, x1, y1]`（0〜4桁、0..1）です。矩形が1つ以上あるときだけ`keep_regions`（と入力があれば`keep_strength`）を送ります。
+-   `hires`: 長辺のselect（`2048` / `2560` / `3072`）と`denoise`の数値入力（placeholderはcatalogの
+    `redraw.defaults.hires.hires_denoise`、無ければ`0.45`）。元Generationのgraphに同じseedのhiresを足して描き直します。
+    元Generationを産んだrequestが`generate`でないとき、このラジオは`disabled`です。
+-   `light`: `光源`のselect（catalogの`redraw.light.scenes`、無ければ`夕日` / `月明かり`）と`光の向き`のselect
+    （`左上から` / `上から` / `右上から` / `左から` / `右から` / `左下から` / `下から` / `右下から`、既定はcatalogの`default_from`）。
 
-`納品の見た目`グループの中に、ラベル列と操作列を揃えたグリッドで3つの操作を並べ、ヘルプの`?`は1つだけ置きます。
-- `光源`のselect（`なし` / `夕日` / `月明かり`、既定は`なし`）。catalogに`finalize.light`があるときだけ出します。未知の場面はcatalogの値のまま表示します。
-- `光の向き`のselect（`左上から` / `上から` / `右上から` / `左から` / `右から` / `左下から` / `下から` / `右下から`）。紫縁の太い側・落ち影・光源の光の向きをまとめて決める1つの操作で、値は`nw` `n` `ne` `w` `e` `sw` `s` `se`です。
-- `紫縁`のselect（`立体` / `均等` / `無し`）。
+プレビューは`送信内容: method=canvas · denoise tidy (0.65)`のように、積まれるoptionsのkeyだけを`·`区切りで出します
+（`keep_regions`は`keep_regions=2箇所`、wordはcatalogの`dials.redraw`に数値があれば`<word> (<number>)`と添え、
+組み立てられないときは`送信内容: —`）。ボタンは`描き直す`で、`POST /api/v1/requests`（`kind: "redraw"`, `created_by: "gui"`、
+`idempotency_key`は`gui:redraw:`始まり）を1件積みます。
 
-送るのは`stroke_light`と`light`です。`紫縁`が`立体`なら`stroke_light`は`光の向き`の値、`均等`なら`even`、`無し`なら`none`です。`光源`が`なし`以外のときは`light: {scene, from}`も送り、`from`は`光の向き`の値です。`紫縁`が`立体`のときは`stroke_light`を送らず、workerが`from`に揃えます。`均等`と`無し`は`light`と一緒に送ります。`光の向き`が効くのは`光源`を選んだときか`紫縁`が`立体`のときだけなので、`光源`が`なし`で`紫縁`が`立体`以外の間は無効にします。
-既定はcatalogの`finalize.defaults.stroke_light`で決めます。方位なら`紫縁`は`立体`で`光の向き`はその方位、`even` / `none` / `null`（未指定を含む）なら`紫縁`は`均等` / `無し` / `均等`で`光の向き`はcatalogの`default_from`（無ければ`上から`）です。
-`light`は`deliver_only`のときだけ使え、repairとは併用できません（チェックはworkerが行います）。プロファイルを押すと、
-`stroke_light`の方位は`立体`と`光の向き`、`even`と`null`は`均等`、`none`は`無し`として選び直し、`light`は`光源`と`光の向き`を切り替えます（`light`が無いプロファイルは`なし`）。送信内容の表示はフォームと同じ言葉で、`光の向き 上から · 紫縁 立体`、`紫縁 均等`、`光源 月明かり（左上から）· 紫縁 無し`のように出します（`光の向き`は無効のときは出しません）。
+#### Deliver
 
-このGenerationが属するRequestのrecipeにcatalogの`dials.finalize`かchimeraの`finalize`プロファイルの
-どちらか一方でもあるときだけ、フォームは以下のdial対応表示に切り替わります。どちらも
-無いrecipeは数値入力とチェックボックスで表示します
-（[domain-model.md](domain-model.md#finalize-プロファイル)）。
+切り抜き後の飾りだけを決めて積みます。切り抜きのasset（alpha / depth / cut）は最初の納品で作られ、以後の納品で使い回されます。
+フォームはグループに分かれます。
 
-dial対応フォームは`仕上げ`グループの直前に`profile`の行を持ち、そのrecipeの
-`finalize`プロファイル（`list_presets kind=finalize`の最新active版）をボタンで
-並べ、先頭に`custom`（プロファイルを指名しない）を置きます。プロファイルを押すと
-下のフィールド群がそのプロファイルの`options`で埋まり、以後フィールドを編集しても
-プロファイルの指名（hiddenな`profile_name` / `profile_version`）は外れません —
-送信時は常にフォームの現在値を`options`として送りつつ、`profile`も一緒に送ります。
-サーバー側がこの2つを`{ ...profile.options, ...options }`で合成するため（明示した
-キーが勝つ）、結果はどのキーを人が実際に変えたかに関わらず一致します。
+-   `profile`の行（そのrecipeの`deliver`プロファイルがあるときだけ）: `list_presets kind=deliver`の最新active版をボタンで並べ、
+    先頭に`custom`（プロファイルを指名しない）を置きます。押すと下のフィールドがそのプロファイルの`options`で埋まり、
+    以後編集してもプロファイルの指名（hiddenの`profile_name` / `profile_version`）は外れません。送信時は常にフォームの現在値を`options`として、
+    `profile`と一緒に送ります（サーバー側が`{ ...profile.options, ...options }`で合成し、明示したキーが勝ちます）。
+-   `仕上げ`: `repin` / `recolor`のチェックボックス（既定はcatalogの`deliver.defaults`）と`keep legwear`
+    （catalogの`dials.deliver`かプロファイルがあるrecipeでは`off` / `on` / `custom`の3択、無ければチェックボックス。`on`は`true`）。
+-   `納品の見た目`: `backdrop`のサムネイルピッカー（catalogの`backdrops`を1枚ずつカードにし、末尾に`透過 PNG`と`単色`。
+    サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png?v=<updated_at>`、`backdrops`が無ければサムネイル無しの`stripes`だけ）。
+    既定はcatalogの`deliver.defaults.backdrop`（無ければ先頭のパターン）です。`透過 PNG`は`backdrop: null`を送り、`単色`は
+    `#RRGGBB`のテキスト入力（初期値はcatalogの`deliver.backdrop_color`、無ければ`#ffffff`）を出し、形式違いなら送信せずalertします。
+    続けて`光源`のselect（`指定しない（引き継ぎ）` / catalogの`redraw.light.scenes`、`redraw.light`があるときだけ）、`光の向き`のselect、
+    `紫縁`のselect（`既定` / `立体` / `均等` / `無し`）を並べます。`光源`を指定しないと納品の光源は元の絵の系譜でいちばん近い
+    描き直し（light）から引き継がれます。`紫縁`が`既定`なら`stroke_light`を送らず（引き継いだ光源の向き、無ければrecipeの既定になります）、
+    `立体`なら`stroke_light`は`光の向き`の値、`均等`は`even`、`無し`は`none`です。`光源`を指定したときは`light: {scene, from}`も送り、
+    `紫縁`が`立体`なら`stroke_light`は送りません。`光の向き`は`光源`を指定したときか`紫縁`が`立体`のときだけ有効です。
+-   `ボケ`（catalogに`deliver.dof`があるときだけ）: `被写界深度ボケ（dof）`のチェックボックス（既定オフ）。オンにすると画像をクリックして
+    ピント位置を置け（マーカーと`ピント: 0.82, 0.55`の表示、チェックを外しても位置は保持）、F値のスライダーは`deliver.dof.f_number.stops`の段に吸着します
+    （既定は`default`に最も近い段）。ピント位置が無いまま送るとalertして積みません。`deliver.dof.scope`があるときは`背景もぼかす`のチェックボックス
+    （`透過 PNG`を選んでいる間と`dof`オフの間は無効、送るのは`scope: all | figure`）、`deliver.dof.viewfinder`があるときは`ファインダー表示`のselect
+    （`OFF` / `ON` / `ON/OFF 2枚`、`OFF`以外のときだけ`dof.viewfinder`に`on` / `both`）。`deliver.dof.guide_radius_per_f`があるときは、
+    ピント位置を中心にくっきり見える範囲の目安の円（半径は係数 × F値 × 表示中の画像の長辺、画像の外は切り取り、クリックは受けない）を
+    画像の上に描き、「円はくっきり見える範囲の目安（奥行きは見ていない）」と注記します。
 
-`denoise`のような数値フィールドは、そのrecipeのcatalogが`dials.finalize.denoise`
-（word → number）を持つときだけ、数値入力の代わりに word ボタンの列（＋`既定`
-＋`custom`）になります。`custom`を押すと数値入力が現れ、どのwordボタンも押していない
-状態（`既定`）は空欄送信と同じ`null`です。`keep legwear` / `repair lora`は
-dial対応フォームに切り替わった時点で、catalogの語彙の有無にかかわらず常に
-`off` / `on` / `custom`の3択になります（`on`はworker既定の重みを表す真偽値
-`true`を送ります）。
+プレビューは`送信内容: profile daily v2 · backdrop=stripes · 紫縁 既定 · repin`のように積まれるoptionsを`·`区切りで出し、
+`backdrop`は`null`でも`backdrop=transparent`と必ず出し、`光源 月明かり（左上から）`・`光の向き 上から`・`紫縁 立体`の形で光と紫縁を言葉で示します。
+プロファイルを指名していれば先頭に`profile <name> v<version>`を置きます。プロファイルを押すと`stroke_light` / `light` / `dof` / `backdrop` /
+各チェックが選び直されます（`stroke_light`が無ければ`紫縁`は`既定`）。ボタンは`納品する`で、`POST /api/v1/requests`（`kind: "deliver"`,
+`idempotency_key`は`gui:deliver:`始まり）を積みます。
 
-納品の見た目グループは`backdrop`のサムネイルピッカー（ラジオボタン）を持ちます。
-カタログの`backdrops`（[api.md](api.md#recipe-catalog)、名前・ラベル・サムネイルの
-配列）を1枚ずつカードで並べ、末尾に固定の`transparent`（透過PNG）と`color`（単色）の
-2枚を置きます。サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png`
-（`?v=`にcatalogのupdated_atを付けたキャッシュバスター付きURL）から都度取得し、
-カタログに`backdrops`が無い場合はサムネイル無しの`stripes`カード1枚だけに
-フォールバックします。既定の選択はcatalogの`finalize.defaults.backdrop`（無ければ
-先頭のパターン）に従います。`color`を選ぶとlabel内に置かれた`#RRGGBB`のテキスト入力が
-現れます。初期値はcatalogの`finalize.backdrop_color`（`#RRGGBB`のときだけ。無ければ`#ffffff`）で、
-空か形式違いなら送信せずalertします。続けて`光源` / `光の向き` / `紫縁`の3つの操作を持ちます（上記の`光源`グループの説明を参照）。
+どちらのフォームも、積んだ直後にページを再読み込みせず、`queued`行をRequestsの一覧の先頭へ挿入します。送信中のボタンは`disabled`で
+`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`を表示して元のラベルに戻り、失敗時はすぐ戻ります。
 
-部分描き直しグループは`repair hands` / `repair feet`のチェックボックス（既定どちらも
-off。1つ以上チェックすると`repair`配列を積みます）と、`repair pad`の数値入力
-（空欄が省略=worker既定を意味する）を持ちます。`repair pad`はrepair hands /
-repair feetのどちらもチェックされていない間`disabled`で、どちらかをチェックすると
-有効になります。`repair lora`はdeliver only中は常に`disabled`（Anima＝recipe yukariの絵を
-deliver onlyで使うときはworkerがここを無視するため、GUIはrecipeを問わず一律disabledにする）、
-それ以外はrepair hands / repair feetのどちらかが必要です。
+#### Requests
 
-Generation Detail（画像1枚に対して1つのFinalizeフォームが並ぶページ）は
-これに加えて、画像の上にドラッグで矩形を描いて`repair_regions`を指定する操作を持ちます。画像の親要素に`repair-region-overlay`をJSでサイズ・位置とも
-`<img>`に一致させて重ね、フォーム上の「範囲指定」トグル（`data-repair-region-toggle`、既定OFF）をONにしている間だけ、ポインタイベント（マウス/タッチ共通）でのドラッグ1回が矩形1つ
-（`repair-region-rect`、右上に消去ボタン）になり、複数指定できます。矩形は表示中の画像
-サイズに対する分数`[x0, y0, x1, y1]`（0〜4桁に丸め、0..1にクランプ）としてfinalize
-formの状態に保持され、フォーム上の「範囲をすべて消す」ボタン（`data-repair-region-clear`）
-で一括削除できます。OFFの間はoverlayが`pointer-events: none`になり、画像のクリック・右クリック・タッチスクロールは画像側に届きます。描いた矩形はOFFにしても残り（送信にも積まれる）、消去ボタンもそのまま押せます。`repair`配列が空でも`repair_regions`だけを積めます（部位チェックと
-範囲、どちらか片方だけでも送信可）。描き直し（redraw）・deliver onlyどちらのモードでも、
-範囲が1つ以上あれば`repair_regions`を積み、`repair`は空配列にします（描いた範囲が部位の自動検出を置き換える。検出の円を矩形に足すとマスクが部位の外まで広がるため）。`repair pad` / `repair lora`のdisabledは
-部位チェックだけで決まり、範囲の有無では変わりません。`repair seeds`
-（deliver only中のみ）は部位チェックか範囲、どちらか一方でもあれば有効になります。
-
-送信ボタンの上には`finalize-preview`の一行があり、フォームの現在値から実際に
-積まれるoptionsのkeyだけを`profile daily v2 · backdrop=stripes · denoise tidy (0.65)
-· keep_legwear`のように`·`区切りで表示します（値が`true`のキーはキー名だけ。
-backdropが不正な値のときは`送信内容: —`）。プロファイルを指名していれば先頭に`profile <name> v<version>`
-を置きます。`backdrop`は常に送るキーなので必ず出し、`transparent`を選んで`null`を
-送る場合も`backdrop=transparent`と表示します。wordを送るキーは、そのrecipeの
-`dials.finalize`が対応するnumberを持っていれば`<word> (<number>)`と添えて表示します
-（catalogに無いwordは数値無しでそのまま表示）。この表示はsubmit時と同じserializer
-（`finalizeOptionsFrom`）を使うため、送信内容とズレません。
-Finalizeボタンで`POST /api/v1/requests`（`kind: "finalize"`, `created_by:
-"gui"`）を1件積み、ページの再読み込みはしません。積んだ直後の`queued`行をその場で
-`request-status-list`の先頭へ挿入します（一覧がまだ無ければ作ります）。挿入先はフォームの下で
-長いページでは視界の外になりやすいため、ボタン自身も押下に応えます。送信中は`disabled`で
-`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`を
-表示して元のラベルに戻り、失敗時はすぐ戻ります。この一覧には、このGenerationを
-対象とした最新のrequest（finalize / repair）を最大5件、新しい順に`status · created_at`の行として
-表示し、`done`なら納品Generationへのリンク、`failed`ならその`error`を添えます。
+このGenerationを対象にした最新のrequest（すべての種類）を最大5件、新しい順に`<kind> status · created_at`の行として出します。
+kindは`描き直し` / `納品` / `repair` / `masked redraw`（古い行は`finalize`）で、`done`なら結果Generationへのリンク、
+`failed`ならその`error`、worker が書いた`resolved_options`があればその要約を添えます。
 
 各行は`data-request-id` / `data-request-status`を持ち、`/api/v1/requests/ws`
 （段階3 WorkerHub、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)参照）に
 繋いだライブ接続が接続直後の`snapshot`と以後の`progress` / `status`を受けて、行内の
 `.request-progress`に`phase step/total`（stepが無ければ`phase`のみ）を、`status`変化時は
 行のクラスと表示statusを書き換えます。`done` / `failed`への遷移時は該当requestと
-（`done`なら）納品Generationを取得し直し、ページ読み込み時と同じ結果リンク / errorをその場に
-追加します。ページ読み込み後に新しく現れた行（finalize送信直後の挿入）も
+（`done`なら）結果Generationを取得し直し、ページ読み込み時と同じ結果リンク / errorをその場に
+追加します。ページ読み込み後に新しく現れた行（送信直後の挿入）も
 現れた時点でこの接続に登録され、まだ張っていなければソケットを開きます。WebSocketが張れない
 環境でも静的な表示のまま壊れません（未対応・切断時は1秒→30秒のバックオフで再接続を試み続けます）。
 
-このGenerationが`rating = good`で、かつfinalize requestが産んだもの（納品
-Generationか、相乗りしたrepairのsiblingのどちらか）であるときだけ、Finalizeの
-request一覧の下に`profile に登録`フォーム（名前入力＋ボタン）を表示します。送信すると
+このGenerationが`rating = good`で、かつdeliver requestが産んだものであるときだけ、一覧の上に
+`profile に登録`フォーム（名前入力＋ボタン）を表示します。送信すると
 `POST /api/v1/presets/promote-profile`を呼び、その場に`registered: <name>
-v<version>`を表示します（リロードなし）。それ以外のGenerationにはこのフォームは
-出ません。
-
-手足の局所redraw（[worker-protocol.md](worker-protocol.md#repair)の`repair`）は
-GUIでは独立したセクションを持たず、Finalizeフォームの`repair hands` / `repair feet`
-から同じfinalize requestに乗せます。`kind: "repair"`のrequestはAPI / MCPからだけ積め、
-このGenerationを対象にした行はFinalizeセクションのrequest一覧にfinalizeと並んで出ます。
+v<version>`を表示します（リロードなし）。それ以外のGenerationにはこのフォームは出ません。
 
 ## 絵柄チェック
 
@@ -797,9 +746,9 @@ full      anyo
     `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「まだ
     描いていない」と表示します。ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
     カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
-    git commit・generated_at・patches・backdropsは入れないので、docsやfinalizeだけの
+    git commit・generated_at・patches・backdropsは入れないので、docsや納品の既定だけの
     変更・worker再起動ではkeyが変わらず、右カラムは空になりません。requestがqueued/runningなら
-    status行（[Finalize](#generation-detail)の`request-status-list`と同じ`<li
+    status行（[Requests](#generation-detail)の`request-status-list`と同じ`<li
     data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
 -   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
     <結果のshort_id>`）を出します。
@@ -821,7 +770,7 @@ recipe_refが`REQUESTS_DEFAULT_RECIPE_REF`（既定`production`）のカタロ�
 積んだ直後は応答のrequest idをその場の右カラムに挿し込むだけで、reloadしません
 （`data-style-check-slot="<pose>"`の要素を差し替える）。以後のrunning/doneは他ページと
 同じ`[data-request-id]`のWebSocket購読（`registerRequestElement` /
-`requestLiveApplyStatus`）で反映されます — [Finalize](#generation-detail)の
+`requestLiveApplyStatus`）で反映されます — [Requests](#generation-detail)の
 `request-status-list`と同じく、doneでstatusが変わり結果Generationへのリンクが添わります。
 GenerationCard（サムネイル）への差し替えは次のGET `/check`（reload）で反映されます。
 
@@ -986,8 +935,8 @@ BookmarkはFavoriteではなく再利用・再訪のための導線です。ど�
 Generationはカードと Generation Detail、
 ExperimentはExperiment一覧の行とExperiment詳細に🔖を置きます。
 
-GenerationsセクションはGalleryと同じ3-way view switch（`finalize以外` / `finalize` /
-`すべて`）を持ちますが、既定は`view=refined`（finalize済みの出力）です。bad非表示の
+GenerationsセクションはGalleryと同じ3-way view switch（`納品以外` / `納品` /
+`すべて`）を持ちますが、既定は`view=refined`（納品済みの出力）です。bad非表示の
 トグルはありません。Experimentsセクションにはこの切り替えはありません。
 
 Generationsセクションのカードは[GenerationCard](#gallery)でGalleryと共通です（bad非表示との
@@ -1041,7 +990,7 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
 | `queue.group.click` | `kinds`, `has_request` | キュー状態パネルの行クリック（`navQueueRow`） |
-| `finalize.submit` | `scope`（`one` / `all`）, `generation_id` または `count`, finalizeオプション | finalize送信（`initFinalize` / `initFinalizeAll`） |
+| `redraw.submit` / `deliver.submit` | `scope`, `generation_id`, `profile`, 送ったoptions | 描き直し・納品の送信（`initOptionForms`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
 | `compare.remove` | `generation_id`, `count` | compareバーのチップで外す（`initCompareBar`） |

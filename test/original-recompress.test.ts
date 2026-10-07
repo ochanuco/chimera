@@ -17,7 +17,7 @@ async function ageGeneration(id: string, days: number): Promise<void> {
   await env.DB.prepare('UPDATE generations SET created_at = ? WHERE id = ?').bind(daysAgo(days), id).run();
 }
 
-/** Rated good, so the purge pass never claims it: past the window it is a kept original. */
+/** Rated good, past the retention window. */
 async function ageKeptGeneration(id: string, days: number): Promise<void> {
   await env.DB.prepare("UPDATE generations SET created_at = ?, rating = 'good' WHERE id = ?").bind(daysAgo(days), id).run();
 }
@@ -111,15 +111,15 @@ describe('recompressRetainedOriginals', () => {
     expect(await env.IMAGES.head(originalKey(generation.id))).not.toBeNull();
   });
 
-  it('leaves an original that is waiting to be purged untouched', async () => {
+  it('recompresses an unrated original too, since nothing deletes originals any more', async () => {
     const { generation } = await createGeneration();
     await putOriginal(generation.id, await makeOpaquePng(256));
     await ageGeneration(generation.id, 31);
 
     const result = await recompressRetainedOriginals(RECOMPRESS_ENV, NOW, 10);
-    expect(result).toEqual({ converted: 0, kept: 0 });
-    expect(await env.IMAGES.head(originalKey(generation.id))).not.toBeNull();
-    expect((await generationRow(generation.id)).original_recompress_checked_at).toBeNull();
+    expect(result).toEqual({ converted: 1, kept: 0 });
+    expect(await env.IMAGES.head(originalKey(generation.id))).toBeNull();
+    expect(await env.IMAGES.head(webpKey(generation.id))).not.toBeNull();
   });
 
   it('leaves a purged Generation untouched', async () => {

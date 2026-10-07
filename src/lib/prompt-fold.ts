@@ -28,7 +28,7 @@ function foldPatchArray(patches: unknown): unknown {
   });
 }
 
-/** request.json payload (docs/generation-request.md) / finalize / repair / masked_redraw payload with prompt bodies folded. Never mutates the input. */
+/** request.json payload (docs/generation-request.md) / redraw / deliver / repair / masked_redraw payload with prompt bodies folded. Never mutates the input. */
 export function foldRequestPayloadPrompts(payload: unknown): unknown {
   if (!isRecord(payload)) return payload;
   const result: Record<string, unknown> = { ...payload };

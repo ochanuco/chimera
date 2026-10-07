@@ -1,5 +1,5 @@
-// 保持期間を過ぎても original を持ち続けている Generation を、purge の後で lossless WebP
-// (~32% 小さく、不透明なら画素同一) へ再圧縮する定期ジョブ (src/index.ts scheduled)。
+// 保持期間を過ぎた original を lossless WebP (~32% 小さく、不透明なら画素同一) へ再圧縮する定期ジョブ
+// (src/index.ts scheduled)。original は削除しない。
 // 透過 PNG は変換しない — alpha=0 の下の RGB は lossless 再エンコードでも保存されず、ComfyUI の
 // LoadImage はそこを読むため。PNG の `prompt` text chunk は graph-rescue.ts が先に救出する。
 
@@ -7,10 +7,18 @@ import type { Bindings, GenerationRow } from '../types';
 import { MAX_TRANSFORM_INPUT_BYTES } from './generation-preview';
 import { rescueGraphFromOriginal } from './graph-rescue';
 import { extractPngTextChunk, parsePngDimensions, pngHasTransparency } from './image-meta';
-import { ORIGINAL_RETENTION_DAYS, PURGE_ELIGIBLE_SQL, resolveBatchSize } from './original-purge';
 
-// original-purge.ts と合わせて Workers Paid の 1000 subrequest 予算に収まるようにしたキャップ。
-const RECOMPRESS_BATCH_CAP = 60;
+export const ORIGINAL_RETENTION_DAYS = 30;
+
+/** 1回あたりの再圧縮件数。Generation ごと最悪 ~6 subrequest で、Workers Paid の 1000 subrequest 予算に収まる。 */
+const DEFAULT_BATCH_SIZE = 60;
+
+function resolveBatchSize(env: Bindings): number {
+  const raw = env.ORIGINAL_PURGE_BATCH_SIZE;
+  if (!raw) return DEFAULT_BATCH_SIZE;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, DEFAULT_BATCH_SIZE) : DEFAULT_BATCH_SIZE;
+}
 
 export interface RecompressRetainedOriginalsResult {
   converted: number;
@@ -24,7 +32,6 @@ async function findRecompressCandidates(db: D1Database, cutoff: string, limit: n
        WHERE g.original_purged_at IS NULL
          AND g.original_recompress_checked_at IS NULL
          AND g.created_at < ?
-         AND NOT (${PURGE_ELIGIBLE_SQL})
        ORDER BY g.created_at ASC
        LIMIT ?`,
     )
@@ -43,7 +50,7 @@ export async function recompressRetainedOriginals(
 
   const db = env.DB;
   const cutoff = new Date(new Date(now).getTime() - ORIGINAL_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const batchSize = limit ?? Math.min(resolveBatchSize(env), RECOMPRESS_BATCH_CAP);
+  const batchSize = limit ?? resolveBatchSize(env);
 
   const candidates = await findRecompressCandidates(db, cutoff, batchSize);
 

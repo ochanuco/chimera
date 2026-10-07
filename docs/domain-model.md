@@ -8,7 +8,7 @@
 Experiment → ExperimentRun → Request → ComfyJob → Generation
 ```
 
-Request は worker への生成要求 1 件で、generate / finalize / repair / masked_redraw / import の
+Request は worker への生成要求 1 件で、generate / redraw / deliver / repair / masked_redraw / import の
 どれも、Generation は必ず Request に属します。Run の結果は `requests.run_id` が Run を指す
 Request で、Run が Request を包含するのではなく、Request が Run を参照します。
 
@@ -23,7 +23,7 @@ Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
   関係             意味
   ---------------- ----------------------------------------------
   素材参照         過去Generationの何を生成材料として利用したか
-  仕上げ元         この Generation が、どの Generation を finalize / repair / masked_redraw したものか
+  仕上げ元         この Generation が、どの Generation を redraw / deliver / repair / masked_redraw したものか
 
 ## Experiment
 
@@ -240,7 +240,7 @@ Preset が解いているのは別の問題です。良かった生成の patche
 ``` text
 id
 recipe                yukari
-kind                  pose | costume | expression | finalize
+kind                  pose | costume | expression | deliver
 name                  lounge
 version               1 以上。(recipe, kind, name) の中で単調増加
 body_json             { recipe_pose } または { base, patches }
@@ -301,7 +301,7 @@ publish されておらず、参照にしても行が増えるだけで何も足
     本文は comfyui-recipes の checkout の中にあり、版が固定するのは patches の層だけです。
     版が不変でも、指す先の pose は commit で動きます。
 -   昇格できるのは、Request が patches を持つ generate 由来の Generation だけです。
-    `generation.prompt` で全文上書きしたものと、finalize / repair / masked_redraw の
+    `generation.prompt` で全文上書きしたものと、redraw / deliver / repair / masked_redraw の
     出力は patches という概念を持たないので昇格できません。
 -   昇格の入力になる patches は Request 行から取ります。`semantic.attributes.patches` は
     使いません。semantic の PUT は失敗しても生成が進み、MCP クライアントから後で
@@ -342,27 +342,29 @@ chimera はこの文字列を不透明に保存し、突き合わせにしか使
 落ちれば Job を1つも作らずに request を `failed` にします。fingerprint は、使おうとする
 より前に気付くための層です。
 
-### finalize プロファイル
+### deliver プロファイル
 
-pose/costume/expression が prompt 本文の派生なのに対し、kind `finalize` は
-finalize request の `options`（docs/worker-protocol.md「finalize」）をまとめて一発で
+pose/costume/expression が prompt 本文の派生なのに対し、kind `deliver` は
+deliver request の `options`（docs/worker-protocol.md「deliver」）をまとめて一発で
 選ぶための、まったく別の問題を解いています。`options` の値は comfyui-recipes が公開する
 dial word か、chimera が検証しない数値で、chimera が語彙を持たないのは他の kind と同じ
 ですが、base も patches も持ちません — 版ごと全文上書きの leaf です。
 
 ``` json
-{ "options": { "denoise": "tidy", "keep_legwear": "on" } }
+{ "options": { "keep_legwear": "on", "backdrop": "dots" } }
 ```
 
-不変条件は pose/costume/expression と共有するものと、finalize 固有のものがあります。
+不変条件は pose/costume/expression と共有するものと、deliver 固有のものがあります。
+kind `finalize` の preset と、その kind の基準 render の pin は migration 0036 が削除済みで、
+新しく作れません。
 
 -   行は物理削除しません。版は書き換えません。`promote` の起点 Generation は
     `rating = good` でなければなりません（他の kind と同じ、[Rating](#rating)）。
 -   base への参照も patches の層も持ちません。`resolvePreset` はこの body を見た時点で
     即座に返します — pose/costume/expression のように base を遡りません。
--   昇格の起点は「finalize request が産んだ Generation」であって、「Request が patches を
+-   昇格の起点は「deliver request が産んだ Generation」であって、「Request が patches を
     持つ generate 由来の Generation」ではありません。その Generation の所属 Request
-    （`kind = finalize`）が queued した時点の `payload.options`
+    （`kind = deliver`）が queued した時点の `payload.options`
     （profile 展開後、word は解決せずそのまま）を丸ごと body にします — 起点 Request の
     `patches_json` は見ません（そもそも持ちません）。
 -   `base_fingerprint` は使いません（base という概念が無いので、base の drift を検知する
@@ -385,7 +387,7 @@ resolved raw Request から推測します（[api.md](api.md#pose-reference-pin)
 pin できる Generation には条件があります。
 
 -   `rating = good` でなければなりません（他の kind と同じ、[Rating](#rating)）。
--   finalize / repair の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
+-   redraw / deliver / repair の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
     raw Generation まで遡ります。rating を見るのは指定した Generation 自身、pin する
     render とその seed は遡った先の raw Generation です。
 -   遡った先の Request は「recipe/pose の素の render」でなければなりません: recipe が
@@ -498,7 +500,7 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 ``` text
 id
 short_id          /b/{short_id} の Request の短縮 ID
-kind              generate | finalize | repair | masked_redraw | import
+kind              generate | redraw | deliver | repair | masked_redraw | import（finalize は古い行を読むためだけに残る）
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -533,7 +535,7 @@ Job の `graph` / `render_facts` を正とします。素材参照は `request_r
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
-`{ generation_id, options }`（finalize / repair / masked_redraw）です。masked_redraw の
+`{ generation_id, options }`（redraw / deliver / repair / masked_redraw、古い finalize）です。masked_redraw の
 options は明示的な矩形 `regions` と非空の `prompt_patch` を必須とし、低〜中程度の
 `denoise`、`mask_padding`、`mask_feather` を保持します。契約全体（状態遷移、API、payload
 の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
@@ -622,7 +624,7 @@ created_at
 updated_at
 ```
 
-`source_generation_id` は finalize / repair / masked_redraw の Job で仕上げ元の Generation を指します。
+`source_generation_id` は redraw / deliver / repair / masked_redraw（と古い finalize）の Job で仕上げ元の Generation を指します。
 
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
@@ -680,49 +682,25 @@ image_size
 ```
 
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
-status 等で扱います。ただし original 画像（`r2_object_key` の R2 オブジェクト）だけは、
-下記の保持期間ジョブが削除することがあります。行そのものは残るので、この削除は
-「Generation の物理削除」には当たりません。
+status 等で扱います。original 画像（`r2_object_key` の R2 オブジェクト）も削除しません
+（下記「original の保持」）。
 
 ### original の保持
 
-古い低価値の Generation について、original.png だけを定期ジョブ (`src/lib/original-purge.ts`、
-30分ごとの scheduled 実行) が削除し、行と `preview.webp`（1024px WebP、
-[architecture.md](architecture.md)「R2」節参照）は残します。`original_purged_at` が非 NULL
-ならその Generation の original はもう存在しません。
+original.png は削除しません。deliver をやり直すときも、redraw や repair の入力にするときも、
+worker が元の絵の original を読むためです。保持期間による削除ジョブは動かしていません。
 
-対象は次をすべて満たす Generation です。
-
-```text
-original_purged_at IS NULL
-rating が NULL または 'bad'
-bookmark = 0
-created_at が現在時刻から30日以上前
-```
-
-ただし次のいずれかに該当する Generation は対象から外れます（original がまだ
-用済みでない理由）。
-
-```text
-Publication を持つ
-preset_reference の pin (generation_id または source_generation_id) である
-Preset の source_generation_id である
-Experiment の base_generation_id である
-他 Request の素材参照（request_references）の source_generation_id である（参照材料として使われている）
-他の Generation の refines_generation_id である（finalize/repair/masked_redraw の仕上げ元）
-進行中 (queued/running) の finalize/repair/masked_redraw request の対象である
-```
-
-original が purge された Generation は、`GET /g/{short_id}/image` が 410
-(`original_purged`) を返し、finalize/repair/masked_redraw の起票は 409
-(`original_purged`) で拒否されます（[api.md](api.md)、[worker-protocol.md](worker-protocol.md)）。
-GUI は preview を代わりに表示します（[ui.md](ui.md)）。
+過去に削除済みの Generation（`original_purged_at` が非 NULL）は、行と `preview.webp`（1024px WebP、
+[architecture.md](architecture.md)「R2」節参照）だけが残り、そのまま読めます。
+`GET /g/{short_id}/image` は 410 (`original_purged`) を返し、redraw / deliver / repair /
+masked_redraw の起票は 409 (`original_purged`) で拒否されます（[api.md](api.md)、
+[worker-protocol.md](worker-protocol.md)）。GUI は preview を代わりに表示します（[ui.md](ui.md)）。
 
 ### original の再圧縮
 
-保持期間（30日）を過ぎても original を持ち続ける Generation（= 上記の purge 対象から
-外れたもの）は、purge の直後に別の定期ジョブ (`src/lib/original-recompress.ts`) が
-original.png を lossless WebP（`generations/{id}/original.webp`）へ再圧縮します。lossless
+作成から30日を過ぎた Generation の original.png は、定期ジョブ (`src/lib/original-recompress.ts`、
+30分ごとの scheduled 実行。env `ORIGINAL_RECOMPRESS` が `on` のときだけ動く) が
+lossless WebP（`generations/{id}/original.webp`）へ再圧縮します。lossless
 なので不透明な画像は画素同一のまま約32%小さくなり、`r2_object_key` と `image_size` を
 新しいオブジェクトに合わせて更新します。透過を持つ PNG（IHDR の colour type が
 グレー+alpha / RGBA、または `tRNS` チャンクを持つもの）は変換しません。alpha=0 の下に
@@ -731,7 +709,7 @@ original.png を lossless WebP（`generations/{id}/original.webp`）へ再圧縮
 （非 NULL なら変換済み・変換不要のいずれか）で管理し、一度評価した Generation を毎回
 スキャンし直しません。
 
-original.png が消える（purge でも再圧縮でも）前には、その PNG が持つ ComfyUI の
+original.png が再圧縮で置き換わる前には、その PNG が持つ ComfyUI の
 `prompt` text chunk（生成グラフ全体）を `comfy_jobs.graph` へ救出します。対象の Job が
 既に `graph` を持っていれば何もせず、`graph` が NULL で `prompt` chunk が読めた場合だけ
 `graph` と `render_facts_json` を書き込みます。
@@ -902,7 +880,7 @@ other
 
 ## 仕上げ元
 
-finalize / repair / masked_redraw の出力 Generation は、仕上げた元の Generation を
+redraw / deliver / repair / masked_redraw（と古い finalize）の出力 Generation は、仕上げた元の Generation を
 `generations.refines_generation_id` で直接指します。再試行の関係は持ちません。
 素材参照（Generation → Request）とは別の関係で、統合しません。
 

@@ -170,11 +170,11 @@ describe('worker flow', () => {
     expect(job.id).toBeTruthy();
   });
 
-  it('finalize: source_generation_id is required and sets refines', async () => {
+  it('deliver: source_generation_id is required and sets refines', async () => {
     const { generation: source } = await createGeneration();
-    const r = await queue('finalize', { generation_id: source.id });
+    const r = await queue('deliver', { generation_id: source.id });
     await claim(r.id);
-    expect((await putResolution(r.id, resolution({ parameters: { kind: 'finalize' } }))).status).toBe(200);
+    expect((await putResolution(r.id, resolution({ parameters: { kind: 'deliver' } }))).status).toBe(200);
 
     expect((await postJob(r.id, { idempotency_key: `request:${r.id}:job:0`, seed: 1, index: 0 })).status).toBe(400);
     expect((await postJob(r.id, { idempotency_key: `request:${r.id}:job:0`, seed: 1, index: 0, source_generation_id: 'nope00' })).status).toBe(404);

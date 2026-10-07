@@ -2,16 +2,18 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, postJson, req } from './helpers';
 
-async function createFinalizeLikeRequest(
+async function createRefinementRequest(
   generationId: string,
-  kind: 'finalize' | 'repair' | 'masked_redraw' = 'finalize',
+  kind: 'redraw' | 'deliver' | 'repair' | 'masked_redraw' = 'deliver',
 ): Promise<string> {
   const payload =
     kind === 'masked_redraw'
       ? { generation_id: generationId, options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'x', denoise: 0.5 } }
       : kind === 'repair'
         ? { generation_id: generationId, options: { parts: ['hands'] } }
-        : { generation_id: generationId, options: { repin: true } };
+        : kind === 'redraw'
+          ? { generation_id: generationId, options: { method: 'canvas' } }
+          : { generation_id: generationId, options: { repin: true } };
   const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
     kind,
     payload,
@@ -142,14 +144,14 @@ describe('GET /g/:short_id?partial=card (docs/ui.md「Gallery」live insertion)'
     expect(res.status).toBe(404);
   });
 
-  it('includes the finalize badge when a request targets the generation', async () => {
+  it('includes the request badge when a request targets the generation', async () => {
     const { generation } = await createGeneration();
-    const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
+    const requestId = await createRefinementRequest(generation.id, 'deliver');
     const res = await req(`/g/${generation.short_id}?partial=card`);
     const card = cardHtml(await res.text(), generation.short_id);
-    expect(card).toContain('card-finalize-badge');
+    expect(card).toContain('card-request-badge');
     expect(card).toContain(`data-request-id="${requestId}"`);
-    expect(card).toContain('finalize · queued');
+    expect(card).toContain('納品 · queued');
   });
 });
 
@@ -201,11 +203,11 @@ describe('GenerationCard 基準 pill (docs/domain-model.md「基準 render の p
   });
 });
 
-describe('GenerationCard finalize badge (docs/ui.md「Gallery」進捗ピル)', () => {
+describe('GenerationCard request badge (docs/ui.md「Gallery」進捗ピル)', () => {
   it('renders queued / running / done (→ result short_id) / failed as the request transitions', async () => {
     const { generation } = await createGeneration();
     const { generation: resultGen } = await createGeneration();
-    const requestId = await createFinalizeLikeRequest(generation.id, 'repair');
+    const requestId = await createRefinementRequest(generation.id, 'repair');
 
     let card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
     expect(card).toContain('repair · queued');
@@ -228,14 +230,24 @@ describe('GenerationCard finalize badge (docs/ui.md「Gallery」進捗ピル)', 
 
   it('labels a masked_redraw request "masked redraw"', async () => {
     const { generation } = await createGeneration();
-    await createFinalizeLikeRequest(generation.id, 'masked_redraw');
+    await createRefinementRequest(generation.id, 'masked_redraw');
     const card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
     expect(card).toContain('masked redraw · queued');
   });
 
-  it('omits the badge entirely when no finalize/repair/masked_redraw request targets the generation', async () => {
+  it('labels a redraw request 描き直し and a deliver request 納品', async () => {
+    const { generation: redrawSource } = await createGeneration();
+    await createRefinementRequest(redrawSource.id, 'redraw');
+    expect(cardHtml(await (await req('/gallery?limit=200')).text(), redrawSource.short_id)).toContain('描き直し · queued');
+
+    const { generation: deliverSource } = await createGeneration();
+    await createRefinementRequest(deliverSource.id, 'deliver');
+    expect(cardHtml(await (await req('/gallery?limit=200')).text(), deliverSource.short_id)).toContain('納品 · queued');
+  });
+
+  it('omits the badge entirely when no redraw/deliver/repair/masked_redraw request targets the generation', async () => {
     const { generation } = await createGeneration();
     const card = cardHtml((await (await req('/gallery?limit=200')).text()), generation.short_id);
-    expect(card).not.toContain('card-finalize-badge');
+    expect(card).not.toContain('card-request-badge');
   });
 });

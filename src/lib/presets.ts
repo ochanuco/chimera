@@ -4,7 +4,7 @@
 import { getGenerationByIdOrShortId, nowIso } from './db';
 import { getCatalog } from './catalogs';
 import { badRequest, conflict, notFound } from './errors';
-import { presetBodySchema, presetBodyFinalizeSchema, type PresetBody } from '../schemas/presets';
+import { presetBodySchema, presetBodyDeliverSchema, type PresetBody } from '../schemas/presets';
 import { uuidv7 } from './uuidv7';
 import type { JsonObject } from './overrides';
 import type { PresetKind, PresetRow, PresetSource, PresetStatus } from '../types';
@@ -347,7 +347,7 @@ export async function resolvePreset(db: D1Database, row: PresetRow): Promise<Res
       return { record: body, patches };
     }
 
-    // kind finalize: 全文上書きの leaf で、base への連鎖を持たない (schemas/presets.ts の presetBodyFinalizeSchema)。
+    // kind deliver: 全文上書きの leaf で、base への連鎖を持たない (schemas/presets.ts の presetBodyDeliverSchema)。
     if ('options' in body) {
       return { record: body, patches: [] };
     }
@@ -378,11 +378,11 @@ export function extractPins(payload: unknown): { kind: string; name: string; ver
 }
 
 /**
- * finalize payload の `profile` を `options` に展開する (docs/worker-protocol.md「finalize profile」)。
+ * deliver payload の `profile` を `options` に展開する (docs/worker-protocol.md「deliver profile」)。
  * 明示された `options` の同名キーが profile の値に勝つ。未知の profile / generation は notFound を投げるので、
  * queued 行を作らせないよう createRequest より前に呼ぶこと。
  */
-export async function applyFinalizeProfile(db: D1Database, payload: JsonObject): Promise<JsonObject> {
+export async function applyDeliverProfile(db: D1Database, payload: JsonObject): Promise<JsonObject> {
   const profile = payload.profile;
   if (!isJsonObject(profile) || typeof profile.name !== 'string') return payload;
 
@@ -394,13 +394,13 @@ export async function applyFinalizeProfile(db: D1Database, payload: JsonObject):
   const owner = generation.request_id
     ? await db.prepare('SELECT recipe FROM requests WHERE id = ?').bind(generation.request_id).first<{ recipe: string | null }>()
     : null;
-  if (!owner?.recipe) throw notFound('finalize profile');
+  if (!owner?.recipe) throw notFound('deliver profile');
 
   const version = typeof profile.version === 'number' ? profile.version : undefined;
-  const row = await getPresetRow(db, owner.recipe, 'finalize', profile.name, version);
-  if (!row) throw notFound('finalize profile');
+  const row = await getPresetRow(db, owner.recipe, 'deliver', profile.name, version);
+  if (!row) throw notFound('deliver profile');
 
-  const body = presetBodyFinalizeSchema.parse(JSON.parse(row.body_json));
+  const body = presetBodyDeliverSchema.parse(JSON.parse(row.body_json));
   const requestOptions = isJsonObject(payload.options) ? payload.options : {};
 
   return {
@@ -410,20 +410,20 @@ export async function applyFinalizeProfile(db: D1Database, payload: JsonObject):
   };
 }
 
-/** A `finalize` Preset's body, with its options inlined for the FinalizeFields profile buttons. */
-export interface FinalizeProfileSummary {
+/** A `deliver` Preset's body, with its options inlined for the DeliverSection profile buttons. */
+export interface DeliverProfileSummary {
   name: string;
   version: number;
   options: JsonObject;
 }
 
-/** Latest active `finalize` Presets for `recipe` — one query (same latest-per-name window as listPresets) rather than listPresets + a getPresetRow per name, since a recipe can carry many profiles. */
-export async function listFinalizeProfiles(db: D1Database, recipe: string): Promise<FinalizeProfileSummary[]> {
+/** Latest active `deliver` Presets for `recipe` — one query (same latest-per-name window as listPresets) rather than listPresets + a getPresetRow per name, since a recipe can carry many profiles. */
+export async function listDeliverProfiles(db: D1Database, recipe: string): Promise<DeliverProfileSummary[]> {
   const { results } = await db
     .prepare(
       `SELECT * FROM (
          SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY version DESC) AS rn
-         FROM presets WHERE recipe = ? AND kind = 'finalize' AND status = 'active'
+         FROM presets WHERE recipe = ? AND kind = 'deliver' AND status = 'active'
        ) WHERE rn = 1
        ORDER BY name`,
     )
@@ -431,7 +431,7 @@ export async function listFinalizeProfiles(db: D1Database, recipe: string): Prom
     .all<PresetRow>();
 
   return (results ?? []).map((row) => {
-    const body = presetBodyFinalizeSchema.parse(JSON.parse(row.body_json));
+    const body = presetBodyDeliverSchema.parse(JSON.parse(row.body_json));
     return { name: row.name, version: row.version, options: body.options as JsonObject };
   });
 }

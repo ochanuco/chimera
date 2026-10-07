@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+/** finalize は既存の行を読む・claim するためだけに残す。新規には作れない (FINALIZE_CREATION_MESSAGE)。 */
 export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver']);
+export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
 export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
@@ -11,12 +13,11 @@ export const jsonObject = z.record(z.string(), z.unknown());
 /** worker-protocol.md: `recipe_ref` は origin のブランチ名相当の文字列だけを検証し、存在は確認しない。 */
 export const RECIPE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
-/** catalog の `dials` が定義する word の語彙 (docs/worker-protocol.md「finalize profile」)。実在するかは worker が検証、chimera は型だけ見る。 */
+/** catalog の `dials` が定義する word の語彙 (docs/worker-protocol.md「deliver profile」)。実在するかは worker が検証、chimera は型だけ見る。 */
 export const DIAL_WORD_RE = /^[a-z][a-z0-9-]*$/;
 const dialWord = z.string().regex(DIAL_WORD_RE);
 
-/** repair region は width/height に対する分数の矩形 [x0,y0,x1,y1] (x0<x1, y0<y1)。
- * 単体の repair request (`regions`) と finalize 相乗りの repair (`repair_regions`) で共有。 */
+/** repair region は width/height に対する分数の矩形 [x0,y0,x1,y1] (x0<x1, y0<y1)。 */
 const repairRegionSchema = z
   .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
   .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
@@ -31,9 +32,8 @@ function regionsOverlap(a: readonly [number, number, number, number], b: readonl
   return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 }
 
-/** finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す (docs/worker-protocol.md「finalize」)。
- * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。
- * `repair*` は相乗り repair の引数で、単体 repair request の options と語彙を揃えている。 */
+/** redraw / deliver の options は worker の引数に 1 対 1 で写す (docs/worker-protocol.md「redraw」「deliver」)。
+ * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。 */
 const denoiseField = z.union([z.number(), dialWord]).nullable().optional();
 const keepLegwearField = z.union([z.literal(true), z.number(), dialWord]).nullable().optional();
 const routeField = z.enum(['latent', 'pixel']).nullable().optional();
@@ -71,42 +71,6 @@ const lightField = z
   .nullable()
   .optional();
 
-/** finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す (docs/worker-protocol.md「finalize」)。
- * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。
- * `repair*` は相乗り repair の引数で、単体 repair request の options と語彙を揃えている。 */
-export const finalizeOptionsSchema = z
-  .object({
-    denoise: denoiseField,
-    repin: repinField,
-    recolor: recolorField,
-    keep_legwear: keepLegwearField,
-    route: routeField,
-    finalizer: finalizerField,
-    size: sizeField,
-    skin: skinField,
-    keep_scene: keepSceneField,
-    transparent: transparentField,
-    backdrop: backdropField,
-    upscale: upscaleField,
-    deliver_size: deliverSizeField,
-    stroke_light: strokeLightField,
-    repair: z.array(z.enum(['hands', 'feet'])).nullable().optional(),
-    repair_regions: z.array(repairRegionSchema).nullable().optional(),
-    repair_denoise: z.union([z.number().gt(0).lte(1), dialWord]).nullable().optional(),
-    repair_pad: z.number().min(0.5).max(3).nullable().optional(),
-    repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
-    repair_lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
-    repair_seeds: z.number().int().min(1).max(8).optional(),
-    keep_regions: keepRegionsField,
-    keep_strength: keepStrengthField,
-    deliver_only: z.boolean().optional(),
-    hires: hiresField,
-    hires_denoise: hiresDenoiseField,
-    dof: dofField,
-    light: lightField,
-  })
-  .strict();
-
 /** redraw の options は絵を変える 1 つの method だけを選ぶ (docs/worker-protocol.md「redraw」)。 */
 export const redrawOptionsSchema = z.discriminatedUnion('method', [
   z
@@ -142,6 +106,14 @@ export const deliverOptionsSchema = z
   })
   .strict();
 
+/** deliver payload の `profile` — a deliver preset の参照 (docs/worker-protocol.md「deliver profile」)。version 省略は最新 active 版。 */
+export const deliverProfileRefSchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.number().int().positive().optional(),
+  })
+  .strict();
+
 export const redrawPayloadSchema = z
   .object({
     generation_id: z.string().min(1),
@@ -153,22 +125,7 @@ export const deliverPayloadSchema = z
   .object({
     generation_id: z.string().min(1),
     options: deliverOptionsSchema.optional(),
-  })
-  .strict();
-
-/** finalize payload の `profile` — a finalize preset の参照 (docs/worker-protocol.md「finalize profile」)。version 省略は最新 active 版。 */
-export const finalizeProfileRefSchema = z
-  .object({
-    name: z.string().min(1),
-    version: z.number().int().positive().optional(),
-  })
-  .strict();
-
-export const finalizePayloadSchema = z
-  .object({
-    generation_id: z.string().min(1),
-    options: finalizeOptionsSchema.optional(),
-    profile: finalizeProfileRefSchema.optional(),
+    profile: deliverProfileRefSchema.optional(),
   })
   .strict();
 
@@ -258,19 +215,17 @@ export const generatePayloadSchema = z
   .passthrough();
 
 /** REST (`POST /api/v1/requests`) と MCP `create_request` の両方が使う、kind に応じた payload 封筒の検証。 */
-export function payloadEnvelopeIssues(kind: z.infer<typeof requestKindSchema>, payload: unknown) {
+export function payloadEnvelopeIssues(kind: Exclude<z.infer<typeof requestKindSchema>, 'finalize'>, payload: unknown) {
   const schema =
-    kind === 'finalize'
-      ? finalizePayloadSchema
-      : kind === 'redraw'
-        ? redrawPayloadSchema
-        : kind === 'deliver'
-          ? deliverPayloadSchema
-          : kind === 'repair'
-            ? repairPayloadSchema
-            : kind === 'masked_redraw'
-              ? maskedRedrawPayloadSchema
-              : generatePayloadSchema;
+    kind === 'redraw'
+      ? redrawPayloadSchema
+      : kind === 'deliver'
+        ? deliverPayloadSchema
+        : kind === 'repair'
+          ? repairPayloadSchema
+          : kind === 'masked_redraw'
+            ? maskedRedrawPayloadSchema
+            : generatePayloadSchema;
   const parsed = schema.safeParse(payload);
   return parsed.success ? [] : parsed.error.issues;
 }
@@ -324,6 +279,9 @@ export type PutResolutionInput = z.infer<typeof putResolutionSchema>;
 
 const RESOLUTION_KEYS = Object.keys(resolutionShape);
 
+export const FINALIZE_CREATION_MESSAGE =
+  "kind 'finalize' can no longer be created: use 'redraw' (change the picture) or 'deliver' (cut out and finish)";
+
 export const createRequestSchema = z
   .object({
     kind: requestKindFilterSchema,
@@ -339,6 +297,10 @@ export const createRequestSchema = z
     parameters: jsonObject.optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.kind === 'finalize') {
+      ctx.addIssue({ code: 'custom', message: FINALIZE_CREATION_MESSAGE, path: ['kind'] });
+      return;
+    }
     if (value.kind === 'import') {
       if (value.status !== 'done') {
         ctx.addIssue({ code: 'custom', message: "status must be 'done' for kind import", path: ['status'] });
@@ -378,7 +340,7 @@ export const claimRequestSchema = z.object({
 
 export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
 
-/** `.passthrough()`: worker が done に添える `resolved_options` 等 (docs/worker-protocol.md「finalize profile」) を
+/** `.passthrough()`: worker が done に添える `resolved_options` 等 (docs/worker-protocol.md「deliver profile」) を
  * 素の z.object が黙って落とさないため。chimera は不透明な JSON として保存するだけ。 */
 export const updateRequestResultSchema = z
   .object({

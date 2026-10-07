@@ -12,7 +12,7 @@ export interface Bindings {
   POSTHOG_KEY?: string;
   /** PostHog の api_host。省略時 https://us.i.posthog.com */
   POSTHOG_HOST?: string;
-  /** original 保持ジョブの1回あたり処理件数 (src/lib/original-purge.ts)。省略時 8。 */
+  /** original 再圧縮ジョブの1回あたり処理件数の上限 (src/lib/original-recompress.ts)。省略時 60。 */
   ORIGINAL_PURGE_BATCH_SIZE?: string;
   /** 'on' で original 再圧縮ジョブ (src/lib/original-recompress.ts) を有効化。wrangler.jsonc には無く、省略時は無効。 */
   ORIGINAL_RECOMPRESS?: string;
@@ -96,7 +96,7 @@ export interface ExperimentPromotionRow {
 export interface ComfyJobRow {
   id: string;
   request_id: string;
-  /** finalize / redraw / repair / masked_redraw / deliver の Job が仕上げる元の Generation。 */
+  /** redraw / repair / masked_redraw / deliver (と古い finalize) の Job が仕上げる元の Generation。 */
   source_generation_id: string | null;
   comfy_prompt_id: string | null;
   seed: number | null;
@@ -137,7 +137,7 @@ export interface GenerationRow {
   summary_model: string | null;
   summary_updated_at: string | null;
   created_at: string;
-  /** original.png が保持期間ジョブで削除された時刻 (migrations/0023, src/lib/original-purge.ts)。null なら未削除。 */
+  /** original.png が過去の保持期間ジョブで削除された時刻 (migrations/0023)。保持期間ジョブは廃止済みで、新たに削除されることはない。null なら未削除。 */
   original_purged_at: string | null;
   /** 再圧縮ジョブが original を評価した時刻 (migrations/0024, src/lib/original-recompress.ts)。null なら未評価。lossless WebP に変換済みかは r2_object_key の拡張子で分かる。 */
   original_recompress_checked_at: string | null;
@@ -222,7 +222,7 @@ export interface RecipeCatalogRow {
   updated_at: string;
 }
 
-export type PresetKind = 'pose' | 'costume' | 'expression' | 'finalize';
+export type PresetKind = 'pose' | 'costume' | 'expression' | 'deliver';
 export type PresetStatus = 'active' | 'deprecated';
 export type PresetSource = 'import' | 'promote';
 export type PresetCreatedBy = 'system' | 'mcp' | 'gui';
