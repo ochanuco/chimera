@@ -4020,6 +4020,53 @@ export const appJs = `
     return url.toString();
   }
 
+  // history.state keeps what Back needs to rebuild the grid: galleryUntil is the cursor of the last
+  // loaded card ('end' once the list is exhausted), which the server accepts as ?until=.
+  function setGalleryState(patch) {
+    try {
+      history.replaceState(Object.assign({}, history.state, patch), '');
+    } catch (e) {}
+  }
+
+  function galleryCursorOf(link) {
+    return link ? new URL(link.getAttribute('href'), location.href).searchParams.get('cursor') : null;
+  }
+
+  function recordGalleryUntil(grid) {
+    const cursor = galleryCursorOf(qs('.load-more', grid));
+    setGalleryState({ galleryUntil: cursor || 'end' });
+  }
+
+  function recordGalleryAnchor(card) {
+    const thumb = card ? qs('.thumb-link', card) : null;
+    if (!thumb) return;
+    setGalleryState({
+      galleryAnchor: thumb.getAttribute('data-short-id'),
+      galleryAnchorTop: card.getBoundingClientRect().top,
+      galleryScrollY: window.scrollY,
+    });
+  }
+
+  function topVisibleGalleryCard(grid) {
+    const cards = qsa('.card', grid);
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i].getBoundingClientRect().bottom > 0) return cards[i];
+    }
+    return null;
+  }
+
+  function appendGalleryFragment(grid, link, html) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    const nextLoadMore = wrapper.querySelector('.load-more');
+    qsa('.card, .load-more', wrapper).forEach(function (node) {
+      if (node !== nextLoadMore) grid.insertBefore(node, link);
+    });
+    link.remove();
+    if (nextLoadMore) grid.appendChild(nextLoadMore);
+    return nextLoadMore;
+  }
+
   async function loadMoreGalleryCards(link) {
     const grid = document.querySelector('[data-gallery-grid]');
     if (!grid || !link) return false;
@@ -4029,18 +4076,9 @@ export const appJs = `
     try {
       const res = await fetch(galleryPartialUrl(link.getAttribute('href')));
       if (!res.ok) return false;
-      const html = await res.text();
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = html;
-      const nextLoadMore = wrapper.querySelector('.load-more');
-      qsa('.card, .load-more', wrapper).forEach(function (node) {
-        if (node !== nextLoadMore) grid.insertBefore(node, link);
-      });
-      link.remove();
-      if (nextLoadMore) {
-        grid.appendChild(nextLoadMore);
-        if (galleryScrollObserver) galleryScrollObserver.observe(nextLoadMore);
-      }
+      const nextLoadMore = appendGalleryFragment(grid, link, await res.text());
+      if (nextLoadMore && galleryScrollObserver) galleryScrollObserver.observe(nextLoadMore);
+      recordGalleryUntil(grid);
       return true;
     } catch (e) {
       trackError('gallery.load_more', e, {});
@@ -4048,6 +4086,42 @@ export const appJs = `
     } finally {
       galleryLoadMoreInFlight = false;
     }
+  }
+
+  // Back from a detail page re-renders only page 1, so the cards loaded by infinite scroll are
+  // fetched again in one request and the clicked card is put back where it was on screen.
+  async function restoreGalleryCards(grid, link, state) {
+    galleryLoadMoreInFlight = true;
+    grid.style.visibility = 'hidden';
+    try {
+      const url = new URL(galleryPartialUrl(link.getAttribute('href')));
+      url.searchParams.set('until', state.galleryUntil);
+      const res = await fetch(url.toString());
+      if (!res.ok) return false;
+      appendGalleryFragment(grid, link, await res.text());
+      recordGalleryUntil(grid);
+      const anchor = qsa('.thumb-link', grid).find(function (a) {
+        return a.getAttribute('data-short-id') === state.galleryAnchor;
+      });
+      if (anchor && typeof state.galleryAnchorTop === 'number') {
+        const card = anchor.closest('.card') || anchor;
+        window.scrollBy(0, card.getBoundingClientRect().top - state.galleryAnchorTop);
+      } else if (typeof state.galleryScrollY === 'number') {
+        window.scrollTo(0, state.galleryScrollY);
+      }
+      return true;
+    } catch (e) {
+      trackError('gallery.restore', e, {});
+      return false;
+    } finally {
+      grid.style.visibility = '';
+      galleryLoadMoreInFlight = false;
+    }
+  }
+
+  function isBackForwardNavigation() {
+    const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+    return !!nav && nav.type === 'back_forward';
   }
 
   function initGalleryInfiniteScroll() {
@@ -4058,8 +4132,25 @@ export const appJs = `
         if (entry.isIntersecting) loadMoreGalleryCards(entry.target);
       });
     });
+
+    grid.addEventListener('click', function (ev) {
+      const thumb = ev.target.closest ? ev.target.closest('.thumb-link') : null;
+      if (thumb) recordGalleryAnchor(thumb.closest('.card'));
+    });
+    window.addEventListener('pagehide', function () {
+      recordGalleryAnchor(topVisibleGalleryCard(grid));
+    });
+
     const initial = qs('.load-more', grid);
-    if (initial) galleryScrollObserver.observe(initial);
+    const state = history.state || {};
+    const restoring = !!(initial && state.galleryUntil && isBackForwardNavigation());
+    if (!restoring && state.galleryUntil) setGalleryState({ galleryUntil: null });
+    if (restoring) history.scrollRestoration = 'manual';
+    const done = restoring ? restoreGalleryCards(grid, initial, state) : Promise.resolve(false);
+    done.then(function (restored) {
+      const link = restored ? qs('.load-more', grid) : initial;
+      if (link) galleryScrollObserver.observe(link);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', function () {

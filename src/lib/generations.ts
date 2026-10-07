@@ -337,7 +337,7 @@ function encodeCursor(cursor: GenerationCursor): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function decodeCursor(raw: string): GenerationCursor {
+export function decodeCursor(raw: string): GenerationCursor {
   try {
     const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
     const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));

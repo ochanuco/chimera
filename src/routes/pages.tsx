@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
 import { getGenerationByIdOrShortId, resolveGenerationShortIds, resolveRequestThumbnails, resolveRunRequests } from '../lib/db';
 import { generationImageUrl, generationPreviewUrl } from '../lib/serialize';
@@ -14,7 +14,7 @@ import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
-import { queryGenerations } from '../lib/generations';
+import { decodeCursor, queryGenerations } from '../lib/generations';
 import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
@@ -28,6 +28,48 @@ pages.get('/', (c) => c.redirect('/gallery'));
 
 function parseGalleryView(raw: string | undefined, defaultView: GalleryView): GalleryView {
   return raw === 'raw' || raw === 'refined' || raw === 'all' ? raw : defaultView;
+}
+
+/** Back 復元で一度に返す件数の上限 (docs/ui.md「Gallery」)。 */
+const GALLERY_RESTORE_MAX_ITEMS = 2000;
+const GALLERY_RESTORE_CHUNK = 200;
+/** `until` にこの値を渡すと、末尾まで読み込み済みだったことを表す (上限までページングする)。 */
+const GALLERY_UNTIL_END = 'end';
+
+/**
+ * `cursor` から、`until` のカーソルが指す Generation までを1つの結果として返す。
+ * `until` は元のページングで使われた next_cursor で、そのカーソルの Generation を含めて返し、
+ * 続きの next_cursor は `until` 自身になる。上限に達したらそこまでを返す。
+ */
+async function loadGalleryThrough(
+  c: Context<AppEnv>,
+  baseParams: URLSearchParams,
+  cursor: string,
+  until: string,
+): Promise<{ items: GalleryItem[]; total: number; next_cursor: string | null } | Response> {
+  const untilId = until === GALLERY_UNTIL_END ? null : decodeCursor(until).id;
+  const items: GalleryItem[] = [];
+  let total = 0;
+  let next: string | null = cursor;
+  while (next) {
+    const params = new URLSearchParams(baseParams);
+    params.set('cursor', next);
+    params.set('limit', String(Math.min(GALLERY_RESTORE_CHUNK, GALLERY_RESTORE_MAX_ITEMS - items.length)));
+    const res = await internalApiRequest(c, `/api/v1/generations?${params.toString()}`);
+    if (!res.ok) return res;
+    const data = (await res.json()) as { items: GalleryItem[]; total: number; next_cursor: string | null };
+    total = data.total;
+    const hit = untilId ? data.items.findIndex((g) => g.id === untilId) : -1;
+    if (hit !== -1) {
+      items.push(...data.items.slice(0, hit + 1));
+      const more = hit < data.items.length - 1 || data.next_cursor !== null;
+      return { items, total, next_cursor: more ? until : null };
+    }
+    items.push(...data.items);
+    next = data.next_cursor;
+    if (items.length >= GALLERY_RESTORE_MAX_ITEMS) break;
+  }
+  return { items, total, next_cursor: next };
 }
 
 pages.get('/gallery', async (c) => {
@@ -66,9 +108,17 @@ pages.get('/gallery', async (c) => {
   apiParams.set('limit', String(limit));
   if (q.cursor) apiParams.set('cursor', q.cursor);
 
-  const genRes = await internalApiRequest(c, `/api/v1/generations?${apiParams.toString()}`);
-  if (!genRes.ok) return genRes;
-  const genData = (await genRes.json()) as { items: GalleryItem[]; total: number; next_cursor: string | null };
+  type GalleryPageData = { items: GalleryItem[]; total: number; next_cursor: string | null };
+  let genData: GalleryPageData;
+  if (q.cursor && q.until) {
+    const restored = await loadGalleryThrough(c, apiParams, q.cursor, q.until);
+    if (restored instanceof Response) return restored;
+    genData = restored;
+  } else {
+    const genRes = await internalApiRequest(c, `/api/v1/generations?${apiParams.toString()}`);
+    if (!genRes.ok) return genRes;
+    genData = (await genRes.json()) as GalleryPageData;
+  }
 
   // ids が厳密に1件の既存 Generation に解決したときは detail へ直行する。
   if (ids && genData.total === 1 && genData.items[0]) {
