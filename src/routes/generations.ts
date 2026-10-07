@@ -15,7 +15,7 @@ import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeGenerationAsset } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
-import { buildContext, getGenerationDetail, queryGenerations } from '../lib/generations';
+import { buildContext, getGenerationDetail, queryGenerations, queryTimeline } from '../lib/generations';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 
 export const generations = new Hono<AppEnv>();
@@ -31,6 +31,8 @@ async function getGenerationOr404(db: D1Database, idOrShortId: string): Promise<
 }
 
 generations.get('/', async (c) => c.json(await queryGenerations(c.env.DB, c.req.query(), origin(c))));
+
+generations.get('/timeline', async (c) => c.json(await queryTimeline(c.env.DB, c.req.query())));
 
 generations.get('/:id/context', async (c) => {
   const db = c.env.DB;

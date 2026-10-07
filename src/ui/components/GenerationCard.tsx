@@ -1,3 +1,4 @@
+import { slotKeyOf } from '../../lib/timeline';
 import { SafetyBadge, SafetyStrip, type SafetyView } from './SafetyBadge';
 
 export interface FinalizeRequestBadgeData {
@@ -15,6 +16,8 @@ export interface GenerationCardData {
   rating: 'bad' | 'neutral' | 'good' | null;
   bookmark: boolean;
   tags?: string[];
+  /** 指定があればカード root に `data-slot` (JST 15 分枠のキー) を付ける。Gallery のタイムラインが使う。 */
+  created_at?: string;
   image_width?: number | null;
   image_height?: number | null;
   image_size?: number | null;
@@ -74,8 +77,9 @@ function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
  * `from <short_id>` / 公開済み overlays) + a row of rating + bookmark. Everything else lives in Generation Detail, which the thumbnail links to. */
 export function GenerationCard({ g }: { g: GenerationCardData }) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.finalize_request);
+  const slot = g.created_at ? slotKeyOf(g.created_at) : null;
   return (
-    <div class="card">
+    <div class="card" data-slot={slot ?? undefined}>
       <a class="thumb-link" href={`/g/${g.short_id}`} data-short-id={g.short_id}>
         <img class="thumb-fg" src={g.thumbnail_url} alt={g.short_id} loading="lazy" />
         {hasTopBadges ? (

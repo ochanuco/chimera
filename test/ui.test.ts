@@ -511,6 +511,60 @@ describe('Web GUI pages', () => {
     expect(bigHtml).not.toContain('class="load-more"');
   });
 
+  describe('GET /gallery?cursor&until (Back restoration)', () => {
+    const cursorOf = (html: string): string | null => {
+      const m = html.match(/class="load-more" href="([^"]+)"/);
+      return m ? new URL(m[1]!.replace(/&amp;/g, '&'), BASE).searchParams.get('cursor') : null;
+    };
+    const shortIds = (html: string): string[] => [...html.matchAll(/data-short-id="([^"]+)"/g)].map((m) => m[1]!);
+
+    async function pagesOfTwo() {
+      const tag = `until-${crypto.randomUUID().slice(0, 8)}`;
+      for (let i = 0; i < 9; i++) {
+        const g = await createGeneration();
+        await postJson(`/api/v1/generations/${g.generation.id}/tags`, { name: tag });
+      }
+      const fetchPage = async (cursor: string | null) => {
+        const url = `/gallery?tag=${tag}&limit=2&partial=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+        const html = await (await req(url)).text();
+        return { html, ids: [...new Set(shortIds(html))], next: cursorOf(html) };
+      };
+      const p1 = await fetchPage(null);
+      const p2 = await fetchPage(p1.next);
+      const p3 = await fetchPage(p2.next);
+      const p4 = await fetchPage(p3.next);
+      return { tag, p1, p2, p3, p4 };
+    }
+
+    it('returns every page from cursor through until and a load-more pointing past it', async () => {
+      const { tag, p1, p2, p3, p4 } = await pagesOfTwo();
+      const res = await req(`/gallery?tag=${tag}&limit=2&partial=1&cursor=${encodeURIComponent(p1.next!)}&until=${encodeURIComponent(p3.next!)}`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect([...new Set(shortIds(html))]).toEqual([...p2.ids, ...p3.ids]);
+      expect(cursorOf(html)).toBe(p3.next);
+      expect(p4.ids.length).toBeGreaterThan(0);
+    });
+
+    it('until=end pages through to the last item and returns no load-more', async () => {
+      const { tag, p1, p2, p3, p4 } = await pagesOfTwo();
+      const p5next = p4.next;
+      expect(p5next).not.toBeNull();
+      const p5 = await (await req(`/gallery?tag=${tag}&limit=2&partial=1&cursor=${encodeURIComponent(p5next!)}`)).text();
+      expect(cursorOf(p5)).toBeNull();
+      const html = await (await req(`/gallery?tag=${tag}&limit=2&partial=1&cursor=${encodeURIComponent(p1.next!)}&until=end`)).text();
+      expect([...new Set(shortIds(html))]).toEqual([...p2.ids, ...p3.ids, ...p4.ids, ...[...new Set(shortIds(p5))]]);
+      expect(cursorOf(html)).toBeNull();
+    });
+
+    it('keeps the normal single page when until is absent', async () => {
+      const { tag, p1, p2 } = await pagesOfTwo();
+      const html = await (await req(`/gallery?tag=${tag}&limit=2&partial=1&cursor=${encodeURIComponent(p1.next!)}`)).text();
+      expect([...new Set(shortIds(html))]).toEqual(p2.ids);
+      expect(cursorOf(html)).toBe(p2.next);
+    });
+  });
+
   it('GET /g/xxxxxx 404s for an unknown short_id', async () => {
     const res = await req('/g/xxxxxx');
     expect(res.status).toBe(404);
