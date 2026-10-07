@@ -16,6 +16,30 @@ export const EXPOSURE_TAGS = [
   'breasts_out',
 ] as const;
 
+/** 詳細ページで「効いていそうなタグ」として拾う、際どさに関わるタグ。tagger は判定理由を返さないので推定用。 */
+export const RISKY_TAGS: readonly string[] = [
+  'ass',
+  'thighs',
+  'legs',
+  'pantyhose',
+  'thighband_pantyhose',
+  'knees_up',
+  'spread_legs',
+  'pantyshot',
+  'panties',
+  'cleavage',
+  'navel',
+  'midriff',
+  'feet',
+  'soles',
+  'no_shoes',
+  'sitting',
+  'wariza',
+  'yokozuwari',
+  'lying',
+  ...EXPOSURE_TAGS,
+];
+
 export const BLOCK_TAG_THRESHOLD = 0.15;
 export const SENSITIVE_QUESTIONABLE_THRESHOLD = 0.15;
 export const CAUTION_SENSITIVE_THRESHOLD = 0.95;

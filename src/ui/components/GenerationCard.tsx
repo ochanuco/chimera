@@ -1,4 +1,4 @@
-import { SafetyBadge, type SafetyView } from './SafetyBadge';
+import { SafetyBadge, SafetyStrip, type SafetyView } from './SafetyBadge';
 
 export interface FinalizeRequestBadgeData {
   id: string;
@@ -110,6 +110,7 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
             ) : null}
           </div>
         ) : null}
+        <SafetyStrip safety={g.safety} />
       </a>
       <div class="card-row">
         <div class="card-id-row">

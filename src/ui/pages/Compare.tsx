@@ -1,4 +1,5 @@
 import { Layout } from '../layout';
+import { SafetyCompareCaption } from '../components/SafetyBadge';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import type { Child } from 'hono/jsx';
 import { consensusSegments, matchMask, tokenize, twoWayDiff, type DiffSeg } from '../diff';
@@ -421,6 +422,7 @@ export function CompareView({ items, headers }: { items: CompareItem[]; headers?
           <div class="compare-col">
             {headers ? <div class="compare-col-label">{headers[i]}</div> : null}
             {item.placeholder ? <div class="card compare-placeholder">生成待ち</div> : <GenerationCard g={item} />}
+            {item.placeholder ? null : <SafetyCompareCaption safety={item.safety} base={items[0]?.safety} isBase={i === 0} />}
           </div>
         ))}
       </div>
