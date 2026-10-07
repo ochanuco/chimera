@@ -117,11 +117,12 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `attach_generation` | `run_id, generation_id` | 追記 | Run の代表 Generation を記録する |
 | `set_evaluation` | `run_id, evaluation` | 追記 | Run の evaluation を書く（`null` でクリア） |
 | `set_decision` | `run_id, decision` | 追記 | Run の decision を書く（`null` でクリア） |
-| `create_request` | `kind, payload, recipe_ref?, idempotency_key` | 追記 | requests 行を手組みの payload で積む |
+| `create_request` | `kind, payload, recipe_ref?, idempotency_key` | 追記 | requests 行を手組みの payload で積む（`kind` は generate / redraw / deliver / repair / masked_redraw。finalize は作れない） |
 | `get_request` | `id, include_prompts?` | 読み取り | requests 行1件（payload、done / failed 後は result / error） |
 | `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧（`kind` は `import` も指定できる）。claim はしない |
 | `derive_request` | `from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?` | 追記 | 既存 Generation を起点にした generate request を積む |
-| `finalize_generation` | `generation_id, options?, profile?, idempotency_key` | 追記 | finalize request を積む |
+| `redraw_generation` | `generation_id, options, idempotency_key` | 追記 | redraw request を積む。`options.method`（canvas / hires / light）が必須で、1 request に 1 操作 |
+| `deliver_generation` | `generation_id, options?, profile?, idempotency_key` | 追記 | deliver request を積む。切り抜いて背景・紫縁などを付ける（絵は変えない） |
 | `repair_generation` | `generation_id, options?, idempotency_key` | 追記 | hands / feet の repair request を積む |
 | `masked_redraw_generation` | `generation_id, options, idempotency_key` | 追記 | 任意矩形の garment / local inpaint request を積む。source は不変 |
 | `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
@@ -135,7 +136,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `set_pose_reference` | `recipe, pose, generation_id, idempotency_key` | 追記 | 基準 render を `(recipe, pose)` に pin する |
 | `plain_render` | `recipe, pose, seed?, idempotency_key?, recipe_ref?` | 追記 | pin（または明示 seed）で recipe 既定の generate request を積む |
 | `promote_to_pose` | `generation_id, name, kind?, base_version?, note?, idempotency_key` | 追記 | rating good の Generation を Preset の新しい版にする |
-| `promote_to_profile` | `generation_id, name, note?, idempotency_key` | 追記 | rating good の finalize 出力を kind `finalize` の Preset の新しい版にする |
+| `promote_to_profile` | `generation_id, name, note?, idempotency_key` | 追記 | rating good の deliver 出力を kind `deliver` の Preset の新しい版にする |
 | `list_observations` | `character?, pose?, component?, parameter?, outcome?, q?, limit?` | 読み取り | Observation の一覧。`q` は parameter / value / reason の部分一致 |
 | `get_observation` | `id` | 読み取り | Observation 1件 |
 | `record_observation` | Observation の欄（`observed_at` を除く） | 追記 | Observation を1件記録する |
@@ -154,7 +155,7 @@ Generation を取る tool は、`generation_id` に UUID と short_id のどち�
 どちらも `recipe_ref` を省略すると `"production"` を見ます。
 
 `list_catalog` は prompt 本文を含みません。
-返すのは recipe ごとの pose / costume / expression の名前、recipe が持つ場合は `parts` と `identity_tags`、parameters、patches の語彙、finalize / repair の dial 語彙（`dials`）、backdrop の一覧（`backdrops`）、git 情報です。
+返すのは recipe ごとの pose / costume / expression の名前、recipe が持つ場合は `parts` と `identity_tags`、parameters、patches の語彙、redraw / deliver / repair の dial 語彙（`dials`）、`deliver`（`defaults` / `dof` / `stroke_light` / `backdrop_color`。`deliver_generation` が省略した option をどう解決するか）と `redraw`（`light` の scene / 方位と method ごとの `defaults`）、backdrop の一覧（`backdrops`）、git 情報です。
 特定の pose の中身が要るときだけ `get_catalog_pose` でフルレコードを引きます。
 パーツに分かれた recipe なら `parts` は順序付きの `{name, text}` の列で、text を連結すると positive prompt になります。
 `reference` はその pose の現行の pin で、無ければ `null` です。
@@ -164,7 +165,7 @@ catalog が comfyui-recipes のスナップショットであるのに対し、P
 `list_presets` は名前ごとに最新版を1行返し、既定は active のみ、`include_deprecated` で最新版が deprecated の名前も含めます。
 `get_preset` は record と、昇格で作られた版なら base の連鎖を根から順に畳んだ patches を返します。
 `version` を明示すれば deprecated の版も引けます。
-kind `finalize` の Preset は record が `{options}`（`finalize_generation` の options、dial の語はそのまま）で、patches は常に `[]` です。
+kind `deliver` の Preset は record が `{options}`（`deliver_generation` の options、dial の語はそのまま）で、patches は常に `[]` です。
 どちらのレスポンスにも現行の pin が `reference` で付きます。
 
 ### 基準 render の pin と昇格
@@ -173,7 +174,7 @@ kind `finalize` の Preset は record が `{options}`（`finalize_generation` �
 pin は `(recipe, pose)` の名前に付き、Preset の版には付きません。
 
 `set_pose_reference` は `rating = good` の Generation を `(recipe, pose)` の pin にします。
-finalize / repair 済みの Generation なら [derive_request](#derive_request) と同じ規則で raw の Generation まで遡りますが、rating は指定した Generation のものを見ます。
+redraw / deliver / repair 済みの Generation なら [derive_request](#derive_request) と同じ規則で raw の Generation まで遡りますが、rating は指定した Generation のものを見ます。
 遡った先の Request が「素の render」（recipe が一致し、その pose を描き、patches を持たず、起こした generate request が prompt / negative_prompt を上書きしていない）でなければ 409 で、満たさない条件は1つの 409 にまとめて返ります。
 seed は遡った先の raw Generation の comfy_job から取り、記録が無ければ 409 です。
 その `(recipe, pose)` の Preset がまだ無ければ 404 です。
@@ -190,20 +191,20 @@ pin がまだ無い pose には、`seed` を渡して最初の基準 render を�
 `promote_to_pose` は、良かった生成をそのまま Preset の次の版にする tool です。
 起点 Request から `recipe`、pin されていた preset の版（base）、`patches_json` の patches、pose レコードの fingerprint を取り、`{ base, patches }` を `(recipe, kind, name)` の次の版として足します。
 `name` が既存なら新しい版、新しい名前ならその名前の version 1 で、`kind` の既定は `pose` です。
-finalize / repair 済みの Generation は `derive_request` と同じ規則で raw まで遡りますが、rating は指定した Generation のものを見ます。
+redraw / deliver / repair 済みの Generation は `derive_request` と同じ規則で raw まで遡りますが、rating は指定した Generation のものを見ます。
 
 base は、その Generation を作った generate request が pin していた版です。
 pin の無い Generation では `base_version` で明示し、どちらも無ければ 409（`no pinned preset for this generation; pass base_version`）です（chimera は base を推測しません）。
-ほかに 409 になるのは、rating が good でないとき（`promote requires rating good`）、起点 Request が recipe を持たない graph-mode のとき、Request が patches を持たないとき（`promote requires a request with patches`。全文上書きと finalize / repair / masked_redraw の出力はここで弾かれます）です。
+ほかに 409 になるのは、rating が good でないとき（`promote requires rating good`）、起点 Request が recipe を持たない graph-mode のとき、Request が patches を持たないとき（`promote requires a request with patches`。全文上書きと redraw / deliver / repair / masked_redraw の出力はここで弾かれます）です。
 Rating を書けるのは人間だけなので、Agent が単独で preset を本番へ入れることはできません。
 既存の版は書き換わらないため、昇格が過去の request の再現性を壊すこともありません。
 `idempotency_key` の再送は既に作られた版をそのまま返し、同じキーで別の Generation や名前を渡すと 409 です。
 
-`promote_to_profile` は、finalize request が産んだ rating good の Generation を kind `finalize` の Preset の新しい版にします（[worker-protocol.md](worker-protocol.md#finalize-profile)）。
-`generation_id` が属する Request が `kind = finalize` であることを確かめ、その `payload.options`（profile 展開後、dial の語はそのまま）を新しい版の本文にします。
-そういう request が無ければ 409（`generation is not a finalize-kind result; nothing to promote from`）、rating が good でなければ 409（`promote requires rating good`）です。
+`promote_to_profile` は、deliver request が産んだ rating good の Generation を kind `deliver` の Preset の新しい版にします（[worker-protocol.md](worker-protocol.md#deliver-profile)）。
+`generation_id` が属する Request が `kind = deliver` であることを確かめ、その `payload.options`（profile 展開後、dial の語はそのまま）を新しい版の本文にします。
+そういう request が無ければ 409（`generation is not a deliver-kind result; nothing to promote from`）、rating が good でなければ 409（`promote requires rating good`）です。
 版の足し方と再送の扱いは `promote_to_pose` と同じです。
-作った版は `finalize_generation` の `profile` で使います。
+作った版は `deliver_generation` の `profile` で使います。
 
 ### Generation の読み取り
 
@@ -223,15 +224,15 @@ rating は人間の判定として読むもので、Agent が書くものでは�
 `reference` は `get_catalog_pose` と同じ形（pin が無ければ `null`）で、Request が pose を持たなければ `drawn_pose` 自体が `null` です。
 `get_generation` の `pose_reference`（この Generation 自身が pin か）とは別物です。
 
-`refines_generation`（`{id, short_id, rating}`）は、finalize / repair / masked_redraw の出力 Generation について、その `refines_generation_id` が指す仕上げ前の Generation です。
+`refines_generation`（`{id, short_id, rating}`）は、redraw / deliver / repair / masked_redraw の出力 Generation について、その `refines_generation_id` が指す元の Generation です。
 raw Generation では `null` なので、仕上げ済みの ID だけ渡されても `get_generation` で元の Generation を引けます。
 
-`get_generation` の `comfy_job.prompt_not_reusable` が null でない Generation（repair / masked_redraw / repair 付き finalize の出力）は、render_facts の prompt が mask 領域用に削られています。
+`get_generation` の `comfy_job.prompt_not_reusable` が null でない Generation（repair / masked_redraw の出力と、古い repair 付き finalize の出力）は、render_facts の prompt が mask 領域用に削られています。
 これを generate の prompt として使わず、その Generation から `derive_request` を起こします（[api.md](api.md#generation-context)）。
 
 `get_generation_lineage` は Request 単位で祖先と子孫を辿ります。
 各ノードは `{depth, via, purpose_or_kind, request: {id, short_id, recipe, raw_instruction, created_at}, generations}` です。
-祖先は「この Request が材料に使った Generation の Request」（`via: "reference"`、`purpose_or_kind` は素材参照の purpose）と「この Request の Generation が仕上げ元にした Generation の Request」（`via: "refinement"`、`purpose_or_kind` は仕上げた Request の kind、例えば `finalize`）の両方を含み、子孫はその逆方向です。
+祖先は「この Request が材料に使った Generation の Request」（`via: "reference"`、`purpose_or_kind` は素材参照の purpose）と「この Request の Generation が仕上げ元にした Generation の Request」（`via: "refinement"`、`purpose_or_kind` は仕上げた Request の kind、例えば `deliver`）の両方を含み、子孫はその逆方向です。
 同じ Request を二度訪れず、`depth` 段目で止まります。
 
 ### derive_request
@@ -240,7 +241,7 @@ Experiment を経由しない単発の派生（「この Generation のポーズ
 Experiment のサイクルに乗せるなら `create_experiment` / `create_run` を使います。
 
 `derive_request` は既存の Generation を起点に `kind: "generate"` の requests 行を積みます。
-`from_generation_id` が finalize / repair / masked_redraw 済みの Generation なら、`refines_generation_id` を辿って raw の Generation まで遡ってから起点にします。
+`from_generation_id` が redraw / deliver / repair / masked_redraw 済みの Generation なら、`refines_generation_id` を generate の Request に着くまで辿って raw の Generation まで遡ってから起点にします。
 仕上げの Request の `parameters` は仕上げの payload で、generate parameters ではないためです。
 連鎖の途中の Generation が仕上げ元を持たない（辿れない）仕上げの Request なら 409 です。
 
@@ -262,7 +263,7 @@ chimera は patch の op を読まないので、needle に依存する op だ�
 `seeds` を渡すなら要素数は `count` と一致しなければなりません。
 
 `reference` は、起点 Generation への purpose `"derive"` の Reference として payload に載ります。
-遡った場合は、指定した Generation への purpose `"derive"` / aspect `"finalized"` の Reference も併せて載ります。
+遡った場合は、指定した Generation への purpose `"derive"` / aspect `"delivered"` の Reference も併せて載ります。
 レスポンスの `derived_from` には、指定した Generation（`requested`）と実際の起点 Generation（`source`）の両方の id / short_id が入ります。
 
 表情、背景、ポーズだけを変える派生は、`prompt.positive` 全体の replace ではなく `prompt.positive.<part>` を target にした patch で書きます。
@@ -271,21 +272,31 @@ chimera は patch の op を読まないので、needle に依存する op だ�
 identity を意図して変えるときだけ `identity_override` に理由を渡します。
 `create_request` で generate の payload を手で組むときも同じ規則です（[worker-protocol.md「prompt のパーツ単位 patch」](worker-protocol.md#prompt-のパーツ単位-patch)、[「identity の上書き」](worker-protocol.md#identity-の上書き)）。
 
-### 仕上げ（finalize / repair / masked_redraw）
+### 仕上げ（redraw / deliver / repair / masked_redraw）
 
-`finalize_generation` / `repair_generation` / `masked_redraw_generation` は、`create_request(kind: "finalize" | "repair" | "masked_redraw", ...)` と同じ requests 行を積む専用窓口です。
-`generation_id` を解決して `payload.generation_id` に short_id を詰め、`options`（finalize は `profile` も）を渡されたときだけ payload に載せます。
+`redraw_generation` / `deliver_generation` / `repair_generation` / `masked_redraw_generation` は、`create_request(kind: "redraw" | "deliver" | "repair" | "masked_redraw", ...)` と同じ requests 行を積む専用窓口です。
+`generation_id` を解決して `payload.generation_id` に short_id を詰め、`options`（deliver は `profile` も）を渡されたときだけ payload に載せます（`redraw_generation` は `options` が必須）。
 options は REST の payload と同じ zod スキーマで検証します。
-`create_request` で payload を手で組む代わりに、これら3つを使います。
+`create_request` で payload を手で組む代わりに、これら4つを使います。
 どれも出力は source Generation を仕上げ元（`refines_generation_id`）とする Generation として記録されます。
-options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[finalize](worker-protocol.md#finalize)」「[repair](worker-protocol.md#repair)」「[masked_redraw](worker-protocol.md#masked_redraw)」節が正本です。
+options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[redraw](worker-protocol.md#redraw)」「[deliver](worker-protocol.md#deliver)」「[repair](worker-protocol.md#repair)」「[masked_redraw](worker-protocol.md#masked_redraw)」節が正本です。
 
-`finalize_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `finalize` の Preset を解決して options の土台にします。
-展開は `create_request` の finalize payload と同じ処理を通ります（[finalize profile](worker-protocol.md#finalize-profile)）。
+`redraw_generation` は絵を変える操作を `options.method` で 1 つだけ選びます。`canvas`（キャンバス全体の描き直し）、`hires`（同じ seed で大きく描き直す。Anima の generate の出力だけ）、`light`（光の入れ直し）で、method ごとに受けるキーが違います。
+canvas と light は Anima の絵（repair / masked_redraw / redraw の出力を含む）に使え、どの method も納品済みの絵は受けません。
+省略した値の既定は `list_catalog` の `recipes[].redraw`、dial の語は `recipes[].dials.redraw` です。
+
+`deliver_generation` は切り抜いて背景・紫縁・ボケなどを付けます。
+切り抜きの asset（alpha / depth / cut）は最初の deliver が作って入力の Generation に付け、同じ絵への次の deliver は使い回します。
+`light` を省略すると、系譜でいちばん近い `light` method の redraw の光源を引き継ぎ、紫縁の向きもそれに揃います。
+`backdrop: null` は透過納品（`transparent: false` なら除く）で、`transparent: true` はその明示形です。
+省略した option の既定は `list_catalog` の `recipes[].deliver.defaults`、dial の語（`keep_legwear`）は `recipes[].dials.deliver` です。
+
+`deliver_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `deliver` の Preset を解決して options の土台にします。
+展開は `create_request` の deliver payload と同じ処理を通ります（[deliver profile](worker-protocol.md#deliver-profile)）。
 options に同じキーがあればそちらが勝ち、明示の `null` も上書きとして扱います。
 
 `repair_generation` は hands / feet 専用です。
-`repair_generation` / `masked_redraw_generation` は raw と finalize 済みのどちらの Generation も指定できます。
+`repair_generation` / `masked_redraw_generation` は raw か描き直した絵を指定できます。納品済みの絵は受けません。
 
 `masked_redraw_generation` は `regions`（1つ以上の、互いに重ならない正規化矩形）と空でない `prompt_patch` を必須とし、`denoise`（0 超 0.75 以下、または dial の語）、`mask_padding`、`mask_feather`、`size`、`seeds` を任意で受けます（[api.md](api.md#generic-masked-redraw)）。
 `pad` / `feather` は alias として受け、`mask_padding` / `mask_feather` に正規化して保存します。
@@ -353,9 +364,9 @@ requests 行を積む tool と、その行の `created_by` は次の通りです
 | `create_experiment` / `create_run`（自動起票） | `generate`（`run_id` 付き、`idempotency_key` は `run:{run_id}`） | `system` |
 | `create_request` | 指定した kind | `mcp` |
 | `derive_request` / `plain_render` | `generate` | `mcp` |
-| `finalize_generation` / `repair_generation` / `masked_redraw_generation` | `finalize` / `repair` / `masked_redraw` | `mcp` |
+| `redraw_generation` / `deliver_generation` / `repair_generation` / `masked_redraw_generation` | `redraw` / `deliver` / `repair` / `masked_redraw` | `mcp` |
 
-`create_experiment` / `create_run` 以外は `POST /api/v1/requests` と同じ `src/lib/requests.ts` の `createRequest` を通り、preset の pin と finalize profile の展開もそこで hash の計算より前に行います。
+`create_experiment` / `create_run` 以外は `POST /api/v1/requests` と同じ `src/lib/requests.ts` の `createRequest` を通り、preset の pin と deliver profile の展開もそこで hash の計算より前に行います。
 Run 作成の自動起票も同じ規則で pin してから hash を取るので、同じ内容の request はどの経路でも同じ hash になります。
 worker から見える requests 行の形と claim / 状態遷移は、REST で積んだ行と変わりません。
 新しく積んだ行は WorkerHub に `queued` として通知します（[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）。
