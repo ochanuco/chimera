@@ -7,7 +7,7 @@ import { PromptChips } from '../components/PromptChips';
 import type { ExperimentStatus } from '../../types';
 import { StatusBadge } from './Experiments';
 import { CompareView } from './Compare';
-import type { ExperimentCompare } from '../../lib/compare-items';
+import type { ExperimentCompare, ExperimentMatrix } from '../../lib/compare-items';
 
 export interface ExperimentDetailRunRequest {
   id: string;
@@ -541,12 +541,60 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
   );
 }
 
+/** Run（行）× seed（列）の全 Generation。 */
+function renderExperimentMatrix(matrix: ExperimentMatrix, omittedRuns: number) {
+  return (
+    <section id="experiment-compare" class="exp-compare">
+      <h3>Compare</h3>
+      {omittedRuns > 0 ? (
+        <p class="empty-state">先頭 {matrix.rows.length} 件の Run だけを表示しています（ほか {omittedRuns} 件）。</p>
+      ) : null}
+      <div class="exp-matrix-scroll">
+        <table class="exp-matrix">
+          <thead>
+            <tr>
+              <th></th>
+              {matrix.seeds.map((seed) => (
+                <th class="exp-matrix-seed">{seed}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.rows.map((row) => (
+              <tr>
+                <th class="exp-matrix-arm">{row.label}</th>
+                {row.cells.map((cell) =>
+                  cell ? (
+                    <td class="exp-matrix-cell">
+                      <a href={`/g/${cell.short_id}`}>
+                        <img src={`/g/${cell.short_id}/preview`} alt="" loading="lazy" />
+                      </a>
+                      <div class="exp-matrix-meta">
+                        <span class="exp-matrix-id">{cell.short_id}</span>
+                        {cell.rating ? <span class={`exp-matrix-rating ${cell.rating}`}>{cell.rating}</span> : null}
+                      </div>
+                    </td>
+                  ) : (
+                    <td class="exp-matrix-cell exp-matrix-empty">
+                      <div class="compare-placeholder">生成待ち</div>
+                    </td>
+                  ),
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /** Run を列にした Compare 表。選んだ seed ごとの Generation を並べ、seed が複数あれば切り替えリンクを出す。 */
 function renderExperimentCompare(shortId: string, compare: ExperimentCompare) {
   const generationShortIds = compare.items.filter((item) => !item.placeholder).map((item) => item.short_id);
   return (
-    <section id="experiment-compare" class="exp-compare">
-      <h3>Compare</h3>
+    <section id="experiment-compare-detail" class="exp-compare">
+      <h3>seed ごとの差分</h3>
       {compare.seeds.length > 1 ? (
         <p class="exp-compare-seeds">
           seed:{' '}
@@ -554,7 +602,7 @@ function renderExperimentCompare(shortId: string, compare: ExperimentCompare) {
             seed === compare.selectedSeed ? (
               <strong class="exp-compare-seed current">{seed}</strong>
             ) : (
-              <a class="exp-compare-seed" href={`/experiments/${shortId}?seed=${seed}#experiment-compare`}>
+              <a class="exp-compare-seed" href={`/experiments/${shortId}?seed=${seed}#experiment-compare-detail`}>
                 {seed}
               </a>
             ),
@@ -562,7 +610,7 @@ function renderExperimentCompare(shortId: string, compare: ExperimentCompare) {
         </p>
       ) : null}
       {compare.omittedRuns > 0 ? (
-        <p class="empty-state">先頭 {compare.items.length - (compare.baseColumn ? 1 : 0)} 件の Run だけを表示しています（ほか {compare.omittedRuns} 件）。</p>
+        <p class="empty-state">先頭 {compare.items.length} 件の Run だけを表示しています（ほか {compare.omittedRuns} 件）。</p>
       ) : null}
       {generationShortIds.length >= 2 ? (
         <p>
@@ -668,6 +716,7 @@ export function ExperimentDetailPage({
       </table>
 
       <h2>Runs</h2>
+      {compare && compare.matrix.rows.length >= 1 ? renderExperimentMatrix(compare.matrix, compare.omittedRuns) : null}
       {compare && compare.items.length >= 2 ? renderExperimentCompare(experiment.short_id, compare) : null}
       {renderExpFactsTable(experiment.runs, baseline)}
       {experiment.runs.length === 0 ? (

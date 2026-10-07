@@ -1380,6 +1380,16 @@ details.section .section-body { margin-top: 0.6rem; }
 .compare-legend { font-size: 0.75rem; color: var(--text-dim); margin: 0.75rem 0 0.25rem; }
 /* Experiment Detail の Compare セクション（Run を列にした Compare 表、docs/ui.md「Experiment View」） */
 .exp-compare { margin-bottom: 1.5rem; }
+.exp-matrix-scroll { overflow-x: auto; }
+.exp-matrix { border-collapse: separate; border-spacing: 0.5rem; }
+.exp-matrix th { font-weight: 600; text-align: left; vertical-align: top; white-space: nowrap; }
+.exp-matrix-seed { font-family: ui-monospace, monospace; color: var(--text-dim); font-size: 0.8rem; }
+.exp-matrix-cell { width: 180px; min-width: 180px; vertical-align: top; }
+.exp-matrix-cell img { display: block; width: 180px; height: auto; border-radius: 6px; background: var(--checker); }
+.exp-matrix-meta { display: flex; justify-content: space-between; gap: 0.4rem; font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.exp-matrix-rating.good { color: var(--good); }
+.exp-matrix-rating.bad { color: var(--bad); }
+.exp-matrix-empty .compare-placeholder { width: 180px; height: auto; aspect-ratio: 5 / 8; }
 .exp-compare-seeds { display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: baseline; font-size: 0.85rem; color: var(--text-dim); }
 .exp-compare-seed { font-family: ui-monospace, monospace; }
 .exp-compare-seed.current { color: var(--text); }
