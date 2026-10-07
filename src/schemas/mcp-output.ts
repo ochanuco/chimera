@@ -240,7 +240,8 @@ export const mcpOutputSchemas = {
   set_decision: runSchema,
 
   create_request: createdRequestSchema,
-  finalize_generation: createdRequestSchema,
+  redraw_generation: createdRequestSchema,
+  deliver_generation: createdRequestSchema,
   repair_generation: createdRequestSchema,
   masked_redraw_generation: createdRequestSchema,
   get_request: requestSchema,

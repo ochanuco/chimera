@@ -121,18 +121,18 @@ describe('readers work from Request and Generation columns', () => {
     expect(res.body.patches).toEqual(patches);
   });
 
-  it('promote_to_profile and the finalize profile expansion read the Request kind and recipe', async () => {
+  it('promote_to_profile and the deliver profile expansion read the Request kind and recipe', async () => {
     const recipe = uniqueRecipe();
     const source = await createGeneration({ requestOverrides: { recipe } });
-    const finalize = await postJson<{ id: string }>('/api/v1/requests', {
-      kind: 'finalize',
-      payload: { generation_id: source.generation.id, options: { denoise: 0.6 } },
+    const deliver = await postJson<{ id: string }>('/api/v1/requests', {
+      kind: 'deliver',
+      payload: { generation_id: source.generation.id, options: { keep_legwear: 0.6 } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
-    expect(finalize.status).toBe(201);
+    expect(deliver.status).toBe(201);
     const delivered = await createGeneration({
-      requestId: finalize.body.id,
+      requestId: deliver.body.id,
       requestOverrides: { recipe },
       jobOverrides: { source_generation_id: source.generation.id },
     });
@@ -148,14 +148,14 @@ describe('readers work from Request and Generation columns', () => {
     const profiled = await postJson<{ payload: { options: Record<string, unknown>; profile: { name: string; version: number } } }>(
       '/api/v1/requests',
       {
-        kind: 'finalize',
+        kind: 'deliver',
         payload: { generation_id: source.generation.id, profile: { name: 'daily' } },
         idempotency_key: crypto.randomUUID(),
         created_by: 'gui',
       },
     );
     expect(profiled.status).toBe(201);
-    expect(profiled.body.payload.options).toMatchObject({ denoise: 0.6 });
+    expect(profiled.body.payload.options).toMatchObject({ keep_legwear: 0.6 });
     expect(profiled.body.payload.profile).toEqual({ name: 'daily', version: 1 });
   });
 

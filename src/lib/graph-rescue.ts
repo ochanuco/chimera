@@ -1,5 +1,5 @@
-// original.png が purge / 再圧縮で消える前に、ComfyUI が書き込む `prompt` text chunk から
-// 生成グラフを comfy_jobs.graph へ救出する。original-purge.ts / original-recompress.ts が共有する。
+// original.png が再圧縮で置き換わる前に、ComfyUI が書き込む `prompt` text chunk から
+// 生成グラフを comfy_jobs.graph へ救出する。original-recompress.ts が使う。
 
 import { nowIso } from './db';
 import { extractPngTextChunk } from './image-meta';

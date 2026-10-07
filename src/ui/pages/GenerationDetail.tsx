@@ -3,10 +3,9 @@ import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import type { GenerationFamily } from '../../lib/generation-family';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
-import { FinalizeSection } from '../components/FinalizeSection';
-import type { BackdropOption } from '../components/FinalizeFields';
-import type { FinalizeDials, FinalizeProfileOption } from '../finalize-options';
-import type { FinalizeDefaults, FinalizeDof, FinalizeLight } from '../../lib/catalogs';
+import { RedrawSection, type RedrawFormData } from '../components/RedrawSection';
+import { DeliverSection, type DeliverFormData } from '../components/DeliverSection';
+import { RequestSection, type RequestStatusLine } from '../components/RequestSection';
 import { NoteSection } from '../components/NoteSection';
 import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
@@ -24,7 +23,7 @@ export interface GenerationDetailData {
   short_id: string;
   canonical_url: string;
   image: { url: string };
-  /** original.png が保持ジョブで削除された時刻。null なら未削除。 */
+  /** original.png が過去の保持ジョブで削除された時刻。null なら未削除。 */
   original_purged_at: string | null;
   character: { id: string; name: string } | null;
   created_at: string;
@@ -66,19 +65,20 @@ export interface GenerationDetailData {
   original_filename: string | null;
 }
 
-/** Latest finalize requests targeting this Generation (GET /api/v1/requests?kind=finalize&generation_id=). */
-export interface FinalizeRequestSummary {
+/** Latest requests of any kind targeting this Generation (GET /api/v1/requests?generation_id=). */
+export interface RequestSummary {
   id: string;
+  kind: string;
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   created_at: string;
   error: string | null;
   /** done の場合の納品 Generation の short_id（resolveGenerationShortIds で解決済み）。 */
   resultShortId: string | null;
-  /** worker が done の `result` に書く解決済みの値 (docs/worker-protocol.md「finalize profile」)。opaque。 */
+  /** worker が done の `result` に書く解決済みの値 (docs/worker-protocol.md「deliver profile」)。opaque。 */
   resolvedOptions: Record<string, unknown> | null;
 }
 
-/** `options` が requested のまま、`result.resolved_options` が worker の解決値 — このGenerationを産んだ finalize/repair/masked_redraw request から。 */
+/** `options` が requested のまま、`result.resolved_options` が worker の解決値 — このGenerationを産んだ redraw/deliver/repair/masked_redraw (または古い finalize) request から。 */
 export interface ProducedByOptions {
   requested: Record<string, unknown> | null;
   resolved: Record<string, unknown>;
@@ -160,16 +160,10 @@ export function GenerationDetailPage({
   tags,
   family,
   imageMeta,
-  finalizeRequests,
-  finalizeDials,
-  finalizeDefaults = null,
-  finalizeDof = null,
-  finalizeLight = null,
-  finalizeBackdropColor = null,
-  finalizeProfiles,
-  finalizeBackdrops = [],
-  finalizeRecipeRef = null,
-  finalizeCatalogVersion = null,
+  requests,
+  delivered,
+  redrawForm,
+  deliverForm,
   canPromoteToProfile,
   producedByOptions,
 }: {
@@ -179,19 +173,14 @@ export function GenerationDetailPage({
   /** 親 / 子 / 兄弟カード (素材参照・仕上げ元・Experiment Run)。 */
   family: GenerationFamily;
   imageMeta: ImageMeta | null;
-  /** 最新の finalize request 一覧 (最大5件、新しい順)。GUI はここに積むだけで進捗もここで見る。 */
-  finalizeRequests: FinalizeRequestSummary[];
-  finalizeDials: FinalizeDials | null;
-  finalizeDefaults?: FinalizeDefaults | null;
-  finalizeDof?: FinalizeDof | null;
-  finalizeLight?: FinalizeLight | null;
-  finalizeBackdropColor?: string | null;
-  finalizeProfiles: FinalizeProfileOption[];
-  finalizeBackdrops?: BackdropOption[];
-  finalizeRecipeRef?: string | null;
-  finalizeCatalogVersion?: string | null;
+  /** 最新の request 一覧 (最大5件、新しい順)。GUI はここに積むだけで進捗もここで見る。 */
+  requests: RequestSummary[];
+  /** 納品済みの絵 (deliver / finalize が産んだ絵)。描き直し・納品の欄は出さない。 */
+  delivered: boolean;
+  redrawForm: RedrawFormData;
+  deliverForm: DeliverFormData;
   canPromoteToProfile: boolean;
-  /** このGeneration自身を産んだ finalize/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
+  /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
 }) {
   const parentCards = family.parents;
@@ -242,22 +231,18 @@ export function GenerationDetailPage({
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />
 
-          <FinalizeSection
-            shortId={data.short_id}
-            requests={finalizeRequests}
-            open={!data.refines_generation}
-            dials={finalizeDials}
-            defaults={finalizeDefaults}
-            dof={finalizeDof}
-            light={finalizeLight}
-            backdropColor={finalizeBackdropColor}
-            profiles={finalizeProfiles}
-            backdrops={finalizeBackdrops}
-            recipeRef={finalizeRecipeRef}
-            catalogVersion={finalizeCatalogVersion}
-            canPromoteToProfile={canPromoteToProfile}
-            purged={Boolean(data.original_purged_at)}
-          />
+          {delivered ? (
+            <p class="image-meta">納品済みの絵なので、描き直し・納品は元の絵から行います。</p>
+          ) : data.original_purged_at ? (
+            <p class="image-meta">原寸は破棄済みのため描き直し・納品は積めません。</p>
+          ) : (
+            <>
+              <RedrawSection shortId={data.short_id} form={redrawForm} />
+              <DeliverSection shortId={data.short_id} form={deliverForm} />
+            </>
+          )}
+
+          <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
 
           {producedByOptions ? (
             <details class="section" open>

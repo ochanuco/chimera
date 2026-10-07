@@ -1,10 +1,17 @@
-import { DOF_VIEWFINDER_LABELS, LIGHT_FROM_CHOICES, LIGHT_SCENE_LABELS } from './FinalizeFields';
+import { DOF_VIEWFINDER_LABELS, LIGHT_FROM_CHOICES, LIGHT_SCENE_LABELS } from './OptionControls';
 
 const LIGHT_FROM_LABELS: Record<string, string> = Object.fromEntries(LIGHT_FROM_CHOICES);
 
 const OPTION_LABELS: Record<string, string> = {
+  method: '方法',
   deliver_only: 'deliver only',
   denoise: 'denoise',
+  size: 'size',
+  route: 'route',
+  keep_regions: '残す範囲',
+  keep_strength: 'keep strength',
+  scene: '光源',
+  from: '光の向き',
   hires: 'hires',
   hires_denoise: 'hires denoise',
   repin: 'repin',
@@ -57,6 +64,8 @@ function optionRows(key: string, value: unknown): Row[] {
     const scene = typeof value.scene === 'string' ? (LIGHT_SCENE_LABELS[value.scene] ?? value.scene) : formatScalar(value.scene);
     return [[label, `${scene}（${directionLabel(value.from)}）`]];
   }
+  if (key === 'from') return [[label, directionLabel(value)]];
+  if (key === 'scene' && typeof value === 'string') return [[label, LIGHT_SCENE_LABELS[value] ?? value]];
   if (key === 'stroke_light') {
     if (value === 'even') return [[label, '均等']];
     if (value === 'none') return [[label, '無し']];
@@ -66,7 +75,7 @@ function optionRows(key: string, value: unknown): Row[] {
     if (value === null) return [[label, '透過 PNG']];
     if (typeof value === 'string' && value.startsWith('#')) return [[label, `単色 ${value}`]];
   }
-  if (key === 'repair_regions' && Array.isArray(value)) return [[label, `${value.length} 箇所`]];
+  if ((key === 'repair_regions' || key === 'keep_regions') && Array.isArray(value)) return [[label, `${value.length} 箇所`]];
   if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return [[label, value.join(' + ')]];
   return [[label, formatScalar(value)]];
 }

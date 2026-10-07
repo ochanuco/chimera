@@ -8,15 +8,24 @@ import { gone, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
-import { defaultRecipeRef, findProducingRequest } from '../lib/requests';
-import { getCatalog, findFinalizeDials, findFinalizeDefaults, findFinalizeDof, findFinalizeLight, findFinalizeBackdropColor, findBackdrops, type FinalizeDefaults, type FinalizeDof, type FinalizeLight } from '../lib/catalogs';
-import { listFinalizeProfiles } from '../lib/presets';
-import { isFinalizeResult } from '../lib/promote';
-import type { FinalizeDials } from '../ui/finalize-options';
+import { defaultRecipeRef, findProducingRequest, isDeliveredRequest, requestOfGeneration } from '../lib/requests';
+import {
+  getCatalog,
+  findDeliverDials,
+  findDeliverDefaults,
+  findDeliverDof,
+  findDeliverBackdropColor,
+  findRedrawDials,
+  findRedrawDefaults,
+  findRedrawLight,
+  findBackdrops,
+} from '../lib/catalogs';
+import { listDeliverProfiles } from '../lib/presets';
+import { isDeliverResult } from '../lib/promote';
 import {
   GenerationDetailPage,
   type GenerationDetailData,
-  type FinalizeRequestSummary,
+  type RequestSummary,
   type ProducedByOptions,
 } from '../ui/pages/GenerationDetail';
 import { GenerationCard } from '../ui/components/GenerationCard';
@@ -37,10 +46,11 @@ async function resolveImageMeta(bucket: R2Bucket, generation: GenerationRow): Pr
   return getImageMeta(bucket, generation.r2_object_key);
 }
 
-/** Shape shared by FinalizeRequestSummary / RepairRequestSummary: both requests kinds carry generation_id + options-only payloads. */
+/** Summaries of the requests that target one Generation; every kind carries a generation_id + options-only payload. */
 async function requestSummaries<
   T extends {
     id: string;
+    kind: string;
     status: string;
     created_at: string;
     error: string | null;
@@ -51,6 +61,7 @@ async function requestSummaries<
   const data = (await res.json()) as {
     items: {
       id: string;
+      kind: string;
       status: string;
       created_at: string;
       error: string | null;
@@ -63,6 +74,7 @@ async function requestSummaries<
     (r) =>
       ({
         id: r.id,
+        kind: r.kind,
         status: r.status,
         created_at: r.created_at,
         error: r.error,
@@ -72,7 +84,7 @@ async function requestSummaries<
   );
 }
 
-/** `{requested, resolved}` for the finalize/repair/masked_redraw request that produced `generation` — null when it wasn't produced by one, or the worker hasn't written `resolved_options` yet. */
+/** `{requested, resolved}` for the redraw/deliver/repair/masked_redraw (or older finalize) request that produced `generation` — null when it wasn't produced by one, or the worker hasn't written `resolved_options` yet. */
 async function findProducedByOptions(db: D1Database, generationId: string): Promise<ProducedByOptions | null> {
   const row = await findProducingRequest(db, generationId);
   if (!row || !row.result_json) return null;
@@ -120,7 +132,7 @@ images.get('/:shortId', async (c) => {
     });
   }
 
-  const [detailRes, tagRows, imageMeta, finalizeRequestsRes] = await Promise.all([
+  const [detailRes, tagRows, imageMeta, requestsRes] = await Promise.all([
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listTagsForTarget(db, 'generation_tags', generation.id),
     resolveImageMeta(c.env.IMAGES, generation),
@@ -128,28 +140,21 @@ images.get('/:shortId', async (c) => {
   ]);
   const data = (await detailRes.json()) as GenerationDetailData;
 
-  // Finalize セクション: 最新の finalize/repair request の状態表示のみ（GUI は request を積むだけ、worker-protocol.md）。
-  const finalizeRequests = await requestSummaries<FinalizeRequestSummary>(db, finalizeRequestsRes);
+  // Requests セクション: 最新の request の状態表示（GUI は request を積むだけ、worker-protocol.md）。
+  const requests = await requestSummaries<RequestSummary>(db, requestsRes);
 
   const recipe = data.request?.recipe ?? null;
-  const [catalogDoc, finalizeProfiles] = await Promise.all([
+  const [catalogDoc, deliverProfiles] = await Promise.all([
     recipe ? getCatalog(db, defaultRecipeRef(c.env)) : Promise.resolve(null),
-    recipe ? listFinalizeProfiles(db, recipe) : Promise.resolve([]),
+    recipe ? listDeliverProfiles(db, recipe) : Promise.resolve([]),
   ]);
-  const finalizeDials: FinalizeDials | null = recipe && catalogDoc ? findFinalizeDials(catalogDoc.doc, recipe) : null;
-  const finalizeDefaults: FinalizeDefaults | null = recipe && catalogDoc ? findFinalizeDefaults(catalogDoc.doc, recipe) : null;
-  const finalizeDof: FinalizeDof | null = recipe && catalogDoc ? findFinalizeDof(catalogDoc.doc, recipe) : null;
-  const finalizeLight: FinalizeLight | null = recipe && catalogDoc ? findFinalizeLight(catalogDoc.doc, recipe) : null;
-  const finalizeBackdropColor = recipe && catalogDoc ? findFinalizeBackdropColor(catalogDoc.doc, recipe) : null;
-  // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
-  const finalizeBackdrops = catalogDoc ? findBackdrops(catalogDoc.doc).map(({ name, label }) => ({ name, label })) : [];
-  const finalizeRecipeRef = recipe ? defaultRecipeRef(c.env) : null;
-  const finalizeCatalogVersion = catalogDoc?.row.updated_at ?? null;
+  const doc = recipe && catalogDoc ? catalogDoc.doc : null;
+  const producing = generation.request_id ? await requestOfGeneration(db, generation).catch(() => null) : null;
+  const delivered = producing ? isDeliveredRequest(producing) : false;
 
-  // promote-profile の表示条件: rating good で、かつこの Generation が finalize request の
+  // promote-profile の表示条件: rating good で、かつこの Generation が deliver request の
   // 納品物であること。full page のみで引く追加クエリなので card / json には出さない。
-  const canPromoteToProfile =
-    data.rating === 'good' && (await isFinalizeResult(db, generation));
+  const canPromoteToProfile = data.rating === 'good' && (await isDeliverResult(db, generation));
 
   const producedByOptions = await findProducedByOptions(db, generation.id);
 
@@ -163,16 +168,26 @@ images.get('/:shortId', async (c) => {
       tags={tagRows.map((t) => ({ id: t.id, name: t.name }))}
       family={family}
       imageMeta={imageMeta}
-      finalizeRequests={finalizeRequests}
-      finalizeDials={finalizeDials}
-      finalizeDefaults={finalizeDefaults}
-      finalizeDof={finalizeDof}
-      finalizeLight={finalizeLight}
-      finalizeBackdropColor={finalizeBackdropColor}
-      finalizeProfiles={finalizeProfiles}
-      finalizeBackdrops={finalizeBackdrops}
-      finalizeRecipeRef={finalizeRecipeRef}
-      finalizeCatalogVersion={finalizeCatalogVersion}
+      requests={requests}
+      delivered={delivered}
+      redrawForm={{
+        dials: doc && recipe ? findRedrawDials(doc, recipe) : null,
+        defaults: doc && recipe ? findRedrawDefaults(doc, recipe) : null,
+        light: doc && recipe ? findRedrawLight(doc, recipe) : null,
+        hiresAvailable: producing?.kind === 'generate',
+      }}
+      deliverForm={{
+        dials: doc && recipe ? findDeliverDials(doc, recipe) : null,
+        defaults: doc && recipe ? findDeliverDefaults(doc, recipe) : null,
+        dof: doc && recipe ? findDeliverDof(doc, recipe) : null,
+        light: doc && recipe ? findRedrawLight(doc, recipe) : null,
+        backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
+        profiles: deliverProfiles,
+        // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
+        backdrops: doc ? findBackdrops(doc).map(({ name, label }) => ({ name, label })) : [],
+        recipeRef: recipe ? defaultRecipeRef(c.env) : null,
+        catalogVersion: catalogDoc?.row.updated_at ?? null,
+      }}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
     />,
