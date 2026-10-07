@@ -523,7 +523,7 @@ export async function claimRequest(
   const requeued = await requeueStaleRunning(db, nowIso());
 
   // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも同じ行を2度渡さない (worker-protocol.md「Claim」)。
-  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver'] as RequestKind[]);
+  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'redraw', 'repair', 'masked_redraw', 'deliver'] as RequestKind[]);
   const placeholders = kindsList.map(() => '?').join(', ');
   const claimedAt = nowIso();
   const row = await db

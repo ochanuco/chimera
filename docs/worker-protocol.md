@@ -203,14 +203,13 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize", "redraw", "repair", "masked_redraw", "deliver"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
 段階 2 の box は4つとも受けます。旧 worker を混在させる場合は、旧 worker に
 `kinds: ["generate", "repair"]` を指定して masked_redraw を claim しないようにし、
-対応版 worker だけが `masked_redraw` を含めます。`kinds` は `finalize` も受け、作成済みで queued のまま残った
-古い finalize 行を worker が引き取って流せます。
+対応版 worker だけが `masked_redraw` を含めます。`kinds` に `finalize` や `import` を入れると 400 です。
 
 queued の最古の 1 件を `running` にして 200 で返します。無ければ 204。1 文の
 `UPDATE ... WHERE id = (SELECT id FROM requests WHERE status = 'queued' AND kind IN (...) ORDER BY created_at LIMIT 1) RETURNING *`
@@ -415,9 +414,7 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 
 ### finalize
 
-`kind = finalize` は redraw と deliver に分かれる前の種類で、既存の行を読むためだけに残しています。
-行の読み取り・一覧・`kind` の絞り込み・claim は変わらず動き（queued のまま残った行は worker が流せる）、
-`requests.kind` の CHECK も値を持ち続けますが、新しく作ることはできません（上記のとおり 400）。
+`kind = finalize` は redraw と deliver に分かれる前の種類です。古い行は読み取り専用で残り、一覧・`kind` の絞り込み・表示は動きますが、作成も claim もできません（`requests.kind` の CHECK は値を持ち続けます）。
 finalize の出力 Generation は納品済みの絵として扱い、redraw / repair / deliver の入力にはできません。
 
 ### redraw

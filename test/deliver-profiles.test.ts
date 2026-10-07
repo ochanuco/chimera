@@ -9,6 +9,7 @@ import {
   findDeliverDof,
   findDeliverBackdropColor,
   findRedrawDials,
+  findRepairDials,
   findRedrawDefaults,
   findRedrawLight,
 } from '../src/lib/catalogs';
@@ -560,6 +561,10 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
     expect(found).not.toBeNull();
     expect(findDeliverDials(found!.doc, recipe)).toEqual({ keep_legwear: { on: 0.62 } });
     expect(findRedrawDials(found!.doc, recipe)).toEqual({ denoise: { tidy: 0.65, heavy: 0.8 } });
+    expect(findRepairDials(found!.doc, recipe)).toBeNull();
+    const withRepair = { ...found!.doc, recipes: [{ name: recipe, poses: [], dials: { repair: { denoise: { light: 0.4 } } } }] };
+    expect(findRepairDials(withRepair, recipe)).toEqual({ denoise: { light: 0.4 } });
+    expect(findRepairDials(found!.doc, 'nonexistent-recipe')).toBeNull();
     expect(findDeliverDials(found!.doc, 'nonexistent-recipe')).toBeNull();
     expect(findRedrawDials(found!.doc, 'nonexistent-recipe')).toBeNull();
   });

@@ -369,11 +369,13 @@ describe('Web GUI pages', () => {
 
     const deliveredHtml = await (await req(`/g/${delivered.generation.short_id}`)).text();
     expect(deliveredHtml).not.toContain('redraw-form');
+    expect(deliveredHtml).not.toContain('repair-form');
     expect(deliveredHtml).not.toContain('deliver-form');
     expect(deliveredHtml).toContain('納品済みの絵なので');
 
     const rawHtml = await (await req(`/g/${source.short_id}`)).text();
     expect(rawHtml).toContain('<details class="section" open=""><summary>描き直し（Redraw）</summary>');
+    expect(rawHtml).toContain('<summary>手足の描き直し（Repair）</summary>');
     expect(rawHtml).toContain('<details class="section" open=""><summary>納品（Deliver）</summary>');
     expect(rawHtml).not.toContain('納品済みの絵なので');
   });
@@ -386,6 +388,7 @@ describe('Web GUI pages', () => {
     });
     const redrawnHtml = await (await req(`/g/${redrawn.generation.short_id}`)).text();
     expect(redrawnHtml).toContain('redraw-form');
+    expect(redrawnHtml).toContain('repair-form');
     expect(redrawnHtml).toContain('deliver-form');
     // hires re-renders a generate output only
     expect(redrawnHtml).toMatch(/name="redraw_method" value="hires" disabled/);
@@ -402,6 +405,7 @@ describe('Web GUI pages', () => {
       });
       const html = await (await req(`/g/${delivered.generation.short_id}`)).text();
       expect(html).not.toContain('redraw-form');
+      expect(html).not.toContain('repair-form');
       expect(html).not.toContain('deliver-form');
       expect(html).toContain('納品済みの絵なので');
     }
@@ -696,6 +700,32 @@ describe('Web GUI pages', () => {
     expect(afterHtml).toContain('request-status-queued');
     expect(afterHtml).toContain('<span class="request-kind">納品</span>');
     expect(afterHtml).toContain('<span class="request-kind">描き直し</span>');
+  });
+
+  it('the Repair form renders parts, region tools and the repair options, and the posted payload creates a repair request', async () => {
+    const { generation } = await createGeneration();
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).toContain('class="option-form repair-form"');
+    expect(html).toContain('data-request-kind="repair"');
+    expect(html).toMatch(/name="repair_part" value="hands" checked/);
+    expect(html).toMatch(/name="repair_part" value="feet" checked/);
+    expect(html).toContain('data-repair-region-tools');
+    for (const name of ['denoise', 'seeds', 'size', 'pad', 'lora']) expect(html).toContain(`name="${name}"`);
+
+    const posted = await postJson<{ kind: string; payload: unknown }>('/api/v1/requests', {
+      kind: 'repair',
+      payload: { generation_id: generation.short_id, options: { parts: ['feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2], size: 1024, pad: 1.5, lora: true } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(posted.status).toBe(201);
+    expect(posted.body.kind).toBe('repair');
+    expect(posted.body.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { parts: ['feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2], size: 1024, pad: 1.5, lora: true },
+    });
+    const after = await (await req(`/g/${generation.short_id}`)).text();
+    expect(after).toContain('<span class="request-kind">repair</span>');
   });
 
   it('POST /api/v1/requests with kind finalize is rejected, naming redraw and deliver', async () => {

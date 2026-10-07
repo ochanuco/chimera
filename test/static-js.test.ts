@@ -47,7 +47,8 @@ describe('served app.js', () => {
   });
 
   it('optionsFrom dispatches on the form kind, and the submit handler posts that kind with a kind-prefixed idempotency key', () => {
-    expect(appJs).toContain("return formKind(form) === 'redraw' ? redrawOptionsFrom(form) : deliverOptionsFrom(form, quiet);");
+    expect(appJs).toContain("if (kind === 'redraw') return redrawOptionsFrom(form);");
+    expect(appJs).toContain('return deliverOptionsFrom(form, quiet);');
     expect(appJs).toContain('const kind = formKind(form);');
     expect(appJs).toContain('postOptionRequest(kind, shortId, options, profile)');
     expect(appJs).toContain("idempotency_key: 'gui:' + kind + ':' + generationShortId + ':' + crypto.randomUUID(),");
@@ -132,7 +133,7 @@ describe('served app.js', () => {
   });
 
   it('previews keep_regions as a count and prefixes the preview with the profile for a deliver form', () => {
-    expect(appJs).toContain("parts.push('keep_regions=' + value.length + '箇所');");
+    expect(appJs).toContain("parts.push(key + '=' + value.length + '箇所');");
     expect(appJs).toContain("if (profile) parts.push('profile ' + profile.name");
     expect(appJs).toContain("preview.textContent = '送信内容: ' + parts.join(' · ');");
   });
@@ -168,6 +169,15 @@ describe('served app.js', () => {
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
     expect(appJs).toContain("state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));");
     expect(appJs).toContain('setDofFocus(form, [fx, fy]);');
+  });
+
+  it('repairOptionsFrom builds the repair options from the form and omits blank fields', () => {
+    expect(appJs).toContain('function repairOptionsFrom(form, quiet)');
+    expect(appJs).toContain("qsa('input[name=\"repair_part\"]:checked', form)");
+    expect(appJs).toContain('if (parts.length < 2) options.parts = parts;');
+    expect(appJs).toContain('if (regions.length > 0) options.regions = regions;');
+    expect(appJs).toContain("seedsRaw.split(/[\\s,]+/)");
+    expect(appJs).toContain("if (kind === 'repair') return repairOptionsFrom(form, quiet);");
   });
 
   it('redrawOptionsFrom reads keep regions from the per-form region-drawing state', () => {

@@ -175,6 +175,11 @@ export function findRedrawDials(doc: RecipeCatalogDoc, recipeName: string): Reco
   return findDials(doc, recipeName, 'redraw');
 }
 
+/** `recipes[].dials.repair` for one recipe name — the word -> number map RepairFields renders as buttons. null when absent. */
+export function findRepairDials(doc: RecipeCatalogDoc, recipeName: string): Record<string, Record<string, number>> | null {
+  return findDials(doc, recipeName, 'repair');
+}
+
 export type DeliverDefaults = Record<string, unknown>;
 
 /** `recipes[].deliver.defaults` for one recipe name — the booleans DeliverFields presets its checkboxes from. null when the catalog, recipe, or its deliver.defaults are absent. */

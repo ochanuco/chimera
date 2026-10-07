@@ -16,6 +16,7 @@ import {
   findDeliverDof,
   findDeliverBackdropColor,
   findRedrawDials,
+  findRepairDials,
   findRedrawDefaults,
   findRedrawLight,
   findBackdrops,
@@ -176,6 +177,7 @@ images.get('/:shortId', async (c) => {
         light: doc && recipe ? findRedrawLight(doc, recipe) : null,
         hiresAvailable: producing?.kind === 'generate',
       }}
+      repairForm={{ dials: doc && recipe ? findRepairDials(doc, recipe) : null }}
       deliverForm={{
         dials: doc && recipe ? findDeliverDials(doc, recipe) : null,
         defaults: doc && recipe ? findDeliverDefaults(doc, recipe) : null,

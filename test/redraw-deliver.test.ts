@@ -105,7 +105,7 @@ describe('claim', () => {
     expect(await claim(['redraw', 'deliver'])).toBeNull();
     const stillQueued = await getJson<RequestBody>(`/api/v1/requests/${finalize.body.id}`);
     expect(stillQueued.body.status).toBe('queued');
-    expect((await claim(['finalize']))?.id).toBe(finalize.body.id);
+    expect((await req('/api/v1/requests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worker_id: 'w', kinds: ['finalize'] }) })).status).toBe(400);
   });
 
   it('rejects creating a finalize request and names redraw and deliver', async () => {

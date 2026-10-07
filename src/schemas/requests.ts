@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** finalize は既存の行を読む・claim するためだけに残す。新規には作れない (FINALIZE_CREATION_MESSAGE)。 */
+/** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。 */
 export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver']);
 export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
@@ -335,7 +335,7 @@ export type CreateRequestInput = z.infer<typeof createRequestSchema>;
 
 export const claimRequestSchema = z.object({
   worker_id: z.string().min(1),
-  kinds: z.array(requestKindSchema).min(1).optional(),
+  kinds: z.array(creatableRequestKindSchema).min(1).optional(),
 });
 
 export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
