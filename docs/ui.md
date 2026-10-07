@@ -290,7 +290,7 @@ masked_redrawで書き換えた元のraw Generationがあるとき`from <short_i
 short_idのボタンと同じく0.9秒間`--good`色に変えて✓を出します。サムネイルのリンク内なので
 `<button>`ではなく`role="button"`・`tabindex="0"`の`<span>`で、Enter / Spaceでも動きます。
 このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw（と古いfinalize）
-request（JSONのフィールド名は`finalize_request`のまま）があるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
+request（JSONのフィールド名は`refinement_request`）があるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
 1件以上あるとき送信アイコン付きの`公開済み`ピルを、このGenerationがpose の基準 render として
 pin されているとき`基準 <pose名>`ピル（[domain-model.md](domain-model.md#基準-render-の-pin)）を、両方
 あれば横並びで重ねます。幅600px以下ではbookmarkをサムネイル
