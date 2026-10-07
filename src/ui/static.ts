@@ -900,6 +900,9 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   user-select: none;
 }
 body:has(#compare-bar:not(.hidden)) .gallery-rail { bottom: var(--compare-bar-h); }
+/* レールがスクロールバーの役を持つので、ブラウザのスクロールバーは隠す（ホイール・キー・タッチのスクロールは残る） */
+html:has(.gallery-rail) { scrollbar-width: none; }
+html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
 .gallery-rail-track { position: absolute; inset: 14px 0; }
 .gallery-rail-line { position: absolute; top: 0; bottom: 0; right: 14px; width: 2px; background: var(--border); border-radius: 1px; }
 .gallery-rail-label {
