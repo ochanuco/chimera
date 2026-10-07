@@ -668,7 +668,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "finalize" (payload {generation_id, options?}), or "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
-        '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). created_by is ' +
+        '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch), "redraw" or "deliver" ' +
+        '(payload {generation_id, options}; redraw options require a method: canvas, hires or light). created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +

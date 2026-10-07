@@ -3,7 +3,7 @@ import { SafetyBadge, SafetyStrip, type SafetyView } from './SafetyBadge';
 
 export interface FinalizeRequestBadgeData {
   id: string;
-  kind: 'finalize' | 'repair' | 'masked_redraw';
+  kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver';
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   result_short_id: string | null;
 }
@@ -47,7 +47,7 @@ function SendIcon() {
 
 /** kind の表示ラベル。masked_redraw だけ語間にスペースが入る。 */
 function finalizeKindLabel(kind: FinalizeRequestBadgeData['kind']): string {
-  return kind === 'repair' ? 'repair' : kind === 'masked_redraw' ? 'masked redraw' : 'finalize';
+  return kind === 'masked_redraw' ? 'masked redraw' : kind;
 }
 
 /** サムネイル左上の進捗ピル (docs/ui.md「Gallery」)。live更新 (`[data-request-id]`) の対象なので、

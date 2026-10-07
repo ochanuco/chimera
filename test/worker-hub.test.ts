@@ -71,7 +71,7 @@ function trackMessages(ws: WebSocket): Tracker {
   return { messages, waitFor };
 }
 
-function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize' | 'repair' | 'masked_redraw')[]): void {
+function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver')[]): void {
   ws.send(JSON.stringify({ type: 'hello', worker_id: workerId, kinds }));
 }
 

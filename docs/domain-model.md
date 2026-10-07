@@ -798,12 +798,16 @@ composite       完成画像。generations.r2_object_key が正であり、
 lineart-draft
 lineart-inked
 mask
+alpha           ViTMatte の alpha（8 bit グレー PNG）。deliver が元の絵の
+                Generation に付け、次の deliver が使い回す
 layer
 base
 shadow
 highlight
 part
 depth
+cut             alpha / depth をどう作ったかの json（モデル名・revision・
+                trimap の幅など）。alpha / depth と一緒に付く
 meta
 psd
 ```
