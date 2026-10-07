@@ -66,6 +66,8 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
 /** `resolveDerivationSource` が遡れる仕上げ連鎖の上限。循環データに対する安全弁。 */
 const MAX_DERIVATION_HOPS = 10;
 
+const REFINING_KINDS: readonly RequestKind[] = ['finalize', 'redraw', 'repair', 'masked_redraw', 'deliver'];
+
 export interface DerivationSource {
   generation: GenerationRow;
   request: RequestRow;
@@ -82,7 +84,7 @@ export async function resolveDerivationSource(db: D1Database, generation: Genera
   for (let hop = 0; hop < MAX_DERIVATION_HOPS; hop++) {
     if (!current.refines_generation_id) {
       const request = await requestOfGeneration(db, current);
-      if (request.kind === 'finalize' || request.kind === 'repair' || request.kind === 'masked_redraw') {
+      if (REFINING_KINDS.includes(request.kind)) {
         throw conflict(`refinement request '${request.short_id ?? request.id}' has no source generation; cannot resolve a derivation source`);
       }
       return { generation: current, request };
@@ -193,12 +195,12 @@ export async function getRequestOr404(db: D1Database, id: string): Promise<Reque
   return row;
 }
 
-/** The most recent finalize/repair/masked_redraw request whose `result.generation_ids` includes `generationId` — the request that produced it. */
+/** The most recent finalize/redraw/repair/masked_redraw/deliver request whose `result.generation_ids` includes `generationId` — the request that produced it. */
 export async function findProducingRequest(db: D1Database, generationId: string): Promise<RequestRow | null> {
   return db
     .prepare(
       `SELECT * FROM requests
-       WHERE kind IN ('finalize', 'repair', 'masked_redraw') AND result_json IS NOT NULL
+       WHERE kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver') AND result_json IS NOT NULL
        AND EXISTS (SELECT 1 FROM json_each(result_json, '$.generation_ids') WHERE value = ?)
        ORDER BY created_at DESC LIMIT 1`,
     )
@@ -285,7 +287,7 @@ export async function createRequest(
   // resolveDerivationSource のような別 Generation への遡りはしない、docs/worker-protocol.md「元画像を読みます」）。
   // original purge 済みならその読み出しが失敗するのでここで止める。idempotency 再送（上の early return）は
   // ここを通らないので、purge より前に作られた行の再送は妨げない。
-  if (input.kind === 'finalize' || input.kind === 'repair' || input.kind === 'masked_redraw') {
+  if (REFINING_KINDS.includes(input.kind)) {
     const generationId = (payload as { generation_id?: unknown }).generation_id;
     if (typeof generationId === 'string') {
       const generation = await getGenerationByIdOrShortId(db, generationId);
@@ -459,7 +461,7 @@ export async function listRequests(
   if (filters.generation_id) {
     const generation = await getGenerationByIdOrShortId(db, filters.generation_id);
     if (!generation) return [];
-    conditions.push("kind IN ('finalize', 'repair', 'masked_redraw') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
+    conditions.push("kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
     binds.push(generation.id, generation.short_id);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -512,7 +514,7 @@ export async function claimRequest(
   const requeued = await requeueStaleRunning(db, nowIso());
 
   // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも同じ行を2度渡さない (worker-protocol.md「Claim」)。
-  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'repair', 'masked_redraw'] as RequestKind[]);
+  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver'] as RequestKind[]);
   const placeholders = kindsList.map(() => '?').join(', ');
   const claimedAt = nowIso();
   const row = await db
