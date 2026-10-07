@@ -11,7 +11,7 @@ ComfyUI Generation Manager（Management API + Web GUI）。Cloudflare Workers + 
 ## 検証
 
 ```sh
-npm run typecheck && npm test
+pnpm run typecheck && pnpm test
 ```
 
 テストは @cloudflare/vitest-plugin（旧 vitest-pool-workers の後継）。migrations は `test/apply-migrations.ts` で自動適用される。
@@ -30,8 +30,8 @@ npm run typecheck && npm test
 ## 本番
 
 - https://chimera.chanu.co （D1 `chimera` / R2 `chimera-images`）
-- デプロイは `production` ブランチへの merge で Cloudflare Workers Builds が行う（deploy command は `npm run deploy:production` = migrations apply → wrangler deploy）。`npx wrangler deploy` の手打ちはしない
+- デプロイは `production` ブランチへの merge で Cloudflare Workers Builds が行う（deploy command は `pnpm run deploy:production` = migrations apply → wrangler deploy）。`pnpm exec wrangler deploy` の手打ちはしない
 - main に merge すると `production release PR` workflow が `release/production` を main の snapshot で作り直し、`production` への昇格 PR を作る。その PR の merge = リリース。required check は `production deploy preflight`（dry-run と migration 番号の検査）
 - API 疎通確認用の Service Token は 1Password `chimera-claude-agent`（`op` で取得、コミット禁止）
 - 本番でテストデータを作ったら削除まで行う（`wrangler d1 execute --remote` + `wrangler r2 object delete --remote`）
-- telemetry は `POSTHOG_KEY` secret（`npx wrangler secret put POSTHOG_KEY`、1Password `posthog`）で有効化。ローカルは `.dev.vars`
+- telemetry は `POSTHOG_KEY` secret（`pnpm exec wrangler secret put POSTHOG_KEY`、1Password `posthog`）で有効化。ローカルは `.dev.vars`

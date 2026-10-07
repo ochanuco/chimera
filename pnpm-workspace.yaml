@@ -1,0 +1,5 @@
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+ignoredBuiltDependencies:
+  - core-js-pure
