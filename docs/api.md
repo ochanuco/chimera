@@ -1273,7 +1273,15 @@ origin
 exclude_rating
 ids
 cursor
+after
+created_before
 ```
+
+`cursor`は古い方向、`after`は新しい方向のカーソルで、`after=<カーソル>`はそのカーソルが指す
+Generationより新しいものを`limit`件、新しい順で返します。`created_before=<UTC ISO>`は`created_at`が
+その時刻より前のものだけを返す先頭ページです（`cursor` / `after`があるときは無視）。`created_before`
+または`after`を指定したとき、新しい方向に続きがあれば`newer_cursor`（無ければ`null`）に、返したページの
+先頭を指す`after`用のカーソルを返します。
 
 主な用途:
 
@@ -1339,6 +1347,24 @@ Gallery live insertion カードフラグメント）も同じフィールドを
 （タイブレークまで固定）です。レスポンスには次ページがあるときだけ非nullになる
 `next_cursor` を追加で含みます（`total` は引き続き cursor と無関係にフィルタ全体の件数）。
 不正な `cursor` は400です。
+
+### Generation Timeline
+
+``` text
+GET /api/v1/generations/timeline
+```
+
+Generation Searchと同じ絞り込みquery（`character` / `tag` / `published` / `reference` / `from` /
+`to` / `rating` / `bookmark` / `comfy_prompt_id` / `original_filename` / `origin` /
+`exclude_rating` / `ids`）を受け取り、条件に合う枚数をJST（UTC+9）の15分枠ごとに新しい順で返します。
+`cursor` / `after` / `created_before` / `limit`は使いません。枠のないものは含みません。
+
+``` json
+{ "slots": [ { "slot": "2026-10-06T21:45", "count": 12 }, { "slot": "2026-10-06T21:30", "count": 3 } ] }
+```
+
+`slot`はJSTの壁時計で表した枠の開始時刻（`YYYY-MM-DDTHH:MM`、分は00 / 15 / 30 / 45）です。
+Galleryのタイムライン（[ui.md](ui.md#gallery-timeline)）が見出しの枚数とレールの位置に使います。
 
 ## Semantic Update
 

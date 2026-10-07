@@ -337,7 +337,7 @@ function encodeCursor(cursor: GenerationCursor): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function decodeCursor(raw: string): GenerationCursor {
+export function decodeCursor(raw: string): GenerationCursor {
   try {
     const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
     const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
@@ -356,14 +356,8 @@ function decodeCursor(raw: string): GenerationCursor {
   }
 }
 
-/** GET /api/v1/generations の一覧 + フィルタ。MCP tool `list_generations` もここを呼ぶ。 */
-export async function queryGenerations(
-  db: D1Database,
-  query: Record<string, string | undefined>,
-  org: string,
-): Promise<{ items: GenerationListItem[]; total: number; next_cursor: string | null }> {
-  const { limit, offset } = parsePagination(query);
-
+/** 一覧と timeline で共有する絞り込み条件。ページング (cursor / after / created_before) は含めない。 */
+function buildGenerationFilter(query: Record<string, string | undefined>): { conditions: string[]; binds: unknown[] } {
   const conditions: string[] = [];
   const binds: unknown[] = [];
 
@@ -446,16 +440,38 @@ export async function queryGenerations(
     }
   }
 
+  return { conditions, binds };
+}
+
+/** GET /api/v1/generations の一覧 + フィルタ。MCP tool `list_generations` もここを呼ぶ。 */
+export async function queryGenerations(
+  db: D1Database,
+  query: Record<string, string | undefined>,
+  org: string,
+): Promise<{ items: GenerationListItem[]; total: number; next_cursor: string | null; newer_cursor: string | null }> {
+  const { limit, offset } = parsePagination(query);
+  const { conditions, binds } = buildGenerationFilter(query);
+
   const countWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const countRow = await db
     .prepare(`SELECT COUNT(*) AS total FROM generations g ${countWhere}`)
     .bind(...binds)
     .first<{ total: number }>();
 
-  if (query.cursor) {
+  // after は新しい方向のページング (結果は新しい順に並べ直す)。cursor / created_before とは併用しない。
+  const afterCursor = query.after ? decodeCursor(query.after) : null;
+  const filterConditions = [...conditions];
+  const filterBinds = [...binds];
+  if (afterCursor) {
+    conditions.push('(g.created_at > ? OR (g.created_at = ? AND g.id > ?))');
+    binds.push(afterCursor.createdAt, afterCursor.createdAt, afterCursor.id);
+  } else if (query.cursor) {
     const cursor = decodeCursor(query.cursor);
     conditions.push('(g.created_at < ? OR (g.created_at = ? AND g.id < ?))');
     binds.push(cursor.createdAt, cursor.createdAt, cursor.id);
+  } else if (query.created_before) {
+    conditions.push('g.created_at < ?');
+    binds.push(query.created_before);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -478,10 +494,10 @@ export async function queryGenerations(
        LEFT JOIN generation_safety gs ON gs.generation_id = g.id
        ${where}
        GROUP BY g.id
-       ORDER BY g.created_at DESC, g.id DESC
+       ORDER BY g.created_at ${afterCursor ? 'ASC' : 'DESC'}, g.id ${afterCursor ? 'ASC' : 'DESC'}
        LIMIT ? OFFSET ?`,
     )
-    .bind(...binds, limit + 1, query.cursor ? 0 : offset)
+    .bind(...binds, limit + 1, query.cursor || afterCursor ? 0 : offset)
     .all<
       GenerationRow & {
         character_name: string | null;
@@ -500,8 +516,26 @@ export async function queryGenerations(
   const rows = results ?? [];
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  if (afterCursor) pageRows.reverse();
+  const firstRow = pageRows[0];
   const lastRow = pageRows[pageRows.length - 1];
-  const nextCursor = hasMore && lastRow ? encodeCursor({ createdAt: lastRow.created_at, id: lastRow.id }) : null;
+  const nextCursor = !afterCursor && hasMore && lastRow ? encodeCursor({ createdAt: lastRow.created_at, id: lastRow.id }) : null;
+
+  // 新しい方向に続きがあるときだけ、ページの先頭 (最新) の Generation を指す after カーソルを返す。
+  let newerCursor: string | null = null;
+  if (firstRow) {
+    if (afterCursor) {
+      newerCursor = hasMore ? encodeCursor({ createdAt: firstRow.created_at, id: firstRow.id }) : null;
+    } else if (query.created_before && !query.cursor) {
+      const newer = await db
+        .prepare(
+          `SELECT 1 AS found FROM generations g WHERE ${[...filterConditions, 'g.created_at >= ?'].join(' AND ')} LIMIT 1`,
+        )
+        .bind(...filterBinds, query.created_before)
+        .first<{ found: number }>();
+      newerCursor = newer ? encodeCursor({ createdAt: firstRow.created_at, id: firstRow.id }) : null;
+    }
+  }
 
   const finalizeRequests = await getLatestFinalizeRequestsForGenerations(
     db,
@@ -548,5 +582,26 @@ export async function queryGenerations(
     };
   });
 
-  return { items, total: countRow?.total ?? 0, next_cursor: nextCursor };
+  return { items, total: countRow?.total ?? 0, next_cursor: nextCursor, newer_cursor: newerCursor };
+}
+
+/** GET /api/v1/generations/timeline: 一覧と同じ絞り込みの枚数を、JST の 15 分枠ごとに新しい順で返す。 */
+export async function queryTimeline(
+  db: D1Database,
+  query: Record<string, string | undefined>,
+): Promise<{ slots: { slot: string; count: number }[] }> {
+  const { conditions, binds } = buildGenerationFilter(query);
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const { results } = await db
+    .prepare(
+      `SELECT strftime('%Y-%m-%dT%H:', g.created_at, '+9 hours') || printf('%02d', (CAST(strftime('%M', g.created_at) AS INTEGER) / 15) * 15) AS slot,
+         COUNT(*) AS count
+       FROM generations g
+       ${where}
+       GROUP BY slot
+       ORDER BY slot DESC`,
+    )
+    .bind(...binds)
+    .all<{ slot: string; count: number }>();
+  return { slots: results ?? [] };
 }
