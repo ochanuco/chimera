@@ -3203,6 +3203,8 @@ export const appJs = `
   // 新着/bad非表示はグリッドへ即座に反映しない（操作中のカードが手元で動かないよう件数を
   // 帯/ピルに出し、押したときにまとめて反映する）。queue は到着順の { shortId, html }。
   var galleryPending = { queue: [] };
+  // 初回のカード取得が飛んでいる short_id。値は、その間に safety が届いたか。
+  var galleryCardsInFlight = new Map();
 
   function galleryGrid() {
     return document.querySelector('[data-gallery-grid]');
@@ -3343,11 +3345,9 @@ export const appJs = `
     if (grid.querySelector('.thumb-link[data-short-id="' + msg.short_id + '"]')) return; // already on the grid
     if (galleryPendingQueued(msg.short_id)) return;
 
-    fetch('/g/' + encodeURIComponent(msg.short_id) + '?partial=card')
-      .then(function (res) {
-        if (!res.ok) throw new Error('card fetch failed: ' + res.status);
-        return res.text();
-      })
+    if (galleryCardsInFlight.has(msg.short_id)) return;
+    galleryCardsInFlight.set(msg.short_id, false);
+    fetchGalleryCard(msg.short_id)
       .then(function (html) {
         if (!galleryLiveGrid() || galleryPendingQueued(msg.short_id)) return;
         galleryPending.queue.push({ shortId: msg.short_id, html: html });
@@ -3355,10 +3355,63 @@ export const appJs = `
       })
       .catch(function (e) {
         trackError('gallery.new_arrivals', e, { short_id: msg.short_id });
+      })
+      .then(function () {
+        var stale = galleryCardsInFlight.get(msg.short_id);
+        galleryCardsInFlight.delete(msg.short_id);
+        if (stale) handleSafetyMessage({ short_id: msg.short_id });
       });
   }
 
   viewerSocketOn('generation', handleGenerationMessage);
+
+  function fetchGalleryCard(shortId) {
+    return fetch('/g/' + encodeURIComponent(shortId) + '?partial=card').then(function (res) {
+      if (!res.ok) throw new Error('card fetch failed: ' + res.status);
+      return res.text();
+    });
+  }
+
+  // 判定は 'generation' の数秒後に保存されるので、カードを取得し直してバッジを出す。
+  function handleSafetyMessage(msg) {
+    var grid = galleryLiveGrid();
+    if (!grid) return;
+    var shortId = msg.short_id;
+    if (galleryCardsInFlight.has(shortId)) {
+      galleryCardsInFlight.set(shortId, true);
+      return;
+    }
+    if (galleryPendingQueued(shortId)) {
+      fetchGalleryCard(shortId)
+        .then(function (html) {
+          galleryPending.queue.forEach(function (item) {
+            if (item.shortId === shortId) item.html = html;
+          });
+        })
+        .catch(function (e) {
+          trackError('gallery.safety_refresh', e, { short_id: shortId });
+        });
+      return;
+    }
+    var link = grid.querySelector('.thumb-link[data-short-id="' + shortId + '"]');
+    var oldCard = link ? link.closest('.card') : null;
+    if (!oldCard) return;
+    fetchGalleryCard(shortId)
+      .then(function (html) {
+        var wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        var card = wrapper.querySelector('.card');
+        if (!card || !oldCard.isConnected) return;
+        if (oldCard.classList.contains('card-pending-hide')) card.classList.add('card-pending-hide');
+        oldCard.replaceWith(card);
+        qsa('[data-request-id]', card).forEach(registerRequestElement);
+      })
+      .catch(function (e) {
+        trackError('gallery.safety_refresh', e, { short_id: shortId });
+      });
+  }
+
+  viewerSocketOn('safety', handleSafetyMessage);
 
   // GET /api/v1/requests/summary で初期表示し、以後は共有 viewer WebSocket (status/snapshot) を
   // 合図に再取得する (docs/ui.md「キュー状態」)。パネルの行は遷移リンクのみで操作は持たない。

@@ -162,6 +162,11 @@ nullのものだけ、`refined`はnon-nullのものだけ、`all`は両方です
 反映待ちに積んだshort_idは無視します。受理したら`GET /g/{short_id}?partial=card`（Gallery一覧と
 同じ`GenerationCard`フラグメント）を取得し、反映待ちに積みます。
 
+判定（[Safety](api.md#safety)）は新着の通知より数秒遅れて保存されるため、`safety`メッセージを受けると
+該当short_idのカードを取得し直し、反映待ちのカードはそのHTMLを、グリッド上のカードはカードごと
+差し替えて、センシティブなどのバッジをリロードなしで出します。カードの初回取得の最中に届いた
+`safety`は、その取得が終わった直後に1回だけ取得し直します。
+
 #### bad
 
 badを隠している間（`bad=1`も`ids=`も指定していないとき）、カード上でratingを
@@ -410,7 +415,8 @@ Generationなどは拒否されます（[domain-model.md](domain-model.md#基準
 
 rating/bookmark行・基準行の下に`安全性`行を置きます（[Safety](api.md#safety)）。判定が`none`でなければ
 `出さない`（赤塗り）・`センシティブ`（赤）・`注意`（黄）のピルと理由、続けて4つのrating値を出し、未採点は`未採点`です。
-同じピルをGalleryなどのサムネイル左下（`公開済み`の隣）にも出します。判定が`block`のGenerationで
+同じピルをGalleryなどのサムネイル左下（`公開済み`の隣）にも出します。Galleryの新着カードは
+判定の保存後に`safety`メッセージで差し替わり、ピルがリロードなしで現れます（[新着](#新着)）。判定が`block`のGenerationで
 `公開を記録`を押すと確認ダイアログを出し、`sensitive`では記録後にXのセンシティブ設定を付ける注意を出します。
 
 続く`公開`セクションは[Publication](domain-model.md#publication)

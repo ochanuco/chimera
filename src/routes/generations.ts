@@ -3,6 +3,7 @@ import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPo
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
 import { putSafetySchema } from '../schemas/safety';
+import { notifyHubSafety, runInBackground } from '../lib/hub-notify';
 import { putSafety, publishWarningFor, serializeSafety } from '../lib/safety';
 import { ingestGenerationAssetMetadataSchema } from '../schemas/generation-assets';
 import { nowIso, getGenerationByIdOrShortId } from '../lib/db';
@@ -118,6 +119,7 @@ generations.put('/:id/safety', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
   const row = await putSafety(db, generation.id, body);
+  runInBackground(c, notifyHubSafety(c.env, { generation_id: generation.id, short_id: generation.short_id }));
   return c.json(serializeSafety(row, { includeTags: true }));
 });
 

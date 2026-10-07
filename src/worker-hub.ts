@@ -35,7 +35,9 @@ interface ProgressEntry {
 }
 
 interface NotifyBody {
-  type: 'queued' | 'status' | 'generation';
+  type: 'queued' | 'status' | 'generation' | 'safety';
+  generation_id?: string;
+  short_id?: string;
   request?: { id: string; kind: RequestKind; recipe_ref: string; status: string };
   generation?: {
     generation_id: string;
@@ -250,6 +252,17 @@ export class WorkerHub extends DurableObject<Bindings> {
         });
       }
       await this.ensureAlarmScheduled();
+      return Response.json({ workers: workersSent, viewers: viewersSent });
+    }
+
+    if (body.type === 'safety') {
+      if (body.generation_id && body.short_id) {
+        viewersSent = this.broadcast(this.ctx.getWebSockets('viewer'), {
+          type: 'safety',
+          generation_id: body.generation_id,
+          short_id: body.short_id,
+        });
+      }
       return Response.json({ workers: workersSent, viewers: viewersSent });
     }
 
