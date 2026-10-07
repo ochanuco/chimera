@@ -477,13 +477,13 @@ rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refine
 
 originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
-`原寸は破棄済み（preview のみ）`と添えます。RedrawセクションとDeliverセクションは出さず、代わりに
-「原寸は破棄済みのため描き直し・納品は積めません。」という一文を表示します
+`原寸は破棄済み（preview のみ）`と添えます。Redraw・Repair・Deliverセクションは出さず、代わりに
+「原寸は破棄済みのため描き直し・repair・納品は積めません。」という一文を表示します
 （Requestsセクションは表示したままです）。
 
 納品済みの絵（deliver / 古いfinalizeが産んだGeneration、`parameters.kind`が`deliver` / `hires-chain`のrequestが産んだGeneration、
-`deliver_only`のrepairが産んだGeneration）でも、RedrawセクションとDeliverセクションは出さず、
-「納品済みの絵なので、描き直し・納品は元の絵から行います。」という一文を表示します
+`deliver_only`のrepairが産んだGeneration）でも、Redraw・Repair・Deliverセクションは出さず、
+「納品済みの絵なので、描き直し・repair・納品は元の絵から行います。」という一文を表示します
 （workerは納品済みの絵を描き直し・納品の入力にできません）。判定は`isDeliveredRequest`（`src/lib/requests.ts`）です。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
@@ -492,6 +492,7 @@ Workflow の Raw graph）だけ既定で畳みます。
 
 ``` text
 描き直し（Redraw）
+手足の描き直し（Repair）
 納品（Deliver）
 Requests
 仕上げの解決値
@@ -630,10 +631,10 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-RedrawセクションとDeliverセクションは、Generation Detailから積める生成要求です（範囲は
-[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。repair /
-masked_redrawのための独立したフォームはGUIに無く、API / MCPからだけ積めます。2つのフォームは
-`option-form`クラスを共有し（`redraw-form` / `deliver-form`、`data-request-kind`で種類を持つ）、
+Redraw・Repair・DeliverセクションはGeneration Detailから積める生成要求です（範囲は
+[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。
+masked_redrawのための独立したフォームはGUIに無く、API / MCPからだけ積めます。3つのフォームは
+`option-form`クラスを共有し（`redraw-form` / `repair-form` / `deliver-form`、`data-request-kind`で種類を持つ）、
 `fieldset`は`option-group`、各コントロールの直後の`?`は`option-help`マーカー、送信ボタンの上の
 一行は`option-preview`です。マーカーはホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけの
 CSS実装（JS不使用）です。
@@ -660,6 +661,20 @@ CSS実装（JS不使用）です。
 （`keep_regions`は`keep_regions=2箇所`、wordはcatalogの`dials.redraw`に数値があれば`<word> (<number>)`と添え、
 組み立てられないときは`送信内容: —`）。ボタンは`描き直す`で、`POST /api/v1/requests`（`kind: "redraw"`, `created_by: "gui"`、
 `idempotency_key`は`gui:redraw:`始まり）を1件積みます。
+
+#### Repair
+
+手足（hands / feet）だけをマスクして局所的に描き直す`repair`を積みます（既定は閉じた`<details>`）。
+送るのは`options`で、空欄のフィールドは送らず、workerとrecipeの既定を使わせます。
+
+-   `部位`: `hands` / `feet`のチェックボックス（既定は両方オン）。片方だけオンのとき`parts`を送り、両方オンなら省略、両方オフなら送信を止めます。
+-   `範囲`: Redrawのcanvasと同じ`範囲指定`トグルと矩形描画で、矩形が1つ以上あるときだけ`regions`を送ります（無ければworkerが自動検出）。
+-   `denoise`: catalogの`dials.repair.denoise`があればwordボタンの列、無ければ数値入力（0より大きく1以下）。
+-   `seeds`: カンマ区切りの整数（最大16件）。`size`（8の倍数、256以上）、`pad`（0.5〜3）。
+-   `lora`: catalogの`dials.repair.lora`があればwordボタンの列、無ければ数値入力。空欄はoffです。
+
+ボタンは`手足を描き直す`で、`POST /api/v1/requests`（`kind: "repair"`, `payload: {generation_id, options}`,
+`created_by: "gui"`、`idempotency_key`は`gui:repair:`始まり）を1件積みます。
 
 #### Deliver
 

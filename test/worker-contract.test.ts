@@ -320,7 +320,7 @@ describe('kind import', () => {
     const claimed = await req('/api/v1/requests/claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker_id: WORKER, kinds: ['generate', 'finalize', 'repair', 'masked_redraw'] }),
+      body: JSON.stringify({ worker_id: WORKER, kinds: ['generate', 'repair', 'masked_redraw'] }),
     });
     expect(claimed.status === 204 || ((await claimed.json()) as Req).id !== created.body.id).toBe(true);
     expect((await postJson('/api/v1/requests/claim', { worker_id: WORKER, kinds: ['import'] })).status).toBe(400);

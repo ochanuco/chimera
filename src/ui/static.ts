@@ -2812,6 +2812,48 @@ export const appJs = `
     return options;
   }
 
+  // worker-protocol.md「repair」. Blank fields are omitted so the worker / recipe default applies.
+  // Returns null when the form can't become options; quiet mode silences the alert on malformed seeds.
+  function repairOptionsFrom(form, quiet) {
+    var options = {};
+    var parts = qsa('input[name="repair_part"]:checked', form).map(function (box) { return box.value; });
+    if (parts.length === 0) {
+      if (!quiet) alert('手か足のどちらかを選んでください');
+      return null;
+    }
+    if (parts.length < 2) options.parts = parts;
+    var regions = regionsFor(form);
+    if (regions.length > 0) options.regions = regions;
+    var denoiseFromDial = dialGroupValue(form, 'denoise');
+    if (denoiseFromDial === undefined) {
+      var denoiseRaw = qs('input[name="denoise"]', form).value;
+      if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);
+    } else if (denoiseFromDial !== null) {
+      options.denoise = denoiseFromDial;
+    }
+    var seedsRaw = qs('input[name="seeds"]', form).value.trim();
+    if (seedsRaw !== '') {
+      var seeds = seedsRaw.split(/[\\s,]+/).filter(function (s) { return s !== ''; });
+      if (seeds.length > 16 || !seeds.every(function (s) { return /^[0-9]+$/.test(s); })) {
+        if (!quiet) alert('seeds は 0 以上の整数をカンマ区切りで最大 16 件');
+        return null;
+      }
+      options.seeds = seeds.map(Number);
+    }
+    var sizeRaw = qs('input[name="size"]', form).value;
+    if (sizeRaw !== '') options.size = Number(sizeRaw);
+    var padRaw = qs('input[name="pad"]', form).value;
+    if (padRaw !== '') options.pad = Number(padRaw);
+    var loraFromDial = dialGroupValue(form, 'lora');
+    if (loraFromDial === undefined) {
+      var loraRaw = qs('input[name="lora"]', form).value;
+      if (loraRaw !== '') options.lora = Number(loraRaw);
+    } else if (loraFromDial !== null) {
+      options.lora = loraFromDial;
+    }
+    return options;
+  }
+
   // worker-protocol.md「deliver」. Returns null when the form can't become options; quiet mode
   // (used by the preview) silences the alert on a malformed backdrop colour.
   function deliverOptionsFrom(form, quiet) {
@@ -2874,7 +2916,10 @@ export const appJs = `
   }
 
   function optionsFrom(form, quiet) {
-    return formKind(form) === 'redraw' ? redrawOptionsFrom(form) : deliverOptionsFrom(form, quiet);
+    var kind = formKind(form);
+    if (kind === 'redraw') return redrawOptionsFrom(form);
+    if (kind === 'repair') return repairOptionsFrom(form, quiet);
+    return deliverOptionsFrom(form, quiet);
   }
 
   // The color input stays disabled while hidden so the browser's pattern check
@@ -2908,7 +2953,7 @@ export const appJs = `
     return words && Object.prototype.hasOwnProperty.call(words, value) ? words[value] : null;
   }
 
-  // Mirrors the payload of redrawOptionsFrom / deliverOptionsFrom so the preview can never drift from what gets sent.
+  // Mirrors the payload of redrawOptionsFrom / repairOptionsFrom / deliverOptionsFrom so the preview can never drift from what gets sent.
   function renderOptionPreview(form) {
     var preview = qs('.option-preview', form);
     if (!preview) return;
@@ -2942,8 +2987,8 @@ export const appJs = `
       if (value === false || value === null || value === undefined) return;
       if (key === 'dof') {
         parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
-      } else if (key === 'keep_regions') {
-        parts.push('keep_regions=' + value.length + '箇所');
+      } else if (key === 'keep_regions' || key === 'regions') {
+        parts.push(key + '=' + value.length + '箇所');
       } else if (value === true) {
         parts.push(key);
       } else if (Array.isArray(value)) {
