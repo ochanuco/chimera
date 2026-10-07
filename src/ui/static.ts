@@ -4349,7 +4349,7 @@ export const appJs = `
 
   // ---- Gallery timeline: 15-minute JST slot headers + the right-edge rail (docs/ui.md「Gallery」) ----
   var GALLERY_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
-  var galleryTimeline = { ready: false, slots: [], counts: {}, days: {}, dayOrder: [], starts: [], total: 0, fraction: 0, dragging: false, refreshTimer: null, frame: 0 };
+  var galleryTimeline = { ready: false, slots: [], counts: {}, days: {}, dayOrder: [], starts: [], total: 0, fraction: 0, dragging: false, dragFraction: 0, refreshTimer: null, frame: 0 };
 
   function galleryPad2(n) {
     return (n < 10 ? '0' : '') + n;
@@ -4551,6 +4551,7 @@ export const appJs = `
     const header = grid.querySelector('[data-slot-header="' + s.slot + '"]');
     if (!header) {
       if (allowNavigate) location.assign(galleryUrlWithAt(idx > 0 ? s.slot : null));
+      else followGalleryDragBeyondLoaded(grid, idx);
       return false;
     }
     const cards = qsa('.card[data-slot="' + s.slot + '"]', grid);
@@ -4560,6 +4561,29 @@ export const appJs = `
     const gap = target === header ? 4 : 0;
     window.scrollTo(0, window.scrollY + target.getBoundingClientRect().top - galleryStickyOffset(grid) - gap);
     return true;
+  }
+
+  function galleryLoadedSlotIndex(grid, last) {
+    const cards = qsa('.card[data-slot]', grid);
+    if (cards.length === 0) return -1;
+    const slot = cards[last ? cards.length - 1 : 0].getAttribute('data-slot');
+    return galleryTimeline.slots.findIndex(function (x) {
+      return x.slot === slot;
+    });
+  }
+
+  // ドラッグ中に未読み込みの枠を指したら、読み込み済みの端まで寄せてその方向へ 1 ページずつ足し、
+  // 足し終わるたびに指している位置へ追いかける。離したときにまだ届かなければ at= で開き直す。
+  function followGalleryDragBeyondLoaded(grid, idx) {
+    const tl = galleryTimeline;
+    const older = idx > galleryLoadedSlotIndex(grid, true);
+    const link = qs(older ? '.load-more' : '.load-newer', grid);
+    window.scrollTo(0, older ? document.documentElement.scrollHeight : 0);
+    if (!link) return;
+    const load = older ? loadMoreGalleryCards(link) : loadNewerGalleryCards(link);
+    load.then(function (added) {
+      if (added && tl.dragging) jumpGalleryTimeline(tl.dragFraction, false);
+    });
   }
 
   // The topmost visible card gives the slot and the position inside it.
@@ -4633,6 +4657,7 @@ export const appJs = `
       rail.classList.add('dragging');
       rail.setPointerCapture(ev.pointerId);
       const f = galleryRailFraction(ev, track);
+      tl.dragFraction = f;
       showGalleryBubble(f);
       qs('.gallery-rail-thumb', rail).style.top = f * 100 + '%';
       jumpGalleryTimeline(f, false);
@@ -4641,6 +4666,7 @@ export const appJs = `
       const f = galleryRailFraction(ev, track);
       showGalleryBubble(f);
       if (tl.dragging) {
+        tl.dragFraction = f;
         qs('.gallery-rail-thumb', rail).style.top = f * 100 + '%';
         jumpGalleryTimeline(f, false);
       }
