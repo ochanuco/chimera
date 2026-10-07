@@ -214,7 +214,6 @@ export function SafetyCompareCaption({
           {delta.toFixed(1)}pt
         </span>
       )}
-      {safety.verdict === 'none' ? <span class="safety-ok">問題なし</span> : <SafetyBadge safety={safety} />}
     </div>
   );
 }

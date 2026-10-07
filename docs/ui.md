@@ -258,7 +258,7 @@ Generationごとに縦カラムで並べ、各カラムはGalleryと同じ[Gener
 `/g/{short_id}`へ遷移）。比較しながらその場でratingとbookmarkを変更できます。originalが
 purge済みのGenerationも、GenerationCardが常にpreviewサムネイルを使うためそのまま表示できます。
 採点済みのカードの下には安全性の1行を置きます。4区分の小さな積み上げ帯・`少し際どい`の%・先頭のカラムからの増減（pt。
-下がれば緑、上がれば赤、先頭のカラムと基準が未採点のカラムは`—`）・判定（ピルまたは`問題なし`）を並べます。
+下がれば緑、上がれば赤、先頭のカラムと基準が未採点のカラムは`—`）を並べます。判定のピルはカード側に出ます。
 
 その下にsemantic比較テーブルを表示します。行は変更点（後述）、seed / created、
 render_facts、summary、core 5項目（pose /
