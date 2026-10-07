@@ -851,13 +851,19 @@ status で絞り込めます。
 Generation（サムネイル付きリンク） / Character / Tag / 各時刻）、Runの一覧、
 Promotionの順に並べます。
 
-Runsセクションの先頭には、Runが2件以上あるときだけ Compare セクション
+Runsセクションの先頭には、列が2つ以上あるとき（Runが2件以上、またはRun1件とbase列）だけ Compare セクション
 （`#experiment-compare`）を置きます。Runを列にした[Compare](#compare)の表で、
 `/compare`と同じ`CompareView`（カード、全列同一バー、差分表、プロンプト全文の折りたたみ、
 ヘッダのhoverプレビュー）を使います。
 
 -   列はRunを`run_index`順に最大9件並べ、超えた分は「先頭 N 件の Run だけを表示しています
     （ほか M 件）」と注記します。列見出しは`variables.arm`があればその値、なければ`#<run_index>`です。
+-   Experimentにbase Generation（`base_generation_id`）があり行が存在するときは、Run列の前に
+    見出し`base`の列を先頭に1列足します。選んだseedに関係なく常に同じbase
+    Generationを出す固定の参照で、そのseedはseedスイッチャーにも選択seedにも影響しません。
+    Run列の上限9件と「ほか M 件」の注記はRunだけを数えます。変更点の行はこの列では
+    `—`（instruction）と`（変更なし）`（patches）になります。Runが1件でもbase列を含めて2列に
+    なるので、Compareセクションを出します。
 -   各列のGenerationは、選んだseedと同じseedを持つ、そのRunの結果Requestの
     Generationです。そのseedのGenerationがまだ無い列は、別のseedの画像を代わりに出さず、
     「生成待ち」のプレースホルダ列（値はすべて`—`で、差分の対象にしない）にします。
@@ -867,7 +873,7 @@ Runsセクションの先頭には、Runが2件以上あるときだけ Compare 
 -   変更点の行は、Generationが属するRequestではなくRunから取ります。`instruction`は
     `objective`、`patches`は`overrides.patches`で、全列に共通のpatchは省き、patchを持たない
     列は`（変更なし）`と表示します。
--   `Compare で開く`リンクは、選ばれたGenerationのshort_idを`/compare?ids=`に並べます
+-   `Compare で開く`リンクは、選ばれたGenerationのshort_idを（base列があれば先頭に）`/compare?ids=`に並べます
     （2件以上あるとき）。
 
 Compareセクションの下のRunsには、少なくとも1つのRunがrender_factsまたはvariablesを
