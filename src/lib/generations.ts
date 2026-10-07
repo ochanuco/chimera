@@ -219,12 +219,12 @@ export interface GenerationListItem {
   /** WD tagger の判定 (tags 抜き)。未採点は null。 */
   safety: SafetySummary | null;
   /** このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw (または古いfinalize) request (GenerationCardの進捗ピル)。無ければnull。 */
-  finalize_request: GenerationFinalizeRequestBadge | null;
+  refinement_request: GenerationRefinementRequestBadge | null;
   /** このGenerationが pose の基準 render として pin されているか (preset_references, 現行行のみ)。無ければnull。 */
   reference: GenerationPoseReference | null;
 }
 
-export interface GenerationFinalizeRequestBadge {
+export interface GenerationRefinementRequestBadge {
   id: string;
   kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver';
   status: RequestStatus;
@@ -237,11 +237,11 @@ export interface GenerationFinalizeRequestBadge {
  * request.payload.generation_id はUUIDでもshort_idでもよい (worker-protocol.md「payload」) ので両方をIN句に渡し、
  * created_at DESCで取って各Generationにつき最初に見つかった行(=最新)だけを採用する。
  */
-export async function getLatestFinalizeRequestsForGenerations(
+export async function getLatestRefinementRequestsForGenerations(
   db: D1Database,
   generations: { id: string; short_id: string }[],
-): Promise<Map<string, GenerationFinalizeRequestBadge>> {
-  const result = new Map<string, GenerationFinalizeRequestBadge>();
+): Promise<Map<string, GenerationRefinementRequestBadge>> {
+  const result = new Map<string, GenerationRefinementRequestBadge>();
   if (generations.length === 0) return result;
 
   const targetByPayloadId = new Map<string, string>();
@@ -263,7 +263,7 @@ export async function getLatestFinalizeRequestsForGenerations(
     .bind(JSON.stringify(payloadIds))
     .all<{
       id: string;
-      kind: GenerationFinalizeRequestBadge['kind'];
+      kind: GenerationRefinementRequestBadge['kind'];
       status: RequestStatus;
       payload_json: string;
       result_json: string | null;
@@ -537,7 +537,7 @@ export async function queryGenerations(
     }
   }
 
-  const finalizeRequests = await getLatestFinalizeRequestsForGenerations(
+  const refinementRequests = await getLatestRefinementRequestsForGenerations(
     db,
     pageRows.map((r) => ({ id: r.id, short_id: r.short_id })),
   );
@@ -577,7 +577,7 @@ export async function queryGenerations(
               { includeTags: false },
             )
           : null,
-      finalize_request: finalizeRequests.get(r.id) ?? null,
+      refinement_request: refinementRequests.get(r.id) ?? null,
       reference: r.reference_recipe && r.reference_pose ? { recipe: r.reference_recipe, pose: r.reference_pose } : null,
     };
   });

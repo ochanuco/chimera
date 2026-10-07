@@ -1298,7 +1298,7 @@ URL、summary、`refines_generation_short_id`（この Generation が redraw/del
 masked_redraw で仕上げた元の Generation の short_id、raw なら null）、`request_id`、`published`
 （[Publication](#publication)を1件以上持つか）、`reference`（現行の pose 基準 render として
 pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
-[Pose Reference Pin](#pose-reference-pin)参照）、`finalize_request`
+[Pose Reference Pin](#pose-reference-pin)参照）、`refinement_request`
 等の軽量情報を返します。
 
 `thumbnail_url` は `GET /g/{short_id}/preview`（長辺1024px以下のWebP。初回リクエスト時に
@@ -1314,7 +1314,7 @@ WebP に変換していることがあり、その場合 `image_url` は `Conten
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation
 表現（Generation Search / Context / MCP の対応する出力）に付きます。
 
-`finalize_request`（名前は古い finalize に由来するが、今は redraw / deliver / repair /
+`refinement_request`（redraw / deliver / repair /
 masked_redraw と古い finalize のすべてを対象にする）は、この Generation を対象にした最新の
 [Request](#request)（`payload.generation_id` がこの Generation の UUID /
 short_id のどちらかと一致する行のうち、最新の1件）です。無ければ `null`。
