@@ -40,8 +40,7 @@ export type TagXRisk = 'exposure' | 'certain' | 'suspect' | 'safe';
 
 /**
  * タグごとの X での効き方。区分は持ち主の経験に従う: タイツ・足は X に flag されず、尻は怪しく、乳・股間は確実。
- * 閾値は 2026-10-07 に保存済みの判定から決めた（suspect 0.5 以上は 9,491 枚中およそ 780 枚で、旧 sensitive 0.95 以上の
- * 2,391 枚より絞れ、X に flag された tuv2ha は ass 0.95）。
+ * 閾値は 2026-10-07 に保存済みの判定から決めた（suspect 0.5 以上は 9,491 枚中およそ 780 枚、X に flag された tuv2ha は ass 0.95）。
  */
 export const TAG_X_RISK: Readonly<Record<string, TagXRisk>> = {
   ...Object.fromEntries(X_SAFE_TAGS.map((t) => [t, 'safe' as const])),
