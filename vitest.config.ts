@@ -16,6 +16,9 @@ export default defineConfig({
     }),
   ],
   test: {
+    // Isolating each file costs ~0.7s of serialized runner setup per file,
+    // which dominated the suite; apply-migrations.ts resets storage per file.
+    isolate: false,
     setupFiles: ['./test/apply-migrations.ts'],
   },
 });
