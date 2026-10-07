@@ -1366,6 +1366,21 @@ Generation Searchと同じ絞り込みquery（`character` / `tag` / `published` 
 `slot`はJSTの壁時計で表した枠の開始時刻（`YYYY-MM-DDTHH:MM`、分は00 / 15 / 30 / 45）です。
 Galleryのタイムライン（[ui.md](ui.md#gallery-timeline)）が見出しの枚数とレールの位置に使います。
 
+### Gallery Slot Range
+
+``` text
+GET /gallery?partial=1&slot_from=2026-10-06T21:30&slot_to=2026-10-06T21:45
+```
+
+Galleryのスケルトンを実カードで置き換えるためのUIルートです（[ui.md](ui.md#gallery-timeline)）。
+`slot_from`（古い方の枠）から`slot_to`（新しい方の枠）まで、両端を含む枠のキー
+（[Generation Timeline](#generation-timeline)の`slot`と同じ形式）に`created_at`が入るGenerationを、
+見出しやリンクを付けず`.card`だけのHTMLとして新しい順に返します。`GET /gallery`と同じ絞り込み
+（`view` / `bad` / `tag` / `rating` / `bookmark` / `published` / `reference`）を受け取り、
+`GET /api/v1/generations/timeline`の同じ絞り込みの枚数と一致します。枚数が多くても切り詰めず
+全件（上限2000件）を返します。`partial=1`がないとき・`ids`があるときは無視します。`slot_from` / `slot_to`の
+どちらかが枠のキーでない（欠けている場合も含む）とき、`slot_from`が`slot_to`より新しいときは400です。
+
 ## Semantic Update
 
 ``` text

@@ -3,7 +3,7 @@ import { internalApiRequest } from '../lib/internal-api';
 import { getGenerationByIdOrShortId, resolveGenerationShortIds, resolveRequestThumbnails, resolveRunRequests } from '../lib/db';
 import { generationImageUrl, generationPreviewUrl } from '../lib/serialize';
 import { listBookmarkedExperiments } from '../lib/ui-queries';
-import { GalleryPage, GalleryCards, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
+import { GalleryPage, GalleryCards, GallerySlotCards, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
 import type { GalleryView } from '../ui/components/ViewSwitch';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
 import { EXPERIMENT_STATUSES } from '../lib/experiment-status';
@@ -14,8 +14,8 @@ import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
-import { decodeCursor, queryGenerations } from '../lib/generations';
-import { slotEndIso } from '../lib/timeline';
+import { decodeCursor, queryGenerations, queryTimeline } from '../lib/generations';
+import { slotEndIso, slotStartIso } from '../lib/timeline';
 import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
@@ -73,6 +73,30 @@ async function loadGalleryThrough(
   return { items, total, next_cursor: next };
 }
 
+/** 枠範囲 (`slot_from`〜`slot_to`) のカードを新しい順に全件返す。1枠が200件を超えても `GALLERY_RESTORE_MAX_ITEMS` までカーソルで続ける。 */
+async function loadGallerySlotRange(
+  c: Context<AppEnv>,
+  baseParams: URLSearchParams,
+  fromIso: string,
+  toIso: string,
+): Promise<{ items: GalleryItem[] } | Response> {
+  const items: GalleryItem[] = [];
+  let cursor: string | null = null;
+  do {
+    const params = new URLSearchParams(baseParams);
+    params.set('from', fromIso);
+    params.set('to', toIso);
+    params.set('limit', String(Math.min(GALLERY_RESTORE_CHUNK, GALLERY_RESTORE_MAX_ITEMS - items.length)));
+    if (cursor) params.set('cursor', cursor);
+    const res = await internalApiRequest(c, `/api/v1/generations?${params.toString()}`);
+    if (!res.ok) return res;
+    const data = (await res.json()) as { items: GalleryItem[]; next_cursor: string | null };
+    items.push(...data.items);
+    cursor = data.next_cursor;
+  } while (cursor && items.length < GALLERY_RESTORE_MAX_ITEMS);
+  return { items };
+}
+
 pages.get('/gallery', async (c) => {
   const q = c.req.query();
 
@@ -107,6 +131,17 @@ pages.get('/gallery', async (c) => {
   if (filters.reference) apiParams.set('reference', filters.reference);
   // タイムライン (docs/ui.md「Gallery」) は一覧と同じ絞り込みで枚数を数える。ids 指定では出さない。
   const timelineQuery = ids ? undefined : apiParams.toString();
+  if (!ids && q.partial === '1' && (q.slot_from || q.slot_to)) {
+    const fromIso = slotStartIso(q.slot_from ?? '');
+    const lastSlotEnd = slotEndIso(q.slot_to ?? '');
+    if (!fromIso || !lastSlotEnd || !q.slot_from || !q.slot_to || q.slot_from > q.slot_to) {
+      return c.text('slot_from / slot_to must be slot keys (YYYY-MM-DDTHH:MM, slot_from <= slot_to)', 400);
+    }
+    const toIso = new Date(Date.parse(lastSlotEnd) - 1).toISOString();
+    const range = await loadGallerySlotRange(c, apiParams, fromIso, toIso);
+    if (range instanceof Response) return range;
+    return c.html(<GallerySlotCards items={range.items} />);
+  }
   const limit = q.limit ? Math.min(Math.max(Number(q.limit) || 24, 1), 200) : 24;
   apiParams.set('limit', String(limit));
   // after は新しい方向のページ、at は枠の終端より前から始める先頭ページ。どちらも cursor とは併用しない。
@@ -138,6 +173,8 @@ pages.get('/gallery', async (c) => {
     );
   }
 
+  const timeline = timelineQuery === undefined ? undefined : await queryTimeline(c.env.DB, Object.fromEntries(new URLSearchParams(timelineQuery)));
+
   return c.html(
     <GalleryPage
       path={c.req.path}
@@ -146,6 +183,7 @@ pages.get('/gallery', async (c) => {
       newerCursor={genData.newer_cursor ?? null}
       filters={filters}
       timelineQuery={timelineQuery}
+      timeline={timeline}
       at={atEnd ? q.at : undefined}
     />,
   );

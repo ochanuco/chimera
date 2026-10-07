@@ -24,6 +24,10 @@ export const styleCss = `
   --compare-bar-h: 3.75rem;
   --rail-w: 56px;
   --thumb-ar: 2 / 3;
+  /* card-row の高さは固定（スケルトンと実カードを同じ寸法にするため。docs/ui.md「Gallery timeline」） */
+  --card-id-h: 1.5rem;
+  --card-rate-h: 1.5rem;
+  --card-row-h: calc(0.9rem + 0.3rem + var(--card-id-h) + var(--card-rate-h));
   /* 透過/余白を判別するための市松（img 自体は変更しない） */
   --checker:
     linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%) 0 0 / 16px 16px,
@@ -284,8 +288,12 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
-.card-row { padding: 0.4rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
-.card-id-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.card-row { box-sizing: border-box; height: var(--card-row-h); padding: 0.4rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.card-id-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; height: var(--card-id-h); }
+.card-row .rating-group { height: var(--card-rate-h); }
+/* 読み込み前の枠。子要素を持たず、実カードと同じ外寸（サムネ + 固定高の card-row）を擬似要素で作る */
+.card.card-skeleton::before { content: ''; display: block; aspect-ratio: var(--thumb-ar); background: var(--bg); }
+.card.card-skeleton::after { content: ''; display: block; height: var(--card-row-h); }
 
 /* position は .thumb-link 内でのみ絶対配置 (docs/ui.md「Gallery」) */
 .card-from-badge {
@@ -967,6 +975,7 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
     border-radius: 999px;
     z-index: 2;
   }
+  :root { --card-id-h: 2.75rem; --card-rate-h: 2.75rem; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
   .card-row .card-id { min-height: 2.75rem; }
 }
@@ -3472,12 +3481,6 @@ export const appJs = `
     var grid = galleryGrid();
     if (!grid) return;
     var newCount = galleryPending.queue.length;
-    // at= で途中から始めた一覧の先頭へ新着を挿入すると履歴の途中に混ざるので、最新の一覧へ移る。
-    if (newCount > 0 && grid.getAttribute('data-gallery-at')) {
-      track('gallery.pending_apply', { new_count: newCount, hidden_count: 0, source: source, at: true });
-      location.assign(galleryUrlWithAt(null));
-      return;
-    }
     var badCards = qsa('.card.card-pending-hide', grid);
     // 先頭挿入を古い方から繰り返すと、最終的に新しい方が一番上に来る (newest first)。
     galleryPending.queue.forEach(function (item) {
@@ -3490,6 +3493,7 @@ export const appJs = `
     reflowGalleryHeaders(grid);
     fillGalleryCounts(grid);
     if (newCount > 0) scheduleGalleryTimelineRefresh();
+    scheduleGalleryFill();
     updateGalleryPendingUi();
     if (newCount > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
     track('gallery.pending_apply', { new_count: newCount, hidden_count: badCards.length, source: source });
@@ -4117,7 +4121,8 @@ export const appJs = `
   }
 
   // Fetches .load-more's href with partial=1, appended as an HTML fragment (cards + the next
-  // .load-more link, or nothing).
+  // .load-more link, or nothing). Only galleries without a timeline (ids=) page this way; the
+  // timeline gallery lays out skeleton frames for every slot instead (initGalleryTimeline).
   var galleryLoadMoreInFlight = false;
   var galleryScrollObserver = null;
 
@@ -4127,8 +4132,9 @@ export const appJs = `
     return url.toString();
   }
 
-  // history.state keeps what Back needs to rebuild the grid: galleryUntil is the cursor of the last
-  // loaded card ('end' once the list is exhausted), which the server accepts as ?until=.
+  // history.state keeps what Back needs: galleryUntil is the cursor of the last loaded card
+  // ('end' once the list is exhausted, accepted by the server as ?until=) for the ids= gallery;
+  // the timeline gallery records the anchor card's slot / index / on-screen position.
   function setGalleryState(patch) {
     try {
       history.replaceState(Object.assign({}, history.state, patch), '');
@@ -4144,22 +4150,42 @@ export const appJs = `
     setGalleryState({ galleryUntil: cursor || 'end' });
   }
 
+  function galleryIndexInSlot(card) {
+    const slot = card.getAttribute('data-slot');
+    let k = 0;
+    for (let p = card.previousElementSibling; p; p = p.previousElementSibling) {
+      const ps = p.getAttribute('data-slot');
+      if (ps === null) continue;
+      if (ps !== slot) break;
+      k++;
+    }
+    return k;
+  }
+
   function recordGalleryAnchor(card) {
-    const thumb = card ? qs('.thumb-link', card) : null;
-    if (!thumb) return;
+    if (!card) return;
+    const thumb = qs('.thumb-link', card);
     setGalleryState({
-      galleryAnchor: thumb.getAttribute('data-short-id'),
+      galleryAnchor: thumb ? thumb.getAttribute('data-short-id') : null,
+      galleryAnchorSlot: card.getAttribute('data-slot'),
+      galleryAnchorIndex: galleryIndexInSlot(card),
       galleryAnchorTop: card.getBoundingClientRect().top,
       galleryScrollY: window.scrollY,
     });
   }
 
+  // Cards are in document order, so the first one whose bottom is below the viewport top is found by bisection.
   function topVisibleGalleryCard(grid) {
     const cards = qsa('.card', grid);
-    for (let i = 0; i < cards.length; i++) {
-      if (cards[i].getBoundingClientRect().bottom > 0) return cards[i];
+    let lo = 0;
+    let hi = cards.length - 1;
+    if (hi < 0) return null;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (cards[mid].getBoundingClientRect().bottom > 0) hi = mid;
+      else lo = mid + 1;
     }
-    return null;
+    return cards[lo];
   }
 
   function appendGalleryFragment(grid, link, html) {
@@ -4197,38 +4223,18 @@ export const appJs = `
     }
   }
 
-  // Back from a detail page re-renders only the first page (the at= page in at mode), so the cards
-  // loaded by infinite scroll in either direction are fetched again and the clicked card is put
-  // back where it was on screen. galleryNewerCount is how many cards were prepended above the
-  // first rendered card.
-  async function restoreGalleryCards(grid, olderLink, newerLink, state) {
+  // Back from a detail page re-renders only the first page, so the cards loaded by infinite scroll
+  // are fetched again (?until=) and the clicked card is put back where it was on screen.
+  async function restoreGalleryCards(grid, olderLink, state) {
     galleryLoadMoreInFlight = true;
-    galleryNewerInFlight = true;
     grid.style.visibility = 'hidden';
     try {
-      let link = newerLink;
-      let remaining = state.galleryNewerCount || 0;
-      while (link && remaining > 0) {
-        const newerUrl = new URL(galleryPartialUrl(link.getAttribute('href')));
-        newerUrl.searchParams.set('limit', String(Math.min(200, remaining)));
-        const newerRes = await fetch(newerUrl.toString());
-        if (!newerRes.ok) break;
-        const added = prependGalleryFragment(grid, link, await newerRes.text(), false);
-        if (added.count === 0) break;
-        remaining -= added.count;
-        link = added.next;
-      }
-      galleryNewerCount = (state.galleryNewerCount || 0) - Math.max(remaining, 0);
-      setGalleryState({ galleryNewerCount: galleryNewerCount });
-
-      if (olderLink && state.galleryUntil) {
-        const url = new URL(galleryPartialUrl(olderLink.getAttribute('href')));
-        url.searchParams.set('until', state.galleryUntil);
-        const res = await fetch(url.toString());
-        if (res.ok) {
-          appendGalleryFragment(grid, olderLink, await res.text());
-          recordGalleryUntil(grid);
-        }
+      const url = new URL(galleryPartialUrl(olderLink.getAttribute('href')));
+      url.searchParams.set('until', state.galleryUntil);
+      const res = await fetch(url.toString());
+      if (res.ok) {
+        appendGalleryFragment(grid, olderLink, await res.text());
+        recordGalleryUntil(grid);
       }
       const anchor = qsa('.thumb-link', grid).find(function (a) {
         return a.getAttribute('data-short-id') === state.galleryAnchor;
@@ -4246,7 +4252,6 @@ export const appJs = `
     } finally {
       grid.style.visibility = '';
       galleryLoadMoreInFlight = false;
-      galleryNewerInFlight = false;
     }
   }
 
@@ -4255,69 +4260,14 @@ export const appJs = `
     return !!nav && nav.type === 'back_forward';
   }
 
-  // The fragment of an after= page: [load-newer link][headers + cards, newest first]. Cards go
-  // above the current first card, the viewport is kept on that card, and the headers at the seam
-  // are deduplicated by reflowGalleryHeaders.
-  var galleryNewerInFlight = false;
-  var galleryNewerObserver = null;
-  var galleryNewerCount = 0;
-
-  function prependGalleryFragment(grid, link, html, keepViewport) {
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = html;
-    const nextNewer = wrapper.querySelector('.load-newer');
-    const nodes = qsa('.card, .gallery-date-header, .gallery-slot-header', wrapper);
-    const anchor = qs('.card', grid);
-    const before = anchor ? anchor.getBoundingClientRect().top : 0;
-    nodes.forEach(function (node) {
-      grid.insertBefore(node, link);
-    });
-    link.remove();
-    if (nextNewer) grid.insertBefore(nextNewer, grid.firstChild);
-    reflowGalleryHeaders(grid);
-    fillGalleryCounts(grid);
-    if (keepViewport && anchor) window.scrollBy(0, anchor.getBoundingClientRect().top - before);
-    return { count: nodes.filter(function (n) { return n.classList.contains('card'); }).length, next: nextNewer };
-  }
-
-  async function loadNewerGalleryCards(link) {
-    const grid = galleryGrid();
-    if (!grid || !link || galleryNewerInFlight) return false;
-    galleryNewerInFlight = true;
-    if (galleryNewerObserver) galleryNewerObserver.unobserve(link);
-    try {
-      const res = await fetch(galleryPartialUrl(link.getAttribute('href')));
-      if (!res.ok) return false;
-      const added = prependGalleryFragment(grid, link, await res.text(), true);
-      galleryNewerCount += added.count;
-      setGalleryState({ galleryNewerCount: galleryNewerCount });
-      if (added.next && galleryNewerObserver) galleryNewerObserver.observe(added.next);
-      syncGalleryThumb();
-      return true;
-    } catch (e) {
-      trackError('gallery.load_newer', e, {});
-      return false;
-    } finally {
-      galleryNewerInFlight = false;
-    }
-  }
-
   function initGalleryInfiniteScroll() {
     const grid = document.querySelector('[data-gallery-grid]');
-    if (!grid || !window.IntersectionObserver) return;
+    if (!grid || !window.IntersectionObserver || galleryInlineTimeline()) return;
     galleryScrollObserver = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) loadMoreGalleryCards(entry.target);
       });
     });
-    galleryNewerObserver = new IntersectionObserver(
-      function (entries) {
-        entries.forEach(function (entry) {
-          if (entry.isIntersecting) loadNewerGalleryCards(entry.target);
-        });
-      },
-      { rootMargin: '400px 0px 0px 0px' },
-    );
 
     grid.addEventListener('click', function (ev) {
       const thumb = ev.target.closest ? ev.target.closest('.thumb-link') : null;
@@ -4328,28 +4278,20 @@ export const appJs = `
     });
 
     const initial = qs('.load-more', grid);
-    const initialNewer = qs('.load-newer', grid);
     const state = history.state || {};
-    const restoring = !!(
-      isBackForwardNavigation() &&
-      ((initial && state.galleryUntil) || (initialNewer && state.galleryNewerCount))
-    );
-    if (!restoring && (state.galleryUntil || state.galleryNewerCount)) {
-      setGalleryState({ galleryUntil: null, galleryNewerCount: 0 });
-    }
+    const restoring = !!(isBackForwardNavigation() && initial && state.galleryUntil);
+    if (!restoring && state.galleryUntil) setGalleryState({ galleryUntil: null });
     if (restoring) history.scrollRestoration = 'manual';
-    const done = restoring ? restoreGalleryCards(grid, initial, initialNewer, state) : Promise.resolve(false);
+    const done = restoring ? restoreGalleryCards(grid, initial, state) : Promise.resolve(false);
     done.then(function () {
       const link = qs('.load-more', grid);
       if (link) galleryScrollObserver.observe(link);
-      const newer = qs('.load-newer', grid);
-      if (newer) galleryNewerObserver.observe(newer);
     });
   }
 
   // ---- Gallery timeline: 15-minute JST slot headers + the right-edge rail (docs/ui.md「Gallery」) ----
   var GALLERY_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
-  var galleryTimeline = { ready: false, slots: [], counts: {}, days: {}, dayOrder: [], starts: [], total: 0, fraction: 0, dragging: false, refreshTimer: null, frame: 0 };
+  var galleryTimeline = { ready: false, slots: [], counts: {}, index: {}, days: {}, dayOrder: [], starts: [], total: 0, fraction: 0, dragging: false, dragFraction: 0, refreshTimer: null, frame: 0 };
 
   function galleryPad2(n) {
     return (n < 10 ? '0' : '') + n;
@@ -4438,6 +4380,7 @@ export const appJs = `
       grid.insertBefore(galleryMakeSlotHeader(slot), node);
       lastSlot = slot;
     });
+    galleryFill.headers = null;
   }
 
   function fillGalleryCounts(root) {
@@ -4453,25 +4396,18 @@ export const appJs = `
     });
   }
 
-  function galleryUrlWithAt(slot) {
-    const url = new URL(location.href);
-    ['cursor', 'until', 'partial', 'after', 'at'].forEach(function (k) {
-      url.searchParams.delete(k);
-    });
-    if (slot) url.searchParams.set('at', slot);
-    return url.toString();
-  }
-
   function buildGalleryTimeline(slots) {
     const tl = galleryTimeline;
     tl.slots = slots;
     tl.counts = {};
+    tl.index = {};
     tl.days = {};
     tl.dayOrder = [];
     tl.starts = [];
     tl.total = 0;
     slots.forEach(function (s, i) {
       tl.counts[s.slot] = s.count;
+      tl.index[s.slot] = i;
       tl.starts.push(tl.total);
       tl.total += s.count;
       const date = s.slot.slice(0, 10);
@@ -4540,19 +4476,16 @@ export const appJs = `
     return top + (dateHeader ? dateHeader.offsetHeight : 0);
   }
 
-  // Scrolls to the fraction f of the rail. Returns false when the slot is not in the DOM; with
-  // allowNavigate the page is then reloaded from that slot (at=).
-  function jumpGalleryTimeline(f, allowNavigate) {
+  // Scrolls to the fraction f of the rail. Every slot has its frames laid out already, so the
+  // target is always in the DOM; the cards there fill in as they come near the viewport.
+  function jumpGalleryTimeline(f) {
     const grid = galleryGrid();
     const tl = galleryTimeline;
     if (!grid || !tl.ready) return false;
     const idx = galleryRailSlotAt(f);
     const s = tl.slots[idx];
     const header = grid.querySelector('[data-slot-header="' + s.slot + '"]');
-    if (!header) {
-      if (allowNavigate) location.assign(galleryUrlWithAt(idx > 0 ? s.slot : null));
-      return false;
-    }
+    if (!header) return false;
     const cards = qsa('.card[data-slot="' + s.slot + '"]', grid);
     const within = Math.min(Math.max(f * tl.total - tl.starts[idx], 0), s.count);
     const k = Math.floor(within);
@@ -4580,17 +4513,9 @@ export const appJs = `
     }
     const card = cards[lo];
     const slot = card.getAttribute('data-slot');
-    const idx = tl.slots.findIndex(function (s) {
-      return s.slot === slot;
-    });
-    if (idx === -1) return;
-    let k = 0;
-    for (let p = card.previousElementSibling; p; p = p.previousElementSibling) {
-      const ps = p.getAttribute('data-slot');
-      if (ps === null) continue;
-      if (ps !== slot) break;
-      k++;
-    }
+    const idx = tl.index[slot];
+    if (idx === undefined) return;
+    const k = galleryIndexInSlot(card);
     const r = card.getBoundingClientRect();
     const cardFrac = r.height > 0 ? Math.min(1, Math.max(0, (offset - r.top) / r.height)) : 0;
     const f = Math.min(1, (tl.starts[idx] + Math.min(k + cardFrac, tl.slots[idx].count)) / tl.total);
@@ -4633,33 +4558,35 @@ export const appJs = `
       rail.classList.add('dragging');
       rail.setPointerCapture(ev.pointerId);
       const f = galleryRailFraction(ev, track);
+      tl.dragFraction = f;
       showGalleryBubble(f);
       qs('.gallery-rail-thumb', rail).style.top = f * 100 + '%';
-      jumpGalleryTimeline(f, false);
+      jumpGalleryTimeline(f);
     });
     rail.addEventListener('pointermove', function (ev) {
       const f = galleryRailFraction(ev, track);
       showGalleryBubble(f);
       if (tl.dragging) {
+        tl.dragFraction = f;
         qs('.gallery-rail-thumb', rail).style.top = f * 100 + '%';
-        jumpGalleryTimeline(f, false);
+        jumpGalleryTimeline(f);
       }
     });
     rail.addEventListener('pointerup', function (ev) {
       if (!tl.dragging) return;
       const f = galleryRailFraction(ev, track);
       finish();
-      jumpGalleryTimeline(f, true);
+      jumpGalleryTimeline(f);
       syncGalleryThumb();
     });
     rail.addEventListener('pointercancel', finish);
     rail.addEventListener('mouseleave', syncGalleryThumb);
     rail.addEventListener('keydown', function (ev) {
       if (ev.key === 'ArrowDown' || ev.key === 'PageDown') {
-        jumpGalleryTimeline(Math.min(1, tl.fraction + 0.02), true);
+        jumpGalleryTimeline(Math.min(1, tl.fraction + 0.02));
         ev.preventDefault();
       } else if (ev.key === 'ArrowUp' || ev.key === 'PageUp') {
-        jumpGalleryTimeline(Math.max(0, tl.fraction - 0.02), true);
+        jumpGalleryTimeline(Math.max(0, tl.fraction - 0.02));
         ev.preventDefault();
       }
     });
@@ -4696,6 +4623,302 @@ export const appJs = `
     });
     layoutGalleryRailLabels();
     syncGalleryThumb();
+  }
+
+  // ---- Gallery skeleton layout: every slot's frames exist up front (docs/ui.md「Gallery timeline」) ----
+  // The inline timeline (#gallery-timeline-data) names every slot and its count, so the whole list is
+  // laid out with fixed-size frames at once; real cards replace them one-for-one as they near the viewport.
+  var galleryFill = { inFlight: 0, busy: {}, retryAt: {}, headers: null, frame: 0, timer: 0 };
+  var GALLERY_FILL_MAX_IN_FLIGHT = 3;
+  var GALLERY_FILL_MAX_CARDS = 200;
+
+  // Returns the slots only when there is something to lay out; null selects the old paging behaviour.
+  function galleryInlineTimeline() {
+    const el = document.getElementById('gallery-timeline-data');
+    if (!el) return null;
+    try {
+      const data = JSON.parse(el.textContent);
+      if (!data || !Array.isArray(data.slots) || data.slots.length === 0) return null;
+      return data.slots;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function galleryDateHeaderHtml(date) {
+    return '<div class="gallery-date-header" data-date-header="' + date + '">' + galleryDateLabel(date) + '<small data-count-date="' + date + '"></small></div>';
+  }
+
+  function gallerySlotHeaderHtml(slot) {
+    return '<div class="gallery-slot-header" data-slot-header="' + slot + '"><b>' + gallerySlotRange(slot) + '</b><span data-count-slot="' + slot + '"></span></div>';
+  }
+
+  function gallerySkeletonHtml(slot, n) {
+    return n > 0 ? ('<div class="card card-skeleton" data-slot="' + slot + '"></div>').repeat(n) : '';
+  }
+
+  // Headers + frames for slots[from, to). A date header is added whenever the date differs from prevDate.
+  function galleryRunHtml(slots, from, to, prevDate) {
+    const parts = [];
+    let date = prevDate;
+    for (let i = from; i < to; i++) {
+      const s = slots[i];
+      const d = s.slot.slice(0, 10);
+      if (d !== date) {
+        parts.push(galleryDateHeaderHtml(d));
+        date = d;
+      }
+      parts.push(gallerySlotHeaderHtml(s.slot), gallerySkeletonHtml(s.slot, s.count));
+    }
+    return parts.join('');
+  }
+
+  // The server rendered the first page (the page starting at the at= slot in at mode). Frames for
+  // the rest of that page's last slot and every older slot go after it, frames for newer slots
+  // (at mode) go before it, and the viewport stays on the first real card.
+  function galleryBuildSkeletons(grid, keepViewport) {
+    const tl = galleryTimeline;
+    qsa('.load-more, .load-newer', grid).forEach(function (el) {
+      el.remove();
+    });
+    const cards = qsa('.card[data-slot]', grid);
+    if (cards.length === 0) return;
+    const first = cards[0];
+    const firstIdx = tl.index[first.getAttribute('data-slot')];
+    const lastSlot = cards[cards.length - 1].getAttribute('data-slot');
+    const lastIdx = tl.index[lastSlot];
+    if (firstIdx === undefined || lastIdx === undefined) return;
+    let lastSlotCards = 0;
+    for (let i = cards.length - 1; i >= 0 && cards[i].getAttribute('data-slot') === lastSlot; i--) lastSlotCards++;
+
+    const before = first.getBoundingClientRect().top;
+    const older = gallerySkeletonHtml(lastSlot, tl.counts[lastSlot] - lastSlotCards) + galleryRunHtml(tl.slots, lastIdx + 1, tl.slots.length, lastSlot.slice(0, 10));
+    grid.insertAdjacentHTML('beforeend', older);
+    if (firstIdx > 0) grid.insertAdjacentHTML('afterbegin', galleryRunHtml(tl.slots, 0, firstIdx, null));
+    reflowGalleryHeaders(grid);
+    if (keepViewport && firstIdx > 0) window.scrollBy(0, first.getBoundingClientRect().top - before);
+  }
+
+  function galleryHeaderList(grid) {
+    if (!galleryFill.headers) galleryFill.headers = qsa('.gallery-slot-header', grid);
+    return galleryFill.headers;
+  }
+
+  // Frames always trail the real cards of a slot, so the last element of the run says whether any are left.
+  function galleryRunHasFrames(grid, headers, i) {
+    let end = i + 1 < headers.length ? headers[i + 1].previousElementSibling : grid.lastElementChild;
+    while (end && end.classList.contains('gallery-date-header')) end = end.previousElementSibling;
+    return !!end && end.classList.contains('card-skeleton');
+  }
+
+  // The next group of adjacent slots to fetch: slots with frames still pending inside 1.5 viewports
+  // of the screen, split into runs of adjacent slots of at most 200 cards, nearest to the screen centre first.
+  function galleryNextFillBatch(grid) {
+    const tl = galleryTimeline;
+    const headers = galleryHeaderList(grid);
+    if (headers.length === 0) return null;
+    const vh = window.innerHeight;
+    const lo = -vh * 1.5;
+    const hi = vh * 2.5;
+    const center = vh / 2;
+    let a = 0;
+    let b = headers.length - 1;
+    while (a < b) {
+      const mid = (a + b + 1) >> 1;
+      if (headers[mid].getBoundingClientRect().top <= lo) a = mid;
+      else b = mid - 1;
+    }
+    const now = Date.now();
+    const batches = [];
+    let cur = null;
+    for (let i = a; i < headers.length; i++) {
+      const top = headers[i].getBoundingClientRect().top;
+      if (top > hi) break;
+      const slot = headers[i].getAttribute('data-slot-header');
+      const pending = galleryRunHasFrames(grid, headers, i) && !galleryFill.busy[slot] && !(galleryFill.retryAt[slot] > now);
+      if (!pending) {
+        cur = null;
+        continue;
+      }
+      const bottom = i + 1 < headers.length ? headers[i + 1].getBoundingClientRect().top : Infinity;
+      const dist = center < top ? top - center : center > bottom ? center - bottom : 0;
+      const count = tl.counts[slot] || 1;
+      const idx = tl.index[slot];
+      if (cur && cur.lastIdx + 1 === idx && cur.cards + count <= GALLERY_FILL_MAX_CARDS) {
+        cur.slots.push(slot);
+        cur.cards += count;
+        cur.lastIdx = idx;
+        cur.dist = Math.min(cur.dist, dist);
+      } else {
+        cur = { slots: [slot], cards: count, lastIdx: idx, dist: dist };
+        batches.push(cur);
+      }
+    }
+    let best = null;
+    batches.forEach(function (x) {
+      if (!best || x.dist < best.dist) best = x;
+    });
+    return best ? best.slots : null;
+  }
+
+  // Replaces the frames of one slot with the fetched cards. Cards already in the slot's run (live
+  // arrivals, the rest of the first page) are kept and not duplicated. Returns true when the slot's
+  // real count turned out different from the timeline's.
+  function galleryReplaceSlot(grid, slot, cards) {
+    const header = grid.querySelector('[data-slot-header="' + slot + '"]');
+    if (!header) return false;
+    const have = {};
+    const frames = [];
+    let real = 0;
+    for (let el = header.nextElementSibling; el && el.getAttribute('data-slot') === slot; el = el.nextElementSibling) {
+      if (el.classList.contains('card-skeleton')) {
+        frames.push(el);
+      } else {
+        real++;
+        const a = qs('.thumb-link', el);
+        if (a) have[a.getAttribute('data-short-id')] = true;
+      }
+    }
+    if (frames.length === 0) return false;
+    const fresh = cards.filter(function (card) {
+      const a = qs('.thumb-link', card);
+      return !(a && have[a.getAttribute('data-short-id')]);
+    });
+    const frag = document.createDocumentFragment();
+    fresh.forEach(function (card) {
+      frag.appendChild(card);
+      qsa('[data-request-id]', card).forEach(registerRequestElement);
+    });
+    grid.insertBefore(frag, frames[0]);
+    frames.forEach(function (el) {
+      el.remove();
+    });
+    return real + fresh.length !== galleryTimeline.counts[slot];
+  }
+
+  async function galleryFillSlots(grid, slots) {
+    const fill = galleryFill;
+    slots.forEach(function (s) {
+      fill.busy[s] = true;
+    });
+    fill.inFlight++;
+    try {
+      const url = new URL(location.href);
+      ['cursor', 'until', 'partial', 'after', 'at', 'limit', 'slot_from', 'slot_to'].forEach(function (k) {
+        url.searchParams.delete(k);
+      });
+      url.searchParams.set('slot_from', slots[slots.length - 1]);
+      url.searchParams.set('slot_to', slots[0]);
+      url.searchParams.set('partial', '1');
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error('status ' + res.status);
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = await res.text();
+      const bySlot = {};
+      qsa('.card[data-slot]', wrapper).forEach(function (card) {
+        const slot = card.getAttribute('data-slot');
+        (bySlot[slot] = bySlot[slot] || []).push(card);
+      });
+      const tl = galleryTimeline;
+      let mismatch = false;
+      slots.forEach(function (slot) {
+        if (galleryReplaceSlot(grid, slot, bySlot[slot] || [])) {
+          mismatch = true;
+          const run = qsa('.card[data-slot="' + slot + '"]', grid).length;
+          tl.slots = tl.slots
+            .map(function (s) {
+              return s.slot === slot ? { slot: slot, count: run } : s;
+            })
+            .filter(function (s) {
+              return s.count > 0;
+            });
+        }
+      });
+      if (mismatch) {
+        buildGalleryTimeline(tl.slots);
+        reflowGalleryHeaders(grid);
+        fillGalleryCounts(grid);
+        renderGalleryRail();
+      }
+    } catch (e) {
+      trackError('gallery.fill', e, { slots: slots.length });
+      slots.forEach(function (s) {
+        fill.retryAt[s] = Date.now() + 5000;
+      });
+      clearTimeout(fill.timer);
+      fill.timer = setTimeout(pumpGalleryFill, 5000);
+    } finally {
+      slots.forEach(function (s) {
+        delete fill.busy[s];
+      });
+      fill.inFlight--;
+      pumpGalleryFill();
+    }
+  }
+
+  function pumpGalleryFill() {
+    const grid = galleryGrid();
+    if (!grid || !galleryTimeline.ready || !galleryInlineTimelineActive) return;
+    while (galleryFill.inFlight < GALLERY_FILL_MAX_IN_FLIGHT) {
+      const batch = galleryNextFillBatch(grid);
+      if (!batch) return;
+      galleryFillSlots(grid, batch);
+    }
+  }
+
+  function scheduleGalleryFill() {
+    if (galleryFill.frame) return;
+    galleryFill.frame = requestAnimationFrame(function () {
+      galleryFill.frame = 0;
+      pumpGalleryFill();
+    });
+  }
+
+  // Back: put the anchor card (by short_id when it is still there, else by slot + index) back at its recorded screen position.
+  function restoreGalleryAnchor(grid, state) {
+    let card = null;
+    if (state.galleryAnchor) {
+      const a = qsa('.thumb-link', grid).find(function (x) {
+        return x.getAttribute('data-short-id') === state.galleryAnchor;
+      });
+      card = a ? a.closest('.card') : null;
+    }
+    if (!card && state.galleryAnchorSlot) {
+      const cards = qsa('.card[data-slot="' + state.galleryAnchorSlot + '"]', grid);
+      card = cards[Math.min(state.galleryAnchorIndex || 0, cards.length - 1)] || null;
+    }
+    if (card && typeof state.galleryAnchorTop === 'number') {
+      window.scrollBy(0, card.getBoundingClientRect().top - state.galleryAnchorTop);
+    } else if (typeof state.galleryScrollY === 'number') {
+      window.scrollTo(0, state.galleryScrollY);
+    }
+  }
+
+  var galleryInlineTimelineActive = false;
+
+  function setupGallerySkeleton(grid, slots) {
+    buildGalleryTimeline(slots);
+    if (!galleryTimeline.ready) return;
+    galleryInlineTimelineActive = true;
+    const state = history.state || {};
+    const restoring = isBackForwardNavigation() && !!state.galleryAnchorSlot;
+    galleryBuildSkeletons(grid, !restoring);
+    if (restoring) {
+      history.scrollRestoration = 'manual';
+      restoreGalleryAnchor(grid, state);
+    }
+    grid.addEventListener('click', function (ev) {
+      const thumb = ev.target.closest ? ev.target.closest('.thumb-link') : null;
+      if (thumb) recordGalleryAnchor(thumb.closest('.card'));
+    });
+    window.addEventListener('pagehide', function () {
+      recordGalleryAnchor(topVisibleGalleryCard(grid));
+    });
+    window.addEventListener('scroll', scheduleGalleryFill, { passive: true });
+    window.addEventListener('resize', scheduleGalleryFill);
+    fillGalleryCounts(grid);
+    renderGalleryRail();
+    pumpGalleryFill();
   }
 
   async function fetchGalleryTimeline() {
@@ -4741,7 +4964,9 @@ export const appJs = `
       scheduleGalleryThumbSync();
     });
     window.addEventListener('scroll', scheduleGalleryThumbSync, { passive: true });
-    fetchGalleryTimeline();
+    const slots = galleryInlineTimeline();
+    if (slots) setupGallerySkeleton(grid, slots);
+    else fetchGalleryTimeline();
   }
 
   document.addEventListener('DOMContentLoaded', function () {
