@@ -562,7 +562,7 @@ function renderExperimentCompare(shortId: string, compare: ExperimentCompare) {
         </p>
       ) : null}
       {compare.omittedRuns > 0 ? (
-        <p class="empty-state">先頭 {compare.items.length} 件の Run だけを表示しています（ほか {compare.omittedRuns} 件）。</p>
+        <p class="empty-state">先頭 {compare.items.length - (compare.baseColumn ? 1 : 0)} 件の Run だけを表示しています（ほか {compare.omittedRuns} 件）。</p>
       ) : null}
       {generationShortIds.length >= 2 ? (
         <p>
