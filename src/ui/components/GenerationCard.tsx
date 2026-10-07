@@ -29,7 +29,7 @@ export interface GenerationCardData {
   /** WD tagger の判定 (docs/ui.md「Gallery」安全性ピル)。未採点/未対応の一覧は null/undefined。 */
   safety?: SafetyView | null;
   /** このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw request (docs/ui.md「Gallery」進捗ピル)。無い/未対応の一覧はundefined。 */
-  finalize_request?: RequestBadgeData | null;
+  refinement_request?: RequestBadgeData | null;
   /** このGenerationが pose の基準 render として pin されているか (docs/ui.md「Gallery」基準ピル)。無い/未対応の一覧はundefined。 */
   reference?: { recipe: string; pose: string } | null;
 }
@@ -47,14 +47,14 @@ function SendIcon() {
 }
 
 /** kind の表示ラベル。static.ts の requestKindLabel と同じ規則。 */
-function finalizeKindLabel(kind: RequestBadgeData['kind']): string {
+function refinementKindLabel(kind: RequestBadgeData['kind']): string {
   return REQUEST_KIND_LABELS[kind] ?? kind;
 }
 
 /** サムネイル左上の進捗ピル (docs/ui.md「Gallery」)。live更新 (`[data-request-id]`) の対象なので、
  * app.js の setRequestBadgeText が再現するのと同じ DOM 構造 (`kind · status` + done 時は `.card-request-result` の子span) で組む。 */
 function RequestBadge({ r }: { r: RequestBadgeData }) {
-  const label = finalizeKindLabel(r.kind);
+  const label = refinementKindLabel(r.kind);
   return (
     <span
       class={`card-request-badge request-status-${r.status}`}
@@ -77,7 +77,7 @@ function RequestBadge({ r }: { r: RequestBadgeData }) {
 /** Card used in Gallery / Bookmarks / Compare generation grids: thumbnail (with optional
  * `from <short_id>` / 公開済み overlays) + a row of rating + bookmark. Everything else lives in Generation Detail, which the thumbnail links to. */
 export function GenerationCard({ g }: { g: GenerationCardData }) {
-  const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.finalize_request);
+  const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.refinement_request);
   const slot = g.created_at ? slotKeyOf(g.created_at) : null;
   return (
     <div class="card" data-slot={slot ?? undefined}>
@@ -97,7 +97,7 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
                 from <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
               </span>
             ) : null}
-            {g.finalize_request ? <RequestBadge r={g.finalize_request} /> : null}
+            {g.refinement_request ? <RequestBadge r={g.refinement_request} /> : null}
           </div>
         ) : null}
         {g.published || g.reference || (g.safety && g.safety.verdict !== 'none') ? (

@@ -13,7 +13,7 @@ export interface Bindings {
   /** PostHog の api_host。省略時 https://us.i.posthog.com */
   POSTHOG_HOST?: string;
   /** original 再圧縮ジョブの1回あたり処理件数の上限 (src/lib/original-recompress.ts)。省略時 60。 */
-  ORIGINAL_PURGE_BATCH_SIZE?: string;
+  ORIGINAL_RECOMPRESS_BATCH_SIZE?: string;
   /** 'on' で original 再圧縮ジョブ (src/lib/original-recompress.ts) を有効化。wrangler.jsonc には無く、省略時は無効。 */
   ORIGINAL_RECOMPRESS?: string;
 }

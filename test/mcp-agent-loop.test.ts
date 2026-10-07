@@ -352,15 +352,15 @@ describe('MCP derive_request', () => {
 
   it('409s when a refinement request in the chain has no source generation', async () => {
     const raw = await createParent({ parameters: { pose: 'date' } });
-    const finalizeRequest = await postJson<{ id: string }>('/api/v1/requests', {
+    const deliverRequest = await postJson<{ id: string }>('/api/v1/requests', {
       kind: 'deliver',
       payload: { generation_id: raw.generation.id, options: {} },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
-    expect(finalizeRequest.status).toBe(201);
+    expect(deliverRequest.status).toBe(201);
     const orphan = await createGeneration({
-      requestId: finalizeRequest.body.id,
+      requestId: deliverRequest.body.id,
       requestOverrides: { parameters: { kind: 'hires-chain' } },
     });
     const orphanGeneration = { body: orphan.generation };
