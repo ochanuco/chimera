@@ -1385,11 +1385,9 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-matrix th { font-weight: 600; text-align: left; vertical-align: top; white-space: nowrap; }
 .exp-matrix-seed { font-family: ui-monospace, monospace; color: var(--text-dim); font-size: 0.8rem; }
 .exp-matrix-cell { width: 180px; min-width: 180px; vertical-align: top; }
-.exp-matrix-cell img { display: block; width: 180px; height: auto; border-radius: 6px; background: var(--checker); }
-.exp-matrix-meta { display: flex; justify-content: space-between; gap: 0.4rem; font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
-.exp-matrix-rating.good { color: var(--good); }
-.exp-matrix-rating.bad { color: var(--bad); }
-.exp-matrix-empty .compare-placeholder { width: 180px; height: auto; aspect-ratio: 5 / 8; }
+.exp-matrix-empty .card { border-style: dashed; background: transparent; }
+.exp-matrix-empty .exp-matrix-wait { display: flex; align-items: center; justify-content: center; aspect-ratio: var(--thumb-ar); color: var(--text-dim); }
+.exp-matrix-empty .exp-matrix-wait-row { height: var(--card-row-h); }
 .exp-compare-seeds { display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: baseline; font-size: 0.85rem; color: var(--text-dim); }
 .exp-compare-seed { font-family: ui-monospace, monospace; }
 .exp-compare-seed.current { color: var(--text); }
