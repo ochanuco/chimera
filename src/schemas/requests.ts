@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-export const requestKindSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
-export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'repair', 'masked_redraw', 'import']);
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -34,22 +34,62 @@ function regionsOverlap(a: readonly [number, number, number, number], b: readonl
 /** finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す (docs/worker-protocol.md「finalize」)。
  * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。
  * `repair*` は相乗り repair の引数で、単体 repair request の options と語彙を揃えている。 */
+const denoiseField = z.union([z.number(), dialWord]).nullable().optional();
+const keepLegwearField = z.union([z.literal(true), z.number(), dialWord]).nullable().optional();
+const routeField = z.enum(['latent', 'pixel']).nullable().optional();
+const finalizerField = z.string().nullable().optional();
+const sizeField = z.number().int().nullable().optional();
+const upscaleField = z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional();
+// worker は keep_regions / keep_strength の null を型エラーにするので、他の option と違い nullable にしない。
+const keepRegionsField = z.array(repairRegionSchema).optional();
+const keepStrengthField = z.number().gt(0).lt(1).optional();
+const hiresField = z.number().int().min(64).nullable().optional();
+const hiresDenoiseField = z.number().gt(0).lte(1).nullable().optional();
+const repinField = z.boolean().optional();
+const recolorField = z.boolean().optional();
+const skinField = z.boolean().optional();
+const keepSceneField = z.boolean().optional();
+const transparentField = z.boolean().nullable().optional();
+const backdropField = z.string().nullable().optional();
+const strokeLightField = z.enum(['none', 'even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional();
+const deliverSizeField = z.number().int().nullable().optional();
+const dofField = z
+  .object({
+    focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
+    f_number: z.number().min(1.4).max(22),
+    scope: z.enum(['figure', 'all']).optional(),
+    viewfinder: z.enum(['off', 'on', 'both']).optional(),
+  })
+  .strict()
+  .nullable()
+  .optional();
+const lightSceneField = z.enum(['sunset', 'moon']);
+const lightFromField = z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).optional();
+const lightField = z
+  .object({ scene: lightSceneField, from: lightFromField })
+  .strict()
+  .nullable()
+  .optional();
+
+/** finalize の options は `comfy-recipes finalize` の引数に 1 対 1 で写す (docs/worker-protocol.md「finalize」)。
+ * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。
+ * `repair*` は相乗り repair の引数で、単体 repair request の options と語彙を揃えている。 */
 export const finalizeOptionsSchema = z
   .object({
-    denoise: z.union([z.number(), dialWord]).nullable().optional(),
-    repin: z.boolean().optional(),
-    recolor: z.boolean().optional(),
-    keep_legwear: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
-    route: z.enum(['latent', 'pixel']).nullable().optional(),
-    finalizer: z.string().nullable().optional(),
-    size: z.number().int().nullable().optional(),
-    skin: z.boolean().optional(),
-    keep_scene: z.boolean().optional(),
-    transparent: z.boolean().nullable().optional(),
-    backdrop: z.string().nullable().optional(),
-    upscale: z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional(),
-    deliver_size: z.number().int().nullable().optional(),
-    stroke_light: z.enum(['none', 'even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional(),
+    denoise: denoiseField,
+    repin: repinField,
+    recolor: recolorField,
+    keep_legwear: keepLegwearField,
+    route: routeField,
+    finalizer: finalizerField,
+    size: sizeField,
+    skin: skinField,
+    keep_scene: keepSceneField,
+    transparent: transparentField,
+    backdrop: backdropField,
+    upscale: upscaleField,
+    deliver_size: deliverSizeField,
+    stroke_light: strokeLightField,
     repair: z.array(z.enum(['hands', 'feet'])).nullable().optional(),
     repair_regions: z.array(repairRegionSchema).nullable().optional(),
     repair_denoise: z.union([z.number().gt(0).lte(1), dialWord]).nullable().optional(),
@@ -57,30 +97,62 @@ export const finalizeOptionsSchema = z
     repair_size: z.number().int().min(256).multipleOf(8).nullable().optional(),
     repair_lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
     repair_seeds: z.number().int().min(1).max(8).optional(),
-    // worker は keep_regions / keep_strength の null を型エラーにするので、他の option と違い nullable にしない。
-    keep_regions: z.array(repairRegionSchema).optional(),
-    keep_strength: z.number().gt(0).lt(1).optional(),
+    keep_regions: keepRegionsField,
+    keep_strength: keepStrengthField,
     deliver_only: z.boolean().optional(),
-    hires: z.number().int().min(64).nullable().optional(),
-    hires_denoise: z.number().gt(0).lte(1).nullable().optional(),
-    dof: z
-      .object({
-        focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
-        f_number: z.number().min(1.4).max(22),
-        scope: z.enum(['figure', 'all']).optional(),
-        viewfinder: z.enum(['off', 'on', 'both']).optional(),
-      })
-      .strict()
-      .nullable()
-      .optional(),
-    light: z
-      .object({
-        scene: z.enum(['sunset', 'moon']),
-        from: z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).optional(),
-      })
-      .strict()
-      .nullable()
-      .optional(),
+    hires: hiresField,
+    hires_denoise: hiresDenoiseField,
+    dof: dofField,
+    light: lightField,
+  })
+  .strict();
+
+/** redraw の options は絵を変える 1 つの method だけを選ぶ (docs/worker-protocol.md「redraw」)。 */
+export const redrawOptionsSchema = z.discriminatedUnion('method', [
+  z
+    .object({
+      method: z.literal('canvas'),
+      denoise: denoiseField,
+      size: sizeField,
+      route: routeField,
+      finalizer: finalizerField,
+      upscale: upscaleField,
+      keep_regions: keepRegionsField,
+      keep_strength: keepStrengthField,
+    })
+    .strict(),
+  z.object({ method: z.literal('hires'), hires: hiresField, denoise: hiresDenoiseField }).strict(),
+  z.object({ method: z.literal('light'), scene: lightSceneField.optional(), from: lightFromField }).strict(),
+]);
+
+/** deliver の options は切り抜き後の飾りだけ (docs/worker-protocol.md「deliver」)。 */
+export const deliverOptionsSchema = z
+  .object({
+    repin: repinField,
+    recolor: recolorField,
+    skin: skinField,
+    keep_legwear: keepLegwearField,
+    keep_scene: keepSceneField,
+    transparent: transparentField,
+    backdrop: backdropField,
+    stroke_light: strokeLightField,
+    deliver_size: deliverSizeField,
+    dof: dofField,
+    light: lightField,
+  })
+  .strict();
+
+export const redrawPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: redrawOptionsSchema,
+  })
+  .strict();
+
+export const deliverPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: deliverOptionsSchema.optional(),
   })
   .strict();
 
@@ -186,15 +258,19 @@ export const generatePayloadSchema = z
   .passthrough();
 
 /** REST (`POST /api/v1/requests`) と MCP `create_request` の両方が使う、kind に応じた payload 封筒の検証。 */
-export function payloadEnvelopeIssues(kind: 'generate' | 'finalize' | 'repair' | 'masked_redraw', payload: unknown) {
+export function payloadEnvelopeIssues(kind: z.infer<typeof requestKindSchema>, payload: unknown) {
   const schema =
     kind === 'finalize'
       ? finalizePayloadSchema
-      : kind === 'repair'
-        ? repairPayloadSchema
-        : kind === 'masked_redraw'
-          ? maskedRedrawPayloadSchema
-          : generatePayloadSchema;
+      : kind === 'redraw'
+        ? redrawPayloadSchema
+        : kind === 'deliver'
+          ? deliverPayloadSchema
+          : kind === 'repair'
+            ? repairPayloadSchema
+            : kind === 'masked_redraw'
+              ? maskedRedrawPayloadSchema
+              : generatePayloadSchema;
   const parsed = schema.safeParse(payload);
   return parsed.success ? [] : parsed.error.issues;
 }
