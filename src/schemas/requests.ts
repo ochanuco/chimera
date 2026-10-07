@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 /** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。 */
-export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver']);
-export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof']);
+export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
-export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'import']);
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -51,18 +51,13 @@ const skinField = z.boolean().optional();
 const keepSceneField = z.boolean().optional();
 const transparentField = z.boolean().nullable().optional();
 const backdropField = z.string().nullable().optional();
-const strokeLightField = z.enum(['none', 'even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional();
+const strokeLightField = z.enum(['even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional();
 const deliverSizeField = z.number().int().nullable().optional();
-const dofField = z
-  .object({
-    focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
-    f_number: z.number().min(1.4).max(22),
-    scope: z.enum(['figure', 'all']).optional(),
-    viewfinder: z.enum(['off', 'on', 'both']).optional(),
-  })
-  .strict()
-  .nullable()
-  .optional();
+const outlineSchema = z
+  .object({ color: z.string().regex(/^#[0-9a-f]{6}$/i), width: z.number().gt(0).lte(5) })
+  .strict();
+export const MAX_OUTLINES = 6;
+const outlinesField = z.array(outlineSchema).max(MAX_OUTLINES).nullable().optional();
 const lightSceneField = z.enum(['sunset', 'moon']);
 const lightFromField = z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).optional();
 const lightField = z
@@ -100,8 +95,8 @@ export const deliverOptionsSchema = z
     transparent: transparentField,
     backdrop: backdropField,
     stroke_light: strokeLightField,
+    outlines: outlinesField,
     deliver_size: deliverSizeField,
-    dof: dofField,
     light: lightField,
   })
   .strict();
@@ -126,6 +121,29 @@ export const deliverPayloadSchema = z
     generation_id: z.string().min(1),
     options: deliverOptionsSchema.optional(),
     profile: deliverProfileRefSchema.optional(),
+  })
+  .strict();
+
+/** dof の options (docs/worker-protocol.md「dof」)。入力は deliver の出力だけで、worker が判定する。 */
+export const dofOptionsSchema = z
+  .object({
+    focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
+    f_number: z.number().min(1.4).max(22).optional(),
+    scope: z
+      .object({ figure: z.boolean().optional(), outline: z.boolean().optional(), backdrop: z.boolean().optional() })
+      .strict()
+      .refine((scope) => !(scope.figure === false && scope.outline === false && scope.backdrop === false), {
+        message: 'scope must keep at least one layer',
+      })
+      .optional(),
+    viewfinder: z.enum(['off', 'on', 'both']).optional(),
+  })
+  .strict();
+
+export const dofPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: dofOptionsSchema,
   })
   .strict();
 
@@ -221,11 +239,13 @@ export function payloadEnvelopeIssues(kind: Exclude<z.infer<typeof requestKindSc
       ? redrawPayloadSchema
       : kind === 'deliver'
         ? deliverPayloadSchema
-        : kind === 'repair'
-          ? repairPayloadSchema
-          : kind === 'masked_redraw'
-            ? maskedRedrawPayloadSchema
-            : generatePayloadSchema;
+        : kind === 'dof'
+          ? dofPayloadSchema
+          : kind === 'repair'
+            ? repairPayloadSchema
+            : kind === 'masked_redraw'
+              ? maskedRedrawPayloadSchema
+              : generatePayloadSchema;
   const parsed = schema.safeParse(payload);
   return parsed.success ? [] : parsed.error.issues;
 }

@@ -162,7 +162,7 @@ export async function buildRequestJobs(db: D1Database, requestId: string) {
 
 /** 仕上げ系 kind は元になる Generation を Job ごとに指す。generate / import は持たない。 */
 export function requiresSourceGeneration(kind: RequestRow['kind']): boolean {
-  return kind === 'finalize' || kind === 'redraw' || kind === 'repair' || kind === 'masked_redraw' || kind === 'deliver';
+  return kind === 'finalize' || kind === 'redraw' || kind === 'repair' || kind === 'masked_redraw' || kind === 'deliver' || kind === 'dof';
 }
 
 export interface CreateRequestJobInput {

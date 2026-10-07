@@ -146,19 +146,21 @@ describe('POST /api/v1/requests', () => {
     expect(conflicting.status).toBe(409);
   });
 
-  it('deliver: stroke_light accepts none, even, a direction and null; rejects an unknown string', async () => {
+  it('deliver: stroke_light accepts even, a direction and null; rejects none and an unknown string', async () => {
     const { generation } = await createGeneration();
-    for (const value of ['none', 'even', 'n', 'nw', null]) {
+    for (const value of ['even', 'n', 'nw', null]) {
       const res = await createDeliverRequest(generation.id, {
         payload: { generation_id: generation.id, options: { stroke_light: value } },
       });
       expect(res.status).toBe(201);
       expect(res.body.payload).toEqual({ generation_id: generation.id, options: { stroke_light: value } });
     }
-    const bad = await createDeliverRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { stroke_light: 'sideways' } },
-    });
-    expect(bad.status).toBe(400);
+    for (const value of ['sideways', 'none']) {
+      const bad = await createDeliverRequest(generation.id, {
+        payload: { generation_id: generation.id, options: { stroke_light: value } },
+      });
+      expect(bad.status).toBe(400);
+    }
   });
 
   it('finalize: creation is rejected with a 400 that names redraw and deliver, over REST and createRequest', async () => {

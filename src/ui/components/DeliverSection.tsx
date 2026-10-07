@@ -1,5 +1,5 @@
 import type { Dials, DeliverProfileOption } from '../option-forms';
-import type { DeliverDefaults, DeliverDof } from '../../lib/catalogs';
+import type { DeliverDefaults, DofCatalog } from '../../lib/catalogs';
 import type { RedrawLight } from '../../lib/catalogs';
 import { DOF_VIEWFINDER_LABELS, Help, LIGHT_FROM_CHOICES, LIGHT_SCENE_LABELS, TriStateField } from './OptionControls';
 
@@ -11,7 +11,7 @@ export interface BackdropOption {
 export interface DeliverFormData {
   dials: Dials | null;
   defaults: DeliverDefaults | null;
-  dof: DeliverDof | null;
+  dof: DofCatalog | null;
   /** The recipe's `redraw.light`: the scenes and directions the deliver `light` field offers. */
   light: RedrawLight | null;
   backdropColor: string | null;
@@ -218,7 +218,7 @@ export function DeliverFields({
           {dof.guideRadiusPerF !== null ? <span class="repair-region-hint">円はくっきり見える範囲の目安（奥行きは見ていない）</span> : null}
           {dof.scope ? (
             <label>
-              <input type="checkbox" name="dof_scope_all" checked={dof.scope.default === 'all'} disabled /> 背景もぼかす（白フチ・紫フチ・影・背景も）
+              <input type="checkbox" name="dof_scope_all" checked={dof.scope.backdrop} disabled /> 背景もぼかす（白フチ・紫フチ・影・背景も）
             </label>
           ) : null}
           {dof.viewfinder ? (

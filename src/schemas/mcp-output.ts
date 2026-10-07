@@ -242,6 +242,7 @@ export const mcpOutputSchemas = {
   create_request: createdRequestSchema,
   redraw_generation: createdRequestSchema,
   deliver_generation: createdRequestSchema,
+  dof_generation: createdRequestSchema,
   repair_generation: createdRequestSchema,
   masked_redraw_generation: createdRequestSchema,
   get_request: requestSchema,

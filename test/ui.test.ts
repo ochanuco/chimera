@@ -1470,10 +1470,8 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
     expect(html).not.toContain('class="backdrop-thumb"');
   });
 
-  it('renders the bokeh controls only when the catalog publishes deliver.dof', async () => {
-    const html = await detailHtml({
-      deliver: { dof: { f_number: DOF_F, focus: 'fractions [x, y] of the source image' } },
-    });
+  it('renders the bokeh controls only when the catalog publishes the top-level dof', async () => {
+    const html = await detailHtml(null, { dof: { f_number: DOF_F, focus: 'fractions [x, y] of the source image' } });
     expect(html).toContain('<legend>ボケ</legend>');
     expect(html).toContain('name="dof"');
     expect(html).toMatch(/<input type="range" name="dof_f_stop" min="0" max="3" step="1" value="0"/);
@@ -1489,33 +1487,30 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
     expect(plainHtml).not.toContain('dof_f_stop');
   });
 
-  it('threads deliver.dof.guide_radius_per_f into the F slider and shows the guide help only then', async () => {
-    const withGuide = await detailHtml({ deliver: { dof: { f_number: DOF_F, guide_radius_per_f: 0.0417 } } });
+  it('threads dof.guide_radius_per_f into the F slider and shows the guide help only then', async () => {
+    const withGuide = await detailHtml(null, { dof: { f_number: DOF_F, guide_radius_per_f: 0.0417 } });
     expect(withGuide).toMatch(/name="dof_f_stop"[^>]*data-dof-guide-radius="0.0417"/);
     expect(withGuide).toContain('円はくっきり見える範囲の目安（奥行きは見ていない）');
 
-    const plain = await detailHtml({ deliver: { dof: { f_number: DOF_F } } });
+    const plain = await detailHtml(null, { dof: { f_number: DOF_F } });
     expect(plain).toContain('name="dof_f_stop"');
     expect(plain).not.toContain('data-dof-guide-radius');
     expect(plain).not.toContain('円はくっきり見える範囲の目安');
   });
 
-  it('renders the dof scope checkbox only when the catalog publishes deliver.dof.scope', async () => {
-    const html = await detailHtml({ deliver: { dof: { f_number: DOF_F, scope: { values: ['figure', 'all'], default: 'figure' } } } });
-    expect(html).toMatch(/<input type="checkbox" name="dof_scope_all"[^>]*disabled/);
-    expect(html).not.toMatch(/name="dof_scope_all"[^>]*checked/);
-    expect(html).toContain('背景もぼかす');
+  it('presets the dof scope checkbox from the catalog dof.scope.backdrop, on when it is absent', async () => {
+    const off = await detailHtml(null, { dof: { f_number: DOF_F, scope: { backdrop: false } } });
+    expect(off).toMatch(/<input type="checkbox" name="dof_scope_all"[^>]*disabled/);
+    expect(off).not.toMatch(/name="dof_scope_all"[^>]*checked/);
+    expect(off).toContain('背景もぼかす');
 
-    const noScope = await detailHtml({ deliver: { dof: { f_number: DOF_F } } });
-    expect(noScope).toContain('name="dof"');
-    expect(noScope).not.toContain('dof_scope_all');
-    expect(noScope).not.toContain('dof_viewfinder');
+    const on = await detailHtml(null, { dof: { f_number: DOF_F } });
+    expect(on).toMatch(/name="dof_scope_all"[^>]*checked/);
+    expect(on).not.toContain('dof_viewfinder');
   });
 
-  it('renders the dof viewfinder select only when the catalog publishes deliver.dof.viewfinder', async () => {
-    const html = await detailHtml({
-      deliver: { dof: { f_number: DOF_F, viewfinder: { values: ['off', 'on', 'both'], default: 'off' } } },
-    });
+  it('renders the dof viewfinder select only when the catalog publishes dof.viewfinder', async () => {
+    const html = await detailHtml(null, { dof: { f_number: DOF_F, viewfinder: { values: ['off', 'on', 'both'], default: 'off' } } });
     expect(html).toMatch(/<select name="dof_viewfinder"[^>]*disabled/);
     expect(html).toMatch(/<option value="off" selected[^>]*>OFF<\/option>/);
     expect(html).toContain('<option value="on">ON</option>');

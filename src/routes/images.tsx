@@ -13,7 +13,7 @@ import {
   getCatalog,
   findDeliverDials,
   findDeliverDefaults,
-  findDeliverDof,
+  findDof,
   findDeliverBackdropColor,
   findRedrawDials,
   findRepairDials,
@@ -181,7 +181,7 @@ images.get('/:shortId', async (c) => {
       deliverForm={{
         dials: doc && recipe ? findDeliverDials(doc, recipe) : null,
         defaults: doc && recipe ? findDeliverDefaults(doc, recipe) : null,
-        dof: doc && recipe ? findDeliverDof(doc, recipe) : null,
+        dof: doc ? findDof(doc) : null,
         light: doc && recipe ? findRedrawLight(doc, recipe) : null,
         backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
         profiles: deliverProfiles,

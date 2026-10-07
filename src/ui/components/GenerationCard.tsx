@@ -4,7 +4,7 @@ import { REQUEST_KIND_LABELS } from './OptionControls';
 
 export interface RequestBadgeData {
   id: string;
-  kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver';
+  kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof';
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   result_short_id: string | null;
 }
