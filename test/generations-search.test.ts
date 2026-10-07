@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, createRequest, getJson, postJson, req } from './helpers';
 
-interface FinalizeRequestBadge {
+interface RefinementRequestBadge {
   id: string;
   kind: 'finalize' | 'redraw' | 'deliver' | 'repair' | 'masked_redraw';
   status: string;
@@ -18,7 +18,7 @@ interface SearchItem {
   tags: string[];
   created_at: string;
   refines_generation_short_id: string | null;
-  finalize_request: FinalizeRequestBadge | null;
+  refinement_request: RefinementRequestBadge | null;
   reference: { recipe: string; pose: string } | null;
 }
 
@@ -221,8 +221,8 @@ describe('Generation search', () => {
   });
 });
 
-describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進捗ピル)', () => {
-  async function createFinalizeLikeRequest(
+describe('Generation search: refinement_request badge (docs/ui.md「Gallery」進捗ピル)', () => {
+  async function createRefinementRequest(
     generationIdOrShortId: string,
     kind: 'finalize' | 'redraw' | 'deliver' | 'repair' | 'masked_redraw',
     createdAt?: string,
@@ -260,18 +260,18 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
 
   it('resolves a finalize request addressed by the Generation UUID', async () => {
     const { generation } = await createGeneration();
-    const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
+    const requestId = await createRefinementRequest(generation.id, 'finalize');
 
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(res.body.items[0]?.finalize_request).toEqual({ id: requestId, kind: 'finalize', status: 'queued', result_short_id: null });
+    expect(res.body.items[0]?.refinement_request).toEqual({ id: requestId, kind: 'finalize', status: 'queued', result_short_id: null });
   });
 
   it('resolves a repair request addressed by the Generation short_id', async () => {
     const { generation } = await createGeneration();
-    const requestId = await createFinalizeLikeRequest(generation.short_id, 'repair');
+    const requestId = await createRefinementRequest(generation.short_id, 'repair');
 
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(res.body.items[0]?.finalize_request).toEqual({ id: requestId, kind: 'repair', status: 'queued', result_short_id: null });
+    expect(res.body.items[0]?.refinement_request).toEqual({ id: requestId, kind: 'repair', status: 'queued', result_short_id: null });
   });
 
   it('recognizes masked_redraw and ignores an unrelated generate request', async () => {
@@ -282,41 +282,41 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
       idempotency_key: crypto.randomUUID(),
       created_by: 'brain',
     });
-    const requestId = await createFinalizeLikeRequest(generation.id, 'masked_redraw');
+    const requestId = await createRefinementRequest(generation.id, 'masked_redraw');
 
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(res.body.items[0]?.finalize_request?.id).toBe(requestId);
-    expect(res.body.items[0]?.finalize_request?.kind).toBe('masked_redraw');
+    expect(res.body.items[0]?.refinement_request?.id).toBe(requestId);
+    expect(res.body.items[0]?.refinement_request?.kind).toBe('masked_redraw');
   });
 
   it('the most recently created request wins when several target the same generation', async () => {
     const { generation } = await createGeneration();
-    await createFinalizeLikeRequest(generation.id, 'finalize', '2026-01-01T00:00:00.000Z');
-    const newer = await createFinalizeLikeRequest(generation.id, 'repair', '2026-01-02T00:00:00.000Z');
+    await createRefinementRequest(generation.id, 'finalize', '2026-01-01T00:00:00.000Z');
+    const newer = await createRefinementRequest(generation.id, 'repair', '2026-01-02T00:00:00.000Z');
 
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(res.body.items[0]?.finalize_request?.id).toBe(newer);
-    expect(res.body.items[0]?.finalize_request?.kind).toBe('repair');
+    expect(res.body.items[0]?.refinement_request?.id).toBe(newer);
+    expect(res.body.items[0]?.refinement_request?.kind).toBe('repair');
   });
 
   it('result_short_id resolves once the request is done, and stays null for every other status', async () => {
     const { generation } = await createGeneration();
     const { generation: resultGen } = await createGeneration();
-    const requestId = await createFinalizeLikeRequest(generation.id, 'finalize');
+    const requestId = await createRefinementRequest(generation.id, 'finalize');
 
     const queuedRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(queuedRes.body.items[0]?.finalize_request?.status).toBe('queued');
-    expect(queuedRes.body.items[0]?.finalize_request?.result_short_id).toBeNull();
+    expect(queuedRes.body.items[0]?.refinement_request?.status).toBe('queued');
+    expect(queuedRes.body.items[0]?.refinement_request?.result_short_id).toBeNull();
 
     await env.DB.prepare('UPDATE requests SET status = ? WHERE id = ?').bind('running', requestId).run();
     const runningRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(runningRes.body.items[0]?.finalize_request?.result_short_id).toBeNull();
+    expect(runningRes.body.items[0]?.refinement_request?.result_short_id).toBeNull();
 
     await env.DB.prepare('UPDATE requests SET status = ?, result_json = ? WHERE id = ?')
       .bind('done', JSON.stringify({ generation_ids: [resultGen.id] }), requestId)
       .run();
     const doneRes = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(doneRes.body.items[0]?.finalize_request).toEqual({
+    expect(doneRes.body.items[0]?.refinement_request).toEqual({
       id: requestId,
       kind: 'finalize',
       status: 'done',
@@ -326,21 +326,21 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
 
   it('resolves a redraw and a deliver request the same way', async () => {
     const { generation } = await createGeneration();
-    const redrawId = await createFinalizeLikeRequest(generation.id, 'redraw', '2026-01-01T00:00:00.000Z');
-    expect((await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`)).body.items[0]?.finalize_request).toEqual({
+    const redrawId = await createRefinementRequest(generation.id, 'redraw', '2026-01-01T00:00:00.000Z');
+    expect((await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`)).body.items[0]?.refinement_request).toEqual({
       id: redrawId,
       kind: 'redraw',
       status: 'queued',
       result_short_id: null,
     });
-    const deliverId = await createFinalizeLikeRequest(generation.id, 'deliver', '2026-01-02T00:00:00.000Z');
-    expect((await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`)).body.items[0]?.finalize_request?.id).toBe(deliverId);
+    const deliverId = await createRefinementRequest(generation.id, 'deliver', '2026-01-02T00:00:00.000Z');
+    expect((await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`)).body.items[0]?.refinement_request?.id).toBe(deliverId);
   });
 
   it('is null when no redraw/deliver/repair/masked_redraw request targets the generation', async () => {
     const { generation } = await createGeneration();
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
-    expect(res.body.items[0]?.finalize_request).toBeNull();
+    expect(res.body.items[0]?.refinement_request).toBeNull();
   });
 });
 
