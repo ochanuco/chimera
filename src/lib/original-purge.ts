@@ -31,7 +31,7 @@ export const PURGE_ELIGIBLE_SQL = `(g.rating IS NULL OR g.rating = 'bad')
     AND NOT EXISTS (SELECT 1 FROM generations rg WHERE rg.refines_generation_id = g.id)
     AND NOT EXISTS (
       SELECT 1 FROM requests r
-      WHERE r.kind IN ('finalize', 'repair', 'masked_redraw')
+      WHERE r.kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver')
         AND r.status NOT IN ('done', 'failed', 'cancelled')
         AND json_extract(r.payload_json, '$.generation_id') IN (g.id, g.short_id)
     )`;
