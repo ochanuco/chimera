@@ -360,6 +360,25 @@ describe('WorkerHub generation broadcast (docs/worker-protocol.md「hub → view
     viewer.close();
   });
 
+  it('PUT /safety notifies connected viewers with a safety message', async () => {
+    const { generation } = await createGeneration();
+    const viewer = await connectWs('/api/v1/requests/ws');
+    const viewerT = trackMessages(viewer);
+    await viewerT.waitFor((m) => m.type === 'snapshot');
+
+    const put = await postJson(
+      `/api/v1/generations/${generation.short_id}/safety`,
+      { model: 'wd-test@abc', rating: { general: 0.9, sensitive: 0.1, questionable: 0, explicit: 0 }, tags: {} },
+      'PUT',
+    );
+    expect(put.status).toBe(200);
+
+    const msg = await viewerT.waitFor((m) => m.type === 'safety' && m.short_id === generation.short_id);
+    expect(msg.generation_id).toBe(generation.id);
+
+    viewer.close();
+  });
+
   it('a refined output carries its raw Generation short_id as refines_generation_short_id', async () => {
     const viewer = await connectWs('/api/v1/requests/ws');
     const viewerT = trackMessages(viewer);
