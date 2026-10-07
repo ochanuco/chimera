@@ -1,9 +1,11 @@
 import {
   BLOCK_TAG_THRESHOLD,
-  CAUTION_SENSITIVE_THRESHOLD,
-  RISKY_TAG_AXIS,
+  CERTAIN_TAG_THRESHOLD,
   RISKY_TAGS,
   SENSITIVE_QUESTIONABLE_THRESHOLD,
+  SUSPECT_TAG_THRESHOLD,
+  TAG_X_RISK,
+  type TagXRisk,
 } from '../../lib/safety';
 
 export type SafetyVerdictView = 'block' | 'sensitive' | 'caution' | 'none';
@@ -73,39 +75,54 @@ export function RatingBar({ rating, variant }: { rating: SafetyRatingView; varia
 const pct = (value: number) => `${Math.round(value * 100)}%`;
 
 /** reasons は API 互換のため `name 0.47` 形式のまま。表示だけ % に直す。 */
-function exposureReasonText(reasons: string[]): string {
-  const tags = reasons.map((r) => {
+function reasonItems(reasons: string[]): string[] {
+  return reasons.map((r) => {
     const [name, value] = r.split(' ');
-    return `${name} ${pct(Number(value))}`;
+    return `${name === 'questionable' ? 'かなり際どい' : name} ${pct(Number(value))}`;
   });
-  return `露出タグ ${tags.join(', ')}（${pct(BLOCK_TAG_THRESHOLD)} 以上で出さない）`;
+}
+
+function reasonText(verdict: SafetyVerdictView, reasons: string[]): string | null {
+  const items = reasonItems(reasons);
+  if (verdict === 'block') return `露出タグ ${items.join(', ')}（${pct(BLOCK_TAG_THRESHOLD)} 以上で出さない）`;
+  if (verdict === 'sensitive') {
+    return `${items.join('、')}（かなり際どい ${pct(SENSITIVE_QUESTIONABLE_THRESHOLD)} 以上か、乳・股間のタグ ${pct(CERTAIN_TAG_THRESHOLD)} 以上でセンシティブ）`;
+  }
+  if (verdict === 'caution') return `${items.join('、')}（尻・下着のタグ ${pct(SUSPECT_TAG_THRESHOLD)} 以上で注意）`;
+  return null;
 }
 
 interface GaugeProps {
   label: string;
   value: number;
-  limit: number;
   colorVar: string;
-  verdictLabel: string;
+  limit?: number;
+  verdictLabel?: string;
+  note?: string;
 }
 
-/** 判定に使う区分の値と閾値の距離。閾値の 5pt 手前からは強調する。 */
-function Gauge({ label, value, limit, colorVar, verdictLabel }: GaugeProps) {
-  const left = limit - value;
+/** 区分の値。limit があれば閾値の目盛りと距離を出し、閾値の 5pt 手前からは強調する。なければ参考表示。 */
+function Gauge({ label, value, colorVar, limit, verdictLabel, note }: GaugeProps) {
+  const left = limit === undefined ? 0 : limit - value;
   const gap =
-    left > 0
-      ? `あと ${(left * 100).toFixed(1)}pt で${verdictLabel}`
-      : `${verdictLabel}の閾値を ${(-left * 100).toFixed(1)}pt 超過`;
+    limit === undefined
+      ? null
+      : left > 0
+        ? `あと ${(left * 100).toFixed(1)}pt で${verdictLabel}`
+        : `${verdictLabel}の閾値を ${(-left * 100).toFixed(1)}pt 超過`;
   const near = left > 0 && left < 0.05;
   return (
     <div class="safety-gauge">
       <span class="safety-label">{label}</span>
       <div class="safety-track">
         <div class="safety-fill" style={`width:${value * 100}%;background:var(${colorVar})`} />
-        <div class="safety-tick" style={`left:calc(${limit * 100}% - 1px)`} data-label={`${Math.round(limit * 100)}%`} />
+        {limit !== undefined ? (
+          <div class="safety-tick" style={`left:calc(${limit * 100}% - 1px)`} data-label={`${Math.round(limit * 100)}%`} />
+        ) : null}
       </div>
       <span class="safety-num">{fmtPct(value)}</span>
-      <span class={`safety-gap${near ? ' near' : ''}`}>{gap}</span>
+      {gap ? <span class={`safety-gap${near ? ' near' : ''}`}>{gap}</span> : null}
+      {note ? <span class="safety-gap">{note}</span> : null}
     </div>
   );
 }
@@ -113,10 +130,12 @@ function Gauge({ label, value, limit, colorVar, verdictLabel }: GaugeProps) {
 const HOT_TAG_THRESHOLD = 0.5;
 const MAX_RISKY_TAGS = 8;
 
+const RISK_ORDER: TagXRisk[] = ['exposure', 'certain', 'suspect', 'safe'];
+
 function riskyTags(tags: Record<string, number> | undefined): [string, number][] {
   return Object.entries(tags ?? {})
     .filter(([name]) => RISKY_TAGS.includes(name))
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => RISK_ORDER.indexOf(TAG_X_RISK[a[0]]!) - RISK_ORDER.indexOf(TAG_X_RISK[b[0]]!) || b[1] - a[1])
     .slice(0, MAX_RISKY_TAGS);
 }
 
@@ -129,7 +148,7 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
       </p>
     );
   }
-  const reason = safety.verdict === 'block' ? exposureReasonText(safety.reasons) : null;
+  const reason = reasonText(safety.verdict, safety.reasons);
   const tags = riskyTags(safety.tags);
   return (
     <section class="safety-section">
@@ -149,18 +168,17 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
       </div>
       <div class="safety-gauges">
         <Gauge
-          label="少し際どい"
-          value={safety.rating.sensitive}
-          limit={CAUTION_SENSITIVE_THRESHOLD}
-          colorVar="--r-sensitive"
-          verdictLabel="注意"
-        />
-        <Gauge
           label="かなり際どい"
           value={safety.rating.questionable}
           limit={SENSITIVE_QUESTIONABLE_THRESHOLD}
           colorVar="--r-questionable"
           verdictLabel="センシティブ"
+        />
+        <Gauge
+          label="少し際どい（参考）"
+          value={safety.rating.sensitive}
+          colorVar="--r-sensitive"
+          note="タイツ・脚・足で上がりやすく、X の判定には効きにくい"
         />
       </div>
       {tags.length > 0 ? (
@@ -168,14 +186,14 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
           <div class="safety-label safety-tags-title">
             効いていそうなタグ
             <span class="safety-tags-legend">
-              枠: <span class="axis-key axis-sensitive">少し際どい</span>
-              <span class="axis-key axis-questionable">かなり際どい</span>
-              <span class="axis-key axis-exposure">露出</span>
+              枠: <span class="risk-key risk-certain">乳・股間</span>
+              <span class="risk-key risk-suspect">尻・下着</span>
+              <span class="risk-key risk-safe">X では効きにくい</span>
             </span>
           </div>
           <div class="safety-tags">
             {tags.map(([name, value]) => (
-              <span class={`safety-tag axis-${RISKY_TAG_AXIS[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
+              <span class={`safety-tag risk-${TAG_X_RISK[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
                 {name}
                 <span class="safety-num">{Math.round(value * 100)}%</span>
               </span>
