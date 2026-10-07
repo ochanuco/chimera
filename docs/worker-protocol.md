@@ -1,7 +1,7 @@
 # Worker Protocol
 
 chimera を control plane、GPU 機を worker とする配置での repo をまたぐ契約です。requests
-キューのスキーマ、状態遷移、API、generate / finalize / repair / masked_redraw の payload、`recipe_ref`
+キューのスキーマ、状態遷移、API、generate / finalize / redraw / repair / masked_redraw / deliver の payload、`recipe_ref`
 を定めます。段階 2（poll 方式）と段階 3（WorkerHub による push）の両方を対象とし、いずれも本番で稼働しています。
 
 決定の経緯は oolong `notes/2026-09-05_note-comfyui-recipes-mac-off-the-path.md`。
@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | repair | masked_redraw
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -125,7 +125,7 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 転記します。転記の前に Run の存在を検証し、無ければ 404 です。存在すれば
 `payload.experiment.experiment_id` がその Run の所属 Experiment と一致するかを検証し、
 食い違えば 400（`payload.experiment.experiment_id does not match the run's experiment`）
-です。`kind = finalize` / `kind = repair` / `kind = masked_redraw` の payload に
+です。`kind = finalize` / `kind = repair` / `kind = masked_redraw` / `kind = redraw` / `kind = deliver` の payload に
 `experiment` があっても無視します。
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
@@ -199,7 +199,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize", "repair", "masked_redraw"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "finalize", "redraw", "repair", "masked_redraw", "deliver"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
@@ -269,7 +269,7 @@ GET /api/v1/requests/{id}
 { "generation_ids": ["...", "..."] }
 ```
 
-ingest した Generation の id です。finalize / repair / masked_redraw の Generation は、
+ingest した Generation の id です。finalize / redraw / repair / masked_redraw / deliver の Generation は、
 Job の `source_generation_id` を `refines_generation_id` として持ちます。masked_redraw は元 Generation を変更せず、明示したマスク領域だけを worker が
 `comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
 
@@ -556,6 +556,64 @@ Generation（納品 Generation か、同じ request に repair が相乗りし�
 queued した時点の `payload.options`（profile 展開後、word はそのまま）をそのまま複製します。
 `name` が既存ならその次の版、新しい名前なら version 1 です。既存の版は書き換えません。
 
+### redraw
+
+既存 Generation の絵そのものを描き直す worker 実行です。1 request で行う絵の変更は
+`method` で選ぶ 1 つだけで、出力は緑背景の絵の Generation 1 枚です。出力は入力の
+Generation を `refines_generation_id` で指し、そのまま次の redraw / repair / masked_redraw /
+deliver の入力にできます。
+
+``` json
+{
+  "kind": "redraw",
+  "payload": {
+    "generation_id": "abc123",
+    "options": { "method": "hires", "hires": 3072, "denoise": 0.45 }
+  }
+}
+```
+
+`generation_id` は UUID / short_id のどちらでもよく、`options` は必須です。`method` ごとに
+受けるキーが決まっていて、別の method のキーや未知のキーは 400 です。
+
+  method   options                                                                          意味
+  -------- --------------------------------------------------------------------------------- -------------------------------------------
+  canvas   denoise, size, route, finalizer, upscale, keep_regions, keep_strength            キャンバスを描き直す
+  hires    hires, denoise                                                                   hires で描き直す
+  light    scene, from                                                                      光源の下地を描き直す
+
+各キーの型は finalize の同名の option と同じです（`denoise` は number / null / word、`hires` は
+64 以上の integer / null、hires の `denoise` は (0, 1] の number / null、`scene` は
+`sunset` / `moon`、`from` は 8 方位）。word の実在確認は worker に委ねます。
+
+### deliver
+
+既存 Generation を切り抜いて飾り、納品の Generation を作る worker 実行です。
+
+``` json
+{
+  "kind": "deliver",
+  "payload": {
+    "generation_id": "abc123",
+    "options": { "repin": true, "stroke_light": "n", "backdrop": "dots", "deliver_size": 1536 }
+  }
+}
+```
+
+`options` は省略でき、受けるキーは `repin` / `recolor` / `skin` / `keep_legwear` /
+`keep_scene` / `transparent` / `backdrop` / `stroke_light` / `deliver_size` / `dof` / `light`
+です。型は finalize の同名の option と同じで、それ以外のキーは 400 です。
+
+出力は次の 2 種類で、どちらも ingest 済みのものを `done.result.generation_ids` に返します。
+
+- 納品の Generation 1 枚（`dof.viewfinder` が `both` のときだけ 2 枚）。入力の Generation を
+  `refines_generation_id` で指します。
+- 切り抜きの asset。入力の Generation（納品の Generation ではない）に `alpha`（8 bit グレー PNG）と
+  `depth` を付け、作ったときの条件を `cut`（json）に書きます。次の deliver が `cut` と現在の
+  条件の一致を確かめて使い回し、違うときは作り直して同じ `(role, region)` を置換します。
+
+worker は asset を `GET /g/{generation uuid}/assets/{role}` で読みます。
+
 ### repair
 
 既存 Generation の手足（hands / feet）だけをマスクして局所的に redraw する
@@ -734,7 +792,7 @@ POST /api/v1/requests/{id}/jobs
 ```
 
 - resolution を報告する前は 409
-- `kind` が finalize / repair / masked_redraw のとき `source_generation_id` は必須（無ければ 400、無い Generation は 404）。generate / import では指定できない（400）。UUID / short_id のどちらでも渡せる。1 Request に source の違う Job を持てる
+- `kind` が finalize / redraw / repair / masked_redraw / deliver のとき `source_generation_id` は必須（無ければ 400、無い Generation は 404）。generate / import では指定できない（400）。UUID / short_id のどちらでも渡せる。1 Request に source の違う Job を持てる
 - 新規は 201 で `{ id, request_id, seed, index, status: "created", comfy_prompt_id: null, source_generation_id, generations: [] }`。同じ `idempotency_key` の再送は 200 で同じ形に現在の `status` と ingest 済み `generations[]` を載せる
 - ingest は `POST /api/v1/jobs/{jobId}/generations`。Generation は Job の Request と `source_generation_id`（`refines_generation_id`）を引き継ぐ
 
