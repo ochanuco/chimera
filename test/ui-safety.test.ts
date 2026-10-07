@@ -12,7 +12,7 @@ async function rated(r: ReturnType<typeof rating>, tags: Record<string, number> 
 
 describe('detail page 安全性 section', () => {
   it('shows the bar, gauges and risky tags without folding', async () => {
-    const g = await rated(rating(0.931), { pantyhose: 0.96, sitting: 0.82, feet: 0.3, shirt: 0.9 });
+    const g = await rated(rating(0.931), { pantyhose: 0.96, sitting: 0.82, feet: 0.3, ass: 0.2, yokozuwari: 0.1, shirt: 0.9 });
     const html = await (await req(`/g/${g.short_id}`)).text();
     expect(html).not.toContain('<details class="safety-row"');
     expect(html).toContain('rating-bar-stack');
@@ -21,8 +21,11 @@ describe('detail page 安全性 section', () => {
     expect(html).toContain('safety-gap near');
     expect(html).toContain('あと 14.9pt でセンシティブ');
     expect(html).toContain('効いていそうなタグ');
-    expect(html).toMatch(/safety-tag hot">pantyhose/);
-    expect(html).toMatch(/safety-tag">feet/);
+    expect(html).toMatch(/safety-tag axis-sensitive hot">pantyhose/);
+    expect(html).toMatch(/safety-tag axis-sensitive">feet/);
+    expect(html).toMatch(/safety-tag axis-questionable">ass/);
+    expect(html).toMatch(/safety-tag axis-neutral">yokozuwari/);
+    expect(html).toContain('axis-key axis-questionable');
     expect(html).not.toContain('>shirt<');
     expect(html.indexOf('pantyhose')).toBeLessThan(html.indexOf('sitting'));
   });
@@ -32,6 +35,7 @@ describe('detail page 安全性 section', () => {
     const html = await (await req(`/g/${g.short_id}`)).text();
     expect(html).toContain('注意の閾値を 2.5pt 超過');
     expect(html).toContain('露出タグ nipples 30%');
+    expect(html).toMatch(/safety-tag axis-exposure">nipples/);
   });
 });
 

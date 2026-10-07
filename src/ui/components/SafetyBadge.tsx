@@ -1,6 +1,7 @@
 import {
   BLOCK_TAG_THRESHOLD,
   CAUTION_SENSITIVE_THRESHOLD,
+  RISKY_TAG_AXIS,
   RISKY_TAGS,
   SENSITIVE_QUESTIONABLE_THRESHOLD,
 } from '../../lib/safety';
@@ -164,10 +165,17 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
       </div>
       {tags.length > 0 ? (
         <div>
-          <div class="safety-label safety-tags-title">効いていそうなタグ</div>
+          <div class="safety-label safety-tags-title">
+            効いていそうなタグ
+            <span class="safety-tags-legend">
+              枠: <span class="axis-key axis-sensitive">少し際どい</span>
+              <span class="axis-key axis-questionable">かなり際どい</span>
+              <span class="axis-key axis-exposure">露出</span>
+            </span>
+          </div>
           <div class="safety-tags">
             {tags.map(([name, value]) => (
-              <span class={`safety-tag${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
+              <span class={`safety-tag axis-${RISKY_TAG_AXIS[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
                 {name}
                 <span class="safety-num">{Math.round(value * 100)}%</span>
               </span>

@@ -16,29 +16,38 @@ export const EXPOSURE_TAGS = [
   'breasts_out',
 ] as const;
 
-/** 詳細ページで「効いていそうなタグ」として拾う、際どさに関わるタグ。tagger は判定理由を返さないので推定用。 */
-export const RISKY_TAGS: readonly string[] = [
-  'ass',
-  'thighs',
-  'legs',
-  'pantyhose',
-  'thighband_pantyhose',
-  'knees_up',
-  'spread_legs',
-  'pantyshot',
-  'panties',
-  'cleavage',
-  'navel',
-  'midriff',
-  'feet',
-  'soles',
-  'no_shoes',
-  'sitting',
-  'wariza',
-  'yokozuwari',
-  'lying',
-  ...EXPOSURE_TAGS,
-];
+export type RiskyTagAxis = 'exposure' | 'questionable' | 'sensitive' | 'neutral';
+
+/**
+ * 詳細ページで「効いていそうなタグ」として拾うタグと、どの区分に効きやすいか。tagger は判定理由を返さないので推定。
+ * 区分は 2026-10-07 の判定済み 9,491 枚で、タグ確率 0.35 以上の絵が基準をどれだけ超えるかで決めた:
+ * かなり際どい 15% 以上の割合が基準 2.4% の 3 倍以上なら questionable、少し際どい 95% 以上の割合が基準 25.2% を
+ * 超えれば sensitive、どちらも超えなければ neutral。
+ */
+export const RISKY_TAG_AXIS: Readonly<Record<string, RiskyTagAxis>> = {
+  ...Object.fromEntries(EXPOSURE_TAGS.map((t) => [t, 'exposure' as const])),
+  ass: 'questionable',
+  navel: 'questionable',
+  lying: 'questionable',
+  panties: 'questionable',
+  thighs: 'questionable',
+  wariza: 'questionable',
+  legs: 'sensitive',
+  soles: 'sensitive',
+  feet: 'sensitive',
+  thighband_pantyhose: 'sensitive',
+  no_shoes: 'sensitive',
+  sitting: 'sensitive',
+  knees_up: 'sensitive',
+  pantyhose: 'sensitive',
+  pantyshot: 'sensitive',
+  spread_legs: 'sensitive',
+  cleavage: 'sensitive',
+  midriff: 'sensitive',
+  yokozuwari: 'neutral',
+};
+
+export const RISKY_TAGS: readonly string[] = Object.keys(RISKY_TAG_AXIS);
 
 export const BLOCK_TAG_THRESHOLD = 0.15;
 export const SENSITIVE_QUESTIONABLE_THRESHOLD = 0.15;
