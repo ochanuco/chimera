@@ -265,10 +265,28 @@ describe('Experiment Detail as Compare', () => {
     const matrix = /<table class="exp-matrix">.*?<\/table>/s.exec(body)![0];
     expect(matrix).toContain('>only</th>');
     expect(matrix.match(/class="exp-matrix-cell"/g)).toHaveLength(2);
+    expect(matrix.match(/<div class="card"/g)).toHaveLength(2);
+    expect(matrix).toContain('class="rating-group"');
+    expect(matrix).toContain('class="bookmark-btn card-bookmark-btn"');
     expect(matrix).toContain(`href="/g/${ids.get(11)}"`);
     expect(matrix).toContain(`href="/g/${ids.get(22)}"`);
     expect(body).not.toContain('id="experiment-compare-detail"');
     expect(body).not.toContain('class="compare-table"');
+  });
+
+  it('renders a rated matrix cell with the gallery card safety bar', async () => {
+    const data = await setup([{ label: 'only' }]);
+    await finishRequest(data.runs[0]!.request_id!, [11]);
+    const ids = await generationShortIds(data.runs[0]!.request_id!);
+    const put = await postJson(
+      `/api/v1/generations/${ids.get(11)}/safety`,
+      { model: 'wd-test@abc', rating: { general: 0.1, sensitive: 0.5, questionable: 0.3, explicit: 0 }, tags: {} },
+      'PUT',
+    );
+    expect(put.status).toBe(200);
+    const body = await (await req(`/experiments/${data.experiment.short_id}`)).text();
+    const matrix = /<table class="exp-matrix">.*?<\/table>/s.exec(body)![0];
+    expect(matrix).toContain('rating-bar-strip');
   });
 
   it('orders matrix columns by base_parameters.seeds and leaves a placeholder for a missing generation', async () => {
@@ -282,6 +300,8 @@ describe('Experiment Detail as Compare', () => {
     expect(matrix.indexOf('>control</th>')).toBeLessThan(matrix.indexOf('>smile</th>'));
     expect(matrix.match(/class="exp-matrix-cell"/g)).toHaveLength(4);
     expect(matrix.match(/exp-matrix-empty/g)).toHaveLength(2);
+    expect(matrix.match(/class="rating-group"/g)).toHaveLength(4);
+    expect(matrix.match(/exp-matrix-wait"/g)).toHaveLength(2);
     expect(body).toContain('id="experiment-compare-detail"');
   });
 
