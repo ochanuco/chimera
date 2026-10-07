@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearGenerationData, createGeneration, getJson, postJson, req } from './helpers';
-import { slotEndIso, slotKeyOf } from '../src/lib/timeline';
+import { slotEndIso, slotKeyOf, slotStartIso } from '../src/lib/timeline';
 
 interface Timeline {
   slots: { slot: string; count: number }[];
@@ -39,6 +39,12 @@ describe('slot helpers', () => {
     expect(slotEndIso('2026-10-06T21:45')).toBe('2026-10-06T13:00:00.000Z');
     expect(slotEndIso('2026-10-06T21:40')).toBeNull();
     expect(slotEndIso('nope')).toBeNull();
+  });
+
+  it('returns the UTC start of a slot and rejects malformed keys', () => {
+    expect(slotStartIso('2026-10-06T21:45')).toBe('2026-10-06T12:45:00.000Z');
+    expect(slotStartIso('2026-10-07T00:00')).toBe('2026-10-06T15:00:00.000Z');
+    expect(slotStartIso('2026-10-06T21:40')).toBeNull();
   });
 });
 
@@ -145,6 +151,77 @@ describe('GET /gallery timeline rendering', () => {
     expect(uniq(shortIds(html2))).toEqual([ids[4], ids[3]]);
     expect(html2).not.toContain('class="load-newer"');
     expect(html2).not.toContain('class="load-more"');
+  });
+});
+
+describe('GET /gallery slot range and inline timeline', () => {
+  beforeEach(async () => {
+    await clearGenerationData();
+  });
+
+  it('embeds the filtered timeline as JSON next to the grid', async () => {
+    await makeGeneration('2026-10-06T12:50:00.000Z');
+    await makeGeneration('2026-10-06T12:46:00.000Z');
+    await makeGeneration('2026-10-06T12:30:00.000Z', { rating: 'bad' });
+    const html = await (await req('/gallery?limit=1')).text();
+    const m = html.match(/<script type="application\/json" id="gallery-timeline-data">([^<]*)<\/script>/);
+    expect(m).not.toBeNull();
+    expect(JSON.parse(m![1]!)).toEqual({ slots: [{ slot: '2026-10-06T21:45', count: 2 }] });
+    expect(html.indexOf('gallery-timeline-data')).toBeLessThan(html.indexOf('data-gallery-grid'));
+
+    const withBad = await (await req('/gallery?bad=1')).text();
+    expect(withBad).toContain('"count":2},{"slot":"2026-10-06T21:30","count":1}');
+  });
+
+  it('does not embed a timeline for ids galleries', async () => {
+    const a = await makeGeneration('2026-10-06T12:50:00.000Z');
+    const b = await makeGeneration('2026-10-06T12:46:00.000Z');
+    const html = await (await req(`/gallery?ids=${a.short_id},${b.short_id}`)).text();
+    expect(html).not.toContain('gallery-timeline-data');
+    expect(html).not.toContain('data-timeline-query');
+  });
+
+  it('slot_from / slot_to returns only that range as bare cards, newest first, with filters applied', async () => {
+    const tag = `rng-${crypto.randomUUID().slice(0, 8)}`;
+    const s1a = await makeGeneration('2026-10-06T12:50:00.000Z', { tag });
+    const s1b = await makeGeneration('2026-10-06T12:46:00.000Z', { tag });
+    const s1bad = await makeGeneration('2026-10-06T12:47:00.000Z', { tag, rating: 'bad' });
+    const s2 = await makeGeneration('2026-10-06T12:30:00.000Z', { tag });
+    await makeGeneration('2026-10-06T13:10:00.000Z', { tag });
+    await makeGeneration('2026-10-06T12:10:00.000Z', { tag });
+    await makeGeneration('2026-10-06T12:46:00.000Z');
+
+    const one = await (await req(`/gallery?partial=1&tag=${tag}&slot_from=2026-10-06T21:45&slot_to=2026-10-06T21:45`)).text();
+    expect(uniq(shortIds(one))).toEqual([s1a.short_id, s1b.short_id]);
+    expect(one).not.toContain('gallery-slot-header');
+    expect(one).not.toContain('gallery-date-header');
+    expect(one).not.toContain('load-more');
+    expect(one).not.toContain(s1bad.short_id);
+
+    const run = await (await req(`/gallery?partial=1&tag=${tag}&slot_from=2026-10-06T21:30&slot_to=2026-10-06T21:45`)).text();
+    expect(uniq(shortIds(run))).toEqual([s1a.short_id, s1b.short_id, s2.short_id]);
+
+    const withBad = await (await req(`/gallery?partial=1&bad=1&tag=${tag}&slot_from=2026-10-06T21:45&slot_to=2026-10-06T21:45`)).text();
+    expect(uniq(shortIds(withBad))).toEqual([s1a.short_id, s1bad.short_id, s1b.short_id]);
+  });
+
+  it('slot range matches the timeline count even beyond one page of 200', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 205; i++) {
+      const sec = String(i % 60).padStart(2, '0');
+      const ms = String(Math.floor(i / 60)).padStart(3, '0');
+      ids.push((await makeGeneration(`2026-10-06T12:46:${sec}.${ms}Z`)).short_id);
+    }
+    const html = await (await req('/gallery?partial=1&slot_from=2026-10-06T21:45&slot_to=2026-10-06T21:45')).text();
+    expect(uniq(shortIds(html))).toHaveLength(205);
+    const tl = await getJson<Timeline>('/api/v1/generations/timeline');
+    expect(tl.body.slots).toEqual([{ slot: '2026-10-06T21:45', count: 205 }]);
+  }, 60_000);
+
+  it('rejects malformed or reversed slot ranges', async () => {
+    expect((await req('/gallery?partial=1&slot_from=nope&slot_to=2026-10-06T21:45')).status).toBe(400);
+    expect((await req('/gallery?partial=1&slot_from=2026-10-06T21:45')).status).toBe(400);
+    expect((await req('/gallery?partial=1&slot_from=2026-10-06T21:45&slot_to=2026-10-06T21:30')).status).toBe(400);
   });
 });
 
