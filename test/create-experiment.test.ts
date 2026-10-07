@@ -230,7 +230,7 @@ describe('Experiment Detail as Compare', () => {
 
     const first = await (await req(`/experiments/${data.experiment.short_id}`)).text();
     expect(first).toContain('<strong class="exp-compare-seed current">11</strong>');
-    expect(first).toContain(`href="/experiments/${data.experiment.short_id}?seed=22#experiment-compare"`);
+    expect(first).toContain(`href="/experiments/${data.experiment.short_id}?seed=22#experiment-compare-detail"`);
 
     const second = await (await req(`/experiments/${data.experiment.short_id}?seed=22`)).text();
     expect(second).toContain('<strong class="exp-compare-seed current">22</strong>');
@@ -249,44 +249,57 @@ describe('Experiment Detail as Compare', () => {
     expect(body).toContain('class="cmp-patch-part">expression</span>');
   });
 
-  async function setBase(experimentId: string, generationId: string | null) {
-    await env.DB.prepare('UPDATE experiments SET base_generation_id = ? WHERE id = ?').bind(generationId, experimentId).run();
+  async function generationShortIds(requestId: string) {
+    const { results } = await env.DB.prepare('SELECT short_id, seed FROM generations WHERE request_id = ?')
+      .bind(requestId)
+      .all<{ short_id: string; seed: number }>();
+    return new Map((results ?? []).map((r) => [r.seed, r.short_id]));
   }
 
-  it('puts the base Generation first, fixed across ?seed=, without adding its seed to the switcher', async () => {
-    const data = await setup([{ label: 'control' }]);
-    await finishRequest(data.runs[0]!.request_id!, [11, 22]);
-    const base = await createGeneration({ jobOverrides: { seed: 999 }, metadata: { seed: 999 } });
-    await setBase(data.experiment.id, base.generation.id);
-
-    for (const query of ['', '?seed=22']) {
-      const body = await (await req(`/experiments/${data.experiment.short_id}${query}`)).text();
-      expect(body).toContain('id="experiment-compare"');
-      expect(body).toContain('>base</div>');
-      expect(body.indexOf('>base</div>')).toBeLessThan(body.indexOf('>control</div>'));
-      expect(body).toContain(`/compare?ids=${base.generation.short_id},`);
-      expect(body).not.toContain('exp-compare-seed" href="/experiments/' + data.experiment.short_id + '?seed=999');
-      expect(body).not.toContain('<strong class="exp-compare-seed current">999</strong>');
-    }
-    const second = await (await req(`/experiments/${data.experiment.short_id}?seed=22`)).text();
-    expect(second).toContain('<strong class="exp-compare-seed current">22</strong>');
-  });
-
-  it('shows the compare grid for one Run plus a base Generation', async () => {
+  it('shows every generation of a single Run as one matrix row, without the per-seed compare grid', async () => {
     const data = await setup([{ label: 'only' }]);
     await finishRequest(data.runs[0]!.request_id!, [11, 22]);
-    const base = await createGeneration();
-    await setBase(data.experiment.id, base.generation.id);
+    const ids = await generationShortIds(data.runs[0]!.request_id!);
     const body = await (await req(`/experiments/${data.experiment.short_id}`)).text();
     expect(body).toContain('id="experiment-compare"');
-    expect(body).toContain('<strong class="exp-compare-seed current">11</strong>');
-    expect(body).not.toContain('先頭');
+    const matrix = /<table class="exp-matrix">.*?<\/table>/s.exec(body)![0];
+    expect(matrix).toContain('>only</th>');
+    expect(matrix.match(/class="exp-matrix-cell"/g)).toHaveLength(2);
+    expect(matrix).toContain(`href="/g/${ids.get(11)}"`);
+    expect(matrix).toContain(`href="/g/${ids.get(22)}"`);
+    expect(body).not.toContain('id="experiment-compare-detail"');
+    expect(body).not.toContain('class="compare-table"');
   });
 
-  it('is omitted for an Experiment with fewer than two Runs, and /compare still works', async () => {
-    const data = await setup([{ label: 'only' }]);
+  it('orders matrix columns by base_parameters.seeds and leaves a placeholder for a missing generation', async () => {
+    const data = await setup([{ label: 'control' }, { label: 'smile', patches: [PATCH] }], [22, 11]);
+    await finishRequest(data.runs[0]!.request_id!, [11, 22, 33]);
+    await finishRequest(data.runs[1]!.request_id!, [22]);
     const body = await (await req(`/experiments/${data.experiment.short_id}`)).text();
-    expect(body).not.toContain('id="experiment-compare"');
+    const matrix = /<table class="exp-matrix">.*?<\/table>/s.exec(body)![0];
+    const heads = [...matrix.matchAll(/<th class="exp-matrix-seed">(\d+)<\/th>/g)].map((m) => m[1]);
+    expect(heads).toEqual(['22', '11', '33']);
+    expect(matrix.indexOf('>control</th>')).toBeLessThan(matrix.indexOf('>smile</th>'));
+    expect(matrix.match(/class="exp-matrix-cell"/g)).toHaveLength(4);
+    expect(matrix.match(/exp-matrix-empty/g)).toHaveLength(2);
+    expect(body).toContain('id="experiment-compare-detail"');
+  });
+
+  it('has no base column in the matrix or compare, while the Base Generation row stays', async () => {
+    const data = await setup([{ label: 'control' }, { label: 'smile', patches: [PATCH] }]);
+    for (const run of data.runs) await finishRequest(run.request_id!, [11, 22]);
+    const base = await createGeneration();
+    await env.DB.prepare('UPDATE experiments SET base_generation_id = ? WHERE id = ?')
+      .bind(base.generation.id, data.experiment.id)
+      .run();
+    const body = await (await req(`/experiments/${data.experiment.short_id}`)).text();
+    expect(body).not.toContain('>base</div>');
+    expect(body).not.toContain('>base</th>');
+    expect(body).not.toContain(`/compare?ids=${base.generation.short_id}`);
+    expect(body).toContain('<td>Base Generation</td>');
+  });
+
+  it('keeps /compare working', async () => {
 
     const a = await createGeneration();
     const b = await createGeneration();
