@@ -89,9 +89,9 @@ function generateRequestBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function createFinalizeRequest(generationId: string) {
+async function createDeliverRequest(generationId: string) {
   return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
-    kind: 'finalize',
+    kind: 'deliver',
     payload: { generation_id: generationId, options: { repin: true } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'gui',
@@ -123,7 +123,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
   it('hello -> hello_ack', async () => {
     const ws = await connectWs('/api/v1/worker/ws');
     const t = trackMessages(ws);
-    hello(ws, 'w1', ['generate', 'finalize']);
+    hello(ws, 'w1', ['generate', 'deliver']);
     const ack = await t.waitFor((m) => m.type === 'hello_ack');
     expect(typeof ack.server_time).toBe('string');
     ws.close();
@@ -132,7 +132,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
   it('POST /api/v1/requests -> connected worker gets queued, viewer gets status queued', async () => {
     const worker = await connectWs('/api/v1/worker/ws');
     const workerT = trackMessages(worker);
-    hello(worker, 'w1', ['generate', 'finalize']);
+    hello(worker, 'w1', ['generate', 'deliver']);
     await workerT.waitFor((m) => m.type === 'hello_ack');
 
     const viewer = await connectWs('/api/v1/requests/ws');
@@ -140,16 +140,16 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     expect(created.status).toBe(201);
     const requestId = created.body.id;
 
     const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
-    expect(queuedMsg.kind).toBe('finalize');
+    expect(queuedMsg.kind).toBe('deliver');
 
     const statusMsg = await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId);
     expect(statusMsg.status).toBe('queued');
-    expect(statusMsg.kind).toBe('finalize');
+    expect(statusMsg.kind).toBe('deliver');
 
     worker.close();
     viewer.close();
@@ -158,7 +158,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
   it('worker progress -> viewer gets progress with worker_id; a later viewer gets it via snapshot', async () => {
     const worker = await connectWs('/api/v1/worker/ws');
     const workerT = trackMessages(worker);
-    hello(worker, 'w-progress', ['generate', 'finalize']);
+    hello(worker, 'w-progress', ['generate', 'deliver']);
     await workerT.waitFor((m) => m.type === 'hello_ack');
 
     const viewer = await connectWs('/api/v1/requests/ws');
@@ -166,7 +166,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     const requestId = created.body.id;
     await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId);
 
@@ -195,7 +195,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     const requestId = created.body.id;
     await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId && m.status === 'queued');
 
@@ -203,21 +203,21 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     expect(claimed.status).toBe(200);
 
     const runningMsg = await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId && m.status === 'running');
-    expect(runningMsg.kind).toBe('finalize');
+    expect(runningMsg.kind).toBe('deliver');
 
     viewer.close();
   });
 
   it('PATCH done -> viewer gets status done and the progress entry disappears from GET /state', async () => {
     const worker = await connectWs('/api/v1/worker/ws');
-    hello(worker, 'w-done', ['finalize']);
+    hello(worker, 'w-done', ['deliver']);
 
     const viewer = await connectWs('/api/v1/requests/ws');
     const viewerT = trackMessages(viewer);
     await viewerT.waitFor((m) => m.type === 'snapshot');
 
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     const requestId = created.body.id;
     await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId && m.status === 'queued');
 
@@ -225,7 +225,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     expect(claimed.status).toBe(200);
     await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId && m.status === 'running');
 
-    worker.send(JSON.stringify({ type: 'progress', request_id: requestId, phase: 'finalize' }));
+    worker.send(JSON.stringify({ type: 'progress', request_id: requestId, phase: 'deliver' }));
     await viewerT.waitFor((m) => m.type === 'progress' && m.request_id === requestId);
 
     const done = await postJson(
@@ -236,7 +236,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     expect(done.status).toBe(200);
 
     const doneMsg = await viewerT.waitFor((m) => m.type === 'status' && m.request_id === requestId && m.status === 'done');
-    expect(doneMsg.kind).toBe('finalize');
+    expect(doneMsg.kind).toBe('deliver');
 
     const stub = env.WORKER_HUB.get(env.WORKER_HUB.idFromName('global'));
     const stateRes = await stub.fetch('https://hub/state');
@@ -250,7 +250,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
   it('kinds filtering: a worker with kinds ["finalize"] does not get a generate queued', async () => {
     const worker = await connectWs('/api/v1/worker/ws');
     const workerT = trackMessages(worker);
-    hello(worker, 'w-finalize-only', ['finalize']);
+    hello(worker, 'w-deliver-only', ['deliver']);
     await workerT.waitFor((m) => m.type === 'hello_ack');
 
     const created = await postJson<{ id: string }>('/api/v1/requests', generateRequestBody());
@@ -312,11 +312,11 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     const worker = await connectWs('/api/v1/worker/ws');
     const workerT = trackMessages(worker);
     // hello の受信は ensureAlarmScheduled も走らせる。
-    hello(worker, 'w-alarm', ['finalize']);
+    hello(worker, 'w-alarm', ['deliver']);
     await workerT.waitFor((m) => m.type === 'hello_ack');
 
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     const requestId = created.body.id;
     const claimed = await postJson('/api/v1/requests/claim', { worker_id: 'w-alarm' });
     expect(claimed.status).toBe(200);
@@ -333,7 +333,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     expect(after.body.attempt).toBe(1); // claim 済みの1回のみ (alarm の回収は attempt を進めない)
 
     const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
-    expect(queuedMsg.kind).toBe('finalize');
+    expect(queuedMsg.kind).toBe('deliver');
 
     worker.close();
   });

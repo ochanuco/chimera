@@ -1,7 +1,7 @@
 # Worker Protocol
 
 chimera を control plane、GPU 機を worker とする配置での repo をまたぐ契約です。requests
-キューのスキーマ、状態遷移、API、generate / finalize / redraw / repair / masked_redraw / deliver の payload、`recipe_ref`
+キューのスキーマ、状態遷移、API、generate / redraw / deliver / repair / masked_redraw（と読み取り専用の finalize）の payload、`recipe_ref`
 を定めます。段階 2（poll 方式）と段階 3（WorkerHub による push）の両方を対象とし、いずれも本番で稼働しています。
 
 決定の経緯は oolong `notes/2026-09-05_note-comfyui-recipes-mac-off-the-path.md`。
@@ -106,10 +106,10 @@ POST /api/v1/requests
 
 ``` json
 {
-  "kind": "finalize",
+  "kind": "deliver",
   "payload": { "generation_id": "...", "options": { "repin": true } },
   "recipe_ref": "production",
-  "idempotency_key": "gui:finalize:abc123:0192d3a8-…",
+  "idempotency_key": "gui:deliver:abc123:0192d3a8-…",
   "created_by": "gui"
 }
 ```
@@ -125,12 +125,16 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 転記します。転記の前に Run の存在を検証し、無ければ 404 です。存在すれば
 `payload.experiment.experiment_id` がその Run の所属 Experiment と一致するかを検証し、
 食い違えば 400（`payload.experiment.experiment_id does not match the run's experiment`）
-です。`kind = finalize` / `kind = repair` / `kind = masked_redraw` / `kind = redraw` / `kind = deliver` の payload に
+です。`kind = redraw` / `kind = deliver` / `kind = repair` / `kind = masked_redraw` の payload に
 `experiment` があっても無視します。
+
+`kind = finalize` は作れません（`POST /api/v1/requests` も MCP `create_request` も 400 で、
+`redraw`（絵を変える）か `deliver`（切り抜いて仕上げる）を使うよう促すメッセージを返します）。
+読み取りは変わりません（[finalize](#finalize)）。
 
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
-Token）を区別せず、いずれも全 `kind` を積めます。「GUI が積んでよいのは finalize /
+Token）を区別せず、いずれも全 `kind` を積めます（finalize を除く）。「GUI が積んでよいのは redraw / deliver /
 repair と、pin の再描画（絵柄チェック）だけ」は GUI のコードがそれらの form / ボタンしか
 持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
@@ -204,8 +208,9 @@ POST /api/v1/requests/claim
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
 段階 2 の box は4つとも受けます。旧 worker を混在させる場合は、旧 worker に
-`kinds: ["generate", "finalize", "repair"]` を指定して masked_redraw を claim しないようにし、
-対応版 worker だけが `masked_redraw` を含めます。
+`kinds: ["generate", "repair"]` を指定して masked_redraw を claim しないようにし、
+対応版 worker だけが `masked_redraw` を含めます。`kinds` は `finalize` も受け、作成済みで queued のまま残った
+古い finalize 行を worker が引き取って流せます。
 
 queued の最古の 1 件を `running` にして 200 で返します。無ければ 204。1 文の
 `UPDATE ... WHERE id = (SELECT id FROM requests WHERE status = 'queued' AND kind IN (...) ORDER BY created_at LIMIT 1) RETURNING *`
@@ -269,13 +274,13 @@ GET /api/v1/requests/{id}
 { "generation_ids": ["...", "..."] }
 ```
 
-ingest した Generation の id です。finalize / redraw / repair / masked_redraw / deliver の Generation は、
+ingest した Generation の id です。redraw / deliver / repair / masked_redraw（と古い finalize）の Generation は、
 Job の `source_generation_id` を `refines_generation_id` として持ちます。masked_redraw は元 Generation を変更せず、明示したマスク領域だけを worker が
 `comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
 
-finalize / repair / masked_redraw の done はこれに加えて `resolved_options`
+redraw / deliver / repair / masked_redraw の done はこれに加えて `resolved_options`
 （`payload.options` のうち dial word を worker が実際に解決した数値に置き換えたもの、
-[finalize profile](#finalize-profile) 参照）を持ちます。chimera は `result` を不透明な
+[deliver profile](#deliver-profile) 参照）を持ちます。chimera は `result` を不透明な
 JSON として保存するだけで、この欄の形を検証も解釈もしません。
 
 ## payload
@@ -410,157 +415,16 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 
 ### finalize
 
-``` json
-{
-  "kind": "finalize",
-  "payload": {
-    "generation_id": "abc123",
-    "profile": { "name": "daily", "version": 3 },
-    "options": {
-      "denoise": null,
-      "repin": false,
-      "recolor": false,
-      "keep_legwear": null,
-      "route": null,
-      "finalizer": null,
-      "size": null,
-      "skin": false,
-      "keep_scene": false,
-      "transparent": null,
-      "backdrop": null,
-      "upscale": null,
-      "deliver_size": null,
-      "stroke_light": "even",
-      "repair": null,
-      "repair_regions": null,
-      "repair_denoise": null,
-      "repair_pad": null,
-      "repair_size": null,
-      "repair_lora": null,
-      "hires": null,
-      "hires_denoise": null,
-      "dof": null
-    }
-  }
-}
-```
-
-`generation_id` は UUID でも short_id でもよく、worker は既存の
-`GET /api/v1/generations/{id}/context` で解決します。`options` は `comfy-recipes finalize`
-の引数に 1 対 1 で写します。
-
-redraw が効くのは Anima（recipe `yukari`）で描いた絵だけです。それ以外の recipe の絵は
-`deliver_only: true` でのみ finalize でき、それ以外の指定では worker が拒否します。
-LayerDiffuse 由来の Generation は `deliver_only` を含めどの形でも finalize できません。
-
-  options             型                        CLI
-  ------------------- ------------------------- ------------------------------
-  denoise             null | number | word      `--denoise 0.4`（null は recipe 既定 0.4。Anima の絵の redraw にだけ効く）
-  repin               bool                      `--repin`
-  recolor             bool                      `--recolor`
-  keep_legwear        null | true | number | word  `--keep-legwear`（true は既定 0.62、number はその値）
-  route               null | "latent" | "pixel" `--latent-route` / `--pixel-route`（null は recipe 既定）
-  finalizer           null | string             `--finalizer MODEL`
-  size                null | integer            `--size LONGEST`
-  skin                bool                      `--skin`
-  keep_scene          bool                      `--keep-scene`
-  transparent         null | bool               `--opaque` が false（null は recipe 既定）
-  backdrop            null | string             `--backdrop #RRGGBB`
-  upscale             null | "bicubic" | "nearest-exact" | "bilinear" | "lanczos"  `--upscale METHOD`
-  deliver_size        null | integer            `--deliver-size LONGEST`（納品ファイルの長辺、redraw は size のまま）
-  stroke_light        null | "none" | "even" | "n".."nw"  `--stroke-light VALUE`（`"none"` は紫縁なし、`"even"` は一定の太さの紫縁で、`null` も `"even"` と同じに扱う。8 方位は紫縁を光源側で細く影側で太くし、落ち影も方位のときだけ付く）
-  keep_regions        array\<[x0, y0, x1, y1]\>  `--keep-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1。redraw のとき、この矩形の中だけ元の絵をぼかした mask 越しに残す。redraw の絵柄を変える option なので `deliver_only` の既定を外す。null は worker が型エラーにするので、無しはキー省略で表す）
-  keep_strength       number (0 より大きく 1 未満)  `--keep-strength 0.25`（`keep_regions` の中に redraw がどれだけ触るか。worker 既定 0.25。`keep_regions` が無ければ意味を持たない。null は不可）
-  repair              null | array\<"hands" \| "feet"\>  `--repair hands,feet`（同じ finalize request に相乗りする repair。null / 省略 / 空配列は off）
-  repair_regions      null | array\<[x0, y0, x1, y1]\>   `--repair-region X0,Y0,X1,Y1`（繰り返し指定可、width/height に対する分数。x0<x1 かつ y0<y1）
-  repair_denoise      null | number (0, 1] | word  `--repair-denoise 0.6`
-  repair_pad          null | number (0.5-3)     `--repair-pad 1.0`
-  repair_size         null | integer（256 以上、8 の倍数） `--repair-size 1024`
-  repair_lora         null | true | number | word  `--repair-lora [WEIGHT]`（描き直した部位の part LoRA。true は既定 0.8、number はその値。Anima の絵を deliver_only で使うときは worker が無視する。redraw と組み合わせるときは効く）
-  repair_seeds        null | integer (1-8)      `--repair-seeds N`（`deliver_only` と `repair` / `repair_regions` を組み合わせた時だけ効く。seed ごとに1候補を作る数、worker 既定 4）
-  hires               null | 64 以上の integer  `--hires LONGEST`（元 Generation の保存済み ComfyUI graph に、標準 canvas（1024x1640）の長辺を LONGEST にしたときの画素数を元絵の縦横比のまま満たす大きさ（各辺 8 の倍数。LONGEST 2048 は縦長 1280x2048、横長 2048x1280、正方形 1616x1616）への LatentUpscale と同じ seed の KSampler（denoise = `hires_denoise`）を足して描き直し、残りの finalize をその絵に掛ける。prompt・LoRA・seed は graph のまま、canvas は直接変えない（同 seed でサイズだけ変えると構図が変わる）。graph-mode の元絵も対象。graph の無い import 画像、repair / masked_redraw 済みの raw、Anima 以外の絵、すでに hires 済みの graph は `failed`。`deliver_only` が必須で、`deliver_only: false` や描き直し系（denoise / route / finalizer / size / keep_regions / upscale）との併用、`repair` / `repair_regions` / `repair_seeds` との併用は `failed`。`deliver_size` は併用可（最後の拡大縮小）。中間の hires 絵は別 Generation にせず、finalize の raw 出力がそれになる。worker は解決後の `hires` / `hires_denoise` を finalize Request の parameters に記録する。null / 省略は off）
-  hires_denoise       null | number (0, 1]      `--hires-denoise 0.45`（hires の同 seed pass の denoise。null は 0.45 で線まで描き直す、0.35 なら構図を保つ。`hires` 無しで指定すると `failed`）
-  dof                 null | {focus: [x, y], f_number, scope?, viewfinder?}  被写界深度ボケ。`focus` は元画像の幅・高さに対する 0〜1 の割合（repair_regions と同じ正規化）、`f_number` は 1.4〜22 で dof を渡すときは必須（小さいほど強くぼける）。未知のキーは `failed`。worker が深度推定（Depth Anything V2）で人物の中だけを、ピント位置の深度から離れるほど強くぼかす。切り抜きはぼかす前の絵で取る。`scope` は `"figure"`（人物の中だけ）か `"all"` で、省略は `"all"`（透過納品なら `"figure"`）。`"all"` は白フチ・紫フチ・影・背景もぼかす。明示した `"all"` と透過納品（`transparent: true`、または `keep_scene` ではないときの `backdrop: null`）の併用は `failed`。`keep_scene` と `"all"` の併用は通る。`viewfinder` は `"off"` / `"on"` / `"both"` で省略は `"off"`。`"on"` は納品画像にミラーレスのファインダー表示（三分割グリッド、`focus` の位置のピント枠、`1/100  F{f_number}  ISO AUTO` の下部バー）を重ね、Generation 数は変わらない。`"both"` は重ねない納品画像と重ねた画像の両方を出し、Generation が 1 つ増える（`deliver_only` なら [納品, ファインダー]、そうでなければ [raw, 納品, ファインダー] の順）。worker は finalize Request の parameters の `dof` に、`"off"` 以外のときだけ `viewfinder` を記録する。`repair` / `repair_regions` / `repair_pad` / `repair_lora` / `repair_seeds` との併用は `failed`（chimera は型だけを検証し、併用チェックは worker が行う）。null / 省略は off。catalog は `recipes[].finalize.dof` に `f_number` の `min` / `max` / `default` / `stops` を、`recipes[].finalize.dof.scope` に `{"values": ["figure", "all"], "default": "figure"}` を、`recipes[].finalize.dof.viewfinder` に `{"values": ["off", "on", "both"], "default": "off"}` を公開する
-  light               null | {scene, from?}     光源。`scene` は `"sunset"`（夕日）か `"moon"`（月明かり）で必須、`from` は光が来る向き（`"n"` `"ne"` `"e"` `"se"` `"s"` `"sw"` `"w"` `"nw"`）で省略は `"nw"`。未知のキーは `failed`。worker は納品画像を、塗った光の層の上で描き直して、その場面の光で照らす。`deliver_only` のときだけ使え、描き直し系 option との併用と `repair` / `repair_regions` との併用は `failed`。`light` を渡すと `stroke_light` を省略した紫縁は `from` に揃います。`stroke_light` が `"none"` / `"even"` / `null` なら `light` と併用でき、`from` と違う方位を明示したときだけ `failed`（chimera は型だけを検証し、併用チェックは worker が行う）。null / 省略は off。catalog は `recipes[].finalize.light` に `{"scenes": ["sunset", "moon"], "from": ["e", "n", "ne", "nw", "s", "se", "sw", "w"], "default_from": "nw"}` を公開する
-  deliver_only        bool                      `--deliver-only`（redraw を飛ばし、pick 自身の pixel に matte / repin・recolor / backdrop / stroke light だけをかけて納品する。denoise / route / finalizer / size / keep_regions / upscale との併用を worker が拒否する。repin / recolor / keep_legwear / keep_scene / transparent / backdrop / stroke_light / deliver_size とは併用可。`repair` / `repair_regions` とは併用可で、その場合は redraw の代わりに region の masked reroll → no-redraw delivery tail を seed ごとに繰り返し、`repair_seeds` 件の納品候補を kind `repair` の Job として記録する（raw + delivered を seed ごとに1組）。Anima 以外の絵は `deliver_only` でしか finalize できない）
-
-省略したキーは false / null です。chimera が検証するのは型だけで、組み合わせの
-妥当性（recipe が route を持つか等）は worker が判定して `failed` にします。`repair*`
-の語彙は単体の repair request（後述）と揃えてあります。
-
-`stroke_light` と `backdrop` は、省略すると worker が base recipe の `FINALIZE_DEFAULTS`
-から解決します（`stroke_light` は `"n"` ＝上からの光源・下に影、`backdrop` は
-`"dots"`）。`deliver_only` と `repin` も既定で `true` です。denoise / size / route /
-finalizer / keep_regions / upscale のいずれか（redraw の絵柄を変える option）を指定すると
-`deliver_only` の既定は外れ、通常どおり
-redraw します（ただし redraw が効くのは Anima の絵だけです）。`repair` /
-`repair_regions` はこの既定を外さず、`deliver_only` のまま masked reroll の候補を作る
-側に扱われます。`hires` も既定を外さず、`deliver_only` のまま使います。
-明示的な `null` はこの既定へのフォールバックとは別の意味を持ち、
-`backdrop: null` は背景なし（透過）を指します。`stroke_light` は `"none"` が紫縁なし、
-`"even"`（`null` も同じ）が方向性のない均一な紫縁です。これらの既定値は catalog の `recipes[].finalize.defaults` として公開され、
-chimera の WebUI フォームのプリセットもここから取っています。
-
-`denoise` / `keep_legwear` / `repair_denoise` /
-`repair_lora` は、number / null / （`keep_legwear` 等は加えて `true`）に加えて、
-`^[a-z][a-z0-9-]*$` にマッチする word 文字列も受け取ります。word の語彙は recipe ごとに
-catalog が `recipes[].dials.finalize` として公開するもので、chimera はそれを表示にだけ
-使い、word が実在するかの検証と number への解決は worker が行います（未知の word は
-`failed`）。`profile` は [finalize profile](#finalize-profile) を参照してください。
-
-GUI が積む finalize は `denoise` / `repin` / `recolor` / `keep_legwear`（true）/
-`backdrop` / `stroke_light` に加えて、ボケのチェックボックスをオンにした場合は `dof` を、`hires` を選んだ場合は `hires` / `hires_denoise` を、repair のチェックボックスか描画した範囲を使った場合は
-`repair` / `repair_regions` / `repair_pad` / `repair_lora` を、`deliver_only` チェック中に
-それらを使った場合はさらに `repair_seeds` を持ち、他は省略します。`backdrop` は選んだカードの
-模様名（catalog `backdrops` の `name`）→ その文字列、`transparent` → `null`、`color` → 入力した
-`#RRGGBB` で、`stroke_light` は `紫縁` が `立体` なら `光の向き` の方位、`均等` なら `even`、`無し` なら `none` です（既定は catalog の `finalize.defaults.stroke_light` から決め、方位なら `立体`、無ければ `均等`）。
-`hires` の select は `off`（既定、`hires` / `hires_denoise` とも省略）、`2048 · denoise 0.45`
-（`hires: 2048` / `hires_denoise: 0.45`）、`2048 · denoise 0.35`（`hires: 2048` /
-`hires_denoise: 0.35`）のいずれかです。hires を選んだまま `deliver_only` を外すか repair の
-部位・範囲を使うと、GUI は積まずに止めます。`dof` はピント位置を画像上に置いたときだけ
-`{focus: [x, y], f_number}` を積み（catalog が `dof.scope` を公開しているときは `scope` も付け、`dof.viewfinder` を公開していて `"off"` 以外を選んだときは `viewfinder` も付けます。置かずにチェックすると積まずに止めます）、repair の部位・範囲との併用も
-GUI が積まずに止めます。`scope: "all"` と透過納品の併用も止めます。catalog が `finalize.light` を公開しているときだけ `納品の見た目` に `光源` select（`なし` / `夕日` / `月明かり`、既定は `なし`）を出し、`光源` を選んだときだけ `light: {scene, from}` を積みます（`from` は `光の向き` select の値）。`光の向き` と `紫縁`（`立体` / `均等` / `無し`）は `光源` の有無にかかわらず出ます。`紫縁` が `立体` なら `stroke_light` は積まず、worker が `from` に揃えます。`均等` / `無し` なら `light` と一緒に `stroke_light` を積みます。`recolor` は
-recipe を問わず選べます。`denoise` の入力欄は空が既定で、空のまま積めば
-`null`（recipe 既定、`deliver_only` 中は送らない）です。「repair hands」「repair feet」はどちらも既定オフで、
-チェックした分だけ `repair` に積みます。Generation Detail は画像上にドラッグした矩形を
-`repair_regions`（表示中の画像に対する分数 `[x0,y0,x1,y1]`）として持ち、部位チェックが無くても
-範囲だけで積めます。`repair pad` / `repair lora`（`repair lora` は `deliver_only` 中は常に送らない）
-/ `repair seeds`（`deliver_only` 中のみ）の入力欄は空が既定で、空のまま積めば省略（worker 既定）です。
-
-#### finalize profile
-
-profile は finalize options をまとめて一発で選ぶための、chimera 自身が持つ kind
-`finalize` の Preset です（[domain-model.md](domain-model.md#preset)）。word（上の dial
-語彙）が comfyui-recipes 側で定義されるのに対し、profile は「どの word / 数値をどう
-組み合わせるか」という、良かった結果から人間が育てる chimera 側の再利用単位です。
-
-`payload.profile` は `{ name, version? }`。chimera は requests 行を作るときに、source
-Generation の Request が持つ `recipe` でその profile を解決し（`version` 省略は最新
-`active` 版）、`payload.options = { ...profile.options, ...payload.options }`
-（`payload.options` の同じキーが勝つ。明示 `null` も含めて勝つ）と展開してから hash・
-保存します。`profile` 自身も解決した版で `{ name, version }` に書き換えて保存します。
-未知の profile 名 / 版は 404 相当で、queued 行は作られません。worker が読むのは
-展開済みの `payload.options` だけで、`payload.profile` は見ません。
-
-body の形は次の通りです。pose/costume/expression の Preset と違い、base への参照も
-patches も持たない全文上書きです。
-
-``` json
-{ "options": { "denoise": "tidy", "keep_legwear": "on" } }
-```
-
-`POST /api/v1/presets/promote-profile`（body `{ generation_id, name, note?, idempotency_key }`）が
-新しい版を作ります。`generation_id` は `rating = good` かつ finalize request が産んだ
-Generation（納品 Generation か、同じ request に repair が相乗りしていればその sibling の
-どちらでも）でなければならず、それ以外は 409 です。body は、その finalize request が
-queued した時点の `payload.options`（profile 展開後、word はそのまま）をそのまま複製します。
-`name` が既存ならその次の版、新しい名前なら version 1 です。既存の版は書き換えません。
+`kind = finalize` は redraw と deliver に分かれる前の種類で、既存の行を読むためだけに残しています。
+行の読み取り・一覧・`kind` の絞り込み・claim は変わらず動き（queued のまま残った行は worker が流せる）、
+`requests.kind` の CHECK も値を持ち続けますが、新しく作ることはできません（上記のとおり 400）。
+finalize の出力 Generation は納品済みの絵として扱い、redraw / repair / deliver の入力にはできません。
 
 ### redraw
 
 既存 Generation の絵そのものを描き直す worker 実行です。1 request で行う絵の変更は
-`method` で選ぶ 1 つだけで、出力は緑背景の絵の Generation 1 枚です。出力は入力の
-Generation を `refines_generation_id` で指し、そのまま次の redraw / repair / masked_redraw /
+`method` で選ぶ 1 つだけで、複数の操作は redraw を重ねます。出力は絵の Generation 1 枚で、
+入力の Generation を `refines_generation_id` で指し、そのまま次の redraw / repair / masked_redraw /
 deliver の入力にできます。
 
 ``` json
@@ -573,52 +437,145 @@ deliver の入力にできます。
 }
 ```
 
-`generation_id` は UUID / short_id のどちらでもよく、`options` は必須です。`method` ごとに
-受けるキーが決まっていて、別の method のキーや未知のキーは 400 です。
+`generation_id` は UUID / short_id のどちらでもよく、`options` は必須です。`profile` は受けません。
+`method` ごとに受けるキーが決まっていて、別の method のキーや未知のキーは 400 です。
 
   method   options                                                                          意味
   -------- --------------------------------------------------------------------------------- -------------------------------------------
-  canvas   denoise, size, route, finalizer, upscale, keep_regions, keep_strength            キャンバスを描き直す
-  hires    hires, denoise                                                                   hires で描き直す
-  light    scene, from                                                                      光源の下地を描き直す
+  canvas   denoise, size, route, finalizer, upscale, keep_regions, keep_strength            キャンバス全体を描き直す
+  hires    hires, denoise                                                                   同じ seed で大きく描き直す
+  light    scene, from                                                                      光を入れ直す
 
-各キーの型は finalize の同名の option と同じです（`denoise` は number / null / word、`hires` は
-64 以上の integer / null、hires の `denoise` は (0, 1] の number / null、`scene` は
-`sunset` / `moon`、`from` は 8 方位）。word の実在確認は worker に委ねます。
+  options         型
+  --------------- --------------------------------------------------------------------------
+  denoise (canvas)  null \| number \| word（null は recipe 既定。word の語彙は catalog の `recipes[].dials.redraw`）
+  size            null \| integer（描き直しの長辺）
+  route           null \| "latent" \| "pixel"（null は recipe 既定）
+  finalizer       null \| string
+  upscale         null \| "bicubic" \| "nearest-exact" \| "bilinear" \| "lanczos"
+  keep_regions    array\<[x0, y0, x1, y1]\>（width/height に対する分数。x0<x1 かつ y0<y1。この矩形の中だけ元の絵をぼかした mask 越しに残す。null は不可で、無しはキー省略で表す）
+  keep_strength   number（0 より大きく 1 未満。`keep_regions` の中に描き直しがどれだけ触るか、worker 既定 0.25。null は不可）
+  hires           null \| 64 以上の integer（標準 canvas（1024x1640）の長辺を hires にしたときの画素数を元絵の縦横比のまま満たす大きさ。2048 は縦長 1280x2048、正方形 約 1616 四方）
+  denoise (hires) null \| number (0, 1]（同 seed の pass の denoise。null は 0.45 で線まで描き直す、0.35 なら構図を保つ）
+  scene           "sunset" \| "moon"（light のとき省略可。省略時は worker の既定）
+  from            "n" \| "ne" \| "e" \| "se" \| "s" \| "sw" \| "w" \| "nw"（光が来る向き。worker 既定 `"nw"`）
+
+chimera が検証するのは型と method の組み合わせだけで、画像に対する妥当性は worker が判定して
+`failed` にします。受けられる入力は次のとおりです。
+
+- hires: Anima（recipe `yukari`）の generate の出力だけ。graph の無い import 画像、repair / masked_redraw / redraw の出力、すでに hires 済みの graph は `failed`。元の ComfyUI graph に LatentUpscale と同じ seed の KSampler を足すので、prompt・LoRA・seed は graph のままです
+- canvas と light: Anima の絵。repair / masked_redraw / redraw の出力も含む
+- どの method も、納品済みの絵（deliver / 古い finalize の出力、`deliver_only` の repair、`hires-chain` の出力）と LayerDiffuse 由来の絵は受けず、Anima 以外の recipe の絵は描き直せません
+
+word は `^[a-z][a-z0-9-]*$` にマッチする文字列で、実在確認と number への解決は worker が行います
+（未知の word は `failed`）。catalog は `recipes[].redraw` に `light`
+（`{"scenes": ["sunset", "moon"], "from": ["e", "n", "ne", "nw", "s", "se", "sw", "w"], "default_from": "nw"}`）と
+method ごとの既定 `defaults`（`canvas`: `denoise` / `size` / `route`、`hires`: `hires_denoise`）を公開し、
+chimera の WebUI フォームのプリセットもここから取っています。
 
 ### deliver
 
-既存 Generation を切り抜いて飾り、納品の Generation を作る worker 実行です。
+既存 Generation を切り抜いて飾り、納品の Generation を作る worker 実行です。絵は描き直しません。
 
 ``` json
 {
   "kind": "deliver",
   "payload": {
     "generation_id": "abc123",
+    "profile": { "name": "daily", "version": 3 },
     "options": { "repin": true, "stroke_light": "n", "backdrop": "dots", "deliver_size": 1536 }
   }
 }
 ```
 
-`options` は省略でき、受けるキーは `repin` / `recolor` / `skin` / `keep_legwear` /
-`keep_scene` / `transparent` / `backdrop` / `stroke_light` / `deliver_size` / `dof` / `light`
-です。型は finalize の同名の option と同じで、それ以外のキーは 400 です。
+`generation_id` は UUID / short_id のどちらでもよく、`options` と `profile` は省略できます。
+受けるキーは次のとおりで、それ以外は 400 です。省略したキーは worker が base recipe の
+既定（catalog の `recipes[].deliver.defaults`）から解決します。
 
-出力は次の 2 種類で、どちらも ingest 済みのものを `done.result.generation_ids` に返します。
+  options        型
+  -------------- --------------------------------------------------------------------------
+  repin          bool（アクセント色の彩度を基準絵の帯域へ圧縮する。既定 true）
+  recolor        bool（yukari のパレットに塗り直す）
+  skin           bool
+  keep_legwear   null \| true \| number \| word（true は既定 0.62、number はその値。word の語彙は catalog の `recipes[].dials.deliver`）
+  keep_scene     bool（背景・景色を残す）
+  transparent    null \| bool（`true` は背景なしで切り抜いた透過納品の明示形。`false` は `backdrop` が null でも背景を敷く）
+  backdrop       null \| string（catalog `backdrops` の模様名か `#RRGGBB`。`null` は透過納品、ただし `transparent: false` なら除く。既定 `"dots"`）
+  stroke_light   null \| "none" \| "even" \| "n".."nw"（`"none"` は紫縁なし、`"even"`（`null` も同じ）は一定の太さの紫縁、8 方位は紫縁を光源側で細く影側で太くし落ち影も付ける。既定 `"n"`）
+  deliver_size   null \| integer（納品ファイルの長辺）
+  dof            null \| {focus: [x, y], f_number, scope?, viewfinder?}（下記）
+  light          null \| {scene, from?}（下記）
 
-- 納品の Generation 1 枚（`dof.viewfinder` が `both` のときだけ 2 枚）。入力の Generation を
-  `refines_generation_id` で指します。
-- 切り抜きの asset。入力の Generation（納品の Generation ではない）に `alpha`（8 bit グレー PNG）と
-  `depth` を付け、作ったときの条件を `cut`（json）に書きます。次の deliver が `cut` と現在の
-  条件の一致を確かめて使い回し、違うときは作り直して同じ `(role, region)` を置換します。
+`dof` は被写界深度ボケです。`focus` は入力画像の幅・高さに対する 0〜1 の割合、`f_number` は 1.4〜22 で
+必須（小さいほど強くぼける）、未知のキーは `failed` です。worker が深度推定で人物の中だけを、ピント位置の
+深度から離れるほど強くぼかし、切り抜きはぼかす前の絵で取ります。`scope` は `"figure"`（人物の中だけ）か
+`"all"`（白フチ・紫フチ・影・背景もぼかす）で、省略は `"all"`（透過納品なら `"figure"`）です。`"all"` と
+透過納品の併用は `failed` で、`keep_scene` と `"all"` の併用は通ります。`viewfinder` は `"off"`（省略時） /
+`"on"`（三分割グリッド、`focus` の位置のピント枠、下部のシャッター速度と F 値のバーを納品画像に重ねる） /
+`"both"`（重ねない納品画像と重ねた画像の 2 枚を出し、Generation が 1 つ増える）です。
+catalog は `recipes[].deliver.dof` に `f_number` の `min` / `max` / `default` / `stops`、`scope`
+（`{"values": ["figure", "all"], "default": "figure"}`）、`viewfinder`
+（`{"values": ["off", "on", "both"], "default": "off"}`）、`guide_radius_per_f` を公開します。
 
-worker は asset を `GET /g/{generation uuid}/assets/{role}` で読みます。
+`light` は光源です。`scene` は `"sunset"`（夕日）か `"moon"`（月明かり）で必須、`from` は光が来る向き
+（8 方位、省略は `"nw"`）です。`light` を省略すると、入力の絵の系譜（`refines_generation_id`）でいちばん近い
+method `light` の redraw の `scene` と `from` を引き継ぎ、`stroke_light` を省略した紫縁もその向きに揃います。
+`stroke_light` に `light` の `from`（引き継いだものを含む）と違う方位を明示すると `failed` で、
+`"none"` / `"even"` / `null` は併用できます。紫縁の陰影を、下地を描き直したときの光の向きに合わせるための規則です。
+
+切り抜きの asset（`alpha`: 8 bit グレー PNG、`depth`、作ったときの条件を書いた `cut`: json）は、入力の
+Generation（納品の Generation ではない）に付きます。最初の deliver が作り、次の deliver は `cut` と現在の
+条件の一致を確かめて使い回し、違うときは作り直して同じ `(role, region)` を置換します。背景・紫縁・F 値だけを
+変えた deliver は切り抜きをやり直しません。worker は asset を `GET /g/{generation uuid}/assets/{role}` で読みます。
+
+出力は納品の Generation 1 枚（`dof.viewfinder` が `both` のときだけ 2 枚）で、入力の Generation を
+`refines_generation_id` で指します。入力にできるのは raw か描き直した絵で、納品済みの絵と LayerDiffuse 由来の
+絵は受けません。chimera が検証するのは型だけで、組み合わせの妥当性（recipe が route を持つか等）は worker が
+判定して `failed` にします。
+
+`keep_legwear` の word は `^[a-z][a-z0-9-]*$` にマッチする文字列で、word の語彙は recipe ごとに catalog が
+`recipes[].dials.deliver` として公開します。chimera はそれを表示にだけ使い、word が実在するかの検証と
+number への解決は worker が行います（未知の word は `failed`）。catalog は既定を
+`recipes[].deliver.defaults`、`stroke_light` の選択肢を `recipes[].deliver.stroke_light`、単色の初期値を
+`recipes[].deliver.backdrop_color`（`#RRGGBB`）として公開し、WebUI のフォームのプリセットもここから取っています。
+catalog の envelope の `schema_version` は 1 と 2 を受けます。
+
+GUI が積む deliver は `repin` / `recolor` / `keep_legwear` / `backdrop` に加えて、`紫縁` が `既定` なら
+`stroke_light` と `light` を省略し（worker が引き継ぎ・既定から解決）、`立体` なら `光の向き` の方位、`均等` なら
+`even`、`無し` なら `none` を `stroke_light` に積みます。`光源` を選んだときだけ `light: {scene, from}` を積みます
+（`from` は `光の向き` の値）。`backdrop` は選んだカードの模様名 → その文字列、`透過 PNG` → `null`、`単色` → 入力した
+`#RRGGBB` です。`dof` はピント位置を画像上に置いたときだけ `{focus: [x, y], f_number}` を積み、置かずにチェックすると
+積まずに止めます。`scope: "all"` と透過納品の併用も止めます。
+
+#### deliver profile
+
+profile は deliver options をまとめて一発で選ぶための、chimera 自身が持つ kind `deliver` の Preset です
+（[domain-model.md](domain-model.md#preset)）。word（上の dial 語彙）が comfyui-recipes 側で定義されるのに対し、
+profile は「どの word / 数値をどう組み合わせるか」という、良かった結果から人間が育てる chimera 側の再利用単位です。
+
+`payload.profile` は `{ name, version? }`。chimera は requests 行を作るときに（`src/lib/presets.ts` の
+`applyDeliverProfile`、payload を hash する前）、source Generation の Request が持つ `recipe` でその profile を
+解決し（`version` 省略は最新 `active` 版）、`payload.options = { ...profile.options, ...payload.options }`
+（`payload.options` の同じキーが勝つ。明示 `null` も含めて勝つ）と展開してから hash・保存します。`profile` 自身も
+解決した版で `{ name, version }` に書き換えて保存します。未知の profile 名 / 版は 404 で、queued 行は作られません。
+worker が読むのは展開済みの `payload.options` だけで、`payload.profile` は見ません。
+
+body の形は次の通りです。pose/costume/expression の Preset と違い、base への参照も patches も持たない全文上書きです。
+
+``` json
+{ "options": { "keep_legwear": "on", "backdrop": "dots" } }
+```
+
+`POST /api/v1/presets/promote-profile`（body `{ generation_id, name, note?, idempotency_key }`）が新しい版を作ります。
+`generation_id` は `rating = good` かつ deliver request が産んだ Generation でなければならず、それ以外は 409 です。
+body は、その deliver request が queued した時点の `payload.options`（profile 展開後、word はそのまま）を
+そのまま複製します。`name` が既存ならその次の版、新しい名前なら version 1 です。既存の版は書き換えません。
 
 ### repair
 
 既存 Generation の手足（hands / feet）だけをマスクして局所的に redraw する
-worker 実行です。finalize と同じく semantic 判断を伴わない再実行で、GUI が積んで
-よい2種類目の kind です（comfyui-recipes 側の実装は別リポジトリ）。
+worker 実行です。redraw / deliver と同じく semantic 判断を伴わない再実行で、GUI が積んで
+よい kind です（comfyui-recipes 側の実装は別リポジトリ）。
 
 ``` json
 {
@@ -638,8 +595,7 @@ worker 実行です。finalize と同じく semantic 判断を伴わない再実
 }
 ```
 
-`generation_id` は finalize と同じく UUID / short_id のどちらでもよく、finalize
-バッチの sibling（source Generation または納品 Generation のどちらか）でもよい
+`generation_id` は UUID / short_id のどちらでもよく、raw か描き直した絵（納品済みの絵は不可）を指します
 — worker が `GET /api/v1/generations/{id}/context` で解決して redraw 対象を決めます。
 
   options    型                              意味
@@ -655,8 +611,7 @@ worker 実行です。finalize と同じく semantic 判断を伴わない再実
 省略したキーは worker 既定です。chimera が検証するのは型だけで、組み合わせの
 妥当性は worker が判定して `failed` にします。`denoise` / `lora` は number / null
 （`lora` は加えて `true`）に加えて、word 文字列（`^[a-z][a-z0-9-]*$`）も受け取ります —
-語彙は catalog の `recipes[].dials.repair`（finalize に相乗りする `repair_denoise` /
-`repair_lora` とは別の、単体 repair request 専用の namespace）です。
+語彙は catalog の `recipes[].dials.repair` です。
 
 ### masked_redraw
 
@@ -792,7 +747,7 @@ POST /api/v1/requests/{id}/jobs
 ```
 
 - resolution を報告する前は 409
-- `kind` が finalize / redraw / repair / masked_redraw / deliver のとき `source_generation_id` は必須（無ければ 400、無い Generation は 404）。generate / import では指定できない（400）。UUID / short_id のどちらでも渡せる。1 Request に source の違う Job を持てる
+- `kind` が redraw / deliver / repair / masked_redraw（と古い finalize）のとき `source_generation_id` は必須（無ければ 400、無い Generation は 404）。generate / import では指定できない（400）。UUID / short_id のどちらでも渡せる。1 Request に source の違う Job を持てる
 - 新規は 201 で `{ id, request_id, seed, index, status: "created", comfy_prompt_id: null, source_generation_id, generations: [] }`。同じ `idempotency_key` の再送は 200 で同じ形に現在の `status` と ingest 済み `generations[]` を載せる
 - ingest は `POST /api/v1/jobs/{jobId}/generations`。Generation は Job の Request と `source_generation_id`（`refines_generation_id`）を引き継ぐ
 
@@ -808,7 +763,7 @@ worker が claim した requests 行（`attempt >= 2`）に対して:
 4. ingest は通常通り。既存 `(comfy_job_id, comfy_output_index)` は 200 で戻る
 5. 全 Job が ingested になったら `PATCH /requests/{id}` に `done`
 
-finalize / repair / masked_redraw の再実行も同じ規則です。
+redraw / deliver / repair / masked_redraw の再実行も同じ規則です。
 
 ## ExperimentRun 由来の generate
 
@@ -851,15 +806,12 @@ worker は requests だけを見ます。
 
 段階 2 の GUI は requests 行を積むことと status を表示することだけです。
 
-- Generation Detail: `Finalize` ボタン。`repin` / `recolor` / `keep-legwear` のチェックボックスと
-  `denoise`（空 = recipe 既定）を持ち、`POST /api/v1/requests`（`created_by = gui`）を積む。
-  積んだ後はボタンの横に最新 request の status（queued / running / done / failed）と、
-  done なら納品 Generation へのリンクを出す。
-- Generation Detail: `Repair` ボタン。`hands` / `feet` のチェックボックス（既定両方 on）、
-  `denoise` / `seeds` / `pad`（空 = worker 既定）、`regions`（1行1矩形のテキスト入力、
-  空 = worker 自動検出）を持ち、同じく `POST /api/v1/requests`（`kind = repair`,
-  `created_by = gui`）を積む。ボタン横の status 表示は Finalize と同じ。
-- finalize / repair はどちらも Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
+- Generation Detail: `描き直し（Redraw）` と `納品（Deliver）` の 2 つの form。Redraw は method（canvas / hires / light）を
+  1 つ選んでその method の欄だけを持ち、Deliver は `repin` / `recolor` / `keep legwear` のチェックボックス、背景、
+  光源・光の向き・紫縁、ボケ、profile を持ちます。どれも `POST /api/v1/requests`（`kind = redraw` / `deliver`、
+  `created_by = gui`）を積み、積んだ後は最新 request の status（queued / running / done / failed）と、
+  done なら出力 Generation へのリンクを出す。表示中の Generation が納品済みの絵なら、どちらの form も出さない。
+- redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`
   の `STYLE_CHECK_POSES`) の pin を、今のカタログ既定でもう一度描く。`POST
@@ -876,7 +828,7 @@ Responsibilities を参照してください。Compare が比較表示のみで�
 ## MCP
 
 `/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
-`plain_render`、`finalize_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
+`plain_render`、`redraw_generation` / `deliver_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
 規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
 tool ごとの契約と `created_by` は
 [experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。
@@ -908,8 +860,8 @@ JSON テキストです。
 worker → hub:
 
 ``` text
-{"type":"hello","worker_id":"<hostname>","kinds":["generate","finalize","repair","masked_redraw"]}   最初の1通
-{"type":"progress","request_id":"...","phase":"submit|sampling|ingest|finalize","step":12,"total":28,"message":"..."}
+{"type":"hello","worker_id":"<hostname>","kinds":["generate","deliver","repair","masked_redraw"]}   最初の1通
+{"type":"progress","request_id":"...","phase":"submit|sampling|ingest|deliver","step":12,"total":28,"message":"..."}
 {"type":"ping"}
 ```
 
@@ -1085,10 +1037,10 @@ chimera が patch を検証するのにこれが要ります。
   昇格 PR の merge でしか動かないブランチです。
 - Service Token の期限切れは claim / heartbeat の 403 として現れます。worker は
   ログに出して poll を続け、chimera 側は何もしません。
-- `finalize` / `repair` / `masked_redraw` は `payload.generation_id` が指す Generation
-  自身の画像を読みます（この節「payload」参照）。その original が保持期間ジョブで
-  purge 済み（`original_purged_at` 非 null、`docs/domain-model.md`「original の保持」）なら
-  読めないので、chimera は request の作成自体を 409（`original_purged`）で拒否し、queued
+- `redraw` / `deliver` / `repair` / `masked_redraw` は `payload.generation_id` が指す Generation
+  自身の画像を読みます（この節「payload」参照）。original の purge は止めてあり（`docs/domain-model.md`
+  「original の保持」）新しく purge されることはありませんが、すでに purge 済みの行
+  （`original_purged_at` 非 null）は original を読めないので、chimera は request の作成自体を 409（`original_purged`）で拒否し、queued
   行は作られません。`generate` request（derive_request 含む）はこの制限を受けません。
 - original は保持期間を過ぎると lossless WebP に再圧縮されることがあり
   （`docs/domain-model.md`「original の再圧縮」）、`GET /api/v1/generations/{id}/context` が

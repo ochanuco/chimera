@@ -88,7 +88,7 @@ describe('deliver request', () => {
 describe('claim', () => {
   it('claims redraw and deliver by kinds filter and leaves other kinds queued', async () => {
     const { generation } = await createGeneration();
-    const finalize = await create('finalize', { generation_id: generation.id, options: { repin: true } });
+    const finalize = await createRequest({ kind: 'finalize', status: 'queued', payload: { generation_id: generation.id, options: { repin: true } } });
     const redraw = await create('redraw', { generation_id: generation.id, options: { method: 'hires' } });
     const deliver = await create('deliver', { generation_id: generation.id });
 
@@ -105,6 +105,14 @@ describe('claim', () => {
     expect(await claim(['redraw', 'deliver'])).toBeNull();
     const stillQueued = await getJson<RequestBody>(`/api/v1/requests/${finalize.body.id}`);
     expect(stillQueued.body.status).toBe('queued');
+    expect((await claim(['finalize']))?.id).toBe(finalize.body.id);
+  });
+
+  it('rejects creating a finalize request and names redraw and deliver', async () => {
+    const { generation } = await createGeneration();
+    const res = await create('finalize', { generation_id: generation.id, options: { repin: true } });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/redraw.*deliver|deliver.*redraw/);
   });
 });
 

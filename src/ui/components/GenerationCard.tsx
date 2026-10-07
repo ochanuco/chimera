@@ -1,7 +1,8 @@
 import { slotKeyOf } from '../../lib/timeline';
 import { SafetyBadge, SafetyStrip, type SafetyView } from './SafetyBadge';
+import { REQUEST_KIND_LABELS } from './OptionControls';
 
-export interface FinalizeRequestBadgeData {
+export interface RequestBadgeData {
   id: string;
   kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver';
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
@@ -21,14 +22,14 @@ export interface GenerationCardData {
   image_width?: number | null;
   image_height?: number | null;
   image_size?: number | null;
-  /** short_id of the raw Generation this card's Generation refines (finalize/repair/masked_redraw output), or null/absent for a raw Generation. */
+  /** short_id of the raw Generation this card's Generation refines (redraw/deliver/repair/masked_redraw output), or null/absent for a raw Generation. */
   refines_generation_short_id?: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published?: boolean;
   /** WD tagger の判定 (docs/ui.md「Gallery」安全性ピル)。未採点/未対応の一覧は null/undefined。 */
   safety?: SafetyView | null;
-  /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (docs/ui.md「Gallery」進捗ピル)。無い/未対応の一覧はundefined。 */
-  finalize_request?: FinalizeRequestBadgeData | null;
+  /** このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw request (docs/ui.md「Gallery」進捗ピル)。無い/未対応の一覧はundefined。 */
+  finalize_request?: RequestBadgeData | null;
   /** このGenerationが pose の基準 render として pin されているか (docs/ui.md「Gallery」基準ピル)。無い/未対応の一覧はundefined。 */
   reference?: { recipe: string; pose: string } | null;
 }
@@ -45,18 +46,18 @@ function SendIcon() {
   );
 }
 
-/** kind の表示ラベル。masked_redraw だけ語間にスペースが入る。 */
-function finalizeKindLabel(kind: FinalizeRequestBadgeData['kind']): string {
-  return kind === 'masked_redraw' ? 'masked redraw' : kind;
+/** kind の表示ラベル。static.ts の requestKindLabel と同じ規則。 */
+function finalizeKindLabel(kind: RequestBadgeData['kind']): string {
+  return REQUEST_KIND_LABELS[kind] ?? kind;
 }
 
 /** サムネイル左上の進捗ピル (docs/ui.md「Gallery」)。live更新 (`[data-request-id]`) の対象なので、
- * app.js の setFinalizeBadgeText が再現するのと同じ DOM 構造 (`kind · status` + done 時は `.card-finalize-result` の子span) で組む。 */
-function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
+ * app.js の setRequestBadgeText が再現するのと同じ DOM 構造 (`kind · status` + done 時は `.card-request-result` の子span) で組む。 */
+function RequestBadge({ r }: { r: RequestBadgeData }) {
   const label = finalizeKindLabel(r.kind);
   return (
     <span
-      class={`card-finalize-badge request-status-${r.status}`}
+      class={`card-request-badge request-status-${r.status}`}
       data-request-id={r.id}
       data-request-status={r.status}
       data-request-kind={r.kind}
@@ -64,7 +65,7 @@ function FinalizeBadge({ r }: { r: FinalizeRequestBadgeData }) {
       {label} ·{' '}
       {r.status === 'done' ? (
         <>
-          done → <span class="card-finalize-result">{r.result_short_id ?? ''}</span>
+          done → <span class="card-request-result">{r.result_short_id ?? ''}</span>
         </>
       ) : (
         r.status
@@ -96,7 +97,7 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
                 from <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
               </span>
             ) : null}
-            {g.finalize_request ? <FinalizeBadge r={g.finalize_request} /> : null}
+            {g.finalize_request ? <RequestBadge r={g.finalize_request} /> : null}
           </div>
         ) : null}
         {g.published || g.reference || (g.safety && g.safety.verdict !== 'none') ? (

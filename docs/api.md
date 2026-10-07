@@ -60,7 +60,7 @@ POST /api/v1/requests/{request_id}/jobs
 }
 ```
 
-finalize / repair / masked_redraw の Request では、仕上げ元の Generation を
+redraw / deliver / repair / masked_redraw の Request では、仕上げ元の Generation を
 `source_generation_id` に渡します（[Request](#request)）。
 
 201（新規作成）は `{ id, request_id, seed, index, status, comfy_prompt_id: null, source_generation_id, generations: [] }`
@@ -149,7 +149,7 @@ sampler ごとの prompt・latent だけ）。
 がfactsがまだ無い（または古い）行は最初の読み取り時（Generation detail /
 Experiment run のいずれか）に抽出してその場で書き戻します。
 
-original が保持期間を過ぎて purge / 再圧縮の対象になった Generation は、original の
+original が保持期間を過ぎて再圧縮の対象になった Generation（過去に purge された Generation を含む）は、original の
 PNG が持つ `prompt` text chunk から `comfy_job.graph` を救出済みなので
 （[domain-model.md](domain-model.md#original-の再圧縮)）、その original が既に消えて
 いても（PNG が WebP に変わっていても）`comfy_job.graph` はそのまま読めます。
@@ -523,21 +523,21 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / repair / masked_redraw / import で、finalize は 400（redraw か deliver を使う）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
 PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe / parameters / patches / pose_fingerprint / preset_versions / git_commit / git_dirty / references）を報告。200（再送・Job 作成前の上書き）/ 409（Job 作成後に別の値）。応答は { id, short_id, status, jobs[] }
-POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。finalize・repair・masked_redraw は source_generation_id 必須
+POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・repair・masked_redraw（と古い finalize）は source_generation_id 必須
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
 ```
 
 `GET` のクエリパラメータ:
 
--   `status` / `kind`: 完全一致。`kind` には `import`（worker を通らず登録側が `done` で作る Request）も指定できる
+-   `status` / `kind`: 完全一致。`kind` には作れなくなった `finalize` と、`import`（worker を通らず登録側が `done` で作る Request）も指定できる
 -   `run_id`: `kind = generate` の行のみ持つ
--   `generation_id`: `kind = finalize` / `kind = repair` / `kind = masked_redraw` の行を対象に、その
+-   `generation_id`: `kind = redraw` / `deliver` / `repair` / `masked_redraw`（と古い `finalize`）の行を対象に、その
     `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
 -   `worker_id`: claim した worker
 -   `pending=true`: `status=queued` の別名
@@ -545,9 +545,9 @@ PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。`short_id` は生成前に worker が解決値を報告するまで `null` です。
 
-`kind = finalize` / `repair` / `masked_redraw` の作成は、`payload.generation_id` が指す
+`kind = redraw` / `deliver` / `repair` / `masked_redraw` の作成は、`payload.generation_id` が指す
 Generation の original が purge 済み（`original_purged_at` 非 null）なら 409
-（`code: "original_purged"`）で拒否します。worker はその Generation 自身の画像を読むため
+（`code: "original_purged"`）で拒否します（original の purge は止めてあるので、対象は過去に purge された行だけです）。worker はその Generation 自身の画像を読むため
 （[worker-protocol.md](worker-protocol.md)）、original が無いと実行できません。既存の
 idempotency_key での再送（新規作成ではない）はこのチェックの対象外です。`generate` /
 derive request は対象外です。
@@ -555,7 +555,7 @@ derive request は対象外です。
 ### Summary
 
 `GET /api/v1/requests/summary` は queued / running の全件と、直近24hに failed
-になった件のみを対象に、仕上げ元 Generation が属する Request（finalize/repair/masked_redraw）または
+になった件のみを対象に、仕上げ元 Generation が属する Request（redraw/deliver/repair/masked_redraw、古い finalize も）または
 Experiment（generate、`run_id` があるとき）単位にまとめて返します。仕上げ元が解決できない行と、`run_id` の無い
 generate は request 単体のグループです。GUI ナビの queue pill 専用で、他のフィルタは
 持ちません。
@@ -563,14 +563,14 @@ generate は request 単体のグループです。GUI ナビの queue pill 専�
 ``` json
 {
   "counts": { "queued": 3, "running": 1, "failed_24h": 1 },
-  "workers": [{ "worker_id": "w1", "kinds": ["finalize"], "connected_at": "2026-09-11T00:00:00.000Z" }],
+  "workers": [{ "worker_id": "w1", "kinds": ["deliver"], "connected_at": "2026-09-11T00:00:00.000Z" }],
   "groups": [
     {
       "key": "request:...",
       "request": { "id": "...", "short_id": "b_7k2m9q", "thumbnail_generation_short_id": "g_..." },
       "experiment": null,
       "href": "/g/g_...",
-      "kinds": { "finalize": 2 },
+      "kinds": { "deliver": 2 },
       "counts": { "queued": 1, "running": 1, "failed": 0 },
       "latest_at": "2026-09-11T00:00:00.000Z"
     }
@@ -640,11 +640,11 @@ GET  /api/v1/presets/{recipe}/{kind}/{name}             その名前の全版（
 GET  /api/v1/presets/{recipe}/{kind}/{name}/{version}   解決済みの本文。無ければ404
 POST /api/v1/presets/import                             catalog の pose 名を参照として取り込む（冪等）
 POST /api/v1/presets/promote                            rating good の Generation から新しい版を足す（pose/costume/expression）
-POST /api/v1/presets/promote-profile                    rating good の finalize 結果から新しい finalize プロファイルの版を足す
+POST /api/v1/presets/promote-profile                    rating good の deliver 結果から新しい deliver プロファイルの版を足す
 ```
 
-`kind` は `pose` / `costume` / `expression` / `finalize` です。一覧は既定で `status = active` の版だけを
-返し、`?include_deprecated=1` で全部返します。`finalize` は他の3つと body の形が違います
+`kind` は `pose` / `costume` / `expression` / `deliver` です。一覧は既定で `status = active` の版だけを
+返し、`?include_deprecated=1` で全部返します。`deliver` は他の3つと body の形が違います
 （下記）。
 
 解決済みの本文は `base` の連鎖を根まで辿った結果です。`patches` は常に配列で、空でも
@@ -700,18 +700,18 @@ recipe を持たない graph-mode なら 409、Request が patches を持たな�
 `expressions` は名前の配列でしか publish されておらず、参照にしても何も足しません。移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)。
 
-### finalize プロファイル (kind = finalize)
+### deliver プロファイル (kind = deliver)
 
-finalize request の `options` をまとめて一発で選ぶための Preset です
-（[domain-model.md](domain-model.md#finalize-プロファイル)、
-[worker-protocol.md](worker-protocol.md#finalize-profile)）。pose/costume/expression と
+deliver request の `options` をまとめて一発で選ぶための Preset です
+（[domain-model.md](domain-model.md#deliver-プロファイル)、
+[worker-protocol.md](worker-protocol.md#deliver-profile)）。pose/costume/expression と
 違い、`record` は `{ options }` そのもので、`patches` は常に `[]` です。
 
 ``` json
 {
   "id": "0199...",
   "recipe": "yukari",
-  "kind": "finalize",
+  "kind": "deliver",
   "name": "daily",
   "version": 2,
   "status": "active",
@@ -719,7 +719,7 @@ finalize request の `options` をまとめて一発で選ぶための Preset �
   "source_generation_id": "abc123",
   "base_fingerprint": null,
   "note": null,
-  "record": { "options": { "denoise": "tidy", "keep_legwear": "on" } },
+  "record": { "options": { "keep_legwear": "on", "backdrop": "dots" } },
   "patches": [],
   "created_at": "..."
 }
@@ -731,18 +731,17 @@ finalize request の `options` をまとめて一発で選ぶための Preset �
 { "generation_id": "abc123", "name": "daily", "note": "...", "idempotency_key": "..." }
 ```
 
-`generation_id` は `rating = good` かつ、所属 Request が `kind = finalize` である Generation（納品 Generation か、相乗りした repair が
-あればその sibling）でなければならず、それ以外は409
-（`generation is not a finalize-kind result; nothing to promote from`）。body はその
-finalize request が queued した時点の `payload.options`（profile 展開後、word はそのまま）を
+`generation_id` は `rating = good` かつ、所属 Request が `kind = deliver` である Generation でなければならず、それ以外は409
+（`generation is not a deliver-kind result; nothing to promote from`）。body はその
+deliver request が queued した時点の `payload.options`（profile 展開後、word はそのまま）を
 複製します。`name` が既存なら次の版、新しい名前なら version 1。rating が good でなければ
 409（`promote requires rating good`）。既存の版は書き換えません。`idempotency_key` の再送は
 既に作られた版をそのまま 200 で返します。
 
-finalize request の payload に `profile: { name, version? }` を渡すと、chimera がその版を
+deliver request の payload に `profile: { name, version? }` を渡すと、chimera がその版を
 解決して `options` の下敷きにします（明示した `options` の同じキーが勝つ、明示 `null` も
 含めて勝つ）。未知の profile は 404 で、queued 行は作りません
-（[worker-protocol.md](worker-protocol.md#finalize-profile)）。
+（[worker-protocol.md](worker-protocol.md#deliver-profile)）。
 
 ## Observation
 
@@ -839,10 +838,11 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 }
 ```
 
-`recipes[].poses` 以外のキー（`costumes` / `expressions` / `parameters` など）は
+`schema_version` は 1 か 2 です。`recipes[].poses` 以外のキー（`costumes` / `expressions` / `parameters` など）は
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
 MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
-`parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、git
+`parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、
+`deliver`（`defaults` / `dof` / `stroke_light` / `backdrop_color`）と `redraw`（`light` / method ごとの `defaults`）、git
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
@@ -853,15 +853,15 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 描いたかとその pin は `get_generation` の `request.drawn_pose`
 （[Generation Context](#generation-context)）で分かります。
 
-`dials` は `{ finalize?: {optionKey: {word: number}}, repair?: {...}, patches?: {...} }` の
-形で、finalize / repair の options にある dial-able キーごとの word → number です
-（[worker-protocol.md](worker-protocol.md#finalize-profile)）。chimera は語彙も数値も
+`dials` は `{ redraw?: {optionKey: {word: number}}, deliver?: {...}, repair?: {...}, patches?: {...} }` の
+形で、redraw / deliver / repair の options にある dial-able キーごとの word → number です
+（[worker-protocol.md](worker-protocol.md#deliver-profile)）。chimera は語彙も数値も
 検証せず、GUI がボタンに出す表示にだけ使います。worker へは number に解決せず word を
 そのまま渡し、word の実在確認と number への解決は worker の責務です。
 
 `backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail }]`
-（`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。finalize の
-`backdrop` optionが取れるパターン名の一覧で、GUIのFinalizeフォームはこれをサムネイル
+（`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。deliver の
+`backdrop` optionが取れるパターン名の一覧で、GUIのDeliverフォームはこれをサムネイル
 ピッカーとして描画します。このキーが無い（旧workerが公開したカタログ）場合、GUIは
 サムネイル無しの`stripes`カード1枚にフォールバックします。`PUT`のレスポンス・
 `GET /api/v1/catalogs`の一覧・MCP `list_catalog`は`backdrops`をname/labelだけの
@@ -1052,7 +1052,7 @@ metadata 例:
 Management API がR2へ保存し、D1へGenerationを登録します。
 
 同じ `(comfy_job_id, comfy_output_index)` への再送（既存行の replay）は既存行を200で返します。
-その Generation の original が保持期間ジョブで既に purge 済み（`original_purged_at` 非
+その Generation の original が過去の保持期間ジョブで既に purge 済み（`original_purged_at` 非
 null）なら、replay は original を R2 へ書き戻しません — purge 済みのまま200を返します。
 
 レスポンス例:
@@ -1200,7 +1200,7 @@ GET /api/v1/generations/{id-or-short-id}/context
 ```
 
 `request` はこの Generation が属する Request で、所属が無ければ `null` です。
-`kind` は `generate` / `finalize` / `repair` / `masked_redraw` / `import` のいずれか、
+`kind` は `generate` / `redraw` / `deliver` / `repair` / `masked_redraw` / `import` のいずれか（古い行は `finalize` もある）、
 `parameters` / `patches` / `preset_versions` は未報告なら `null` です。
 `prompt` / `negative_prompt` は Request の先頭 Job（`job_index` が最小で graph を持つもの）の
 `render_facts` の先頭 sampler から取ります。Job に graph が無ければ `null` です。
@@ -1218,7 +1218,7 @@ ComfyUI workflow全文、Git diff、詳細ログなどは返しません。
 `GET /api/v1/generations/{id}` はこの内容に `comfy_job`（`graph` / `render_facts`）、
 `original_filename`、`siblings`（同じ Request の他の Generation。`generations` から自分自身を除いたもの）、
 `refines_generation`（`generations.refines_generation_id`が指す
-finalize / repair / masked_redraw前のGeneration `{ "id", "short_id", "rating" }`、rawなら
+redraw / deliver / repair / masked_redraw前のGeneration `{ "id", "short_id", "rating" }`、rawなら
 `null`）、`publications`（[Publication](#publication)の一覧、
 新しい順）、`pose_reference`（このGenerationが現行の pose 基準 render として pin
 されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
@@ -1230,7 +1230,7 @@ finalize / repair / masked_redraw前のGeneration `{ "id", "short_id", "rating" 
 この Generation の Request が描いた pose（`preset_versions` の pose pin、無ければ
 `parameters.pose`）と、その pose の現行の基準 render の pin（[Preset](#preset) の `reference`
 と同じ `{ generation_id, short_id, seed }`、pin が無ければ `null`）です。Request が recipe か
-pose を持たなければ（graph-mode、finalize / repair の Request）`drawn_pose` 自体が `null` です。
+pose を持たなければ（graph-mode、redraw / deliver / repair の Request）`drawn_pose` 自体が `null` です。
 `pose_reference` が「この Generation 自身が pin か」を答えるのに対し、`drawn_pose` は
 「同じ pose の基準はどこか」を答えます。Agent の手順は catalog（`list_catalog`）で pose 名を確かめ、名前のある look は
 `plain_render` で pin の seed から再現し、派生は pin の Generation から `derive_request` を
@@ -1244,7 +1244,7 @@ Generation で `{ "reason": ..., "message": ... }` になり、それ以外は `
   ----------------- ---------------------------------------------
   repair            `kind: "repair"`
   masked_redraw     `kind: "masked_redraw"`
-  finalize_repair   `kind: "hires-chain"` かつ `repair` を持つ
+  finalize_repair   `kind: "hires-chain"` かつ `repair` を持つ（古い finalize の出力）
 
 どれもマスク領域用に顔・髪・フードのタグを落とした prompt で描いているので、全身の generate
 に流すとキャラクターの目や髪の指定が消えます。この Generation から作り直すときは
@@ -1294,8 +1294,8 @@ to=2026-08-26
 ```
 
 検索結果には short ID、canonical URL、thumbnail/image
-URL、summary、`refines_generation_short_id`（この Generation が finalize/repair/
-masked_redraw で仕上げた元の raw Generation の short_id、raw なら null）、`request_id`、`published`
+URL、summary、`refines_generation_short_id`（この Generation が redraw/deliver/repair/
+masked_redraw で仕上げた元の Generation の short_id、raw なら null）、`request_id`、`published`
 （[Publication](#publication)を1件以上持つか）、`reference`（現行の pose 基準 render として
 pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
 [Pose Reference Pin](#pose-reference-pin)参照）、`finalize_request`
@@ -1308,18 +1308,19 @@ pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null
 WebP に変換していることがあり、その場合 `image_url` は `Content-Type: image/webp` を
 返します。画素は元の PNG と同一です。
 
-`original_purged_at` は original の保持期間ジョブがその original を削除した時刻
+`original_purged_at` は過去の保持期間ジョブがその original を削除した時刻（ジョブは廃止済みで、新たに削除されることはない）
 （[domain-model.md](domain-model.md#original-の保持)）。null なら未削除で、`image_url`
 がそのまま使えます。非 null な Generation を `image_url` で読むと 410 です — `thumbnail_url`
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation
 表現（Generation Search / Context / MCP の対応する出力）に付きます。
 
-`finalize_request` は、この Generation を対象にした最新の finalize / repair /
-masked_redraw [Request](#request)（`payload.generation_id` がこの Generation の UUID /
+`finalize_request`（名前は古い finalize に由来するが、今は redraw / deliver / repair /
+masked_redraw と古い finalize のすべてを対象にする）は、この Generation を対象にした最新の
+[Request](#request)（`payload.generation_id` がこの Generation の UUID /
 short_id のどちらかと一致する行のうち、最新の1件）です。無ければ `null`。
 
 ``` json
-{ "id": "...", "kind": "finalize", "status": "running", "result_short_id": null }
+{ "id": "...", "kind": "deliver", "status": "running", "result_short_id": null }
 ```
 
 `result_short_id` は `status = done` のときだけ `result.generation_ids[0]` を short_id に
@@ -1333,8 +1334,8 @@ Gallery live insertion カードフラグメント）も同じフィールドを
 （`preset_references` の `superseded_at IS NULL` 行）で絞り込みます
 （[Pose Reference Pin](#pose-reference-pin)参照）。
 
-`origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ finalize
-済みの出力のどちらかに絞ります。省略時は両方を返します。
+`origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ 仕上げ済み
+（redraw / deliver / repair / masked_redraw / 古い finalize）の出力のどちらかに絞ります。省略時は両方を返します。
 
 `exclude_rating=bad|neutral|good` はその rating を除外します（未評価の行は残ります）。
 

@@ -325,7 +325,7 @@ describe('MCP derive_request', () => {
     });
     expect(call.data?.payload.references).toEqual([
       { generation_id: raw.generation.id, purpose: 'derive' },
-      { generation_id: finalized.generation.id, purpose: 'derive', aspect: 'finalized' },
+      { generation_id: finalized.generation.id, purpose: 'derive', aspect: 'delivered' },
     ]);
     expect(call.data?.derived_from).toEqual({
       requested: { id: finalized.generation.id, short_id: finalized.generation.short_id },
@@ -353,7 +353,7 @@ describe('MCP derive_request', () => {
   it('409s when a refinement request in the chain has no source generation', async () => {
     const raw = await createParent({ parameters: { pose: 'date' } });
     const finalizeRequest = await postJson<{ id: string }>('/api/v1/requests', {
-      kind: 'finalize',
+      kind: 'deliver',
       payload: { generation_id: raw.generation.id, options: {} },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
@@ -364,7 +364,7 @@ describe('MCP derive_request', () => {
       requestOverrides: { parameters: { kind: 'hires-chain' } },
     });
     const orphanGeneration = { body: orphan.generation };
-    // refines_generation_id が NULL の finalize request: 仕上げ元まで遡れない。
+    // refines_generation_id が NULL の deliver request: 仕上げ元まで遡れない。
 
     const call = await mcpToolCall('derive_request', {
       from_generation_id: orphanGeneration.body.short_id,

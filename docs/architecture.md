@@ -77,7 +77,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   生成画像を Management API へ ingest する。
 -   Discord へ Generation ID / canonical URL と画像を通知する。
 -   リトライ・冪等性を担保する。
--   finalize / repair（納品用の再実行）と masked_redraw（任意矩形の masked-img2img）を requests 行から受けて実行する。
+-   redraw（絵を変える1操作）/ deliver（切り抜きと飾り）/ repair と masked_redraw（任意矩形の masked-img2img）を requests 行から受けて実行する。
 
 ### Management API
 
@@ -100,14 +100,14 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   Provenance（親・子・兄弟）を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
 -   Experiment 一覧・詳細を閲覧する。
--   semantic 判断を伴わない再実行（finalize / repair）を requests 行として積む。任意領域の
+-   semantic 判断を伴わない再実行（redraw / deliver / repair）を requests 行として積む。任意領域の
     garment inpaint は GUI に追加せず、semantic 判断主体が MCP の masked_redraw_generation
     を使う。
 -   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 代表ポーズの pin を、今のカタログ既定で
     もう一度描く plain render を requests 行として積む。GUI は prompt を書かない。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（finalize / repair）と、pin の再描画（絵柄チェック）だけで、GUI が
+判断を伴わない再実行（redraw / deliver / repair）と、pin の再描画（絵柄チェック）だけで、GUI が
 触るのは自分の D1 の requests 行のみです。masked_redraw は MCP からのみ積み、worker が
 source Generation を変更せず、Job の `source_generation_id` で仕上げ元を指す新しい Generation を作ります。
 
@@ -149,16 +149,15 @@ ComfyUI の filename は object key に利用せず、DB 上の metadata
 original から生成・保存されるサムネイルで、正本ではありません。GUI/API の
 サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
-`original.png` だけは、保持期間ジョブ（`src/lib/original-purge.ts`、cron trigger
-`*/30 * * * *`、`scheduled` ハンドラ）が古い低価値 Generation について削除します。
-1回あたりの処理件数は `ORIGINAL_PURGE_BATCH_SIZE`（省略時100）。`scheduled` ハンドラは
-同じ invocation でこの purge の直後に再圧縮ジョブ（`src/lib/original-recompress.ts`、
-`ORIGINAL_RECOMPRESS` var が `'on'` のときだけ有効。本番は wrangler.jsonc で `on`、
-省略時は無効）も走らせ、保持期間を過ぎても残っている original を不透明な PNG に限って lossless
-WebP（`original.webp`）へ変換します。Generation 1件あたり purge は最悪 ~5、再圧縮は
-最悪 ~6 subrequest かかるため、両方のバッチサイズは Workers Paid の1000 subrequest
-予算に収まる値にしています。`preview.webp` と D1 行は残ります（`docs/domain-model.md`
-「original の保持」「original の再圧縮」）。
+`original.png` は削除しません（redraw / deliver / repair が元の絵の original を読むため）。
+過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
+
+cron trigger `*/30 * * * *` の `scheduled` ハンドラは再圧縮ジョブ
+（`src/lib/original-recompress.ts`、`ORIGINAL_RECOMPRESS` var が `'on'` のときだけ有効。
+本番は wrangler.jsonc で `on`、省略時は無効）だけを走らせ、作成から30日を過ぎた original を
+不透明な PNG に限って lossless WebP（`original.webp`）へ変換します。Generation 1件あたり
+最悪 ~6 subrequest で、1回あたりの件数は `ORIGINAL_PURGE_BATCH_SIZE`（省略時・上限とも60）です。
+`preview.webp` と D1 行は変わりません（`docs/domain-model.md`「original の保持」「original の再圧縮」）。
 
 ## Ingest Flow
 

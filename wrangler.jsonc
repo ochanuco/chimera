@@ -21,8 +21,7 @@
   "observability": {
     "enabled": true
   },
-  // original 保持ジョブ (src/lib/original-purge.ts)。30分ごとに古い低価値 Generation の
-  // original.png を削除する。
+  // original 再圧縮ジョブ (src/lib/original-recompress.ts)。original は削除しない。
   "triggers": {
     "crons": ["*/30 * * * *"]
   },

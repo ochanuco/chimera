@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createRequest as createRequestRow } from '../src/lib/requests';
 import { createGeneration, getJson, ingestGeneration, postJson, req, clearRequests } from './helpers';
 
 // claim() grabs the globally oldest queued row with no way to scope it to this test's
@@ -47,9 +48,9 @@ async function createRun(experimentId: string, overrides: Record<string, unknown
   );
 }
 
-function finalizeRequestBody(generationId: string, overrides: Record<string, unknown> = {}) {
+function deliverRequestBody(generationId: string, overrides: Record<string, unknown> = {}) {
   return {
-    kind: 'finalize',
+    kind: 'deliver',
     payload: { generation_id: generationId, options: { repin: true } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'gui',
@@ -71,8 +72,8 @@ function generateRequestBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function createFinalizeRequest(generationId: string, overrides: Record<string, unknown> = {}) {
-  return postJson<RequestBody>('/api/v1/requests', finalizeRequestBody(generationId, overrides));
+async function createDeliverRequest(generationId: string, overrides: Record<string, unknown> = {}) {
+  return postJson<RequestBody>('/api/v1/requests', deliverRequestBody(generationId, overrides));
 }
 
 function repairRequestBody(generationId: string, overrides: Record<string, unknown> = {}) {
@@ -123,134 +124,65 @@ async function claim(workerId: string, kinds?: string[]): Promise<{ status: numb
 }
 
 describe('POST /api/v1/requests', () => {
-  it('finalize: 201 create, 200 replay with same payload, 409 with different options', async () => {
+  it('deliver: 201 create, 200 replay with same payload, 409 with different options', async () => {
     const { generation } = await createGeneration();
     const key = crypto.randomUUID();
 
-    const first = await createFinalizeRequest(generation.id, { idempotency_key: key });
+    const first = await createDeliverRequest(generation.id, { idempotency_key: key });
     expect(first.status).toBe(201);
-    expect(first.body.kind).toBe('finalize');
+    expect(first.body.kind).toBe('deliver');
     expect(first.body.status).toBe('queued');
     expect(first.body.payload).toEqual({ generation_id: generation.id, options: { repin: true } });
     expect((first.body as unknown as Record<string, unknown>).payload_hash).toBeUndefined();
 
-    const replay = await createFinalizeRequest(generation.id, { idempotency_key: key });
+    const replay = await createDeliverRequest(generation.id, { idempotency_key: key });
     expect(replay.status).toBe(200);
     expect(replay.body.id).toBe(first.body.id);
 
     const conflicting = await postJson(
       '/api/v1/requests',
-      finalizeRequestBody(generation.id, { idempotency_key: key, payload: { generation_id: generation.id, options: { repin: false } } }),
+      deliverRequestBody(generation.id, { idempotency_key: key, payload: { generation_id: generation.id, options: { repin: false } } }),
     );
     expect(conflicting.status).toBe(409);
   });
 
-  it('finalize: repair/repair_pad options are 201, unknown repair part is 400, bad repair_regions (x0 > x1) is 400', async () => {
-    const { generation } = await createGeneration();
-
-    const created = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_pad: 1.2 } },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['feet'], repair_pad: 1.2 } });
-
-    const unknownPart = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['toes'] } },
-    });
-    expect(unknownPart.status).toBe(400);
-
-    const badRegion = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair_regions: [[0.5, 0.5, 0.2, 0.9]] } },
-    });
-    expect(badRegion.status).toBe(400);
-  });
-
-  it('finalize: stroke_light accepts none, even, a direction and null; rejects an unknown string', async () => {
+  it('deliver: stroke_light accepts none, even, a direction and null; rejects an unknown string', async () => {
     const { generation } = await createGeneration();
     for (const value of ['none', 'even', 'n', 'nw', null]) {
-      const res = await createFinalizeRequest(generation.id, {
+      const res = await createDeliverRequest(generation.id, {
         payload: { generation_id: generation.id, options: { stroke_light: value } },
       });
       expect(res.status).toBe(201);
       expect(res.body.payload).toEqual({ generation_id: generation.id, options: { stroke_light: value } });
     }
-    const bad = await createFinalizeRequest(generation.id, {
+    const bad = await createDeliverRequest(generation.id, {
       payload: { generation_id: generation.id, options: { stroke_light: 'sideways' } },
     });
     expect(bad.status).toBe(400);
   });
 
-  it('finalize: repair_lora accepts true, a number, null, and a dial word; rejects a malformed string', async () => {
+  it('finalize: creation is rejected with a 400 that names redraw and deliver, over REST and createRequest', async () => {
     const { generation } = await createGeneration();
-
-    const workerDefault = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: true } },
+    const res = await postJson<{ error: { message: string } }>('/api/v1/requests', {
+      kind: 'finalize',
+      payload: { generation_id: generation.id, options: { repin: true } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
     });
-    expect(workerDefault.status).toBe(201);
-    expect(workerDefault.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['hands'], repair_lora: true } });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/redraw/);
+    expect(JSON.stringify(res.body)).toMatch(/deliver/);
 
-    const explicitWeight = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 0.6 } },
-    });
-    expect(explicitWeight.status).toBe(201);
-    expect(explicitWeight.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['hands'], repair_lora: 0.6 } });
-
-    const off = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: null } },
-    });
-    expect(off.status).toBe(201);
-
-    // word: catalog `dials.finalize.repair_lora` 語彙 — chimera は型だけ見て通す、実在確認は worker。
-    const word = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'strong' } },
-    });
-    expect(word.status).toBe(201);
-    expect(word.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'strong' } });
-
-    const badType = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['hands'], repair_lora: 'Strong!' } },
-    });
-    expect(badType.status).toBe(400);
-  });
-
-  it('finalize: repair_seeds accepts an int in 1..8, rejects out-of-range and non-int', async () => {
-    const { generation } = await createGeneration();
-
-    const created = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 6 } },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.payload).toEqual({ generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 6 } });
-
-    const tooLow = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 0 } },
-    });
-    expect(tooLow.status).toBe(400);
-
-    const tooHigh = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 9 } },
-    });
-    expect(tooHigh.status).toBe(400);
-
-    const notInt = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { repair: ['feet'], repair_seeds: 2.5 } },
-    });
-    expect(notInt.status).toBe(400);
-  });
-
-  it('finalize: deliver_only accepts a boolean, rejects a non-boolean', async () => {
-    const { generation } = await createGeneration();
-
-    const created = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { deliver_only: true } },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.payload).toEqual({ generation_id: generation.id, options: { deliver_only: true } });
-
-    const badType = await createFinalizeRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { deliver_only: 'yes' } },
-    });
-    expect(badType.status).toBe(400);
+    await expect(
+      createRequestRow(env.DB, {
+        kind: 'finalize',
+        payload: { generation_id: generation.id },
+        idempotency_key: crypto.randomUUID(),
+        created_by: 'gui',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM requests WHERE kind = 'finalize'").first<{ n: number }>();
+    expect(count?.n).toBe(0);
   });
 
   it('repair: 201 create with parts/regions/denoise/seeds/pad, unknown option key is 400, bad region (x0 > x1) is 400', async () => {
@@ -377,11 +309,11 @@ describe('POST /api/v1/requests', () => {
 
   it('recipe_ref defaults to the REQUESTS_DEFAULT_RECIPE_REF var (production), for POST and for run auto-provisioning', async () => {
     const { generation } = await createGeneration();
-    const posted = await createFinalizeRequest(generation.id);
+    const posted = await createDeliverRequest(generation.id);
     expect(posted.status).toBe(201);
     expect(posted.body.recipe_ref).toBe('production');
 
-    const explicit = await createFinalizeRequest(generation.id, { recipe_ref: 'dev/x' });
+    const explicit = await createDeliverRequest(generation.id, { recipe_ref: 'dev/x' });
     expect(explicit.body.recipe_ref).toBe('dev/x');
 
     const exp = await createExperiment({ base_recipe: 'yukari' });
@@ -433,8 +365,8 @@ describe('POST /api/v1/requests/claim', () => {
   it('claims the oldest queued row (FIFO), second claim 204 when queue is empty', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
-    const r1 = await createFinalizeRequest(g1.id);
-    const r2 = await createFinalizeRequest(g2.id);
+    const r1 = await createDeliverRequest(g1.id);
+    const r2 = await createDeliverRequest(g2.id);
 
     const first = await claim('worker-a');
     expect(first.status).toBe(200);
@@ -453,7 +385,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('release puts a claimed row back on the queue without waiting for the heartbeat timeout', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
 
     const claimed = await claim('worker-a');
     expect(claimed.body!.id).toBe(created.body.id);
@@ -478,8 +410,8 @@ describe('POST /api/v1/requests/claim', () => {
   it('lists only the rows a given worker holds, so a restarted worker can find its own', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();
-    const r1 = await createFinalizeRequest(g1.id);
-    const r2 = await createFinalizeRequest(g2.id);
+    const r1 = await createDeliverRequest(g1.id);
+    const r2 = await createDeliverRequest(g2.id);
 
     await claim('worker-owner');
     await claim('worker-other');
@@ -492,7 +424,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('release from a worker that does not hold the claim is a conflict', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     await claim('worker-a');
 
     const released = await postJson(
@@ -505,7 +437,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('release fails the row once its attempts are spent, the same rule the heartbeat timeout uses', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
 
     for (let i = 0; i < 3; i++) {
       const claimed = await claim(`worker-${i}`);
@@ -539,16 +471,16 @@ describe('POST /api/v1/requests/claim', () => {
       }),
     );
     const { generation } = await createGeneration();
-    const finalizeReq = await createFinalizeRequest(generation.id);
+    const deliverReq = await createDeliverRequest(generation.id);
 
-    const claimed = await claim('worker-a', ['finalize']);
+    const claimed = await claim('worker-a', ['deliver']);
     expect(claimed.status).toBe(200);
-    expect(claimed.body!.id).toBe(finalizeReq.body.id);
+    expect(claimed.body!.id).toBe(deliverReq.body.id);
   });
 
   it('kinds filter: claims a repair row when kinds includes only repair', async () => {
     const { generation: g1 } = await createGeneration();
-    const finalizeReq = await createFinalizeRequest(g1.id);
+    const deliverReq = await createDeliverRequest(g1.id);
     const { generation: g2 } = await createGeneration();
     const repairReq = await createRepairRequest(g2.id);
 
@@ -557,8 +489,8 @@ describe('POST /api/v1/requests/claim', () => {
     expect(claimed.body!.id).toBe(repairReq.body.id);
     expect(claimed.body!.kind).toBe('repair');
 
-    // finalize row stays queued, untouched by the repair-only claim.
-    const stillQueued = await getJson<RequestBody>(`/api/v1/requests/${finalizeReq.body.id}`);
+    // deliver row stays queued, untouched by the repair-only claim.
+    const stillQueued = await getJson<RequestBody>(`/api/v1/requests/${deliverReq.body.id}`);
     expect(stillQueued.body.status).toBe('queued');
   });
 
@@ -574,7 +506,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('heartbeat: PATCH status=running refreshes heartbeat_at', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     const claimed = await claim('worker-a');
     expect(claimed.body!.id).toBe(created.body.id);
     const beforeHeartbeat = claimed.body!.heartbeat_at;
@@ -589,7 +521,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('stale requeue: a running row whose heartbeat is >5min old is reclaimed with attempt+1', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     const claimed = await claim('worker-stale');
     expect(claimed.body!.attempt).toBe(1);
 
@@ -607,7 +539,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('stale requeue: attempt >= max_attempts fails the row with "heartbeat timeout" instead of requeueing', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     await claim('worker-stale');
 
     const staleHeartbeat = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -628,7 +560,7 @@ describe('POST /api/v1/requests/claim', () => {
 describe('PATCH /api/v1/requests/{id}', () => {
   it('400s when worker_id is missing for a running/done/failed transition', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     await claim('worker-a');
 
     const res = await postJson(`/api/v1/requests/${created.body.id}`, { status: 'running' }, 'PATCH');
@@ -637,7 +569,7 @@ describe('PATCH /api/v1/requests/{id}', () => {
 
   it('409s transitioning to done/failed from queued (not yet claimed)', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
 
     const done = await postJson(
       `/api/v1/requests/${created.body.id}`,
@@ -652,13 +584,13 @@ describe('PATCH /api/v1/requests/{id}', () => {
 
   it('cancelled: 200 from queued, 409 from running', async () => {
     const { generation: g1 } = await createGeneration();
-    const queued = await createFinalizeRequest(g1.id);
+    const queued = await createDeliverRequest(g1.id);
     const cancelled = await postJson<RequestBody>(`/api/v1/requests/${queued.body.id}`, { status: 'cancelled' }, 'PATCH');
     expect(cancelled.status).toBe(200);
     expect(cancelled.body.status).toBe('cancelled');
 
     const { generation: g2 } = await createGeneration();
-    const running = await createFinalizeRequest(g2.id);
+    const running = await createDeliverRequest(g2.id);
     await claim('worker-a');
     const res = await postJson(`/api/v1/requests/${running.body.id}`, { status: 'cancelled' }, 'PATCH');
     expect(res.status).toBe(409);
@@ -666,7 +598,7 @@ describe('PATCH /api/v1/requests/{id}', () => {
 
   it('409s when worker_id does not match the claim', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     await claim('worker-a');
 
     const res = await postJson(`/api/v1/requests/${created.body.id}`, { status: 'running', worker_id: 'worker-b' }, 'PATCH');
@@ -675,7 +607,7 @@ describe('PATCH /api/v1/requests/{id}', () => {
 
   it('409s any further PATCH once terminal', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     await postJson(`/api/v1/requests/${created.body.id}`, { status: 'cancelled' }, 'PATCH');
 
     const res = await postJson(`/api/v1/requests/${created.body.id}`, { status: 'cancelled' }, 'PATCH');
@@ -715,7 +647,7 @@ describe('PATCH /api/v1/requests/{id}', () => {
 
   it('failed: requires error, sets finished_at', async () => {
     const { generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     await claim('worker-a');
 
     const missingError = await postJson(`/api/v1/requests/${created.body.id}`, { status: 'failed', worker_id: 'worker-a' }, 'PATCH');
@@ -752,12 +684,12 @@ describe('GET /api/v1/requests', () => {
     const { generation: gA } = await createGeneration();
     const { generation: gB } = await createGeneration();
 
-    const finalizeA = await createFinalizeRequest(gA.id);
-    const finalizeB = await createFinalizeRequest(gB.short_id);
+    const deliverA = await createDeliverRequest(gA.id);
+    const deliverB = await createDeliverRequest(gB.short_id);
 
     const queuedList = await getJson<{ items: RequestBody[] }>('/api/v1/requests?status=queued&limit=200');
     expect(queuedList.body.items.map((r) => r.id)).toEqual(
-      expect.arrayContaining([generateReq.body.id, finalizeA.body.id, finalizeB.body.id]),
+      expect.arrayContaining([generateReq.body.id, deliverA.body.id, deliverB.body.id]),
     );
 
     // pending=true is an alias for status=queued
@@ -767,31 +699,31 @@ describe('GET /api/v1/requests', () => {
     const pendingAfterClaim = await getJson<{ items: RequestBody[] }>('/api/v1/requests?pending=true&limit=200');
     expect(pendingAfterClaim.body.items.map((r) => r.id)).not.toContain(generateReq.body.id);
 
-    const finalizeList = await getJson<{ items: RequestBody[] }>('/api/v1/requests?kind=finalize&limit=200');
-    expect(finalizeList.body.items.every((r) => r.kind === 'finalize')).toBe(true);
-    expect(finalizeList.body.items.map((r) => r.id)).toEqual(expect.arrayContaining([finalizeA.body.id, finalizeB.body.id]));
+    const deliverList = await getJson<{ items: RequestBody[] }>('/api/v1/requests?kind=deliver&limit=200');
+    expect(deliverList.body.items.every((r) => r.kind === 'deliver')).toBe(true);
+    expect(deliverList.body.items.map((r) => r.id)).toEqual(expect.arrayContaining([deliverA.body.id, deliverB.body.id]));
 
     const runList = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?run_id=${run.body.id}`);
     expect(runList.body.items.map((r) => r.id)).toEqual([generateReq.body.id]);
 
     // generation_id, resolved by short_id even though the request stored the UUID
     const byShortId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${gA.short_id}`);
-    expect(byShortId.body.items.map((r) => r.id)).toEqual([finalizeA.body.id]);
+    expect(byShortId.body.items.map((r) => r.id)).toEqual([deliverA.body.id]);
 
     // batch_id is no longer a filter: it is ignored rather than narrowing the list.
     const ignoredBatchFilter = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?batch_id=${crypto.randomUUID()}&limit=200`);
     expect(ignoredBatchFilter.body.items.map((r) => r.id)).toEqual(
-      expect.arrayContaining([generateReq.body.id, finalizeA.body.id, finalizeB.body.id]),
+      expect.arrayContaining([generateReq.body.id, deliverA.body.id, deliverB.body.id]),
     );
   });
 
-  it('generation_id also returns repair rows alongside finalize rows', async () => {
+  it('generation_id also returns repair rows alongside deliver rows', async () => {
     const { generation } = await createGeneration();
-    const finalizeReq = await createFinalizeRequest(generation.id);
+    const deliverReq = await createDeliverRequest(generation.id);
     const repairReq = await createRepairRequest(generation.id);
 
     const byGenerationId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}`);
-    expect(byGenerationId.body.items.map((r) => r.id).sort()).toEqual([finalizeReq.body.id, repairReq.body.id].sort());
+    expect(byGenerationId.body.items.map((r) => r.id).sort()).toEqual([deliverReq.body.id, repairReq.body.id].sort());
 
     // kind narrows within the generation_id set as usual.
     const repairOnly = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=repair`);
@@ -834,9 +766,9 @@ describe('GET /api/v1/requests/summary', () => {
     expect(Array.isArray(res.body.workers)).toBe(true);
   });
 
-  it('tracks a finalize request through queued -> running -> failed, grouped by its source request', async () => {
+  it('tracks a deliver request through queued -> running -> failed, grouped by its source request', async () => {
     const { request, generation } = await createGeneration();
-    const created = await createFinalizeRequest(generation.id);
+    const created = await createDeliverRequest(generation.id);
     expect(created.status).toBe(201);
 
     const afterCreate = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
@@ -846,10 +778,10 @@ describe('GET /api/v1/requests/summary', () => {
     expect(group.key).toBe(`request:${request.id}`);
     expect(group.request).toEqual({ id: request.id, short_id: request.short_id, thumbnail_generation_short_id: generation.short_id });
     expect(group.href).toBe(`/g/${generation.short_id}`);
-    expect(group.kinds.finalize).toBe(1);
+    expect(group.kinds.deliver).toBe(1);
     expect(group.counts).toEqual({ queued: 1, running: 0, failed: 0 });
 
-    const claimed = await claim('w-summary', ['finalize']);
+    const claimed = await claim('w-summary', ['deliver']);
     expect(claimed.status).toBe(200);
     expect(claimed.body?.id).toBe(created.body.id);
 
@@ -870,24 +802,24 @@ describe('GET /api/v1/requests/summary', () => {
     expect(afterFail.body.groups[0]!.counts).toEqual({ queued: 0, running: 0, failed: 1 });
   });
 
-  it('groups finalize requests of every Generation of one Request into a single row linking to its first Generation', async () => {
+  it('groups deliver requests of every Generation of one Request into a single row linking to its first Generation', async () => {
     const { request, job, generation: first } = await createGeneration();
     const second = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00002_.png', comfy_output_index: 1 });
     expect(second.status).toBe(201);
     const other = await createGeneration();
 
-    await createFinalizeRequest(first.id);
-    await createFinalizeRequest(second.body.short_id);
-    await createFinalizeRequest(other.generation.id);
+    await createDeliverRequest(first.id);
+    await createDeliverRequest(second.body.short_id);
+    await createDeliverRequest(other.generation.id);
 
     const res = await getJson<RequestSummaryBody>('/api/v1/requests/summary');
     expect(res.body.groups).toHaveLength(2);
     const shared = res.body.groups.find((g) => g.request?.id === request.id)!;
-    expect(shared.kinds.finalize).toBe(2);
+    expect(shared.kinds.deliver).toBe(2);
     expect(shared.counts.queued).toBe(2);
     expect(shared.href).toBe(`/g/${first.short_id}`);
     const alone = res.body.groups.find((g) => g.request?.id === other.request.id)!;
-    expect(alone.kinds.finalize).toBe(1);
+    expect(alone.kinds.deliver).toBe(1);
   });
 
   it('groups generate requests with a run_id by their experiment', async () => {

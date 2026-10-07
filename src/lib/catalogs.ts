@@ -95,9 +95,11 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     if ('parts' in r) summary.parts = r.parts;
     if ('identity_tags' in r) summary.identity_tags = r.identity_tags;
     if ('parameters' in r) summary.parameters = r.parameters;
-    // dials: {finalize?, repair?, patches?} の word -> number map。chimera は表示にしか使わず、
-    // word の実在確認や number への解決は worker が行う (docs/worker-protocol.md「finalize profile」)。
+    // dials: {redraw?, deliver?, repair?, patches?} の word -> number map。chimera は表示にしか使わず、
+    // word の実在確認や number への解決は worker が行う (docs/worker-protocol.md「deliver profile」)。
     if ('dials' in r) summary.dials = r.dials;
+    if ('deliver' in r) summary.deliver = r.deliver;
+    if ('redraw' in r) summary.redraw = r.redraw;
     return summary;
   });
   const backdrops = findBackdrops(doc);
@@ -149,44 +151,67 @@ export function decodeBackdropThumbnail(doc: RecipeCatalogDoc, name: string): Ui
   }
 }
 
-/** `recipes[].dials.finalize` for one recipe name — the word -> number map FinalizeFields renders as buttons. null when the catalog, recipe, or its dials.finalize are absent. */
-export function findFinalizeDials(doc: RecipeCatalogDoc, recipeName: string): Record<string, Record<string, number>> | null {
+function findRecipe(doc: RecipeCatalogDoc, recipeName: string): Record<string, unknown> | null {
   const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
-  if (!recipe) return null;
-  const dials = (recipe as { dials?: { finalize?: unknown } }).dials;
-  const finalize = dials?.finalize;
-  return finalize && typeof finalize === 'object' && !Array.isArray(finalize) ? (finalize as Record<string, Record<string, number>>) : null;
+  return recipe ? (recipe as Record<string, unknown>) : null;
 }
 
-export type FinalizeDefaults = Record<string, unknown>;
-
-/** `recipes[].finalize.defaults` for one recipe name — the booleans FinalizeFields presets its checkboxes from. null when the catalog, recipe, or its finalize.defaults are absent. */
-export function findFinalizeDefaults(doc: RecipeCatalogDoc, recipeName: string): FinalizeDefaults | null {
-  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
-  if (!recipe) return null;
-  const finalize = (recipe as { finalize?: { defaults?: unknown } }).finalize;
-  const defaults = finalize?.defaults;
-  return defaults && typeof defaults === 'object' && !Array.isArray(defaults) ? (defaults as FinalizeDefaults) : null;
+function plainObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-/** `recipes[].finalize.backdrop_color` for one recipe name — the solid-colour backdrop's initial value. null when absent or not `#RRGGBB`. */
-export function findFinalizeBackdropColor(doc: RecipeCatalogDoc, recipeName: string): string | null {
-  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
-  if (!recipe) return null;
-  const color = (recipe as { finalize?: { backdrop_color?: unknown } }).finalize?.backdrop_color;
+function findDials(doc: RecipeCatalogDoc, recipeName: string, scope: string): Record<string, Record<string, number>> | null {
+  const dials = plainObject(plainObject(findRecipe(doc, recipeName)?.dials)?.[scope]);
+  return dials as Record<string, Record<string, number>> | null;
+}
+
+/** `recipes[].dials.deliver` for one recipe name — the word -> number map DeliverFields renders as buttons. null when the catalog, recipe, or its dials.deliver are absent. */
+export function findDeliverDials(doc: RecipeCatalogDoc, recipeName: string): Record<string, Record<string, number>> | null {
+  return findDials(doc, recipeName, 'deliver');
+}
+
+/** `recipes[].dials.redraw` for one recipe name — the word -> number map RedrawFields renders as buttons. null when absent. */
+export function findRedrawDials(doc: RecipeCatalogDoc, recipeName: string): Record<string, Record<string, number>> | null {
+  return findDials(doc, recipeName, 'redraw');
+}
+
+export type DeliverDefaults = Record<string, unknown>;
+
+/** `recipes[].deliver.defaults` for one recipe name — the booleans DeliverFields presets its checkboxes from. null when the catalog, recipe, or its deliver.defaults are absent. */
+export function findDeliverDefaults(doc: RecipeCatalogDoc, recipeName: string): DeliverDefaults | null {
+  return plainObject(plainObject(findRecipe(doc, recipeName)?.deliver)?.defaults);
+}
+
+export type RedrawDefaults = Record<string, Record<string, unknown>>;
+
+/** `recipes[].redraw.defaults` for one recipe name — per-method initial values (`canvas`: denoise/size/route, `hires`: hires_denoise). null when absent. */
+export function findRedrawDefaults(doc: RecipeCatalogDoc, recipeName: string): RedrawDefaults | null {
+  const defaults = plainObject(plainObject(findRecipe(doc, recipeName)?.redraw)?.defaults);
+  if (!defaults) return null;
+  const result: RedrawDefaults = {};
+  for (const [method, value] of Object.entries(defaults)) {
+    const fields = plainObject(value);
+    if (fields) result[method] = fields;
+  }
+  return result;
+}
+
+/** `recipes[].deliver.backdrop_color` for one recipe name — the solid-colour backdrop's initial value. null when absent or not `#RRGGBB`. */
+export function findDeliverBackdropColor(doc: RecipeCatalogDoc, recipeName: string): string | null {
+  const color = plainObject(findRecipe(doc, recipeName)?.deliver)?.backdrop_color;
   return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
 }
 
-export interface FinalizeDof {
+export interface DeliverDof {
   min: number;
   max: number;
   default: number;
   stops: number[];
-  /** `finalize.dof.scope`; null when the catalog predates it or it is malformed (no "all" among values, or a default outside values). */
+  /** `deliver.dof.scope`; null when the catalog predates it or it is malformed (no "all" among values, or a default outside values). */
   scope: DofChoice | null;
-  /** `finalize.dof.viewfinder`; null when the catalog predates it or it is malformed (no "off" among values, or a default outside values). */
+  /** `deliver.dof.viewfinder`; null when the catalog predates it or it is malformed (no "off" among values, or a default outside values). */
   viewfinder: DofChoice | null;
-  /** `finalize.dof.guide_radius_per_f`: radius of the in-focus guide circle as a fraction of the long side, per unit of F. null when absent or not a positive number. */
+  /** `deliver.dof.guide_radius_per_f`: radius of the in-focus guide circle as a fraction of the long side, per unit of F. null when absent or not a positive number. */
   guideRadiusPerF: number | null;
 }
 
@@ -204,11 +229,9 @@ function parseDofChoice(raw: unknown, required: string): DofChoice | null {
   return { values: values as string[], default: choice.default };
 }
 
-/** `recipes[].finalize.dof` for one recipe name — the F-number range and stops FinalizeFields renders as a slider, plus the optional scope and viewfinder choices. null when f_number is absent or malformed. */
-export function findFinalizeDof(doc: RecipeCatalogDoc, recipeName: string): FinalizeDof | null {
-  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
-  if (!recipe) return null;
-  const dof = (recipe as { finalize?: { dof?: { f_number?: unknown; scope?: unknown; viewfinder?: unknown; guide_radius_per_f?: unknown } } }).finalize?.dof;
+/** `recipes[].deliver.dof` for one recipe name — the F-number range and stops DeliverFields renders as a slider, plus the optional scope and viewfinder choices. null when f_number is absent or malformed. */
+export function findDeliverDof(doc: RecipeCatalogDoc, recipeName: string): DeliverDof | null {
+  const dof = plainObject(plainObject(findRecipe(doc, recipeName)?.deliver)?.dof);
   const f = dof?.f_number as { min?: unknown; max?: unknown; default?: unknown; stops?: unknown } | null | undefined;
   if (!f || typeof f !== 'object') return null;
   const { min, max, stops } = f;
@@ -221,18 +244,16 @@ export function findFinalizeDof(doc: RecipeCatalogDoc, recipeName: string): Fina
   return { min, max, default: f.default, stops: stops as number[], scope, viewfinder, guideRadiusPerF };
 }
 
-export interface FinalizeLight {
+export interface RedrawLight {
   scenes: string[];
   from: string[];
   defaultFrom: string;
 }
 
-/** `recipes[].finalize.light` for one recipe name — the scenes and light directions FinalizeFields renders as selects. null when absent or malformed (no scenes, no directions, or default_from outside from). */
-export function findFinalizeLight(doc: RecipeCatalogDoc, recipeName: string): FinalizeLight | null {
-  const recipe = doc.recipes.find((r) => (r as { name: string }).name === recipeName);
-  if (!recipe) return null;
-  const light = (recipe as { finalize?: { light?: { scenes?: unknown; from?: unknown; default_from?: unknown } } }).finalize?.light;
-  if (!light || typeof light !== 'object') return null;
+/** `recipes[].redraw.light` for one recipe name — the scenes and light directions the redraw `light` method and the deliver `light` field render as selects. null when absent or malformed (no scenes, no directions, or default_from outside from). */
+export function findRedrawLight(doc: RecipeCatalogDoc, recipeName: string): RedrawLight | null {
+  const light = plainObject(plainObject(findRecipe(doc, recipeName)?.redraw)?.light);
+  if (!light) return null;
   const { scenes, from } = light;
   const isNames = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every((s) => typeof s === 'string');
   if (!isNames(scenes) || !isNames(from)) return null;

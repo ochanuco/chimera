@@ -9,12 +9,13 @@ import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } 
 const RECIPE = 'yukari';
 const RECIPE_REF = 'production';
 
-function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at camera') {
+function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at camera', delivery: Record<string, unknown> = {}) {
   return {
     schema_version: 1,
     recipes: [
       {
         name: RECIPE,
+        ...delivery,
         poses: [
           { name: 'bust', prompt: bustPrompt },
           { name: 'coffee', prompt: 'holding cup, cowboy shot' },
@@ -29,8 +30,8 @@ function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at came
   };
 }
 
-async function publishAndImport(gitCommit: string, bustPrompt?: string): Promise<void> {
-  const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(gitCommit, bustPrompt), 'PUT');
+async function publishAndImport(gitCommit: string, bustPrompt?: string, delivery?: Record<string, unknown>): Promise<void> {
+  const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(gitCommit, bustPrompt, delivery), 'PUT');
   expect(put.status).toBe(200);
   const imported = await postJson<{ imported: unknown[] }>('/api/v1/presets/import', { recipe_ref: RECIPE_REF });
   expect(imported.status).toBe(200);
@@ -154,6 +155,19 @@ describe('style-check content key', () => {
     expect(await keyFor('bust', 123)).not.toBe(before);
     expect(await keyFor('coffee', 123)).toBe(beforeCoffee);
     expect(await keyFor('bust', 124)).not.toBe(await keyFor('bust', 123));
+  });
+
+  it('stays the same when only the deliver / redraw / dials / legacy finalize sections change', async () => {
+    await publishAndImport('aaa1111');
+    const before = await keyFor('bust', 123);
+
+    await publishAndImport('aaa1111', undefined, {
+      deliver: { defaults: { repin: true }, backdrop_color: '#c7e5e9' },
+      redraw: { defaults: { canvas: { denoise: 0.4 } } },
+      dials: { deliver: { keep_legwear: { on: 0.62 } } },
+      finalize: { defaults: { repin: false } },
+    });
+    expect(await keyFor('bust', 123)).toBe(before);
   });
 });
 

@@ -7,8 +7,8 @@ import { conflict, notFound } from './errors';
 import { getPresetRow, resolvePreset, serializeResolvedPreset } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
-import { finalizeOptionsSchema } from '../schemas/requests';
-import { presetBodyFinalizeSchema } from '../schemas/presets';
+import { deliverOptionsSchema } from '../schemas/requests';
+import { presetBodyDeliverSchema } from '../schemas/presets';
 import type { GenerationRow, PresetCreatedBy, PresetKind, PresetRow } from '../types';
 
 export interface PromoteGenerationToPresetInput {
@@ -88,7 +88,7 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   }
 
   // patches は Request 行から取る。semantic.attributes.patches は生成後に書き換わりうるので正本になれない
-  // (docs/domain-model.md「Preset」不変条件)。全文上書きと finalize/repair/masked_redraw の出力は patches
+  // (docs/domain-model.md「Preset」不変条件)。全文上書きと redraw/deliver/repair/masked_redraw の出力は patches
   // を持たないのでここで弾かれる。
   let patches: unknown[] = [];
   if (sourceRequest.patches_json) {
@@ -151,11 +151,11 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
   return serializeResolvedPreset(row, await resolvePreset(db, row));
 }
 
-/** この Generation が finalize Request の納品物か (promote-profile を出す条件)。 */
-export async function isFinalizeResult(db: D1Database, generation: Pick<GenerationRow, 'request_id'>): Promise<boolean> {
+/** この Generation が deliver Request の納品物か (promote-profile を出す条件)。 */
+export async function isDeliverResult(db: D1Database, generation: Pick<GenerationRow, 'request_id'>): Promise<boolean> {
   if (!generation.request_id) return false;
   const row = await db.prepare('SELECT kind FROM requests WHERE id = ?').bind(generation.request_id).first<{ kind: string }>();
-  return row?.kind === 'finalize';
+  return row?.kind === 'deliver';
 }
 
 export interface PromoteGenerationToProfileInput {
@@ -167,9 +167,9 @@ export interface PromoteGenerationToProfileInput {
 }
 
 /**
- * Turns a rating=good finalize-kind Generation into a new `finalize` Preset version (docs/worker-protocol.md
- * 「finalize profile」). Unlike promoteGenerationToPreset there is no base chain to resolve — the body is
- * that Generation's own finalize request payload.options, as queued (after any applyFinalizeProfile expansion).
+ * Turns a rating=good deliver-kind Generation into a new `deliver` Preset version (docs/worker-protocol.md
+ * 「deliver profile」). Unlike promoteGenerationToPreset there is no base chain to resolve — the body is
+ * that Generation's own deliver request payload.options, as queued (after any applyDeliverProfile expansion).
  */
 export async function promoteGenerationToProfile(db: D1Database, input: PromoteGenerationToProfileInput) {
   const existing = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
@@ -179,20 +179,20 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
 
   // 再送は同じ入力のときだけ既存の版を返す (promoteGenerationToPreset と同じ規則)。
   if (existing) {
-    const sameInput = existing.source_generation_id === generation.id && existing.kind === 'finalize' && existing.name === input.name;
+    const sameInput = existing.source_generation_id === generation.id && existing.kind === 'deliver' && existing.name === input.name;
     if (!sameInput) throw conflict('idempotency_key already used for a different promotion');
     return serializeResolvedPreset(existing, await resolvePreset(db, existing));
   }
 
   if (generation.rating !== 'good') throw conflict('promote requires rating good');
 
-  const finalizeRequest = await requestOfGeneration(db, generation);
-  if (!finalizeRequest.recipe) throw conflict('promote requires a recipe-mode request');
-  if (finalizeRequest.kind !== 'finalize') throw conflict('generation is not a finalize-kind result; nothing to promote from');
+  const deliverRequest = await requestOfGeneration(db, generation);
+  if (!deliverRequest.recipe) throw conflict('promote requires a recipe-mode request');
+  if (deliverRequest.kind !== 'deliver') throw conflict('generation is not a deliver-kind result; nothing to promote from');
 
-  const payload = JSON.parse(finalizeRequest.payload_json) as { options?: unknown };
-  const options = finalizeOptionsSchema.parse(payload.options ?? {});
-  const bodyJson = JSON.stringify(presetBodyFinalizeSchema.parse({ options }));
+  const payload = JSON.parse(deliverRequest.payload_json) as { options?: unknown };
+  const options = deliverOptionsSchema.parse(payload.options ?? {});
+  const bodyJson = JSON.stringify(presetBodyDeliverSchema.parse({ options }));
 
   const id = uuidv7();
   const now = nowIso();
@@ -202,12 +202,12 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
     await db
       .prepare(
         `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, source_generation_id, note, created_by, created_at, idempotency_key, base_fingerprint)
-         SELECT ?, ?, 'finalize', ?, COALESCE(MAX(version), 0) + 1, ?, 'active', 'promote', ?, ?, ?, ?, ?, NULL
-         FROM presets WHERE recipe = ? AND kind = 'finalize' AND name = ?`,
+         SELECT ?, ?, 'deliver', ?, COALESCE(MAX(version), 0) + 1, ?, 'active', 'promote', ?, ?, ?, ?, ?, NULL
+         FROM presets WHERE recipe = ? AND kind = 'deliver' AND name = ?`,
       )
       .bind(
         id,
-        finalizeRequest.recipe,
+        deliverRequest.recipe,
         input.name,
         bodyJson,
         generation.id,
@@ -215,7 +215,7 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
         input.created_by,
         now,
         input.idempotency_key,
-        finalizeRequest.recipe,
+        deliverRequest.recipe,
         input.name,
       )
       .run();

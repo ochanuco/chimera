@@ -41,8 +41,9 @@ async function sha256Hex(text: string): Promise<string> {
 /**
  * 絵柄チェックの idempotency key: `style-check:<recipe>:<pose>:<sha256>`。ハッシュの入力は plain render が
  * 描く内容だけ — pin の seed、pose の preset (版と本文)、カタログ上の pose レコード (prompt / negative / canvas など)、
- * recipe 直下の pose 以外の定義 (parameters / costumes / expressions / parts / model など。`poses` と finalize 用の `dials` は除く)。
- * git_commit・generated_at・patches・backdrops は入れないので、docs や finalize だけの変更では key が変わらない。
+ * recipe 直下の pose 以外の定義 (parameters / costumes / expressions / parts / model など。`poses` と、描画に関わらない
+ * `dials` / `redraw` / `deliver` (古い `finalize` も) は除く)。
+ * git_commit・generated_at・patches・backdrops は入れないので、docs や納品の既定だけの変更では key が変わらない。
  */
 export async function styleCheckIdempotencyKey(
   db: D1Database,
@@ -53,7 +54,7 @@ export async function styleCheckIdempotencyKey(
 ): Promise<string> {
   const catalog = await getCatalog(db, recipeRef);
   const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as Record<string, unknown> | undefined;
-  const { poses: _poses, dials: _dials, ...recipeLevel } = recipeEntry ?? {};
+  const { poses: _poses, dials: _dials, redraw: _redraw, deliver: _deliver, finalize: _finalize, ...recipeLevel } = recipeEntry ?? {};
   const preset = await getPresetRow(db, recipe, 'pose', pose);
   const content = {
     recipe,
