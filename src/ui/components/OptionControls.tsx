@@ -106,6 +106,7 @@ export const DOF_VIEWFINDER_LABELS: Record<string, string> = { off: 'OFF', on: '
 export const REQUEST_KIND_LABELS: Record<string, string> = {
   redraw: '描き直し',
   deliver: '納品',
+  dof: 'ボケ',
   repair: 'repair',
   masked_redraw: 'masked redraw',
   finalize: 'finalize',

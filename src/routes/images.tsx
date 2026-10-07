@@ -14,6 +14,7 @@ import {
   findDeliverDials,
   findDeliverDefaults,
   findDof,
+  findDeliverOutlines,
   findDeliverBackdropColor,
   findRedrawDials,
   findRepairDials,
@@ -181,7 +182,7 @@ images.get('/:shortId', async (c) => {
       deliverForm={{
         dials: doc && recipe ? findDeliverDials(doc, recipe) : null,
         defaults: doc && recipe ? findDeliverDefaults(doc, recipe) : null,
-        dof: doc ? findDof(doc) : null,
+        outlines: doc && recipe ? findDeliverOutlines(doc, recipe) : null,
         light: doc && recipe ? findRedrawLight(doc, recipe) : null,
         backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
         profiles: deliverProfiles,
@@ -190,6 +191,8 @@ images.get('/:shortId', async (c) => {
         recipeRef: recipe ? defaultRecipeRef(c.env) : null,
         catalogVersion: catalogDoc?.row.updated_at ?? null,
       }}
+      dofForm={{ dof: doc ? findDof(doc) : null }}
+      dofAvailable={producing?.kind === 'deliver'}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
     />,

@@ -779,7 +779,8 @@ describe('Web GUI pages', () => {
     const form = deliver.slice(0, deliver.indexOf('</form>'));
     expect(form).toContain('<legend>仕上げ</legend>');
     expect(form).toContain('<legend>納品の見た目</legend>');
-    expect((form.match(/class="option-group"/g) ?? []).length).toBe(2);
+    expect(form).toContain('<legend>フチ</legend>');
+    expect((form.match(/class="option-group"/g) ?? []).length).toBe(3);
     expect(form).toContain('<button type="submit">納品する</button>');
     for (const gone of ['deliver_only', 'repair_hands', 'repair_pad', 'repair_lora', 'repair_seeds', 'name="hires"', '部分描き直し']) {
       expect(form).not.toContain(gone);
@@ -799,9 +800,26 @@ describe('Web GUI pages', () => {
     expect(html).toContain('data-backdrop-value="transparent"');
     expect(html).toContain('data-backdrop-value="color"');
     expect(html).toContain('name="backdrop_color"');
-    expect(html).toContain('name="stroke_style"');
+    expect(html).not.toContain('name="stroke_style"');
+    expect(html).toContain('data-outline-editor');
+    expect(html).toContain('data-stroke-mode="even"');
     expect(html).toContain('name="light_from"');
     expect(html).toContain('<option value="nw"');
+  });
+
+  it('the Deliver form edits the outline list with the catalog default or white-inside purple-outside, and no dof controls', async () => {
+    const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari-il' } });
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
+    const form = deliver.slice(0, deliver.indexOf('</form>'));
+    expect(form).toContain('data-outline-default="[{&quot;color&quot;:&quot;#ffffff&quot;,&quot;width&quot;:0.4},{&quot;color&quot;:&quot;#885b80&quot;,&quot;width&quot;:1.04}]"');
+    expect((form.slice(0, form.indexOf('<template')).match(/<div class="outline-row"/g) ?? []).length).toBe(2);
+    expect(form).toContain('data-outline-add');
+    expect(form).toContain('白・紫に戻す');
+    expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
+    expect(form).toContain('data-outline-max-count="6"');
+    expect(form).not.toContain('dof');
+    expect(form).not.toContain('ボケ');
   });
 
   it('the Deliver form shows Japanese help markers', async () => {
@@ -809,7 +827,7 @@ describe('Web GUI pages', () => {
     const html = await (await req(`/g/${generation.short_id}`)).text();
     const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
     const form = deliver.slice(0, deliver.indexOf('</form>'));
-    expect((form.match(/class="option-help"/g) ?? []).length).toBe(5);
+    expect((form.match(/class="option-help"/g) ?? []).length).toBe(7);
   });
 
   it('the Deliver form offers all 8 stroke light directions', async () => {
@@ -818,6 +836,7 @@ describe('Web GUI pages', () => {
     const html = await (await req(`/g/${generation.short_id}`)).text();
     for (const dir of directions) {
       expect(html).toContain(`<option value="${dir}"`);
+      expect(html).toContain(`data-compass-dir="${dir}"`);
     }
   });
 
@@ -1382,30 +1401,31 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
     expect(without).not.toMatch(/name="repin"[^>]*checked/);
   });
 
-  it('a catalog stroke_light default leaves the 紫縁 on 既定 with the direction select disabled, and takes 光の向き from the direction', async () => {
+  it('a catalog stroke_light direction becomes the outline shading default, while the light direction follows redraw.light', async () => {
     const html = await detailHtml({ deliver: { defaults: { stroke_light: 'n' } } });
-    expect(selectedOf(html, 'stroke_style')).toBe('auto');
+    expect(html).toContain('data-stroke-default="n"');
+    expect(html).toContain('<div class="outline-stroke" data-outline-stroke="true" data-value="n">');
+    expect(html).toMatch(/class="wb-pill compass-btn wb-pill-on" data-compass-dir="n"/);
     expect(selectedOf(html, 'light_from')).toBe('n');
     expect(html.slice(html.indexOf('class="option-form deliver-form"'))).toMatch(/<select name="light_from"[^>]*disabled/);
   });
 
-  it('a catalog stroke_light of none takes 光の向き from redraw.light.default_from', async () => {
+  it('an unusable catalog stroke_light falls back to even shading, and the light direction to redraw.light.default_from', async () => {
     const light = { scenes: ['sunset'], from: ['nw', 'n', 'se'], default_from: 'se' };
     const html = await detailHtml({ deliver: { defaults: { stroke_light: 'none' } }, redraw: { light } });
-    expect(selectedOf(html, 'stroke_style')).toBe('auto');
+    expect(html).toContain('data-stroke-default="even"');
     expect(selectedOf(html, 'light_from')).toBe('se');
   });
 
-  it('the 光の向き select offers the eight 「〜から」 choices and the 紫縁 select 既定 / 立体 / 均等 / 無し', async () => {
+  it('the 光の向き select offers the eight 「〜から」 choices, and the shading has even and direction modes', async () => {
     const html = await detailHtml(null);
     const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
     const labels = [...deliver.matchAll(/<option value="(nw|n|ne|w|e|sw|s|se)"[^>]*>\s*([^<\s]+)\s*</g)].map((m) => `${m[1]}:${m[2]}`);
     expect(labels).toEqual(['nw:左上から', 'n:上から', 'ne:右上から', 'w:左から', 'e:右から', 'sw:左下から', 's:下から', 'se:右下から']);
-    expect(html).toMatch(/<option value="auto"[^>]*>\s*既定/);
-    expect(html).toMatch(/<option value="dir"[^>]*>\s*立体/);
-    expect(html).toMatch(/<option value="even"[^>]*>\s*均等/);
-    expect(html).toMatch(/<option value="none"[^>]*>\s*無し/);
-    expect(selectedOf(html, 'stroke_style')).toBe('auto');
+    expect(deliver).toContain('data-stroke-mode="even"');
+    expect(deliver).toContain('data-stroke-mode="dir"');
+    expect(deliver).not.toContain('name="stroke_style"');
+    expect(deliver).toContain('data-stroke-default="even"');
   });
 
   it('the solid-colour backdrop input starts from the catalog deliver.backdrop_color, else #ffffff', async () => {
@@ -1470,54 +1490,72 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
     expect(html).not.toContain('class="backdrop-thumb"');
   });
 
-  it('renders the bokeh controls only when the catalog publishes the top-level dof', async () => {
-    const html = await detailHtml(null, { dof: { f_number: DOF_F, focus: 'fractions [x, y] of the source image' } });
-    expect(html).toContain('<legend>ボケ</legend>');
-    expect(html).toContain('name="dof"');
+  /** A deliver output whose recipe publishes `top`; the dof section hangs off it. */
+  async function deliveredHtml(top: Record<string, unknown>): Promise<string> {
+    const recipe = uniqueRecipe();
+    await publishRecipe(recipe, {}, top);
+    const { delivered } = await createDeliverResult(recipe);
+    return (await req(`/g/${delivered.short_id}`)).text();
+  }
+
+  it('renders the dof form on a deliver output only when the catalog publishes the top-level dof', async () => {
+    const html = await deliveredHtml({ dof: { f_number: DOF_F, focus: 'fractions [x, y] of the source image' } });
+    expect(html).toContain('<summary>ボケ（Dof）</summary>');
+    expect(html).toContain('data-request-kind="dof"');
     expect(html).toMatch(/<input type="range" name="dof_f_stop" min="0" max="3" step="1" value="0"/);
     expect(html).toContain('data-dof-stops="[2.8,4,5.6,8]"');
     expect(html).toContain('f/2.8');
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    const form = deliver.slice(0, deliver.indexOf('</form>'));
-    expect((form.match(/class="option-group"/g) ?? []).length).toBe(3);
-    expect((form.match(/class="option-help"/g) ?? []).length).toBe(6);
+    expect(html).toContain('fractions [x, y] of the source image');
+    expect(html).toContain('<button type="submit">ボケをかける</button>');
+    expect(html).not.toContain('deliver-form');
 
-    const plainHtml = await detailHtml(null);
-    expect(plainHtml).not.toContain('name="dof"');
-    expect(plainHtml).not.toContain('dof_f_stop');
+    const noDof = await deliveredHtml({});
+    expect(noDof).not.toContain('dof_f_stop');
   });
 
-  it('threads dof.guide_radius_per_f into the F slider and shows the guide help only then', async () => {
-    const withGuide = await detailHtml(null, { dof: { f_number: DOF_F, guide_radius_per_f: 0.0417 } });
-    expect(withGuide).toMatch(/name="dof_f_stop"[^>]*data-dof-guide-radius="0.0417"/);
-    expect(withGuide).toContain('円はくっきり見える範囲の目安（奥行きは見ていない）');
+  it('does not render the dof form on a raw Generation or on a dof output', async () => {
+    const recipe = uniqueRecipe();
+    await publishRecipe(recipe, {}, { dof: { f_number: DOF_F } });
+    const { generation: raw } = await createGeneration({ requestOverrides: { recipe } });
+    expect(await (await req(`/g/${raw.short_id}`)).text()).not.toContain('dof_f_stop');
+    const { generation: blurred } = await createGeneration({ requestOverrides: { recipe, kind: 'dof' } });
+    const html = await (await req(`/g/${blurred.short_id}`)).text();
+    expect(html).toContain('納品済みの絵なので');
+    expect(html).not.toContain('dof_f_stop');
+  });
 
-    const plain = await detailHtml(null, { dof: { f_number: DOF_F } });
+  it('threads dof.guide_radius_per_f into the F slider and shows no dof checkbox', async () => {
+    const withGuide = await deliveredHtml({ dof: { f_number: DOF_F, guide_radius_per_f: 0.0417 } });
+    expect(withGuide).toMatch(/name="dof_f_stop"[^>]*data-dof-guide-radius="0.0417"/);
+    expect(withGuide).not.toContain('name="dof"');
+
+    const plain = await deliveredHtml({ dof: { f_number: DOF_F } });
     expect(plain).toContain('name="dof_f_stop"');
     expect(plain).not.toContain('data-dof-guide-radius');
-    expect(plain).not.toContain('円はくっきり見える範囲の目安');
   });
 
-  it('presets the dof scope checkbox from the catalog dof.scope.backdrop, on when it is absent', async () => {
-    const off = await detailHtml(null, { dof: { f_number: DOF_F, scope: { backdrop: false } } });
-    expect(off).toMatch(/<input type="checkbox" name="dof_scope_all"[^>]*disabled/);
-    expect(off).not.toMatch(/name="dof_scope_all"[^>]*checked/);
-    expect(off).toContain('背景もぼかす');
+  it('presets the dof scope checkboxes from the catalog dof.scope, all on when absent', async () => {
+    const off = await deliveredHtml({ dof: { f_number: DOF_F, scope: { backdrop: false } } });
+    expect(off).toMatch(/<input type="checkbox" name="dof_scope_figure" checked/);
+    expect(off).toMatch(/<input type="checkbox" name="dof_scope_outline" checked/);
+    expect(off).not.toMatch(/name="dof_scope_backdrop"[^>]*checked/);
+    expect(off).toContain('ボカす範囲');
 
-    const on = await detailHtml(null, { dof: { f_number: DOF_F } });
-    expect(on).toMatch(/name="dof_scope_all"[^>]*checked/);
-    expect(on).not.toContain('dof_viewfinder');
+    const on = await deliveredHtml({ dof: { f_number: DOF_F } });
+    for (const layer of ['figure', 'outline', 'backdrop']) {
+      expect(on).toMatch(new RegExp(`name="dof_scope_${layer}"[^>]*checked`));
+    }
   });
 
-  it('renders the dof viewfinder select only when the catalog publishes dof.viewfinder', async () => {
-    const html = await detailHtml(null, { dof: { f_number: DOF_F, viewfinder: { values: ['off', 'on', 'both'], default: 'off' } } });
-    expect(html).toMatch(/<select name="dof_viewfinder"[^>]*disabled/);
-    expect(html).toMatch(/<option value="off" selected[^>]*>OFF<\/option>/);
-    expect(html).toContain('<option value="on">ON</option>');
-    expect(html).toContain('<option value="both">ON/OFF 2枚</option>');
+  it('renders the dof viewfinder choices from dof.viewfinder, off by default', async () => {
+    const html = await deliveredHtml({ dof: { f_number: DOF_F, viewfinder: { values: ['off', 'on', 'both'], default: 'off' } } });
+    expect(html).toMatch(/<input type="radio" name="dof_viewfinder" value="off" checked/);
+    expect(html).toMatch(/<input type="radio" name="dof_viewfinder" value="on"/);
+    expect(html).toMatch(/<input type="radio" name="dof_viewfinder" value="both"/);
+    expect(html).toContain('<span>両方</span>');
   });
 
-  it('renders the Deliver 光源 select only when the catalog publishes redraw.light, with 光の向き disabled while 紫縁 is 既定 and no scene is chosen', async () => {
+  it('renders the Deliver 光源 select only when the catalog publishes redraw.light, with 光の向き disabled while no scene is chosen', async () => {
     const html = await detailHtml({
       redraw: { light: { scenes: ['sunset', 'moon', 'dawn'], from: ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'], default_from: 'nw' } },
     });
@@ -1526,7 +1564,6 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
     const fieldset = look.slice(0, look.indexOf('</fieldset>'));
     expect(fieldset.indexOf('name="light_scene"')).toBeGreaterThan(-1);
     expect(fieldset.indexOf('name="light_from"')).toBeGreaterThan(fieldset.indexOf('name="light_scene"'));
-    expect(fieldset.indexOf('name="stroke_style"')).toBeGreaterThan(fieldset.indexOf('name="light_from"'));
     expect(fieldset).toMatch(/<option value="" selected[^>]*>\s*指定しない（引き継ぎ）\s*<\/option>/);
     expect(fieldset).toContain('<option value="sunset">夕日</option>');
     expect(fieldset).toContain('<option value="dawn">dawn</option>');

@@ -60,7 +60,7 @@ a:hover { text-decoration: underline; }
   top: 0;
   z-index: 10;
 }
-.nav a { color: var(--text); font-weight: 600; }
+.nav a { color: var(--text); font-weight: 600; white-space: nowrap; }
 .nav a.brand { color: var(--accent); margin-right: 0.5rem; }
 .nav a[aria-current="page"],
 .nav-more summary[aria-current="page"] {
@@ -174,9 +174,11 @@ a.nav-queue-row:hover { background: var(--bg); text-decoration: none; }
 
 @media (max-width: 600px) {
   .nav {
-    padding: 0 1rem;
-    gap: 1.25rem;
+    padding: 0 0.6rem;
+    gap: 0.4rem;
+    font-size: 0.8rem;
   }
+  .nav a.brand { margin-right: 0; }
   .nav > a,
   .nav-more > summary {
     min-height: 2.75rem;
@@ -1584,6 +1586,189 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
 .exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 
+/* ---- ワークベンチ (/work, docs/ui.md「Workbench」) と フチ / ボケの共通部品 ---- */
+.wb [hidden], .outline-editor [hidden], .dof-viewfinder [hidden] { display: none !important; }
+.wb-pill {
+  font: inherit;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+}
+.wb-pill:hover:not(:disabled) { border-color: var(--accent); text-decoration: none; }
+.wb-pill:disabled { opacity: 0.4; cursor: default; }
+.wb-pill-on { background: var(--accent); border-color: var(--accent); color: #10131c; }
+.wb-radio-pill { position: relative; display: inline-flex; }
+.wb-radio-pill input { position: absolute; opacity: 0; pointer-events: none; }
+.wb-radio-pill span {
+  display: inline-flex; align-items: center; min-height: 2.25rem; padding: 0.3rem 0.8rem;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer; font-size: 0.85rem;
+}
+.wb-radio-pill input:checked + span { background: var(--accent); border-color: var(--accent); color: #10131c; }
+.wb-radio-pill input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.icon-btn {
+  flex: none; width: 1.75rem; height: 1.75rem; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elevated); color: var(--text); cursor: pointer;
+}
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+
+.compass { display: grid; grid-template-columns: repeat(3, 2.75rem); gap: 0.35rem; }
+.compass-btn { width: 2.75rem; height: 2.75rem; min-height: 0; padding: 0; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 0.75rem; }
+.compass-centre { display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--text-dim); }
+.outline-stroke .compass { grid-template-columns: repeat(3, 2.25rem); gap: 0.25rem; }
+.outline-stroke .compass-btn { width: 2.25rem; height: 2.25rem; }
+
+.outline-editor { display: flex; flex-direction: column; gap: 0.5rem; }
+.outline-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.outline-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+.outline-n { width: 0.9rem; font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.outline-color { flex: none; width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elevated); }
+.outline-width { order: 9; flex: 1 1 100%; min-width: 0; margin: 0; }
+.outline-pct { flex: none; width: 3.4rem; margin-right: auto; text-align: left; white-space: nowrap; font-size: 0.72rem; font-family: ui-monospace, monospace; }
+.outline-actions { display: flex; gap: 0.4rem; }
+.outline-actions .wb-pill { flex: 1 1 0; }
+.outline-stroke { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-dim); }
+.outline-stroke-compass { flex-basis: 100%; }
+.outline-note { margin: 0; font-size: 0.78rem; color: var(--text-dim); }
+.dof-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; margin: 0.3rem 0; padding: 0; border: 0; font-size: 0.85rem; }
+.dof-scope legend { float: left; padding: 0; margin-right: 0.5rem; color: var(--text-dim); }
+.dof-viewfinder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
+.workbench-open-link { font-weight: 600; }
+
+.work-lead { margin: 0 0 1rem; color: var(--text-dim); max-width: 40rem; }
+.work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.work-filter-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.work-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.9rem; }
+.work-source {
+  display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text);
+}
+.work-source:hover { border-color: var(--accent); text-decoration: none; }
+.work-source img { width: 100%; aspect-ratio: 2 / 3; object-fit: contain; border-radius: 6px; background: #000; }
+.work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
+.work-rating { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--border); color: var(--text); }
+.work-rating-good { background: var(--good); color: #0c1a10; }
+.work-rating-bad { background: var(--bad); color: #200a08; }
+.work-source-recipe { font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.work-pager { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+
+.wb { display: flex; flex-direction: column; gap: 0.6rem; }
+.wb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.wb-back { font-size: 0.85rem; }
+.wb-steps-nav { flex: 1 1 24rem; min-width: 0; overflow-x: auto; }
+.wb-steps { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 0.25rem; }
+.wb-steps li { display: flex; align-items: center; gap: 0.25rem; flex: none; }
+.wb-step-sep { color: var(--text-dim); font-size: 0.8rem; }
+.wb-step {
+  font: inherit; display: flex; flex-direction: column; align-items: flex-start; padding: 0.15rem 0.6rem; min-height: 2.25rem;
+  border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer;
+}
+.wb-step:disabled { cursor: default; opacity: 0.5; }
+.wb-step-label { font-size: 0.78rem; }
+.wb-step-kind { font-size: 0.68rem; opacity: 0.75; }
+.wb-step-on { background: var(--accent); border-color: var(--accent); color: #10131c; }
+.wb-step-open:not(.wb-step-on) { border-style: dashed; }
+
+.wb-main { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
+.wb-compare { flex: 999 1 35rem; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.wb-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.wb-fig { margin: 0; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.wb-cap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.25rem 0.5rem; min-height: 2.25rem; font-size: 0.78rem; color: var(--text-dim); }
+.wb-pane {
+  position: relative; width: 100%; height: calc(100vh - 18rem); min-height: 22rem; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-elevated); overflow: hidden; user-select: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.wb-pane img, .wb-tile-pane img { width: 100%; height: 100%; object-fit: contain; display: block; -webkit-user-drag: none; }
+.wb-checker { background: var(--checker); }
+.wb-pane-active { cursor: crosshair; touch-action: none; }
+.wb-empty, .wb-pending-note { padding: 1.5rem; text-align: center; font-size: 0.9rem; color: var(--text-dim); }
+.wb-overlay { position: absolute; pointer-events: none; }
+.wb-cross-x { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid rgba(255, 0, 140, 0.85); }
+.wb-cross-y { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid rgba(255, 0, 140, 0.85); }
+.wb-rects { position: absolute; inset: 0; }
+.wb-rect { position: absolute; border: 2px solid var(--accent); background: rgba(124, 156, 245, 0.2); box-sizing: border-box; }
+.wb-rect-draft { border-style: dashed; }
+.wb-focus { z-index: 1; }
+
+.wb-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.5rem; }
+.wb-tile {
+  margin: 0; font: inherit; text-align: left; display: flex; flex-direction: column; gap: 0.25rem; padding: 0.35rem;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); cursor: pointer;
+}
+.wb-tile-input { outline: 2px solid var(--text-dim); cursor: default; }
+.wb-tile-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.wb-tile-pane { position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.wb-tile-cap { font-size: 0.75rem; }
+
+.wb-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.wb-strip { display: flex; gap: 0.25rem; overflow-x: auto; flex: 1 1 14rem; min-width: 0; padding: 0.15rem; }
+.wb-mini { position: relative; flex: none; padding: 2px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer; }
+.wb-mini-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.wb-mini-thumb { width: 2.75rem; height: 3.5rem; border-radius: 4px; overflow: hidden; background: #000; }
+.wb-mini-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.wb-mini-rate { display: block; height: 4px; margin-top: 2px; border-radius: 2px; }
+.wb-mini-adopted { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+.wb-mini-running { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); font-size: 0.8rem; color: var(--neutral); }
+.wb-adopt {
+  font: inherit; font-size: 0.9rem; font-weight: 700; min-height: 2.5rem; padding: 0 1rem; border: 0; border-radius: 10px;
+  background: var(--accent); color: #10131c; cursor: pointer;
+}
+.wb-adopt:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
+.wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
+
+.wb-panel {
+  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow-y: auto;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem;
+  display: flex; flex-direction: column; gap: 0.8rem;
+}
+.wb-panel-title { margin: 0 0 0.15rem; font-size: 1.1rem; }
+.wb-note { margin: 0; font-size: 0.8rem; color: var(--text-dim); }
+.wb-unavailable { padding: 0.7rem; border-radius: 8px; background: rgba(184, 171, 95, 0.15); color: var(--text); font-size: 0.85rem; }
+.wb-error { margin: 0; color: var(--bad); font-size: 0.85rem; }
+.wb-form, .wb-form > [data-wb-form-body], .wb-form > [data-wb-method-panel], .wb-form > [data-wb-part-panel] { display: flex; flex-direction: column; gap: 0.7rem; }
+.wb-pills, .wb-words { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.wb-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
+.wb-field select, .wb-field input[type="text"] {
+  font: inherit; font-size: 0.9rem; min-height: 2.4rem; padding: 0 0.6rem; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg); color: var(--text);
+}
+.wb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.wb-inline-field { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: 0.85rem; color: var(--text-dim); }
+.wb-inline-field select { font: inherit; min-height: 2.4rem; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.wb-rect-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.wb-acc { border: 1px solid var(--border); border-radius: 10px; }
+.wb-acc > summary { cursor: pointer; min-height: 2.5rem; padding: 0.5rem 0.7rem; font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+.wb-acc-sub { margin-left: auto; font-weight: 400; font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.wb-acc .outline-editor, .wb-acc-body { padding: 0 0.7rem 0.7rem; }
+.wb-acc-body { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem; }
+.wb-run {
+  font: inherit; font-size: 0.95rem; font-weight: 700; width: 100%; min-height: 3rem; border: 0; border-radius: 10px;
+  background: var(--accent); color: #10131c; cursor: pointer;
+}
+.wb-run:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
+
+@media (max-width: 900px) {
+  .wb-main { flex-direction: column; align-items: stretch; }
+  .wb-compare, .wb-panel { flex: none; max-width: none; width: 100%; }
+  .wb-panel { max-height: none; }
+  .wb-pane { height: auto; aspect-ratio: 4 / 5; min-height: 0; }
+}
+@media (max-width: 600px) {
+  .wb-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
 `;
 
 export const appJs = `
@@ -1731,6 +1916,7 @@ export const appJs = `
       try {
         await api('/api/v1/generations/' + id + '/rating', 'PUT', { rating: next });
         applyRatingToGroups(id, next);
+        document.dispatchEvent(new CustomEvent('chimera:rating', { detail: { id: id, rating: next } }));
         track('rating.set', { generation_id: id, rating: next, previous: current || null });
         markGalleryPendingBad(id, next === 'bad');
       } catch (e) {
@@ -2240,59 +2426,138 @@ export const appJs = `
       r.checked = r.value === mode;
       if (r.checked) matched = true;
     });
-    if (matched) {
-      syncBackdropColor(form);
-      applyDofMode(form);
-    }
-  }
-
-  // Absent/null dof unchecks; a stored focus is kept so re-checking restores it. The slider snaps to the nearest catalog stop.
-  function applyDofToForm(form, options) {
-    var box = dofBox(form);
-    if (!box) return;
-    var dof = options.dof;
-    if (dof && typeof dof === 'object' && Array.isArray(dof.focus) && typeof dof.f_number === 'number') {
-      box.checked = true;
-      var slider = dofSlider(form);
-      var stops = dofStopsFor(form);
-      if (slider && stops.length > 0) {
-        var best = 0;
-        stops.forEach(function (s, i) { if (Math.abs(s - dof.f_number) < Math.abs(stops[best] - dof.f_number)) best = i; });
-        slider.value = String(best);
-      }
-      var scopeBox = dofScopeBox(form);
-      if (scopeBox) scopeBox.checked = dof.scope === 'all';
-      var viewfinderSelect = dofViewfinderSelect(form);
-      if (viewfinderSelect) viewfinderSelect.value = dof.viewfinder === 'on' || dof.viewfinder === 'both' ? dof.viewfinder : 'off';
-      setDofFocus(form, [dof.focus[0], dof.focus[1]]);
-    } else {
-      box.checked = false;
-      applyDofMode(form);
-    }
+    if (matched) syncBackdropColor(form);
   }
 
   function selectHasValue(select, value) {
     return qsa('option', select).some(function (o) { return o.value === value; });
   }
 
-  // A stored stroke_light direction selects 立体 and the 光の向き; even / null select 均等; none selects 無し.
-  // A key absent from the options selects 既定 (the rim follows the inherited or recipe-default light).
-  function applyStrokeToForm(form, options) {
-    var style = qs('select[name="stroke_style"]', form);
-    var fromSelect = lightFromSelect(form);
-    if (!style) return;
+  // ---- フチ (outline list) editor, shared by the deliver form and the workbench ----
+  function outlineRows(editor) {
+    return qsa('[data-outline-row]', editor);
+  }
+
+  function outlineNumberLabel(width) {
+    return String(Number(Number(width).toFixed(2)));
+  }
+
+  function renumberOutlineRows(editor) {
+    var rows = outlineRows(editor);
+    rows.forEach(function (row, i) {
+      qs('.outline-n', row).textContent = String(i + 1);
+      qs('[data-outline-up]', row).disabled = i === 0;
+      qs('[data-outline-down]', row).disabled = i === rows.length - 1;
+    });
+    var max = Number(editor.getAttribute('data-outline-max-count')) || 6;
+    qs('[data-outline-add]', editor).disabled = rows.length >= max;
+    qs('[data-outline-stroke]', editor).hidden = rows.length === 0;
+    var summary = editor.closest('details') ? qs('[data-wb-outline-summary]', editor.closest('details')) : null;
+    if (summary) summary.textContent = rows.length === 0 ? 'なし' : rows.length + ' 本 · ' + outlineStrokeValue(editor);
+  }
+
+  function addOutlineRow(editor, color, width) {
+    var template = qs('[data-outline-row-template]', editor);
+    var row = template.content.firstElementChild.cloneNode(true);
+    qs('[data-outline-color]', row).value = color;
+    var range = qs('[data-outline-width]', row);
+    range.value = String(width);
+    qs('[data-outline-pct]', row).textContent = outlineNumberLabel(range.value) + '%';
+    qs('[data-outline-rows]', editor).appendChild(row);
+  }
+
+  function setOutlineList(editor, list) {
+    qs('[data-outline-rows]', editor).textContent = '';
+    list.forEach(function (o) { addOutlineRow(editor, o.color, o.width); });
+    renumberOutlineRows(editor);
+  }
+
+  function outlineDefaults(editor) {
+    try { return JSON.parse(editor.getAttribute('data-outline-default') || '[]'); } catch (e) { return []; }
+  }
+
+  // [{color, width}, ...] inside -> outside, as the deliver option wants it.
+  function outlinesFrom(editor) {
+    return outlineRows(editor).map(function (row) {
+      return { color: qs('[data-outline-color]', row).value, width: Number(qs('[data-outline-width]', row).value) };
+    });
+  }
+
+  function outlineStrokeValue(editor) {
+    return qs('[data-outline-stroke]', editor).getAttribute('data-value') || 'even';
+  }
+
+  function setOutlineStroke(editor, value) {
+    var box = qs('[data-outline-stroke]', editor);
+    var dir = value !== 'even';
+    box.setAttribute('data-value', value);
+    qsa('[data-stroke-mode]', box).forEach(function (b) {
+      b.classList.toggle('wb-pill-on', (b.getAttribute('data-stroke-mode') === 'dir') === dir);
+    });
+    qs('[data-outline-stroke-compass]', box).hidden = !dir;
+    if (dir) setCompassValue(qs('[data-compass="stroke"]', box), value);
+    renumberOutlineRows(editor);
+  }
+
+  function setCompassValue(compass, value) {
+    compass.setAttribute('data-value', value);
+    qsa('[data-compass-dir]', compass).forEach(function (b) {
+      var on = b.getAttribute('data-compass-dir') === value;
+      b.classList.toggle('wb-pill-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function initOutlineEditors() {
+    qsa('[data-outline-editor]').forEach(renumberOutlineRows);
+    document.addEventListener('click', function (ev) {
+      var t = ev.target.closest ? ev.target : null;
+      if (!t) return;
+      var editor = t.closest('[data-outline-editor]');
+      if (!editor) return;
+      var row = t.closest('[data-outline-row]');
+      if (t.closest('[data-outline-add]')) {
+        if (outlineRows(editor).length >= (Number(editor.getAttribute('data-outline-max-count')) || 6)) return;
+        addOutlineRow(editor, '#d9c6ee', 0.8);
+      } else if (t.closest('[data-outline-reset]')) {
+        setOutlineList(editor, outlineDefaults(editor));
+        setOutlineStroke(editor, editor.getAttribute('data-stroke-default') || 'even');
+        return;
+      } else if (row && t.closest('[data-outline-remove]')) {
+        row.remove();
+      } else if (row && t.closest('[data-outline-up]')) {
+        if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling);
+      } else if (row && t.closest('[data-outline-down]')) {
+        if (row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row);
+      } else if (t.closest('[data-stroke-mode]')) {
+        var mode = t.closest('[data-stroke-mode]').getAttribute('data-stroke-mode');
+        var current = qs('[data-compass="stroke"]', editor).getAttribute('data-value') || 'nw';
+        setOutlineStroke(editor, mode === 'dir' ? current : 'even');
+        return;
+      } else if (t.closest('[data-compass="stroke"] [data-compass-dir]')) {
+        setOutlineStroke(editor, t.closest('[data-compass-dir]').getAttribute('data-compass-dir'));
+        return;
+      } else {
+        return;
+      }
+      renumberOutlineRows(editor);
+    });
+    document.addEventListener('input', function (ev) {
+      var range = ev.target;
+      if (!(range instanceof HTMLInputElement) || !range.hasAttribute('data-outline-width')) return;
+      var pct = qs('[data-outline-pct]', range.closest('[data-outline-row]'));
+      if (pct) pct.textContent = outlineNumberLabel(range.value) + '%';
+    });
+  }
+
+  // Profile options: outlines (absent -> the catalog default) and stroke_light (even or a direction).
+  function applyOutlinesToForm(form, options) {
+    var editor = qs('[data-outline-editor]', form);
+    if (!editor) return;
+    setOutlineList(editor, Array.isArray(options.outlines) ? options.outlines : outlineDefaults(editor));
     var stroke = options.stroke_light;
-    var light = options.light;
-    if (stroke === 'none' || stroke === 'even') {
-      style.value = stroke;
-    } else if (stroke === null) {
-      style.value = 'even';
-    } else if (typeof stroke === 'string' && fromSelect && selectHasValue(fromSelect, stroke)) {
-      style.value = 'dir';
-      fromSelect.value = stroke;
-    } else if (stroke === undefined) {
-      style.value = 'auto';
-    }
+    var known = stroke === 'even' || (typeof stroke === 'string' && !!qs('[data-compass="stroke"] [data-compass-dir="' + stroke + '"]', editor));
+    setOutlineStroke(editor, known ? stroke : (editor.getAttribute('data-stroke-default') || 'even'));
   }
 
   // Absent/null light resets the scene to なし. The light direction is only taken when it is a listed choice.
@@ -2309,12 +2574,11 @@ export const appJs = `
   }
 
   function applyProfileOptionsToForm(form, options) {
-    applyDofToForm(form, options);
-    applyStrokeToForm(form, options);
+    applyOutlinesToForm(form, options);
     applyLightToForm(form, options);
     Object.keys(options).forEach(function (key) {
       var value = options[key];
-      if (key === 'dof' || key === 'light' || key === 'stroke_light') return;
+      if (key === 'light' || key === 'outlines' || key === 'stroke_light') return;
       if (key === 'backdrop') {
         applyBackdropToForm(form, value);
         return;
@@ -2411,20 +2675,25 @@ export const appJs = `
   }
 
   // Focus placement for dof reuses the repair-region overlay, so it is only live while 範囲指定 is off.
-  function dofBox(form) {
-    return qs('input[name="dof"]', form);
+  function isDofForm(form) {
+    return form.getAttribute('data-request-kind') === 'dof';
   }
 
   function dofSlider(form) {
     return qs('input[name="dof_f_stop"]', form);
   }
 
-  function dofScopeBox(form) {
-    return qs('input[name="dof_scope_all"]', form);
+  function dofScopeFrom(root) {
+    return {
+      figure: qs('input[name="dof_scope_figure"]', root).checked,
+      outline: qs('input[name="dof_scope_outline"]', root).checked,
+      backdrop: qs('input[name="dof_scope_backdrop"]', root).checked,
+    };
   }
 
-  function dofViewfinderSelect(form) {
-    return qs('select[name="dof_viewfinder"]', form);
+  function dofViewfinderFrom(root) {
+    var checked = qs('input[name="dof_viewfinder"]:checked', root);
+    return checked ? checked.value : 'off';
   }
 
   function lightSceneSelect(form) {
@@ -2435,20 +2704,19 @@ export const appJs = `
     return qs('select[name="light_from"]', form);
   }
 
-  // The one direction select drives the rim (立体) and the light; with no scene and a non-立体 rim it affects nothing.
+  // The direction only means something together with a light scene.
   function applyLightMode(form) {
     var scene = lightSceneSelect(form);
-    var style = qs('select[name="stroke_style"]', form);
     var fromSelect = lightFromSelect(form);
     if (!fromSelect) return;
-    fromSelect.disabled = (!scene || scene.value === '') && !!style && style.value !== 'dir';
+    fromSelect.disabled = !scene || scene.value === '';
   }
 
   function initLightForm() {
     qsa('.option-form').forEach(applyLightMode);
     document.addEventListener('change', function (ev) {
       var select = ev.target;
-      if (!(select instanceof HTMLSelectElement) || (select.name !== 'light_scene' && select.name !== 'stroke_style')) return;
+      if (!(select instanceof HTMLSelectElement) || select.name !== 'light_scene') return;
       var form = select.closest('.option-form');
       if (form) applyLightMode(form);
     });
@@ -2471,16 +2739,15 @@ export const appJs = `
     return state && state.dofFocus ? state.dofFocus : null;
   }
 
-  // Radius = guide_radius_per_f * F * long side of the displayed image; hidden while ボケ is off, no focus is set, or the catalog has no coefficient.
+  // Radius = guide_radius_per_f * F * long side of the displayed image; hidden while no focus is set or the catalog has no coefficient.
   function updateDofGuide(form) {
     var state = repairRegionState.get(form);
     if (!state || !state.dofGuide) return;
-    var box = dofBox(form);
     var slider = dofSlider(form);
     var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
     var f = dofFNumber(form);
     var focus = state.dofFocus;
-    var show = !!box && box.checked && !!focus && k > 0 && f !== undefined;
+    var show = !!focus && k > 0 && f !== undefined;
     state.dofGuide.hidden = !show;
     if (!show) return;
     var w = state.img.offsetWidth;
@@ -2503,24 +2770,13 @@ export const appJs = `
   }
 
   function applyDofMode(form) {
-    var box = dofBox(form);
-    if (!box) return;
-    var on = box.checked;
-    var slider = dofSlider(form);
-    if (slider) slider.disabled = !on;
-    var scopeBox = dofScopeBox(form);
-    if (scopeBox) {
-      var backdropRadio = qs('input[name="backdrop"]:checked', form);
-      scopeBox.disabled = !on || (!!backdropRadio && backdropRadio.value === 'transparent');
-    }
-    var viewfinderSelect = dofViewfinderSelect(form);
-    if (viewfinderSelect) viewfinderSelect.disabled = !on;
+    if (!isDofForm(form)) return;
     var state = repairRegionState.get(form);
     if (state) {
-      state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));
+      state.overlay.classList.toggle('dof-focus-on', !repairRegionDrawingOn(form));
       if (state.dofMarker) {
         var focus = state.dofFocus;
-        state.dofMarker.hidden = !(on && focus);
+        state.dofMarker.hidden = !focus;
         if (focus) {
           state.dofMarker.style.left = focus[0] * 100 + '%';
           state.dofMarker.style.top = focus[1] * 100 + '%';
@@ -2599,8 +2855,7 @@ export const appJs = `
 
     overlay.addEventListener('pointerdown', function (ev) {
       if (!repairRegionDrawingOn(form)) {
-        var box = dofBox(form);
-        if (!box || !box.checked || ev.target !== overlay) return;
+        if (!isDofForm(form) || ev.target !== overlay) return;
         if (ev.pointerType === 'mouse' && ev.button !== 0) return;
         var rect = overlay.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;
@@ -2663,7 +2918,7 @@ export const appJs = `
 
   // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass).
   function ensureRepairRegionOverlay(form) {
-    if (!qs('[data-repair-region-tools]', form) && !dofBox(form)) return null; // a form with neither region drawing nor a focus point
+    if (!qs('[data-repair-region-tools]', form) && !isDofForm(form)) return null; // a form with neither region drawing nor a focus point
     var img = findRegionImage();
     var existing = repairRegionState.get(form);
     if (existing && existing.img === img && existing.overlay.isConnected) return existing;
@@ -2684,7 +2939,7 @@ export const appJs = `
     parent.insertBefore(overlay, img.nextSibling);
 
     var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null, dofGuide: null };
-    if (dofBox(form)) {
+    if (isDofForm(form)) {
       var guideClip = document.createElement('div');
       guideClip.className = 'dof-guide-clip';
       state.dofGuide = document.createElement('div');
@@ -2734,12 +2989,6 @@ export const appJs = `
 
   function initDofForm() {
     qsa('.option-form').forEach(applyDofMode);
-    document.addEventListener('change', function (ev) {
-      var box = ev.target;
-      if (!(box instanceof HTMLInputElement) || box.name !== 'dof') return;
-      var form = box.closest('.option-form');
-      if (form) applyDofMode(form);
-    });
     document.addEventListener('input', function (ev) {
       var slider = ev.target;
       if (!(slider instanceof HTMLInputElement) || slider.name !== 'dof_f_stop') return;
@@ -2855,9 +3104,10 @@ export const appJs = `
   }
 
   // worker-protocol.md「deliver」. Returns null when the form can't become options; quiet mode
-  // (used by the preview) silences the alert on a malformed backdrop colour.
+  // (used by the preview) silences the alert on a malformed backdrop colour. Every control is optional
+  // so the workbench's slimmer deliver form can share it.
   function deliverOptionsFrom(form, quiet) {
-    var recolor = qs('input[name="recolor"]', form);
+    var checkbox = function (name) { var el = qs('input[name="' + name + '"]', form); return el ? el.checked : false; };
     var backdropChecked = qs('input[name="backdrop"]:checked', form);
     var backdropMode = backdropChecked ? backdropChecked.value : 'stripes';
     var backdrop = backdropMode === 'transparent' ? null : backdropMode;
@@ -2868,57 +3118,56 @@ export const appJs = `
         return null;
       }
     }
-    var strokeStyle = qs('select[name="stroke_style"]', form).value;
-    var lightFrom = lightFromSelect(form).value;
 
     var keepLegwearFromDial = dialGroupValue(form, 'keep_legwear');
     var keepLegwear = keepLegwearFromDial === undefined
-      ? (qs('input[name="keep_legwear"]', form).checked ? true : null)
+      ? (checkbox('keep_legwear') ? true : null)
       : keepLegwearFromDial;
 
     var options = {
-      repin: qs('input[name="repin"]', form).checked,
-      recolor: recolor ? recolor.checked : false,
+      repin: checkbox('repin'),
+      recolor: checkbox('recolor'),
       keep_legwear: keepLegwear,
       backdrop: backdrop,
     };
+    if (qs('input[name="skin"]', form)) options.skin = checkbox('skin');
+    if (qs('input[name="keep_scene"]', form)) options.keep_scene = checkbox('keep_scene');
 
-    // 既定 omits stroke_light so the rim follows the inherited (or recipe-default) light; a light scene
-    // given here carries its own direction, so 立体 needs no separate stroke_light.
+    var sizeSelect = qs('select[name="wb_deliver_size"]', form);
+    if (sizeSelect) options.deliver_size = Number(sizeSelect.value);
+
+    var editor = qs('[data-outline-editor]', form);
+    if (editor) {
+      options.outlines = outlinesFrom(editor);
+      if (options.outlines.length > 0) options.stroke_light = outlineStrokeValue(editor);
+    }
+
+    // A light scene given here carries its own direction.
     var lightScene = lightSceneSelect(form);
-    if (lightScene && lightScene.value !== '') {
-      options.light = { scene: lightScene.value, from: lightFrom };
-      if (strokeStyle === 'even' || strokeStyle === 'none') options.stroke_light = strokeStyle;
-    } else if (strokeStyle === 'dir') {
-      options.stroke_light = lightFrom;
-    } else if (strokeStyle !== 'auto') {
-      options.stroke_light = strokeStyle;
-    }
-
-    var dofCheck = dofBox(form);
-    if (dofCheck && dofCheck.checked) {
-      var dofFocus = dofFocusFor(form);
-      if (!dofFocus) {
-        if (!quiet) alert('ボケを使うときは画像をクリックしてピント位置を置いてください');
-        return null;
-      }
-      options.dof = { focus: [dofFocus[0], dofFocus[1]], f_number: dofFNumber(form) };
-      var dofScopeCheck = dofScopeBox(form);
-      if (dofScopeCheck) options.dof.scope = !dofScopeCheck.disabled && dofScopeCheck.checked ? 'all' : 'figure';
-      if (options.dof.scope === 'all' && backdrop === null) {
-        if (!quiet) alert('背景もぼかすは透過納品とは併用できません');
-        return null;
-      }
-      var dofViewfinder = dofViewfinderSelect(form);
-      if (dofViewfinder && dofViewfinder.value !== 'off') options.dof.viewfinder = dofViewfinder.value;
-    }
+    if (lightScene && lightScene.value !== '') options.light = { scene: lightScene.value, from: lightFromSelect(form).value };
     return options;
+  }
+
+  // worker-protocol.md「dof」. focus is required, so a form without one cannot become options.
+  function dofOptionsFrom(form, quiet) {
+    var focus = dofFocusFor(form);
+    if (!focus) {
+      if (!quiet) alert('画像をクリックしてピント位置を置いてください');
+      return null;
+    }
+    var scope = dofScopeFrom(form);
+    if (!scope.figure && !scope.outline && !scope.backdrop) {
+      if (!quiet) alert('ボカす範囲を 1 つ以上選んでください');
+      return null;
+    }
+    return { focus: [focus[0], focus[1]], f_number: dofFNumber(form), scope: scope, viewfinder: dofViewfinderFrom(form) };
   }
 
   function optionsFrom(form, quiet) {
     var kind = formKind(form);
     if (kind === 'redraw') return redrawOptionsFrom(form);
     if (kind === 'repair') return repairOptionsFrom(form, quiet);
+    if (kind === 'dof') return dofOptionsFrom(form, quiet);
     return deliverOptionsFrom(form, quiet);
   }
 
@@ -2941,7 +3190,6 @@ export const appJs = `
       var form = radio.closest('.option-form');
       if (!form) return;
       syncBackdropColor(form);
-      applyDofMode(form);
       if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
     });
   }
@@ -2971,22 +3219,27 @@ export const appJs = `
     if (deliver) {
       // backdrop is always sent and always meaningful, null included: null is the transparent choice.
       parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
-      var fromSelect = lightFromSelect(form);
-      var styleSelect = qs('select[name="stroke_style"]', form);
-      var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
       if (options.light) {
+        var fromSelect = lightFromSelect(form);
+        var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
         parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
-      } else if (fromSelect && !fromSelect.disabled) {
-        parts.push('光の向き ' + fromLabel);
       }
-      if (styleSelect) parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());
+      if (options.outlines) {
+        parts.push(options.outlines.length === 0 ? 'フチなし' : 'フチ ' + options.outlines.map(function (o) { return o.color + ' ' + outlineNumberLabel(o.width) + '%'; }).join(' → ') + ' · 陰影 ' + (options.stroke_light === 'even' ? '均一' : options.stroke_light));
+      }
     }
     Object.keys(options).forEach(function (key) {
-      if (deliver && (key === 'backdrop' || key === 'light' || key === 'stroke_light')) return;
+      if (deliver && (key === 'backdrop' || key === 'light' || key === 'outlines' || key === 'stroke_light')) return;
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
-      if (key === 'dof') {
-        parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
+      if (key === 'focus') {
+        parts.push('ピント ' + value[0] + ', ' + value[1]);
+      } else if (key === 'f_number') {
+        parts.push('f/' + value);
+      } else if (key === 'scope') {
+        parts.push('範囲 ' + [['figure', '人物'], ['outline', 'フチ'], ['backdrop', '背景']].filter(function (l) { return value[l[0]]; }).map(function (l) { return l[1]; }).join('+'));
+      } else if (key === 'viewfinder') {
+        if (value !== 'off') parts.push(value === 'both' ? 'ファインダー ON/OFF 2枚' : 'ファインダー');
       } else if (key === 'keep_regions' || key === 'regions') {
         parts.push(key + '=' + value.length + '箇所');
       } else if (value === true) {
@@ -3014,13 +3267,13 @@ export const appJs = `
     });
   }
 
-  function postOptionRequest(kind, generationShortId, options, profile) {
+  function postOptionRequest(kind, generationShortId, options, profile, idempotencyKey) {
     var payload = { generation_id: generationShortId, options: options };
     if (profile) payload.profile = profile;
     return api('/api/v1/requests', 'POST', {
       kind: kind,
       payload: payload,
-      idempotency_key: 'gui:' + kind + ':' + generationShortId + ':' + crypto.randomUUID(),
+      idempotency_key: idempotencyKey || ('gui:' + kind + ':' + generationShortId + ':' + crypto.randomUUID()),
       created_by: 'gui',
     });
   }
@@ -3235,7 +3488,7 @@ export const appJs = `
 
   // kind 表示ラベル。src/ui/components/OptionControls.tsx の REQUEST_KIND_LABELS と同じ規則。
   function requestKindLabel(kind) {
-    var labels = { redraw: '描き直し', deliver: '納品', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };
+    var labels = { redraw: '描き直し', deliver: '納品', dof: 'ボケ', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };
     return labels[kind] || kind || '';
   }
 
@@ -4952,6 +5205,914 @@ export const appJs = `
     else fetchGalleryTimeline();
   }
 
+  // ---- ワークベンチ (/work/:shortId, docs/ui.md「Workbench」) ----
+  var WB_PHASES = [
+    { no: 1, label: '描き直し' },
+    { no: 2, label: '光' },
+    { no: 3, label: '部分' },
+    { no: 4, label: '納品' },
+    { no: 5, label: 'ボケ' },
+  ];
+  var WB_RATING_COLOR = { bad: 'var(--bad)', neutral: 'var(--neutral)', good: 'var(--good)' };
+
+  function wbEl(tag, cls, text) {
+    var el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text !== undefined && text !== null) el.textContent = text;
+    return el;
+  }
+
+  function wbRound(v) {
+    return Math.round(v * 10000) / 10000;
+  }
+
+  // The visible box of an object-fit: contain image inside its pane: [left, top, width, height] in px.
+  function wbContainBox(paneWidth, paneHeight, imageWidth, imageHeight) {
+    var scale = Math.min(paneWidth / imageWidth, paneHeight / imageHeight);
+    var w = imageWidth * scale;
+    var h = imageHeight * scale;
+    return [(paneWidth - w) / 2, (paneHeight - h) / 2, w, h];
+  }
+
+  function wbRectsOverlap(a, b) {
+    return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  }
+
+  function initWorkbench() {
+    var root = qs('[data-workbench]');
+    if (!root) return;
+    var initial = {};
+    try { initial = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { initial = {}; }
+    var rootId = root.getAttribute('data-root-id');
+    var wb = {
+      nodes: (initial.tree && initial.tree.nodes) || [],
+      pending: (initial.tree && initial.tree.pending) || [],
+      picks: initial.picks || {},
+      active: 1,
+      compareId: null,
+      mode: 'pair',
+      cursor: null,
+      forcedInput: null,
+      method: 'hires',
+      partMode: 'auto',
+      rects: [],
+      draft: null,
+      focus: null,
+      error: '',
+      timer: null,
+    };
+
+    function nodeById(id) {
+      for (var i = 0; i < wb.nodes.length; i++) if (wb.nodes[i].id === id) return wb.nodes[i];
+      return null;
+    }
+
+    function pendingByRequest(requestId) {
+      for (var i = 0; i < wb.pending.length; i++) if (wb.pending[i].request_id === requestId) return wb.pending[i];
+      return null;
+    }
+
+    function pick(k) {
+      return wb.picks[String(k)] || null;
+    }
+
+    // The input of phase k is the pick of phase k-1; a skipped phase passes its own input on.
+    function inputOf(k) {
+      if (k === wb.active && wb.forcedInput) return wb.forcedInput;
+      if (k === 1) return rootId;
+      var p = pick(k - 1);
+      if (!p) return null;
+      return p.skip ? inputOf(k - 1) : p.generation_id;
+    }
+
+    function reached(k) {
+      return k === 1 || !!pick(k - 1) || k === wb.active;
+    }
+
+    function candidates(k) {
+      var input = inputOf(k);
+      if (!input) return [];
+      var list = [];
+      wb.nodes.forEach(function (n) {
+        if (n.phase === k && n.refines_generation_id === input) list.push({ key: n.id, node: n, pending: null });
+      });
+      wb.pending.forEach(function (p) {
+        if (p.phase === k && p.source_generation_id === input) list.push({ key: 'p:' + p.request_id, node: null, pending: p });
+      });
+      return list;
+    }
+
+    function candidateByKey(k, key) {
+      var list = candidates(k);
+      for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i];
+      return null;
+    }
+
+    function defaultCompare(k) {
+      var list = candidates(k);
+      var p = pick(k);
+      if (p && !p.skip) {
+        for (var i = 0; i < list.length; i++) if (list[i].key === p.generation_id) return list[i].key;
+      }
+      return list.length ? list[list.length - 1].key : null;
+    }
+
+    function kindLabel(node) {
+      return node.kind === 'redraw' && node.method ? 'redraw · ' + node.method : node.kind;
+    }
+
+    function pendingKindLabel(p) {
+      return p.kind === 'redraw' && p.method ? 'redraw · ' + p.method : p.kind;
+    }
+
+    function summarize(kind, method, o) {
+      o = o || {};
+      if (kind === 'redraw') {
+        if (method === 'hires') return 'hires ' + (o.hires || '') + (o.denoise !== undefined ? ' · denoise ' + o.denoise : '');
+        if (method === 'light') return 'light · ' + (o.scene || '') + ' · from ' + (o.from || '');
+        return 'canvas' + (o.denoise !== undefined ? ' · denoise ' + o.denoise : '') + (o.size ? ' · ' + o.size : '');
+      }
+      if (kind === 'repair') return o.parts ? o.parts.join('+') : '手と足';
+      if (kind === 'masked_redraw') return (o.regions ? o.regions.length : 0) + ' か所 · ' + (o.prompt_patch || '');
+      if (kind === 'deliver') {
+        var bands = o.outlines ? 'フチ ' + o.outlines.length + ' 本' : 'フチ 既定';
+        return (o.backdrop === null ? '透過' : '背景あり') + ' · ' + bands;
+      }
+      if (kind === 'dof') return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '');
+      return '';
+    }
+
+    function itemKind(item) {
+      return item.node ? kindLabel(item.node) : pendingKindLabel(item.pending);
+    }
+
+    function itemSummary(item) {
+      return item.node ? summarize(item.node.kind, item.node.method, item.node.options) : summarize(item.pending.kind, item.pending.method, item.pending.options);
+    }
+
+    function itemStatus(item) {
+      if (item.pending) return item.pending.status === 'queued' ? '待機中…' : '処理中…';
+      return item.node.delivered ? '納品' : '完了';
+    }
+
+    // ---- images ----
+    var resizeObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) { layoutPane(entry.target); });
+    }) : null;
+
+    function layoutPane(pane) {
+      var img = qs('img', pane);
+      var overlay = qs('.wb-overlay', pane);
+      if (!img || !overlay || !img.naturalWidth || !pane.clientWidth) return;
+      var box = wbContainBox(pane.clientWidth, pane.clientHeight, img.naturalWidth, img.naturalHeight);
+      overlay.style.left = box[0] + 'px';
+      overlay.style.top = box[1] + 'px';
+      overlay.style.width = box[2] + 'px';
+      overlay.style.height = box[3] + 'px';
+      overlay.hidden = false;
+    }
+
+    // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
+    function fillPane(pane, key, role, node, pendingItem) {
+      var signature = role + ':' + key;
+      if (pane.getAttribute('data-wb-key') !== signature) {
+        pane.setAttribute('data-wb-key', signature);
+        pane.setAttribute('data-wb-role', role);
+        pane.setAttribute('data-wb-imgpane', '');
+        pane.textContent = '';
+        pane.classList.toggle('wb-checker', !!(node && node.delivered));
+        if (node) {
+          var img = document.createElement('img');
+          img.alt = node.short_id;
+          img.draggable = false;
+          img.addEventListener('load', function () { layoutPane(pane); });
+          img.addEventListener('error', function () {
+            if (img.getAttribute('src') !== '/g/' + node.short_id + '/preview') img.src = '/g/' + node.short_id + '/preview';
+          });
+          img.src = '/g/' + node.short_id + '/image';
+          pane.appendChild(img);
+          var overlay = wbEl('div', 'wb-overlay');
+          overlay.hidden = true;
+          overlay.appendChild(wbEl('div', 'wb-cross-x'));
+          overlay.appendChild(wbEl('div', 'wb-cross-y'));
+          overlay.appendChild(wbEl('div', 'wb-rects'));
+          overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
+          pane.appendChild(overlay);
+          if (resizeObserver) resizeObserver.observe(pane);
+        } else if (pendingItem) {
+          pane.appendChild(wbEl('div', 'wb-pending-note', '処理中…'));
+        }
+      }
+      if (pendingItem) {
+        var note = qs('.wb-pending-note', pane);
+        if (note) note.textContent = (pendingItem.status === 'queued' ? '待機中…' : '処理中…') + (pendingItem.progress ? ' ' + pendingItem.progress : '');
+      }
+    }
+
+    function imagePanes() {
+      return qsa('[data-wb-imgpane]', root);
+    }
+
+    // Coordinates are relative to the rendered image box (the overlay), never the pane.
+    function pointIn(pane, ev) {
+      var overlay = qs('.wb-overlay', pane);
+      if (!overlay || overlay.hidden) return null;
+      var r = overlay.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return null;
+      var x = (ev.clientX - r.left) / r.width;
+      var y = (ev.clientY - r.top) / r.height;
+      return { x: x, y: y, inside: x >= 0 && x <= 1 && y >= 0 && y <= 1 };
+    }
+
+    function clamp01(v) {
+      return Math.min(1, Math.max(0, v));
+    }
+
+    function updateOverlays() {
+      var rectsActive = wb.active === 3 && wb.partMode === 'rect';
+      imagePanes().forEach(function (pane) {
+        var overlay = qs('.wb-overlay', pane);
+        if (!overlay) return;
+        var role = pane.getAttribute('data-wb-role');
+        var cx = qs('.wb-cross-x', overlay);
+        var cy = qs('.wb-cross-y', overlay);
+        cx.hidden = cy.hidden = !wb.cursor;
+        if (wb.cursor) {
+          cx.style.left = wb.cursor.x * 100 + '%';
+          cy.style.top = wb.cursor.y * 100 + '%';
+        }
+        var rects = qs('.wb-rects', overlay);
+        rects.textContent = '';
+        if (role === 'input' && rectsActive) {
+          wb.rects.concat(wb.draft ? [wb.draft] : []).forEach(function (r, i) {
+            var d = wbEl('div', 'wb-rect' + (i >= wb.rects.length ? ' wb-rect-draft' : ''));
+            d.style.left = r[0] * 100 + '%';
+            d.style.top = r[1] * 100 + '%';
+            d.style.width = (r[2] - r[0]) * 100 + '%';
+            d.style.height = (r[3] - r[1]) * 100 + '%';
+            rects.appendChild(d);
+          });
+        }
+        var marker = qs('.wb-focus', overlay);
+        marker.hidden = !(role === 'input' && wb.active === 5 && wb.focus);
+        if (!marker.hidden) {
+          marker.style.left = wb.focus[0] * 100 + '%';
+          marker.style.top = wb.focus[1] * 100 + '%';
+        }
+      });
+      var count = qs('[data-wb-rect-count]', root);
+      if (count) count.textContent = '矩形 ' + wb.rects.length + ' か所';
+      var readout = qs('[data-dof-focus-readout]', root);
+      if (readout) readout.textContent = wb.focus ? 'ピント: [' + wb.focus[0] + ', ' + wb.focus[1] + ']' : '';
+    }
+
+    // ---- rendering ----
+    function activeInputNode() {
+      var id = inputOf(wb.active);
+      return id ? nodeById(id) : null;
+    }
+
+    function unavailableText() {
+      var input = activeInputNode();
+      if (!input) return '';
+      if (wb.active === 2 && input.kind === 'redraw' && input.method === 'canvas') {
+        return '入力が redraw · canvas の出力なので light は使えません（canvas は IL で描くため、Anima の graph がありません）。スキップしてください。';
+      }
+      if (wb.active === 4 && input.delivered) return '納品済みの絵は、もう一度納品できません。前のフェーズに戻ってください。';
+      if (wb.active === 5 && !input.delivered) return '納品していない絵にはボケをかけられません。納品のフェーズで納品してください。';
+      return '';
+    }
+
+    function renderSteps() {
+      qsa('[data-wb-step]', root).forEach(function (btn) {
+        var k = Number(btn.getAttribute('data-wb-step'));
+        if (k === 0) return;
+        var p = pick(k);
+        var kind = qs('[data-wb-step-kind]', btn);
+        var text = '—';
+        if (p && p.skip) {
+          text = 'スキップ';
+        } else if (p) {
+          var n = nodeById(p.generation_id);
+          text = n ? kindLabel(n) : '採用';
+        } else if (reached(k)) {
+          text = 'いま';
+        }
+        kind.textContent = text;
+        btn.disabled = !reached(k);
+        btn.classList.toggle('wb-step-on', k === wb.active);
+        btn.classList.toggle('wb-step-open', !p);
+      });
+    }
+
+    function renderStrip(list) {
+      var strip = qs('[data-wb-strip]', root);
+      strip.textContent = '';
+      var adopted = pick(wb.active);
+      list.forEach(function (item) {
+        var btn = wbEl('button', 'wb-mini' + (item.key === wb.compareId ? ' wb-mini-on' : ''));
+        btn.type = 'button';
+        btn.setAttribute('data-wb-pick', item.key);
+        btn.title = itemKind(item) + ' · ' + itemSummary(item);
+        btn.setAttribute('aria-label', btn.title);
+        var thumb = wbEl('div', 'wb-mini-thumb');
+        if (item.node) {
+          var img = document.createElement('img');
+          img.src = '/g/' + item.node.short_id + '/preview';
+          img.alt = item.node.short_id;
+          thumb.appendChild(img);
+          thumb.classList.toggle('wb-checker', item.node.delivered);
+        }
+        btn.appendChild(thumb);
+        var bar = wbEl('span', 'wb-mini-rate');
+        bar.style.background = item.node && item.node.rating ? WB_RATING_COLOR[item.node.rating] : 'transparent';
+        btn.appendChild(bar);
+        if (item.node && adopted && !adopted.skip && adopted.generation_id === item.node.id) btn.appendChild(wbEl('span', 'wb-mini-adopted'));
+        if (item.pending) btn.appendChild(wbEl('span', 'wb-mini-running', '…'));
+        strip.appendChild(btn);
+      });
+    }
+
+    function renderAll(list, input) {
+      var grid = qs('[data-wb-all]', root);
+      grid.textContent = '';
+      var inputTile = wbEl('figure', 'wb-tile wb-tile-input');
+      var inputPane = wbEl('div', 'wb-tile-pane');
+      if (input) fillPane(inputPane, input.id, 'input', input, null);
+      inputTile.appendChild(inputPane);
+      inputTile.appendChild(wbEl('figcaption', 'wb-tile-cap', '入力 ' + (input ? kindLabel(input) : '')));
+      grid.appendChild(inputTile);
+      var adopted = pick(wb.active);
+      list.forEach(function (item) {
+        var tile = wbEl('button', 'wb-tile' + (item.key === wb.compareId ? ' wb-tile-on' : ''));
+        tile.type = 'button';
+        tile.setAttribute('data-wb-pick', item.key);
+        var pane = wbEl('div', 'wb-tile-pane');
+        fillPane(pane, item.key, 'cmp', item.node, item.pending);
+        tile.appendChild(pane);
+        var isAdopted = item.node && adopted && !adopted.skip && adopted.generation_id === item.node.id;
+        tile.appendChild(wbEl('span', 'wb-tile-cap mono', itemKind(item) + (isAdopted ? ' · 採用中' : '')));
+        grid.appendChild(tile);
+      });
+    }
+
+    function renderPanes(list, input) {
+      var inputPane = qs('[data-wb-input-pane]', root);
+      var cmpPane = qs('[data-wb-cmp-pane]', root);
+      var cmp = candidateByKey(wb.active, wb.compareId);
+      qs('[data-wb-input-kind]', root).textContent = input ? kindLabel(input) : '';
+      var hint = '';
+      if (wb.active === 5) hint = 'クリックでピント';
+      else if (wb.active === 3 && wb.partMode === 'rect') hint = 'ドラッグで矩形';
+      qs('[data-wb-pane-hint]', root).textContent = hint;
+      inputPane.classList.toggle('wb-pane-active', hint !== '');
+      if (input) {
+        fillPane(inputPane, input.id, 'input', input, null);
+      } else {
+        inputPane.textContent = '';
+        inputPane.setAttribute('data-wb-key', '');
+      }
+      var adopted = pick(wb.active);
+      if (cmp) {
+        fillPane(cmpPane, cmp.key, 'cmp', cmp.node, cmp.pending);
+        qs('[data-wb-cmp-kind]', root).textContent = itemKind(cmp);
+        qs('[data-wb-cmp-status]', root).textContent = itemStatus(cmp);
+        qs('[data-wb-cmp-badge]', root).textContent = cmp.node && adopted && !adopted.skip && adopted.generation_id === cmp.node.id ? '· 採用中' : '';
+      } else {
+        cmpPane.setAttribute('data-wb-key', 'none');
+        cmpPane.removeAttribute('data-wb-imgpane');
+        cmpPane.textContent = '';
+        cmpPane.classList.remove('wb-checker');
+        cmpPane.appendChild(wbEl('div', 'wb-empty', '候補はまだありません。右の欄から作ります。'));
+        qs('[data-wb-cmp-kind]', root).textContent = '';
+        qs('[data-wb-cmp-status]', root).textContent = '';
+        qs('[data-wb-cmp-badge]', root).textContent = '';
+      }
+      var rating = qs('[data-wb-rating]', root);
+      rating.hidden = !(cmp && cmp.node);
+      if (cmp && cmp.node) {
+        rating.setAttribute('data-generation-id', cmp.node.id);
+        applyRatingToGroups(cmp.node.id, cmp.node.rating);
+      }
+    }
+
+    function renderControls(list) {
+      var cmp = candidateByKey(wb.active, wb.compareId);
+      qsa('[data-wb-compare-mode]', root).forEach(function (b) {
+        b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-compare-mode') === wb.mode);
+      });
+      qs('[data-wb-skip]', root).textContent = wb.active === 5 ? 'ボケなしで完成にする' : 'このフェーズをスキップ（入力をそのまま次へ）';
+      var adopt = qs('[data-wb-adopt]', root);
+      var next = WB_PHASES[wb.active] ? WB_PHASES[wb.active].label : '';
+      if (!cmp) {
+        adopt.textContent = '候補を選んでください';
+        adopt.disabled = true;
+      } else if (cmp.pending) {
+        adopt.textContent = '処理中です';
+        adopt.disabled = true;
+      } else {
+        adopt.textContent = wb.active === 5 ? 'この候補で完成にする' : 'この候補を採用して「' + next + '」へ';
+        adopt.disabled = false;
+      }
+      qs('[data-wb-done]', root).hidden = !pick(5);
+    }
+
+    function runBlocker() {
+      if (!activeInputNode()) return '入力がありません';
+      if (unavailableText()) return '';
+      if (wb.active === 3 && wb.partMode === 'rect') {
+        if (wb.rects.length === 0) return '矩形を 1 か所以上引いてください';
+        if (qs('input[name="wb_patch"]', root).value.trim() === '') return '足す語を入力してください';
+      }
+      if (wb.active === 5 && !wb.focus) return 'ピントを置いてください（左の絵をクリック）';
+      return null;
+    }
+
+    function renderPanel() {
+      var phase = WB_PHASES[wb.active - 1];
+      qs('[data-wb-phase-no]', root).textContent = String(wb.active);
+      qs('[data-wb-phase-title]', root).textContent = phase.label;
+      qsa('[data-wb-form]', root).forEach(function (form) {
+        form.hidden = Number(form.getAttribute('data-wb-form')) !== wb.active;
+      });
+      var form = qs('[data-wb-form="' + wb.active + '"]', root);
+      var unavailable = unavailableText();
+      var note = qs('[data-wb-unavailable]', form);
+      var body = qs('[data-wb-form-body]', form);
+      if (note) {
+        note.hidden = unavailable === '';
+        note.textContent = unavailable;
+      }
+      if (body) body.hidden = unavailable !== '';
+      var blocker = runBlocker();
+      var run = qs('[data-wb-run]', root);
+      run.hidden = unavailable !== '' || !activeInputNode();
+      run.disabled = blocker !== null;
+      run.textContent = blocker ? blocker : phase.label + 'を実行';
+      qsa('[data-wb-part-panel]', root).forEach(function (panel) {
+        panel.hidden = panel.getAttribute('data-wb-part-panel') !== wb.partMode;
+      });
+      qsa('[data-wb-part-mode]', root).forEach(function (b) {
+        b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-part-mode') === wb.partMode);
+      });
+      var errorEl = qs('[data-wb-error]', root);
+      errorEl.hidden = wb.error === '';
+      errorEl.textContent = wb.error;
+    }
+
+    function render() {
+      if (!candidateByKey(wb.active, wb.compareId)) wb.compareId = defaultCompare(wb.active);
+      var list = candidates(wb.active);
+      var input = activeInputNode();
+      qs('[data-wb-pair]', root).hidden = wb.mode !== 'pair';
+      qs('[data-wb-all]', root).hidden = wb.mode !== 'all';
+      if (wb.mode === 'pair') renderPanes(list, input);
+      else renderAll(list, input);
+      renderSteps();
+      renderStrip(list);
+      renderControls(list);
+      renderPanel();
+      updateOverlays();
+      imagePanes().forEach(layoutPane);
+    }
+
+    function goStep(k) {
+      wb.active = k;
+      wb.forcedInput = null;
+      wb.compareId = null;
+      wb.rects = [];
+      wb.draft = null;
+      wb.error = '';
+      render();
+    }
+
+    // ---- picks ----
+    // Picks implied by a Generation's own lineage: its phase, every ancestor's phase, and skips in between.
+    function chainPicks(nodeId, upto) {
+      var picks = {};
+      var id = nodeId;
+      var guard = 0;
+      while (id && id !== rootId && guard < 50) {
+        guard += 1;
+        var n = nodeById(id);
+        if (!n) break;
+        if (n.phase && n.phase <= upto && !picks[String(n.phase)]) picks[String(n.phase)] = { generation_id: n.id };
+        id = n.refines_generation_id;
+      }
+      for (var j = 1; j <= upto; j++) if (!picks[String(j)]) picks[String(j)] = { skip: true };
+      return picks;
+    }
+
+    function samePicksUpTo(a, b, upto) {
+      for (var j = 1; j <= upto; j++) {
+        if (JSON.stringify(a[String(j)] || null) !== JSON.stringify(b[String(j)] || null)) return false;
+      }
+      return true;
+    }
+
+    async function savePicks(next) {
+      var saved = await api('/api/v1/workbenches/' + rootId, 'PUT', { picks: next });
+      wb.picks = saved.picks || next;
+    }
+
+    async function adopt() {
+      var cmp = candidateByKey(wb.active, wb.compareId);
+      if (!cmp || !cmp.node) return;
+      var k = wb.active;
+      var next = chainPicks(cmp.node.id, k);
+      try {
+        if (!samePicksUpTo(wb.picks, next, k)) await savePicks(next);
+        track('workbench.adopt', { phase: k, generation_id: cmp.node.id });
+      } catch (e) {
+        trackError('workbench.adopt', e, { phase: k });
+        alert('adopt failed: ' + e.message);
+        return;
+      }
+      if (k < 5) goStep(k + 1);
+      else render();
+    }
+
+    async function skip() {
+      var k = wb.active;
+      var input = inputOf(k);
+      if (!input) return;
+      var next = chainPicks(input, k - 1);
+      next[String(k)] = { skip: true };
+      try {
+        await savePicks(next);
+        track('workbench.skip', { phase: k });
+      } catch (e) {
+        trackError('workbench.skip', e, { phase: k });
+        alert('skip failed: ' + e.message);
+        return;
+      }
+      if (k < 5) goStep(k + 1);
+      else render();
+    }
+
+    // ---- requests ----
+    function phaseForm(k) {
+      return qs('[data-wb-form="' + k + '"]', root);
+    }
+
+    function currentMethod() {
+      var on = qs('[data-wb-method].wb-pill-on', root);
+      return on ? on.getAttribute('data-wb-method') : 'hires';
+    }
+
+    // Builds { kind, options } for the active phase, or null (after telling the user why).
+    function buildRun() {
+      var k = wb.active;
+      var form = phaseForm(k);
+      if (k === 1) {
+        if (currentMethod() === 'canvas') {
+          return { kind: 'redraw', options: { method: 'canvas', denoise: Number(qs('input[name="wb_denoise"]', form).value), size: Number(qs('select[name="wb_size"]', form).value) } };
+        }
+        return { kind: 'redraw', options: { method: 'hires', hires: Number(qs('select[name="wb_hires"]', form).value), denoise: Number(qs('select[name="wb_hires_denoise"]', form).value) } };
+      }
+      if (k === 2) {
+        var scene = qs('[data-wb-scene].wb-pill-on', form);
+        return { kind: 'redraw', options: { method: 'light', scene: scene.getAttribute('data-wb-scene'), from: qs('[data-compass="light"]', form).getAttribute('data-value') } };
+      }
+      if (k === 3) {
+        if (wb.partMode === 'auto') {
+          var which = qs('select[name="wb_repair_parts"]', form).value;
+          return { kind: 'repair', options: which === 'both' ? {} : { parts: [which] } };
+        }
+        for (var i = 0; i < wb.rects.length; i++) {
+          for (var j = i + 1; j < wb.rects.length; j++) {
+            if (wbRectsOverlap(wb.rects[i], wb.rects[j])) {
+              wb.error = '矩形が重なっています。重ならないように引き直してください。';
+              renderPanel();
+              return null;
+            }
+          }
+        }
+        return { kind: 'masked_redraw', options: { regions: wb.rects.map(function (r) { return r.slice(); }), prompt_patch: qs('input[name="wb_patch"]', form).value.trim() } };
+      }
+      if (k === 4) {
+        var options = deliverOptionsFrom(form, false);
+        return options ? { kind: 'deliver', options: options } : null;
+      }
+      var scope = dofScopeFrom(form);
+      if (!scope.figure && !scope.outline && !scope.backdrop) {
+        wb.error = 'ボカす範囲を 1 つ以上選んでください。';
+        renderPanel();
+        return null;
+      }
+      return { kind: 'dof', options: { focus: [wb.focus[0], wb.focus[1]], f_number: dofFNumber(form), scope: scope, viewfinder: dofViewfinderFrom(form) } };
+    }
+
+    async function run() {
+      var input = activeInputNode();
+      if (!input || runBlocker() !== null) return;
+      wb.error = '';
+      var built = buildRun();
+      if (!built) return;
+      var runBtn = qs('[data-wb-run]', root);
+      runBtn.disabled = true;
+      try {
+        var request = await postOptionRequest(built.kind, input.short_id, built.options, null, 'gui:workbench:' + built.kind + ':' + input.short_id + ':' + crypto.randomUUID());
+        var item = {
+          request_id: request.id,
+          kind: built.kind,
+          method: built.kind === 'redraw' ? built.options.method : null,
+          phase: wb.active,
+          options: built.options,
+          source_generation_id: input.id,
+          status: request.status || 'queued',
+          created_at: request.created_at || '',
+        };
+        wb.pending.push(item);
+        wb.compareId = 'p:' + request.id;
+        track('workbench.run', { phase: wb.active, kind: built.kind, generation_id: input.short_id });
+        startPolling();
+      } catch (e) {
+        trackError('workbench.run', e, { phase: wb.active });
+        wb.error = built.kind + ' failed: ' + e.message;
+      }
+      render();
+    }
+
+    // The tree is the source of truth; a request that left pending either produced a node or failed.
+    var syncing = false;
+    async function syncTree() {
+      if (syncing) return;
+      syncing = true;
+      try {
+        var before = wb.pending.slice();
+        var tree = await api('/api/v1/generations/' + rootId + '/tree');
+        var stillPending = {};
+        tree.pending.forEach(function (p) { stillPending[p.request_id] = true; });
+        var local = {};
+        before.forEach(function (p) { local[p.request_id] = p; });
+        wb.nodes = tree.nodes;
+        var merged = tree.pending.map(function (p) {
+          var prev = local[p.request_id];
+          return prev && prev.progress ? Object.assign({}, p, { progress: prev.progress }) : p;
+        });
+        // A request created moments ago may not be visible to the tree query yet.
+        before.forEach(function (p) {
+          if (!stillPending[p.request_id] && Date.now() - Date.parse(p.created_at || 0) < 3000) merged.push(p);
+        });
+        var vanished = before.filter(function (p) { return !stillPending[p.request_id] && merged.indexOf(p) === -1; });
+        wb.pending = merged;
+        for (var i = 0; i < vanished.length; i++) {
+          var p = vanished[i];
+          var detail = await api('/api/v1/requests/' + p.request_id).catch(function () { return null; });
+          if (detail && detail.status === 'done' && detail.result && detail.result.generation_ids && detail.result.generation_ids[0]) {
+            if (wb.compareId === 'p:' + p.request_id) wb.compareId = detail.result.generation_ids[0];
+          } else {
+            if (wb.compareId === 'p:' + p.request_id) wb.compareId = null;
+            if (detail && detail.status === 'failed') wb.error = p.kind + ' failed: ' + (detail.error || '');
+          }
+        }
+        if (wb.pending.length === 0) stopPolling();
+        render();
+      } catch (e) {
+        trackError('workbench.sync', e, {});
+      }
+      syncing = false;
+    }
+
+    function startPolling() {
+      if (wb.timer) return;
+      wb.timer = setInterval(syncTree, 4000);
+    }
+
+    function stopPolling() {
+      if (wb.timer) clearInterval(wb.timer);
+      wb.timer = null;
+    }
+
+    viewerSocketOn('status', function (m) {
+      var p = pendingByRequest(m.request_id);
+      if (!p) return;
+      if (m.status === 'queued' || m.status === 'running') {
+        p.status = m.status;
+        render();
+      } else {
+        syncTree();
+      }
+    });
+    viewerSocketOn('progress', function (m) {
+      var p = pendingByRequest(m.request_id);
+      if (!p) return;
+      p.progress = (m.phase || '') + (typeof m.step === 'number' && typeof m.total === 'number' ? ' ' + m.step + '/' + m.total : '');
+      var pane = qs('[data-wb-cmp-pane] .wb-pending-note', root);
+      if (pane && wb.compareId === 'p:' + p.request_id) pane.textContent = (p.status === 'queued' ? '待機中…' : '処理中…') + ' ' + p.progress;
+    });
+    viewerSocketConnect();
+
+    document.addEventListener('chimera:rating', function (ev) {
+      var n = nodeById(ev.detail.id);
+      if (!n) return;
+      n.rating = ev.detail.rating;
+      render();
+    });
+
+    // ---- events ----
+    root.addEventListener('click', function (ev) {
+      var t = ev.target.closest ? ev.target : null;
+      if (!t) return;
+      var step = t.closest('[data-wb-step]');
+      if (step && !step.disabled) return goStep(Number(step.getAttribute('data-wb-step')));
+      var picked = t.closest('[data-wb-pick]');
+      if (picked) {
+        wb.compareId = picked.getAttribute('data-wb-pick');
+        return render();
+      }
+      var mode = t.closest('[data-wb-compare-mode]');
+      if (mode) {
+        wb.mode = mode.getAttribute('data-wb-compare-mode');
+        return render();
+      }
+      if (t.closest('[data-wb-skip]')) return skip();
+      if (t.closest('[data-wb-adopt]')) return adopt();
+      if (t.closest('[data-wb-run]')) return run();
+
+      var method = t.closest('[data-wb-method]');
+      if (method) {
+        var m = method.getAttribute('data-wb-method');
+        qsa('[data-wb-method]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === method); });
+        qsa('[data-wb-method-panel]', root).forEach(function (p) { p.hidden = p.getAttribute('data-wb-method-panel') !== m; });
+        qs('[data-wb-method-note]', root).textContent = method.getAttribute('data-note') || '';
+        return;
+      }
+      var word = t.closest('[data-wb-denoise-word]');
+      if (word) {
+        var range = qs('input[name="wb_denoise"]', root);
+        range.value = word.getAttribute('data-wb-denoise-word');
+        qs('[data-wb-denoise-readout]', root).textContent = range.value;
+        return;
+      }
+      var scene = t.closest('[data-wb-scene]');
+      if (scene) {
+        qsa('[data-wb-scene]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === scene); });
+        qs('[data-wb-scene-note]', root).textContent = scene.getAttribute('data-note') || '';
+        return;
+      }
+      var dir = t.closest('[data-compass="light"] [data-compass-dir]');
+      if (dir) {
+        var value = dir.getAttribute('data-compass-dir');
+        setCompassValue(dir.closest('[data-compass]'), value);
+        qs('[data-wb-light-readout]', root).textContent = 'from: ' + value;
+        return;
+      }
+      var partMode = t.closest('[data-wb-part-mode]');
+      if (partMode) {
+        wb.partMode = partMode.getAttribute('data-wb-part-mode');
+        wb.draft = null;
+        return render();
+      }
+      if (t.closest('[data-wb-rect-clear]')) {
+        wb.rects = [];
+        wb.draft = null;
+        return render();
+      }
+      var chip = t.closest('[data-wb-part-chip]');
+      if (chip) {
+        var field = qs('input[name="wb_patch"]', root);
+        var text = chip.getAttribute('data-part-text') || chip.getAttribute('data-wb-part-chip');
+        field.value = (field.value.trim() ? field.value.trim() + ', ' : '') + text;
+        return renderPanel();
+      }
+      var bg = t.closest('[data-wb-bg]');
+      if (bg) {
+        var choice = bg.getAttribute('data-wb-bg');
+        qsa('[data-wb-bg]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === bg); });
+        var radios = qsa('input[name="backdrop"]', phaseForm(4));
+        var patterns = qs('[data-wb-backdrop-patterns]', root);
+        patterns.hidden = choice === 'transparent';
+        if (choice === 'transparent') {
+          radios.forEach(function (r) { r.checked = r.value === 'transparent'; });
+        } else if (!radios.some(function (r) { return r.checked && r.value !== 'transparent'; })) {
+          var wanted = patterns.getAttribute('data-default');
+          radios.forEach(function (r) { r.checked = r.value === wanted; });
+          if (!radios.some(function (r) { return r.checked; })) {
+            var first = qs('[data-wb-backdrop-first]', patterns);
+            if (first) first.checked = true;
+          }
+        }
+        syncBackdropColor(phaseForm(4));
+        return;
+      }
+    });
+
+    root.addEventListener('change', function (ev) {
+      var radio = ev.target;
+      if (radio instanceof HTMLInputElement && radio.type === 'radio' && radio.name === 'backdrop') {
+        syncBackdropColor(phaseForm(4));
+        if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(4)).focus();
+      }
+    });
+
+    root.addEventListener('input', function (ev) {
+      var input = ev.target;
+      if (!(input instanceof HTMLInputElement)) return;
+      if (input.name === 'wb_denoise') qs('[data-wb-denoise-readout]', root).textContent = input.value;
+      if (input.name === 'dof_f_stop') qs('[data-dof-f-readout]', root).textContent = 'f/' + dofFNumber(phaseForm(5));
+      if (input.name === 'wb_patch') renderPanel();
+    });
+
+    var drawing = null;
+    root.addEventListener('pointerdown', function (ev) {
+      var pane = ev.target.closest ? ev.target.closest('[data-wb-input-pane]') : null;
+      if (!pane || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      var rectMode = wb.active === 3 && wb.partMode === 'rect';
+      if (!rectMode && wb.active !== 5) return;
+      var p = pointIn(pane, ev);
+      if (!p || !p.inside) return;
+      ev.preventDefault();
+      try { pane.setPointerCapture(ev.pointerId); } catch (e) {}
+      drawing = { pane: pane, x: p.x, y: p.y, moved: false, rect: rectMode };
+      if (rectMode) {
+        wb.draft = [wbRound(p.x), wbRound(p.y), wbRound(p.x), wbRound(p.y)];
+        updateOverlays();
+      }
+    });
+
+    root.addEventListener('pointermove', function (ev) {
+      var pane = ev.target.closest ? ev.target.closest('[data-wb-imgpane]') : null;
+      if (drawing) {
+        var q = pointIn(drawing.pane, ev);
+        if (q) {
+          drawing.moved = drawing.moved || Math.abs(q.x - drawing.x) > 0.005 || Math.abs(q.y - drawing.y) > 0.005;
+          if (drawing.rect) {
+            var x = clamp01(q.x);
+            var y = clamp01(q.y);
+            wb.draft = [wbRound(Math.min(drawing.x, x)), wbRound(Math.min(drawing.y, y)), wbRound(Math.max(drawing.x, x)), wbRound(Math.max(drawing.y, y))];
+          }
+          wb.cursor = { x: clamp01(q.x), y: clamp01(q.y) };
+        }
+        return updateOverlays();
+      }
+      if (!pane) return;
+      var p = pointIn(pane, ev);
+      wb.cursor = p && p.inside ? { x: p.x, y: p.y } : null;
+      updateOverlays();
+    });
+
+    root.addEventListener('pointerup', function (ev) {
+      if (!drawing) return;
+      var d = drawing;
+      drawing = null;
+      var p = pointIn(d.pane, ev);
+      if (d.rect) {
+        var r = wb.draft;
+        wb.draft = null;
+        if (r && r[2] - r[0] > 0.02 && r[3] - r[1] > 0.02) wb.rects.push(r);
+      } else if (p && !d.moved) {
+        wb.focus = [wbRound(clamp01(p.x)), wbRound(clamp01(p.y))];
+      }
+      renderPanel();
+      updateOverlays();
+    });
+
+    root.addEventListener('pointercancel', function () {
+      drawing = null;
+      wb.draft = null;
+      updateOverlays();
+    });
+
+    root.addEventListener('pointerleave', function () {
+      if (drawing) return;
+      wb.cursor = null;
+      updateOverlays();
+    });
+
+    root.addEventListener('pointerout', function (ev) {
+      if (drawing || !ev.relatedTarget || (ev.relatedTarget.closest && ev.relatedTarget.closest('[data-wb-imgpane]'))) return;
+      wb.cursor = null;
+      updateOverlays();
+    });
+
+    // ---- start ----
+    var at = initial.at ? wbNodeByShort(wb.nodes, initial.at) : null;
+    if (at && at.phase) {
+      wb.active = at.phase;
+      wb.compareId = at.id;
+      if (at.refines_generation_id !== inputOf(at.phase)) wb.forcedInput = at.refines_generation_id;
+    } else {
+      var open = 1;
+      while (open < 5 && pick(open)) open += 1;
+      wb.active = open;
+    }
+    var deliverForm = phaseForm(4);
+    if (deliverForm) {
+      syncBackdropColor(deliverForm);
+      var firstEditor = qs('[data-outline-editor]', deliverForm);
+      if (firstEditor) renumberOutlineRows(firstEditor);
+    }
+    render();
+    if (wb.pending.length > 0) startPolling();
+  }
+
+  function wbNodeByShort(nodes, shortId) {
+    for (var i = 0; i < nodes.length; i++) if (nodes[i].short_id === shortId) return nodes[i];
+    return null;
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initRating();
     initBookmark();
@@ -4964,6 +6125,7 @@ export const appJs = `
     initPublicationUrlSave();
     initPublicationRemove();
     initPoseReference();
+    initOutlineEditors();
     initOptionForms();
     initBackdropColor();
     initRegionDrawing();
@@ -4982,6 +6144,7 @@ export const appJs = `
     initGalleryTimeline();
     initGalleryPending();
     initRequestLive();
+    initWorkbench();
     initNavQueue();
     initPopoverClose();
     initCompareBar();

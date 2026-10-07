@@ -16,6 +16,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
   // keeps Gallery marked current rather than leaving nav without an active item.
   const galleryActive = path === '/gallery' || path === '/compare';
   const bookmarksActive = path === '/bookmarks';
+  const workbenchActive = isActiveSection(path, '/work');
   const moreActive = isActiveSection(path, '/experiments') || path === '/check';
 
   return (
@@ -37,6 +38,9 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
           </a>
           <a href="/bookmarks" aria-current={bookmarksActive ? 'page' : undefined}>
             Bookmarks
+          </a>
+          <a href="/work" aria-current={workbenchActive ? 'page' : undefined}>
+            ワークベンチ
           </a>
           <details class="nav-more">
             <summary aria-current={moreActive ? 'page' : undefined}>More</summary>

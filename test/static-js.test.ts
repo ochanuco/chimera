@@ -51,7 +51,7 @@ describe('served app.js', () => {
     expect(appJs).toContain('return deliverOptionsFrom(form, quiet);');
     expect(appJs).toContain('const kind = formKind(form);');
     expect(appJs).toContain('postOptionRequest(kind, shortId, options, profile)');
-    expect(appJs).toContain("idempotency_key: 'gui:' + kind + ':' + generationShortId + ':' + crypto.randomUUID(),");
+    expect(appJs).toContain("idempotency_key: idempotencyKey || ('gui:' + kind + ':' + generationShortId + ':' + crypto.randomUUID()),");
     expect(appJs).toContain("alert(kind + ' failed: ' + e.message);");
     expect(appJs).not.toContain("kind: 'finalize'");
   });
@@ -64,49 +64,42 @@ describe('served app.js', () => {
     expect(body).not.toContain('options.denoise');
   });
 
-  it('deliverOptionsFrom builds options.dof from the placed focus and the slider stop, and refuses dof without a focus', () => {
-    expect(appJs).toContain('options.dof = { focus: [dofFocus[0], dofFocus[1]], f_number: dofFNumber(form) };');
+  it('dofOptionsFrom builds focus, f_number, scope and viewfinder from the form, and refuses a missing focus or an empty scope', () => {
+    expect(appJs).toContain("return { focus: [focus[0], focus[1]], f_number: dofFNumber(form), scope: scope, viewfinder: dofViewfinderFrom(form) };");
     expect(appJs).toContain('return slider && stops.length > 0 ? stops[Number(slider.value)] : undefined;');
-    expect(appJs).toContain("if (!quiet) alert('ボケを使うときは画像をクリックしてピント位置を置いてください');");
+    expect(appJs).toContain("if (!quiet) alert('画像をクリックしてピント位置を置いてください');");
+    expect(appJs).toContain("if (!scope.figure && !scope.outline && !scope.backdrop) {");
+    expect(appJs).toContain("if (kind === 'dof') return dofOptionsFrom(form, quiet);");
   });
 
-  it('renders dof in the preview as f-number and focus, and restores it from a profile', () => {
-    expect(appJs).toContain("parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));");
-    expect(appJs).toContain('function applyDofToForm(form, options)');
-    expect(appJs).toContain("if (key === 'dof' || key === 'light' || key === 'stroke_light') return;");
+  it('never sends the retired stroke_light none or dof from the deliver form', () => {
+    const body = appJs.split('function deliverOptionsFrom(form, quiet)')[1]?.split('// worker-protocol.md「dof」')[0] ?? '';
+    expect(body).not.toContain('dof');
+    expect(body).not.toContain("'none'");
+    expect(body).not.toContain('stroke_style');
+    expect(body).toContain('options.outlines = outlinesFrom(editor);');
+    expect(body).toContain('if (options.outlines.length > 0) options.stroke_light = outlineStrokeValue(editor);');
   });
 
-  it('sends dof.scope only when the scope checkbox exists, and refuses scope all with transparent delivery', () => {
-    expect(appJs).toContain("if (dofScopeCheck) options.dof.scope = !dofScopeCheck.disabled && dofScopeCheck.checked ? 'all' : 'figure';");
-    expect(appJs).toContain("if (options.dof.scope === 'all' && backdrop === null) {");
-    expect(appJs).toContain("alert('背景もぼかすは透過納品とは併用できません');");
-    expect(appJs).toContain("(value.scope === 'all' ? ' · 背景も' : '')");
+  it('renders the dof options in the preview and the outline list in the deliver preview', () => {
+    expect(appJs).toContain("parts.push('ピント ' + value[0] + ', ' + value[1]);");
+    expect(appJs).toContain("parts.push('f/' + value);");
+    expect(appJs).toContain("if (deliver && (key === 'backdrop' || key === 'light' || key === 'outlines' || key === 'stroke_light')) return;");
   });
 
-  it('disables the dof scope checkbox while dof is off or delivery is transparent, and restores it from a profile', () => {
-    expect(appJs).toContain("scopeBox.disabled = !on || (!!backdropRadio && backdropRadio.value === 'transparent');");
-    expect(appJs).toContain("if (scopeBox) scopeBox.checked = dof.scope === 'all';");
-    expect(appJs).toMatch(/syncBackdropColor\(form\);\n\s+applyDofMode\(form\);/);
+  it('edits the outline list in place: add, remove, reorder, reset to the catalog default, and a stroke shading of even or a direction', () => {
+    expect(appJs).toContain('function outlinesFrom(editor)');
+    expect(appJs).toContain("t.closest('[data-outline-add]')");
+    expect(appJs).toContain("t.closest('[data-outline-reset]')");
+    expect(appJs).toContain("row && t.closest('[data-outline-remove]')");
+    expect(appJs).toContain('function setOutlineStroke(editor, value)');
+    expect(appJs).toContain("setOutlineList(editor, Array.isArray(options.outlines) ? options.outlines : outlineDefaults(editor));");
   });
 
-  it('sends dof.viewfinder only when the select is not off, disables it while dof is off, and restores it from a profile', () => {
-    expect(appJs).toContain("if (dofViewfinder && dofViewfinder.value !== 'off') options.dof.viewfinder = dofViewfinder.value;");
-    expect(appJs).toContain('if (viewfinderSelect) viewfinderSelect.disabled = !on;');
-    expect(appJs).toContain("if (viewfinderSelect) viewfinderSelect.value = dof.viewfinder === 'on' || dof.viewfinder === 'both' ? dof.viewfinder : 'off';");
-    expect(appJs).toContain("(value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : '')");
-  });
-
-  it('maps 紫縁 and 光の向き to stroke_light: 既定 omits it, 立体 sends the direction, 均等 / 無し send even / none', () => {
-    expect(appJs).toContain("var strokeStyle = qs('select[name=\"stroke_style\"]', form).value;");
-    expect(appJs).toContain("} else if (strokeStyle === 'dir') {\n      options.stroke_light = lightFrom;");
-    expect(appJs).toContain("} else if (strokeStyle !== 'auto') {\n      options.stroke_light = strokeStyle;");
-  });
-
-  it('sends light with the shared direction, leaves 立体 to the light, and disables 光の向き only with no scene and a non-立体 rim', () => {
-    expect(appJs).toContain('options.light = { scene: lightScene.value, from: lightFrom };');
-    expect(appJs).toContain("if (strokeStyle === 'even' || strokeStyle === 'none') options.stroke_light = strokeStyle;");
-    expect(appJs).toContain("fromSelect.disabled = (!scene || scene.value === '') && !!style && style.value !== 'dir';");
-    expect(appJs).toContain("select.name !== 'light_scene' && select.name !== 'stroke_style'");
+  it('sends light with its own direction and enables the direction only with a scene', () => {
+    expect(appJs).toContain("options.light = { scene: lightScene.value, from: lightFromSelect(form).value };");
+    expect(appJs).toContain("fromSelect.disabled = !scene || scene.value === '';");
+    expect(appJs).toContain("select.name !== 'light_scene'");
   });
 
   it('sends backdrop null for the transparent choice and checks the colour format', () => {
@@ -114,22 +107,12 @@ describe('served app.js', () => {
     expect(appJs).toContain("alert('backdrop color must be #RRGGBB')");
   });
 
-  it('restores stroke_light and light from a profile: direction -> 立体 + 光の向き, even/null -> 均等, none -> 無し, absent -> 既定', () => {
-    expect(appJs).toContain('applyStrokeToForm(form, options);');
+  it('restores outlines, stroke_light and light from a profile', () => {
+    expect(appJs).toContain('applyOutlinesToForm(form, options);');
     expect(appJs).toContain('applyLightToForm(form, options);');
-    expect(appJs).toContain("} else if (stroke === null) {\n      style.value = 'even';");
-    expect(appJs).toContain("style.value = 'dir';\n      fromSelect.value = stroke;");
-    expect(appJs).toContain("} else if (stroke === undefined) {\n      style.value = 'auto';");
     expect(appJs).toContain("parts.push('光源 '");
     expect(appJs).not.toContain('applyHiresToForm');
-  });
-
-  it('describes 光源 / 光の向き / 紫縁 in the deliver send preview with the form wording instead of stroke_light', () => {
-    expect(appJs).toContain("parts.push('光の向き ' + fromLabel);");
-    expect(appJs).toContain("'（' + fromLabel + '）'");
-    expect(appJs).toContain("parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());");
-    expect(appJs).toContain("if (deliver && (key === 'backdrop' || key === 'light' || key === 'stroke_light')) return;");
-    expect(appJs).toContain("var deliver = formKind(form) === 'deliver';");
+    expect(appJs).not.toContain('applyDofToForm');
   });
 
   it('previews keep_regions as a count and prefixes the preview with the profile for a deliver form', () => {
@@ -143,8 +126,8 @@ describe('served app.js', () => {
     expect(appJs).toContain('applyProfileOptionsToForm(form, options);');
   });
 
-  it('labels request kinds 描き直し / 納品 / repair / masked redraw / finalize without defaulting new kinds to finalize', () => {
-    expect(appJs).toContain("var labels = { redraw: '描き直し', deliver: '納品', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };");
+  it('labels request kinds 描き直し / 納品 / ボケ / repair / masked redraw / finalize without defaulting new kinds to finalize', () => {
+    expect(appJs).toContain("var labels = { redraw: '描き直し', deliver: '納品', dof: 'ボケ', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };");
     expect(appJs).toContain("return labels[kind] || kind || '';");
     expect(appJs).toContain('requestKindLabel(kind) + \' · \'');
     expect(appJs).toContain('kind.textContent = requestKindLabel(request.kind);');
@@ -155,11 +138,11 @@ describe('served app.js', () => {
     expect(appJs).toContain("qs('.repair-region-overlay[data-owner=\"' + owner + '\"]', parent)");
   });
 
-  it('draws a clipped, click-through dof guide circle sized by guide_radius_per_f * F * long side and updated with the focus, F and ボケ toggle', () => {
+  it('draws a clipped, click-through dof guide circle sized by guide_radius_per_f * F * long side and updated with the focus and F', () => {
     expect(appJs).toContain('function updateDofGuide(form)');
     expect(appJs).toContain("slider.getAttribute('data-dof-guide-radius')");
     expect(appJs).toContain('var d = 2 * k * f * Math.max(w, h);');
-    expect(appJs).toContain("var show = !!box && box.checked && !!focus && k > 0 && f !== undefined;");
+    expect(appJs).toContain("var show = !!focus && k > 0 && f !== undefined;");
     expect(appJs).toContain("guideClip.className = 'dof-guide-clip';");
     expect(appJs).toContain('var resync = function () { syncRepairRegionOverlayGeometry(state); updateDofGuide(form); };');
     expect(styleCss).toMatch(/\.dof-guide-clip \{[^}]*overflow: hidden; pointer-events: none;/);
@@ -167,7 +150,7 @@ describe('served app.js', () => {
   });
 
   it('places the dof focus through the repair-region overlay only while region drawing is off', () => {
-    expect(appJs).toContain("state.overlay.classList.toggle('dof-focus-on', on && !repairRegionDrawingOn(form));");
+    expect(appJs).toContain("state.overlay.classList.toggle('dof-focus-on', !repairRegionDrawingOn(form));");
     expect(appJs).toContain('setDofFocus(form, [fx, fy]);');
   });
 

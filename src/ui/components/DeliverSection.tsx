@@ -1,7 +1,8 @@
 import type { Dials, DeliverProfileOption } from '../option-forms';
-import type { DeliverDefaults, DofCatalog } from '../../lib/catalogs';
+import type { DeliverDefaults, DeliverOutlines } from '../../lib/catalogs';
 import type { RedrawLight } from '../../lib/catalogs';
-import { DOF_VIEWFINDER_LABELS, Help, LIGHT_FROM_CHOICES, LIGHT_SCENE_LABELS, TriStateField } from './OptionControls';
+import { Help, LIGHT_FROM_CHOICES, LIGHT_SCENE_LABELS, TriStateField } from './OptionControls';
+import { OutlineEditor } from './OutlineEditor';
 
 export interface BackdropOption {
   name: string;
@@ -11,7 +12,8 @@ export interface BackdropOption {
 export interface DeliverFormData {
   dials: Dials | null;
   defaults: DeliverDefaults | null;
-  dof: DofCatalog | null;
+  /** The recipe's `deliver.outlines`: the default outline list and its limits. null falls back to white inside, purple outside. */
+  outlines: DeliverOutlines | null;
   /** The recipe's `redraw.light`: the scenes and directions the deliver `light` field offers. */
   light: RedrawLight | null;
   backdropColor: string | null;
@@ -30,25 +32,14 @@ function backdropThumbnailUrl(recipeRef: string, catalogVersion: string | null, 
   return `/api/v1/catalogs/${encodeURIComponent(recipeRef)}/backdrops/${encodeURIComponent(name)}.png${q}`;
 }
 
-function nearestStopIndex(stops: number[], value: number): number {
-  let best = 0;
-  stops.forEach((s, i) => {
-    if (Math.abs(s - value) < Math.abs(stops[best]! - value)) best = i;
-  });
-  return best;
-}
-
-const DOF_HELP =
-  '深度推定で人物の中だけを、ピント位置の深度から離れるほどぼかす。F 値が小さいほど強くぼける。切り抜きはぼかす前の絵で取る。背景もぼかすをオンにすると白フチ・紫フチ・影・背景までぼかす（透過納品とは併用できない）。ファインダー表示は三分割グリッド・ピント位置の枠・シャッター速度と F 値のバーを納品画像に重ねる。ON/OFF 2枚なら重ねない絵と重ねた絵を両方納品する。off なら dof を送らない';
-
 const LIGHT_HELP =
-  '紫縁の既定は、元の絵の系譜でいちばん近い描き直し（light）の光源の向き、無ければ recipe の既定。立体を選ぶと光の向きで太い側と落ち影が決まる。光源を指定すると納品の光源をこの向きで上書きする';
+  '光源を指定すると、納品の光源をこの向きで上書きする。指定しなければ元の絵の系譜でいちばん近い描き直し（light）の光源を引き継ぐ。フチの陰影の向きは「フチ」の欄で選ぶ';
 
-/** Deliver form body: profile buttons, 仕上げ (repin / recolor / keep legwear), 納品の見た目 (backdrop, light, stroke) and ボケ (dof). */
+/** Deliver form body: profile buttons, 仕上げ (repin / recolor / skin / keep legwear / keep scene) and 納品の見た目 (backdrop, light, outlines). */
 export function DeliverFields({
   dials,
   defaults,
-  dof,
+  outlines,
   light,
   backdropColor,
   profiles,
@@ -60,8 +51,8 @@ export function DeliverFields({
 
   const lightFromValues = LIGHT_FROM_CHOICES.map(([value]) => value);
   const catalogStroke = typeof defaults?.stroke_light === 'string' ? defaults.stroke_light : null;
-  const lightFromDefault =
-    catalogStroke && lightFromValues.includes(catalogStroke) ? catalogStroke : light && lightFromValues.includes(light.defaultFrom) ? light.defaultFrom : 'n';
+  const strokeDefault = catalogStroke && (catalogStroke === 'even' || lightFromValues.includes(catalogStroke)) ? catalogStroke : 'even';
+  const lightFromDefault = light && lightFromValues.includes(light.defaultFrom) ? light.defaultFrom : 'n';
 
   // Pattern choices: catalog backdrops when published, else the pre-thumbnail fallback of a single
   // unillustrated "stripes" card (needed for a catalog from a worker that predates this key).
@@ -70,8 +61,6 @@ export function DeliverFields({
   const rawBackdropDefault = typeof defaults?.backdrop === 'string' ? defaults.backdrop : null;
   const backdropDefault =
     rawBackdropDefault && backdropChoiceNames.includes(rawBackdropDefault) ? rawBackdropDefault : patternChoices[0]!.name;
-
-  const dofDefaultIndex = dof ? nearestStopIndex(dof.stops, dof.default) : 0;
 
   return (
     <>
@@ -107,6 +96,10 @@ export function DeliverFields({
           <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
         </label>
         <Help text="yukari のパレットに塗り直す（膝枕パレット断定用）" />
+        <label>
+          <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える（skin）
+        </label>
+        <Help text="肌の色を揃える後処理" />
         {dialsEnabled ? (
           <TriStateField fieldKey="keep_legwear" label="脚衣を残す（keep legwear）" />
         ) : (
@@ -115,6 +108,10 @@ export function DeliverFields({
           </label>
         )}
         <Help text="切り抜きで脚衣が消えないよう押さえる（強度 0.62）" />
+        <label>
+          <input type="checkbox" name="keep_scene" checked={defaults?.keep_scene === true} /> 元の場面を残す（keep scene）
+        </label>
+        <Help text="背景を差し替えず、元の場面をそのまま背景にする" />
       </fieldset>
 
       <fieldset class="option-group">
@@ -172,69 +169,14 @@ export function DeliverFields({
               ))}
             </select>
           </label>
-          <label class="light-row">
-            <span>紫縁</span>
-            <select name="stroke_style">
-              <option value="auto" selected>
-                既定
-              </option>
-              <option value="dir">立体</option>
-              <option value="even">均等</option>
-              <option value="none">無し</option>
-            </select>
-          </label>
           <Help text={LIGHT_HELP} />
         </div>
       </fieldset>
 
-      {dof ? (
-        <fieldset class="option-group">
-          <legend>ボケ</legend>
-          <label>
-            <input type="checkbox" name="dof" /> 被写界深度ボケ（dof）
-          </label>
-          <Help text={DOF_HELP} />
-          <div class="dof-tools" data-dof-tools>
-            <span class="repair-region-hint">画像をクリックしてピント位置を置く</span>
-            <span class="dof-focus-readout" data-dof-focus-readout></span>
-          </div>
-          <label class="dof-f-row">
-            F値{' '}
-            <input
-              type="range"
-              name="dof_f_stop"
-              min="0"
-              max={String(dof.stops.length - 1)}
-              step="1"
-              value={String(dofDefaultIndex)}
-              data-dof-stops={JSON.stringify(dof.stops)}
-              data-dof-guide-radius={dof.guideRadiusPerF !== null ? String(dof.guideRadiusPerF) : undefined}
-              disabled
-            />{' '}
-            <span class="dof-f-readout" data-dof-f-readout>
-              f/{dof.stops[dofDefaultIndex]}
-            </span>
-          </label>
-          {dof.guideRadiusPerF !== null ? <span class="repair-region-hint">円はくっきり見える範囲の目安（奥行きは見ていない）</span> : null}
-          {dof.scope ? (
-            <label>
-              <input type="checkbox" name="dof_scope_all" checked={dof.scope.backdrop} disabled /> 背景もぼかす（白フチ・紫フチ・影・背景も）
-            </label>
-          ) : null}
-          {dof.viewfinder ? (
-            <label>
-              ファインダー表示{' '}
-              <select name="dof_viewfinder" disabled>
-                {dof.viewfinder.values.map((v) => (
-                  <option value={v} selected={v === dof.viewfinder!.default}>
-                    {DOF_VIEWFINDER_LABELS[v] ?? v}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </fieldset>
-      ) : null}
+      <fieldset class="option-group">
+        <legend>フチ</legend>
+        <OutlineEditor outlines={outlines} stroke={strokeDefault} />
+      </fieldset>
 
       <p class="option-preview"></p>
       <button type="submit">納品する</button>
