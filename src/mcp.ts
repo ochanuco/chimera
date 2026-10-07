@@ -13,13 +13,14 @@ import {
   patchesSchema,
 } from './schemas/experiments';
 import {
-  requestKindSchema,
+  creatableRequestKindSchema,
   requestKindFilterSchema,
   requestStatusSchema,
   RECIPE_REF_RE,
   payloadEnvelopeIssues,
-  finalizeOptionsSchema,
-  finalizeProfileRefSchema,
+  redrawOptionsSchema,
+  deliverOptionsSchema,
+  deliverProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
 } from './schemas/requests';
@@ -184,7 +185,7 @@ const createRunInputSchema = createExperimentRunSchema
 /** REST の createRequestSchema と同じ封筒検証だが、`created_by` は tool 側で 'mcp' に固定するため受け取らない。 */
 const createRequestInputSchema = z
   .object({
-    kind: requestKindSchema,
+    kind: creatableRequestKindSchema,
     payload: jsonObject,
     recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
     idempotency_key: z.string().min(1),
@@ -195,11 +196,18 @@ const createRequestInputSchema = z
     }
   });
 
-/** `finalize_generation` の入力。options / profile は finalizePayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
-const finalizeGenerationInputSchema = z.object({
+/** `redraw_generation` の入力。options は redrawPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+const redrawGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
-  options: finalizeOptionsSchema.optional(),
-  profile: finalizeProfileRefSchema.optional(),
+  options: redrawOptionsSchema,
+  idempotency_key: z.string().min(1),
+});
+
+/** `deliver_generation` の入力。options / profile は deliverPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+const deliverGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  options: deliverOptionsSchema.optional(),
+  profile: deliverProfileRefSchema.optional(),
   idempotency_key: z.string().min(1),
 });
 
@@ -352,8 +360,10 @@ const MCP_INSTRUCTIONS =
   'get_generation reports which pose a Generation drew and that pose\'s current pin as request.drawn_pose.\n' +
   '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
   'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
-  '5. A finalized / repaired / masked_redraw Generation exposes its pre-finalize source as `refines_generation` ' +
-  '({id, short_id, rating}) in get_generation; it is null for a raw Generation.\n' +
+  '5. A redrawn / delivered / repaired / masked_redraw Generation exposes the Generation it was made from as ' +
+  '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
+  'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
+  'purple stroke).\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
@@ -666,10 +676,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
-        'schema_version/request/generation required), "finalize" (payload {generation_id, options?}), or "repair" ' +
+        'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
+        'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
-        '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch), "redraw" or "deliver" ' +
-        '(payload {generation_id, options}; redraw options require a method: canvas, hires or light). created_by is ' +
+        '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
+        'be created. redraw_generation / deliver_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
@@ -689,91 +700,89 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   );
 
   server.registerTool(
-    'finalize_generation',
+    'redraw_generation',
     {
-      outputSchema: mcpOutputSchemas.finalize_generation,
+      outputSchema: mcpOutputSchemas.redraw_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
-        'Enqueue a finalize request (docs/worker-protocol.md "finalize"): one ComfyUI graph that, unless ' +
-        'options.deliver_only is set, redraws the pick at delivery size, then cuts a matte and composites the ' +
-        'backdrop and purple stroke; its output Generations record the source Generation as the one they refine ' +
-        "(refines_generation). generation_id accepts a short_id. " +
-        'The redraw only works on a picture drawn with Anima (recipe yukari); a picture from any other recipe ' +
-        'can only be finalized with deliver_only: true (deliver without redraw) — without it the worker fails the ' +
-        'request. A LayerDiffuse-derived picture cannot be finalized at all, deliver_only included. ' +
-        'options is optional; an omitted field resolves to the base recipe\'s published finalize default — ' +
-        'list_catalog\'s recipes[].finalize.defaults is where these are published, the same values the WebUI ' +
-        'form presets from, so look them up per-recipe rather than hardcoding. Two fields default across every ' +
-        'recipe: stroke_light to "n" (light from above, shadow below) and backdrop to "dots". repin and ' +
-        'deliver_only also default to true; a redraw-shaping option (denoise, size, route, finalizer, ' +
-        'keep_regions or upscale) turns deliver_only off and the redraw back on, while repair and ' +
-        'repair_regions do not (they combine with deliver_only instead, see below). An explicit null ' +
-        'keeps its own distinct meaning rather than falling back to a default: backdrop: null means no ' +
-        'backdrop (transparent). Other ' +
-        'fields: ' +
-        'denoise (redraw strength; recipe default 0.4), ' +
-        'repin (accent-compression recolor pass), recolor (palette recolor, accepted for any source), ' +
-        'keep_legwear (keep tights/legwear — true for the worker default weight 0.62, or a number), ' +
-        'route ("latent" or "pixel", worker default), size (redraw longest side, worker default), ' +
-        'skin (skin pass), ' +
-        'keep_scene (keep background/scene), transparent (force alpha-cut delivery instead of an opaque ' +
-        'backdrop — an explicit true overrides the recipe\'s defaulted backdrop), ' +
+        'Enqueue a redraw request (docs/worker-protocol.md "redraw"): the worker redraws the source picture in exactly ' +
+        'one way, chosen by options.method; chain redraw requests for more than one operation. Its output Generations record ' +
+        'the source Generation as the one they refine (refines_generation). generation_id accepts a short_id. ' +
+        'method "canvas" re-renders the whole canvas: denoise (strength, number or a word from list_catalog\'s ' +
+        'recipes[].dials.redraw), size (longest side), route ("latent" or "pixel"), finalizer, upscale ' +
+        '(bicubic/nearest-exact/bilinear/lanczos), keep_regions ([x0,y0,x1,y1] fraction rectangles the redraw keeps close ' +
+        'to the source, through a feathered mask; omit rather than null) and keep_strength (above 0 and below 1, only ' +
+        'with keep_regions). method "hires" re-renders the stored ComfyUI graph at the same seed at a larger size: ' +
+        'hires (integer >= 64, the long side in px; the pixel area is that of the standard 1024x1640 canvas at that long ' +
+        'side, with the source\'s own aspect ratio) and denoise (above 0 up to 1, default 0.45; 0.35 keeps the composition). ' +
+        'method "light" relights the picture: scene ("sunset" | "moon") and from (the direction the light comes from, ' +
+        'n/ne/e/se/s/sw/w/nw, default "nw"). Omitted fields resolve to the defaults published in list_catalog\'s ' +
+        'recipes[].redraw (defaults per method, and the light scenes and directions). ' +
+        'Sources: hires needs an Anima generate output (not an import without a graph, not a repair / masked_redraw / ' +
+        'redraw output, not already hires-ed); canvas and light work on any Anima picture, including repair, masked_redraw ' +
+        'and redraw outputs. Neither accepts an already delivered picture or a LayerDiffuse-derived one, and a picture ' +
+        'from a non-Anima recipe cannot be redrawn. Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: redrawGenerationInputSchema,
+    },
+    async ({ generation_id, options, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'redraw', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.redraw_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'deliver_generation',
+    {
+      outputSchema: mcpOutputSchemas.deliver_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a deliver request (docs/worker-protocol.md "deliver"): cuts the figure out of the source picture and ' +
+        'finishes it — backdrop, purple stroke, optional depth-of-field and relight — without redrawing it. Its output ' +
+        'Generations record the source Generation as the one they refine (refines_generation). generation_id accepts a ' +
+        'short_id and takes a raw or redrawn picture, not an already delivered one; a LayerDiffuse-derived picture cannot be ' +
+        'delivered. The cut assets (alpha, depth, cut) are made by the first deliver of a picture and reused by later ' +
+        'delivers of it, so re-delivering with another backdrop, stroke or F-number is cheap. ' +
+        'options is optional; an omitted field resolves to the recipe\'s published deliver default — ' +
+        'list_catalog\'s recipes[].deliver.defaults is where these are published, the same values the WebUI form presets ' +
+        'from, so look them up per-recipe rather than hardcoding (stroke_light "n", backdrop "dots" and repin true across ' +
+        'recipes). An explicit null keeps its own meaning rather than falling back to a default. Fields: ' +
+        'repin (accent-compression recolor pass), recolor (palette recolor), skin (skin pass), ' +
+        'keep_legwear (keep tights/legwear: true for the worker default weight 0.62, a number, or a word from ' +
+        'recipes[].dials.deliver), keep_scene (keep background/scene), ' +
         'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
-        'or a #RRGGBB color; recipe default above, or null for none), ' +
-        'upscale (resize method: bicubic/nearest-exact/bilinear/lanczos), ' +
-        'deliver_size (delivered file\'s longest side; the redraw itself stays at size), ' +
-        'stroke_light (purple-stroke style: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; "even" (null is accepted as the same) is a uniform-width stroke; "none" is no purple stroke at all; recipe default above. The drop shadow appears only for a direction), ' +
-        'keep_regions ([x0,y0,x1,y1] fraction rectangles the redraw keeps close to the source picture, through a ' +
-        'feathered mask; omit for none — null is rejected; being redraw-shaping, it turns deliver_only off), ' +
-        'keep_strength (how much the redraw still touches a keep_regions rectangle, above 0 and below 1, worker ' +
-        'default 0.25; only meaningful with keep_regions; omit rather than null), ' +
-        "repair (array of \"hands\"/\"feet\" to also mask-redraw in this same request), " +
-        'repair_regions (explicit [x0,y0,x1,y1] fraction rectangles for that repair pass, worker auto-detects when omitted), ' +
-        'repair_denoise (repair redraw strength), repair_pad (repair region padding factor), ' +
-        'repair_size (repair redraw longest side), ' +
-        'repair_lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number), ' +
-        'repair_seeds (only meaningful alongside deliver_only plus repair and/or repair_regions: how many delivery ' +
-        'candidates to produce, one per seed, 1-8, worker default 4), ' +
-        'hires (integer >= 64: long side in px of a same-seed hires re-render done before the rest of finalize. The size ' +
-        'is the pixel area the standard 1024x1640 canvas has at that long side, with the source\'s own aspect ratio ' +
-        '(2048 gives 1280x2048 for a portrait, about 1616x1616 for a square): the ' +
-        "worker adds a LatentUpscale to that size plus a same-seed KSampler at hires_denoise to the source " +
-        "Generation's stored ComfyUI graph — prompt, LoRAs and seed unchanged, canvas never changed directly — and the " +
-        'other options apply to that render. Graph-mode sources work too; fails for import images without a graph, ' +
-        'repaired / masked_redraw raws, non-Anima pictures and graphs already hires-ed. Requires deliver_only; fails ' +
-        'with deliver_only false, with redraw options (denoise, route, finalizer, size, keep_regions, upscale) and with ' +
-        'repair / repair_regions / repair_seeds; deliver_size is fine. null/omitted = off), ' +
-        'hires_denoise (denoise of that same-seed pass, above 0 up to 1, null = 0.45, which also redraws line art; 0.35 keeps the composition; ' +
-        'fails without hires), ' +
+        'or a #RRGGBB color; null delivers transparent unless transparent is false), ' +
+        'transparent (true is the explicit form of an alpha-cut delivery with no backdrop; false keeps a backdrop even ' +
+        'when backdrop is null), ' +
+        'stroke_light (purple-stroke style: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; ' +
+        '"even" (null is accepted as the same) is a uniform-width stroke; "none" is no purple stroke at all), ' +
+        'deliver_size (delivered file\'s longest side), ' +
         'dof ({focus: [x, y], f_number}: depth-of-field blur. focus is fractions 0-1 of the source image width/height, ' +
-        'f_number is 1.4-22 and required, smaller = more blur. The worker estimates depth (Depth Anything V2) and blurs ' +
-        'only inside the figure, the further from the focus point\'s depth the stronger; the cutout is taken from the ' +
-        'pre-blur picture. Optional scope: "figure" blurs inside the figure only; "all" also blurs the white edge, ' +
-        'purple stroke, shadow and backdrop, and fails with transparent: true, or with backdrop: null unless keep_scene is set (keep_scene plus "all" is fine). Omitted scope means "all", or "figure" for a transparent delivery. ' +
-        'Optional viewfinder: "off" (default), "on" draws a mirrorless viewfinder overlay (rule-of-thirds grid, a focus frame at focus, ' +
-        'a shutter/F-number/ISO bar) on the delivered image, "both" delivers the plain image and the overlaid one as two Generations. ' +
-        'Unknown keys fail; fails with repair / repair_regions / repair_seeds. null/omitted = off), ' +
-        'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: relights the delivered picture as a sunset or moonlit scene; ' +
-        'from is the direction the light comes from, default "nw". Requires deliver_only, fails with repair / repair_regions, ' +
-        'and the purple stroke follows from by default; stroke_light "none", "even" or null combines with light, while a direction different from from fails. Unknown keys fail. null/omitted = off), ' +
-        'deliver_only (skip the redraw and deliver the Generation\'s own pixels — matte, repin, backdrop and stroke ' +
-        'only; defaults to true as noted above, so it need not be set by hand for the common case; a picture not ' +
-        'drawn with Anima can only be finalized this way — pass it explicitly there. For an Anima source, pass it ' +
-        'explicitly when the render itself is the look, i.e. a redraw would repaint surfaces such as tights. ' +
-        'Combined with repair and/or repair_regions, it instead produces one delivery candidate per ' +
-        'seed — a masked reroll of the region(s) on the source\'s own model, then the no-redraw delivery tail — ' +
-        'recorded as a repair request holding a raw and a delivered Generation per seed (repair_seeds controls ' +
-        'how many). Still cannot combine with denoise, size, route, finalizer, keep_regions or a truthy upscale; ' +
-        'repin, recolor, keep_legwear, keep_scene, transparent, backdrop, stroke_light and ' +
-        'deliver_size stay compatible). ' +
-        'Every dial-able option (denoise, keep_legwear, repair_denoise, repair_lora) also accepts ' +
-        'a word string instead of a number/true — the word vocabulary for this recipe is list_catalog\'s ' +
-        'recipes[].dials.finalize (chimera only checks the type; the worker resolves the word). ' +
-        'profile {name, version?} resolves a finalize Preset (list_presets kind="finalize") for the source ' +
+        'f_number is 1.4-22 and required, smaller = more blur. The worker blurs only inside the figure, the further from ' +
+        'the focus point\'s depth the stronger; the cutout is taken from the pre-blur picture. Optional scope: "figure" ' +
+        'blurs inside the figure only; "all" also blurs the white edge, purple stroke, shadow and backdrop, and fails ' +
+        'with a transparent delivery or with backdrop: null unless keep_scene is set. Omitted scope means "all", or ' +
+        '"figure" for a transparent delivery. Optional viewfinder: "off" (default), "on" draws a mirrorless viewfinder ' +
+        'overlay (rule-of-thirds grid, a focus frame at focus, a shutter/F-number/ISO bar) on the delivered image, "both" ' +
+        'delivers the plain image and the overlaid one as two Generations. Unknown keys fail. null/omitted = off), ' +
+        'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: the scene and light direction ' +
+        'the delivery follows; from is the direction the light comes from, default "nw"). When light is omitted it is inherited from the ' +
+        'nearest redraw with method "light" among the source\'s ancestors, and stroke_light follows that direction; a ' +
+        'stroke_light direction different from the light\'s from fails, "none", "even" or null combine with it. ' +
+        'Every dial-able option (keep_legwear) also accepts a word string instead of a number/true — the word ' +
+        'vocabulary for this recipe is list_catalog\'s recipes[].dials.deliver (chimera only checks the type; the worker ' +
+        'resolves the word). ' +
+        'profile {name, version?} resolves a deliver Preset (list_presets kind="deliver") for the source ' +
         "Generation's recipe (latest active version when version is omitted) and uses its options as the base — " +
         'any key also given in options overrides it, explicit null included. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: finalizeGenerationInputSchema,
+      inputSchema: deliverGenerationInputSchema,
     },
     async ({ generation_id, options, profile, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
@@ -782,11 +791,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (profile) payload.profile = profile;
       const { row, created } = await createRequest(
         db,
-        { kind: 'finalize', payload, idempotency_key, created_by: 'mcp' },
+        { kind: 'deliver', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.finalize_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputSchemas.deliver_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -797,9 +806,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a repair request (docs/worker-protocol.md "repair"): a masked local redraw of hands and/or feet ' +
-        'on an already finalized or raw Generation; its output Generations record the source Generation as the one they refine, the ' +
-        'same lineage shape as finalize. generation_id accepts a short_id and may be either sibling of a finalize ' +
-        "request (the raw or the delivered Generation). options is optional; every field defaults to the worker/recipe " +
+        'on a raw or redrawn Generation; its output Generations record the source Generation as the one they refine, the ' +
+        'same lineage shape as redraw. generation_id accepts a short_id and cannot be an already delivered Generation. ' +
+        "options is optional; every field defaults to the worker/recipe " +
         'default when omitted: parts (array of "hands"/"feet" to redraw, worker default both), ' +
         'regions (explicit [x0,y0,x1,y1] fraction rectangles, worker auto-detects when omitted), ' +
         'denoise (redraw strength, recipe default), seeds (up to 16 seeds to try, worker default), ' +
@@ -908,7 +917,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.list_generations,
       description:
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
-        '(get_generation, get_generation_lineage, get_generation_image, finalize_generation, repair_generation, ' +
+        '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, repair_generation, ' +
         "masked_redraw_generation, derive_request) assumes you already have one. Filters mirror the gallery's own " +
         'filters (character, tag, rating, bookmark, created_at range) and combine freely; published=true is the ' +
         "delivered-look index — every look that was posted, each still carrying its look:<pose> tag; reference=true " +
@@ -967,7 +976,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "request.drawn_pose is {recipe, pose, reference}: the pose this Generation drew and that pose's current basis-render pin " +
         '(same shape as get_catalog_pose reference, null if unpinned); null when the request names no pose. pose_reference, by ' +
         'contrast, says whether this Generation is itself a pin. ' +
-        'comfy_job.prompt_not_reusable is non-null for repair, masked_redraw and repair-carrying finalize outputs: their ' +
+        'comfy_job.prompt_not_reusable is non-null for repair and masked_redraw outputs (and older repair-carrying finalize outputs): their ' +
         'render_facts prompts were cut for a masked region (face, hair and hood tags dropped), so never pass them as a ' +
         'generate prompt — use derive_request from the Generation instead. ' +
         'Prompt bodies (request prompt/negative_prompt/parameters.prompt_patch/prompt patches, render_facts sampler prompts, the ComfyUI graph) are folded to a ' +
@@ -1009,14 +1018,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything, and never modifies the parent Generation. Idempotent by idempotency_key. " +
         'Enqueue a generate request derived from an existing Generation: carries the parent request\'s recipe/parameters/patches ' +
         'forward, merging `parameters` over the parent\'s and appending (or, with replace_patches, replacing) `patches`. ' +
-        'If from_generation_id is a finalized or repaired Generation, it is resolved back to the raw Generation it was made ' +
-        'from before deriving (finalize/repair payloads are not generate parameters). ' +
+        'If from_generation_id is a redrawn, delivered or repaired Generation, it is resolved back to the raw Generation it was made ' +
+        'from before deriving (redraw/deliver/repair payloads are not generate parameters). ' +
         '404s if from_generation_id does not resolve; 409s if the resolved source request has no single recipe (graph-mode) ' +
         'or if a refinement in the chain has no source generation to resolve through; ' +
         'or if the source request carries patches but no pinned preset version on a recipe that has presets — pass ' +
         'replace_patches: true (with patches restated against the current preset) or derive from a pinned request instead. ' +
         'seeds, if given, must have exactly `count` entries. reference is recorded as a purpose="derive" Reference back to the ' +
-        'resolved source Generation (plus a second purpose="derive" aspect="finalized" reference to the requested Generation ' +
+        'resolved source Generation (plus a second purpose="derive" aspect="delivered" reference to the requested Generation ' +
         'when it differs from the source). ' +
         promptPartGuidance('identity_override (written to generation.identity_override; not carried from the parent)') +
         'Pass a stable idempotency_key — the same key replays the original request ' +
@@ -1090,9 +1099,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
         'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
-        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for finalize/repair ' +
-        'dial-able options, keyed by the option name — the word vocabulary finalize_generation/repair_generation accept ' +
-        'in place of a number), the top-level `backdrops` name/label list (finalize_generation\'s backdrop pattern ' +
+        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
+        'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
+        'in place of a number), `deliver` (defaults, dof, stroke_light, backdrop_color: what deliver_generation resolves ' +
+        'omitted options to) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',
       inputSchema: listCatalogInputSchema,
@@ -1139,7 +1150,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputSchemas.list_presets,
       description:
-        'List Presets (pose/costume/expression/finalize), one row per name at its latest version — no record body. ' +
+        'List Presets (pose/costume/expression/deliver), one row per name at its latest version — no record body. ' +
         "Unlike list_catalog/get_catalog_pose, which read the comfyui-recipes catalog snapshot, Presets are " +
         "chimera's own versioned source of truth for prompt bodies (docs/domain-model.md#preset). Defaults to " +
         'status=active only; include_deprecated also surfaces names whose latest version has been deprecated.',
@@ -1164,7 +1175,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "from its base chain (oldest first). version defaults to the name's latest active version; an explicit " +
         'version can still be read once deprecated. Presets are chimera\'s own versioned source of truth for ' +
         'prompt bodies (docs/domain-model.md#preset) — unlike get_catalog_pose, which reads a comfyui-recipes snapshot. ' +
-        'kind "finalize" is a different shape: record is {options} (a finalize_generation options object, words ' +
+        'kind "deliver" is a different shape: record is {options} (a deliver_generation options object, words ' +
         'preserved) and patches is always [] — it has no base chain.',
       inputSchema: getPresetInputSchema,
       annotations: { readOnlyHint: true },
@@ -1189,7 +1200,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'existing name for a new version of it, or a new name to start it at version 1. base is the preset version ' +
         'the originating generate request pinned (generation.presets); if that request predates pinning and carries ' +
         'no pin, pass base_version explicitly — chimera never guesses a base. kind defaults to "pose". If ' +
-        'generation_id is a finalized/repaired Generation, it is resolved back to the raw Generation the same way ' +
+        'generation_id is a redrawn/delivered/repaired Generation, it is resolved back to the raw Generation the same way ' +
         'derive_request does, and recipe/base/patches are taken from there — but rating is read from generation_id ' +
         'itself. 409s when rating is not good, when the resolved source request has no recipe (graph-mode), or when ' +
         'neither a pin nor base_version is available. idempotency_key replay returns the already-created version ' +
@@ -1221,7 +1232,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Pins generation_id as the basis render for recipe/pose — the render plain_render reproduces (at its seed) as the ' +
         "pose's recipe-default look. The pin belongs to the (recipe, pose) name, not a version: a Preset version carries " +
         'patches, the pin says which render is the baseline the pose should look like. ' +
-        'generation_id must carry rating=good. If it is a finalized/repaired Generation, it is resolved back to the raw ' +
+        'generation_id must carry rating=good. If it is a redrawn/delivered/repaired Generation, it is resolved back to the raw ' +
         'Generation the same way derive_request does — but rating is read from generation_id itself. The resolved request ' +
         'must then be a *plain render* of recipe/pose: same recipe, drew this pose, no patches, and the queued generate ' +
         'request (when one exists) did not override prompt/negative_prompt — every failing rule is named in one 409, not ' +
@@ -1283,14 +1294,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.promote_to_profile,
       description:
         'Non-destructive: only appends one new Preset version. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
-        'Turn a rating=good finalize-kind Generation into a new kind="finalize" Preset version (a reusable profile of ' +
-        'finalize options, docs/worker-protocol.md「finalize profile」). generation_id must be a Generation produced by a ' +
-        'finalize request (the delivered Generation or, if it also carried a repair, either sibling) — found via the ' +
-        "finalize request whose result includes this Generation. 409s when rating is not good or when " +
-        'generation_id was not produced by a finalize request. The new version\'s body is that request\'s queued ' +
-        'options verbatim (dial words preserved). Never rewrites an existing version — pass an existing name for a new ' +
-        'version of it, or a new name to start it at version 1. idempotency_key replay returns the already-created ' +
-        'version unchanged. Use the result with finalize_generation\'s profile input or list_presets kind="finalize".',
+        'Turn a rating=good deliver-kind Generation into a new kind="deliver" Preset version (a reusable profile of ' +
+        'deliver options, docs/worker-protocol.md「deliver profile」). generation_id must be a Generation produced by a ' +
+        'deliver request (any of its output Generations) — found via the deliver request whose result includes this ' +
+        'Generation. 409s when rating is not good or when generation_id was not produced by a deliver request. The new ' +
+        'version\'s body is that request\'s queued options verbatim (dial words preserved). Never rewrites an existing ' +
+        'version — pass an existing name for a new version of it, or a new name to start it at version 1. ' +
+        'idempotency_key replay returns the already-created version unchanged. Use the result with ' +
+        'deliver_generation\'s profile input or list_presets kind="deliver".',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: promoteToProfileInputSchema,
     },

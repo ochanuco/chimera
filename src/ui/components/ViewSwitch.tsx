@@ -1,8 +1,8 @@
 export type GalleryView = 'raw' | 'refined' | 'all';
 
 const VIEW_OPTIONS: { value: GalleryView; label: string }[] = [
-  { value: 'raw', label: 'finalize 以外' },
-  { value: 'refined', label: 'finalize' },
+  { value: 'raw', label: '納品以外' },
+  { value: 'refined', label: '納品' },
   { value: 'all', label: 'すべて' },
 ];
 

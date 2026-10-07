@@ -314,7 +314,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-from-badge-link { text-decoration: none; }
 .card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
 
-/* from-badge が無ければ finalize ピルのみがこの位置に来る (docs/ui.md「Gallery」) */
+/* from-badge が無ければ request ピルのみがこの位置に来る (docs/ui.md「Gallery」) */
 .card .thumb-link .thumb-badges-top {
   position: absolute;
   top: 0.4rem;
@@ -328,7 +328,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 
 /* request-status-* は .request-status-list と共通の色クラス（本ファイル下方） */
-.card-finalize-badge {
+.card-request-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
@@ -343,7 +343,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.card-finalize-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.card-request-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .card .thumb-link .thumb-badges-bottom {
   position: absolute;
@@ -1087,10 +1087,10 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
-.finalize-form { display: flex; flex-direction: column; gap: 0.7rem; }
-.finalize-form input[type="number"] { width: 5rem; }
+.option-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.option-form input[type="number"] { width: 5rem; }
 /* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial/profile ボタン全部がアクセント色で塗られ選択中が見えなくなる */
-.finalize-form button[type="submit"] {
+.option-form button[type="submit"] {
   align-self: flex-start;
   background: var(--accent);
   color: #10131c;
@@ -1100,13 +1100,13 @@ details.section .section-body { margin-top: 0.6rem; }
   cursor: pointer;
   transition: filter 0.1s, transform 0.05s, background-color 0.15s;
 }
-.finalize-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
-.finalize-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
-.finalize-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.finalize-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
-.finalize-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
-.finalize-form select,
-.finalize-form input[name="backdrop_color"] {
+.option-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
+.option-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
+.option-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.option-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
+.option-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
+.option-form select,
+.option-form input[name="backdrop_color"] {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -1114,7 +1114,7 @@ details.section .section-body { margin-top: 0.6rem; }
   padding: 0.25rem 0.4rem;
   font-size: 0.85rem;
 }
-.finalize-form input[name="backdrop_color"] { width: 6.5rem; }
+.option-form input[name="backdrop_color"] { width: 6.5rem; }
 .light-grid {
   display: grid;
   grid-template-columns: max-content minmax(0, 14rem) auto;
@@ -1125,9 +1125,9 @@ details.section .section-body { margin-top: 0.6rem; }
 .light-row { display: contents; }
 .light-row > span { grid-column: 1; }
 .light-row > select { grid-column: 2; }
-.light-grid .finalize-help { grid-column: 3; grid-row: 1; }
-.finalize-form input:disabled { opacity: 0.5; cursor: not-allowed; }
-.finalize-group {
+.light-grid .option-help { grid-column: 3; grid-row: 1; }
+.option-form input:disabled { opacity: 0.5; cursor: not-allowed; }
+.option-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1139,14 +1139,15 @@ details.section .section-body { margin-top: 0.6rem; }
   /* 吹き出しの位置基準。マーカー基準だと右ペインの overflow-y: auto で横もクリップされ、右寄りのマーカーで切れる */
   position: relative;
 }
-.finalize-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
-.finalize-help {
+.option-group[hidden] { display: none; }
+.option-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
+.option-help {
   display: inline-block;
   color: var(--text-dim);
   font-size: 0.75rem;
   cursor: help;
 }
-.finalize-help::after {
+.option-help::after {
   content: attr(data-help);
   display: none;
   position: absolute;
@@ -1164,8 +1165,8 @@ details.section .section-body { margin-top: 0.6rem; }
   white-space: normal;
   pointer-events: none;
 }
-.finalize-help:hover::after, .finalize-help:focus::after { display: block; }
-.finalize-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
+.option-help:hover::after, .option-help:focus::after { display: block; }
+.option-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
 
 /* repair region drawing: dependency-free rectangle-drag overlay, sized in JS to match the
    rendered <img> box so percentage-based rects stay aligned across zoom/object-fit scaling. */
@@ -2220,7 +2221,7 @@ export const appJs = `
   }
 
   // options.backdrop is null/a #RRGGBB color/a pattern name — never the literal 'transparent'/
-  // 'color' radio-value strings (finalizeOptionsFrom's output, mirrored here for profile re-select).
+  // 'color' radio-value strings (deliverOptionsFrom's output, mirrored here for profile re-select).
   function applyBackdropToForm(form, value) {
     var mode;
     if (value === null || value === undefined) {
@@ -2240,23 +2241,9 @@ export const appJs = `
       if (r.checked) matched = true;
     });
     if (matched) {
-      syncFinalizeBackdropColor(form);
+      syncBackdropColor(form);
       applyDofMode(form);
     }
-  }
-
-  // The hires select folds options.hires + options.hires_denoise into one control; a profile
-  // value the select has no choice for leaves the current selection alone.
-  function applyHiresToForm(form, options) {
-    var select = qs('select[name="hires"]', form);
-    if (!select) return;
-    var wanted = 'off';
-    if (options.hires !== null && options.hires !== undefined) {
-      var denoise = options.hires_denoise === null || options.hires_denoise === undefined ? 0.45 : options.hires_denoise;
-      wanted = options.hires + '-' + denoise;
-    }
-    var known = qsa('option', select).some(function (o) { return o.value === wanted; });
-    if (known) select.value = wanted;
   }
 
   // Absent/null dof unchecks; a stored focus is kept so re-checking restores it. The slider snaps to the nearest catalog stop.
@@ -2289,7 +2276,7 @@ export const appJs = `
   }
 
   // A stored stroke_light direction selects 立体 and the 光の向き; even / null select 均等; none selects 無し.
-  // A key absent from the options leaves the rim style alone, unless a light scene (whose rim follows its direction) says 立体.
+  // A key absent from the options selects 既定 (the rim follows the inherited or recipe-default light).
   function applyStrokeToForm(form, options) {
     var style = qs('select[name="stroke_style"]', form);
     var fromSelect = lightFromSelect(form);
@@ -2303,8 +2290,8 @@ export const appJs = `
     } else if (typeof stroke === 'string' && fromSelect && selectHasValue(fromSelect, stroke)) {
       style.value = 'dir';
       fromSelect.value = stroke;
-    } else if (stroke === undefined && light && typeof light === 'object') {
-      style.value = 'dir';
+    } else if (stroke === undefined) {
+      style.value = 'auto';
     }
   }
 
@@ -2322,13 +2309,12 @@ export const appJs = `
   }
 
   function applyProfileOptionsToForm(form, options) {
-    applyHiresToForm(form, options);
     applyDofToForm(form, options);
     applyStrokeToForm(form, options);
     applyLightToForm(form, options);
     Object.keys(options).forEach(function (key) {
       var value = options[key];
-      if (key === 'hires' || key === 'hires_denoise' || key === 'dof' || key === 'light' || key === 'stroke_light') return;
+      if (key === 'dof' || key === 'light' || key === 'stroke_light') return;
       if (key === 'backdrop') {
         applyBackdropToForm(form, value);
         return;
@@ -2350,7 +2336,6 @@ export const appJs = `
       var select = qs('select[name="' + key + '"]', form);
       if (select && typeof value === 'string') select.value = value;
     });
-    syncFinalizeDeliverOnly(form);
   }
 
   function initProfileButtons() {
@@ -2358,7 +2343,7 @@ export const appJs = `
       var btn = ev.target.closest ? ev.target.closest('.profile-group .dial-btn') : null;
       if (!btn) return;
       var group = btn.closest('.profile-group');
-      var form = group ? group.closest('.finalize-form') : null;
+      var form = group ? group.closest('.option-form') : null;
       if (!group || !form) return;
       ev.preventDefault();
       qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
@@ -2388,7 +2373,7 @@ export const appJs = `
   }
 
   // State keyed by the form itself in a WeakMap, since a set
-  // of rectangles has no single DOM home; finalizeOptionsFrom reads it back via regionsFor(form).
+  // of rectangles has no single DOM home; redrawOptionsFrom reads it back via regionsFor(form).
   var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
 
   function regionsFor(form) {
@@ -2396,7 +2381,7 @@ export const appJs = `
     return state ? state.regions : [];
   }
 
-  function findFinalizeRegionImage() {
+  function findRegionImage() {
     return qs('.gen-detail-hero img');
   }
 
@@ -2459,12 +2444,12 @@ export const appJs = `
     fromSelect.disabled = (!scene || scene.value === '') && !!style && style.value !== 'dir';
   }
 
-  function initFinalizeLight() {
-    qsa('.finalize-form').forEach(applyLightMode);
+  function initLightForm() {
+    qsa('.option-form').forEach(applyLightMode);
     document.addEventListener('change', function (ev) {
       var select = ev.target;
       if (!(select instanceof HTMLSelectElement) || (select.name !== 'light_scene' && select.name !== 'stroke_style')) return;
-      var form = select.closest('.finalize-form');
+      var form = select.closest('.option-form');
       if (form) applyLightMode(form);
     });
   }
@@ -2552,15 +2537,13 @@ export const appJs = `
     applyDofMode(form);
   }
 
-  // repair pad/lora/seeds enablement depends on regions too, so re-run the same sync here
   function onRepairRegionsChanged(form) {
     var countEl = repairRegionCount(form);
     if (countEl) {
       var n = regionsFor(form).length;
       countEl.textContent = n > 0 ? '指定範囲: ' + n : '';
     }
-    syncFinalizeDeliverOnly(form);
-    renderFinalizePreview(form);
+    renderOptionPreview(form);
   }
 
   function addRepairRegionRect(state, form, x0, y0, x1, y1) {
@@ -2625,7 +2608,7 @@ export const appJs = `
         var fx = Math.min(Math.max(Math.round(((ev.clientX - rect.left) / rect.width) * 10000) / 10000, 0), 1);
         var fy = Math.min(Math.max(Math.round(((ev.clientY - rect.top) / rect.height) * 10000) / 10000, 0), 1);
         setDofFocus(form, [fx, fy]);
-        renderFinalizePreview(form);
+        renderOptionPreview(form);
         return;
       }
       if (ev.target !== overlay) return; // an existing rect or its remove button, not the backdrop
@@ -2680,8 +2663,8 @@ export const appJs = `
 
   // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass).
   function ensureRepairRegionOverlay(form) {
-    if (!qs('[data-repair-region-tools]', form)) return null; // FinalizeFields rendered without regionDrawing
-    var img = findFinalizeRegionImage();
+    if (!qs('[data-repair-region-tools]', form) && !dofBox(form)) return null; // a form with neither region drawing nor a focus point
+    var img = findRegionImage();
     var existing = repairRegionState.get(form);
     if (existing && existing.img === img && existing.overlay.isConnected) return existing;
     if (!img) {
@@ -2691,11 +2674,13 @@ export const appJs = `
     }
 
     var parent = img.parentElement;
-    var stale = qs('.repair-region-overlay', parent);
+    var owner = formKind(form);
+    var stale = qs('.repair-region-overlay[data-owner="' + owner + '"]', parent);
     if (stale) stale.remove();
 
     var overlay = document.createElement('div');
     overlay.className = 'repair-region-overlay';
+    overlay.setAttribute('data-owner', owner);
     parent.insertBefore(overlay, img.nextSibling);
 
     var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null, dofGuide: null };
@@ -2723,15 +2708,16 @@ export const appJs = `
     if (window.ResizeObserver) new ResizeObserver(resync).observe(img);
 
     onRepairRegionsChanged(form);
+    syncRedrawMethod(form);
     return state;
   }
 
-  function initFinalizeRepairRegions() {
-    qsa('.finalize-form').forEach(ensureRepairRegionOverlay);
+  function initRegionDrawing() {
+    qsa('.option-form').forEach(ensureRepairRegionOverlay);
     document.addEventListener('click', function (ev) {
       var toggle = ev.target.closest ? ev.target.closest('[data-repair-region-toggle]') : null;
       if (!toggle) return;
-      var form = toggle.closest('.finalize-form');
+      var form = toggle.closest('.option-form');
       if (!form) return;
       toggle.setAttribute('aria-pressed', repairRegionDrawingOn(form) ? 'false' : 'true');
       applyRepairRegionDrawingMode(form);
@@ -2739,32 +2725,96 @@ export const appJs = `
     document.addEventListener('click', function (ev) {
       var btn = ev.target.closest ? ev.target.closest('[data-repair-region-clear]') : null;
       if (!btn) return;
-      var form = btn.closest('.finalize-form');
+      var form = btn.closest('.option-form');
       if (!form) return;
       var state = repairRegionState.get(form);
       if (state && state.clear) state.clear();
     });
   }
 
-  function initFinalizeDof() {
-    qsa('.finalize-form').forEach(applyDofMode);
+  function initDofForm() {
+    qsa('.option-form').forEach(applyDofMode);
     document.addEventListener('change', function (ev) {
       var box = ev.target;
       if (!(box instanceof HTMLInputElement) || box.name !== 'dof') return;
-      var form = box.closest('.finalize-form');
+      var form = box.closest('.option-form');
       if (form) applyDofMode(form);
     });
     document.addEventListener('input', function (ev) {
       var slider = ev.target;
       if (!(slider instanceof HTMLInputElement) || slider.name !== 'dof_f_stop') return;
-      var form = slider.closest('.finalize-form');
+      var form = slider.closest('.option-form');
       if (form) renderDofReadouts(form);
     });
   }
 
-  // worker-protocol.md: GUI queues finalize only. Returns null when the form can't become
-  // options; quiet mode (used by the preview) silences the alert on a malformed backdrop colour.
-  function finalizeOptionsFrom(form, quiet) {
+  function formKind(form) {
+    return form.getAttribute('data-request-kind');
+  }
+
+  function redrawMethod(form) {
+    var checked = qs('input[name="redraw_method"]:checked', form);
+    return checked ? checked.value : 'canvas';
+  }
+
+  // Shows the fields of the chosen method only; the keep-region overlay is part of canvas.
+  function syncRedrawMethod(form) {
+    if (formKind(form) !== 'redraw') return;
+    var method = redrawMethod(form);
+    qsa('[data-redraw-panel]', form).forEach(function (panel) {
+      panel.hidden = panel.getAttribute('data-redraw-panel') !== method;
+    });
+    var state = repairRegionState.get(form);
+    if (state) state.overlay.style.display = method === 'canvas' ? '' : 'none';
+  }
+
+  function initRedrawMethod() {
+    qsa('.redraw-form').forEach(syncRedrawMethod);
+    document.addEventListener('change', function (ev) {
+      var radio = ev.target;
+      if (!(radio instanceof HTMLInputElement) || radio.name !== 'redraw_method') return;
+      var form = radio.closest('.option-form');
+      if (form) syncRedrawMethod(form);
+    });
+  }
+
+  // worker-protocol.md「redraw」: exactly one method per request. Blank fields are omitted so the
+  // recipe default applies. Returns null when the form can't become options.
+  function redrawOptionsFrom(form) {
+    var method = redrawMethod(form);
+    if (method === 'hires') {
+      var hires = { method: 'hires', hires: Number(qs('select[name="hires"]', form).value) };
+      var hiresDenoise = qs('input[name="hires_denoise"]', form).value;
+      if (hiresDenoise !== '') hires.denoise = Number(hiresDenoise);
+      return hires;
+    }
+    if (method === 'light') {
+      return { method: 'light', scene: qs('select[name="light_scene"]', form).value, from: lightFromSelect(form).value };
+    }
+    var options = { method: 'canvas' };
+    var denoiseFromDial = dialGroupValue(form, 'denoise');
+    if (denoiseFromDial === undefined) {
+      var denoiseRaw = qs('input[name="denoise"]', form).value;
+      if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);
+    } else if (denoiseFromDial !== null) {
+      options.denoise = denoiseFromDial;
+    }
+    var sizeRaw = qs('input[name="size"]', form).value;
+    if (sizeRaw !== '') options.size = Number(sizeRaw);
+    var route = qs('select[name="route"]', form).value;
+    if (route !== '') options.route = route;
+    var regions = regionsFor(form);
+    if (regions.length > 0) {
+      options.keep_regions = regions;
+      var keepStrengthRaw = qs('input[name="keep_strength"]', form).value;
+      if (keepStrengthRaw !== '') options.keep_strength = Number(keepStrengthRaw);
+    }
+    return options;
+  }
+
+  // worker-protocol.md「deliver」. Returns null when the form can't become options; quiet mode
+  // (used by the preview) silences the alert on a malformed backdrop colour.
+  function deliverOptionsFrom(form, quiet) {
     var recolor = qs('input[name="recolor"]', form);
     var backdropChecked = qs('input[name="backdrop"]:checked', form);
     var backdropMode = backdropChecked ? backdropChecked.value : 'stripes';
@@ -2778,10 +2828,6 @@ export const appJs = `
     }
     var strokeStyle = qs('select[name="stroke_style"]', form).value;
     var lightFrom = lightFromSelect(form).value;
-    var strokeLight = strokeStyle === 'dir' ? lightFrom : strokeStyle;
-
-    var deliverOnlyBox = qs('input[name="deliver_only"]', form);
-    var deliverOnly = !!(deliverOnlyBox && deliverOnlyBox.checked);
 
     var keepLegwearFromDial = dialGroupValue(form, 'keep_legwear');
     var keepLegwear = keepLegwearFromDial === undefined
@@ -2793,20 +2839,18 @@ export const appJs = `
       recolor: recolor ? recolor.checked : false,
       keep_legwear: keepLegwear,
       backdrop: backdrop,
-      stroke_light: strokeLight,
     };
 
+    // 既定 omits stroke_light so the rim follows the inherited (or recipe-default) light; a light scene
+    // given here carries its own direction, so 立体 needs no separate stroke_light.
     var lightScene = lightSceneSelect(form);
     if (lightScene && lightScene.value !== '') {
       options.light = { scene: lightScene.value, from: lightFrom };
-      if (strokeStyle === 'dir') delete options.stroke_light;
-    }
-
-    var hiresSelect = qs('select[name="hires"]', form);
-    if (hiresSelect && hiresSelect.value !== 'off') {
-      var hiresParts = hiresSelect.value.split('-');
-      options.hires = Number(hiresParts[0]);
-      options.hires_denoise = Number(hiresParts[1]);
+      if (strokeStyle === 'even' || strokeStyle === 'none') options.stroke_light = strokeStyle;
+    } else if (strokeStyle === 'dir') {
+      options.stroke_light = lightFrom;
+    } else if (strokeStyle !== 'auto') {
+      options.stroke_light = strokeStyle;
     }
 
     var dofCheck = dofBox(form);
@@ -2826,156 +2870,34 @@ export const appJs = `
       var dofViewfinder = dofViewfinderSelect(form);
       if (dofViewfinder && dofViewfinder.value !== 'off') options.dof.viewfinder = dofViewfinder.value;
     }
-
-    // repair (hands/feet + regions) applies in both deliver_only and redraw mode; only
-    // denoise/repair_lora/repair_seeds differ by mode. A checked part with zero regions is fine
-    // (the worker auto-detects); nothing checked and no regions omits every repair* key.
-    var repair = [];
-    if (qs('input[name="repair_hands"]', form).checked) repair.push('hands');
-    if (qs('input[name="repair_feet"]', form).checked) repair.push('feet');
-    var regions = regionsFor(form);
-    var repairActive = repair.length > 0 || regions.length > 0;
-
-    // Drawn rectangles replace detection: DWPose circles added on top of a rectangle widen the mask
-    // past the part and the reroll's palette seams show along the circle.
-    if (regions.length > 0) repair = [];
-    // worker が hires を受けるのは deliver_only かつ repair 無しのときだけ。積んで failed を待つより先に止める。
-    if (options.hires !== undefined && (!deliverOnly || repairActive)) {
-      if (!quiet) alert('hires は deliver only のときだけ使え、repair（部位・範囲）とは併用できません');
-      return null;
-    }
-    if (options.dof !== undefined && repairActive) {
-      if (!quiet) alert('ボケ（dof）は部分描き直し（部位・範囲）とは併用できません');
-      return null;
-    }
-    if (repairActive) {
-      options.repair = repair;
-      if (regions.length > 0) options.repair_regions = regions;
-    }
-    var repairPadRaw = qs('input[name="repair_pad"]', form).value;
-    if (repair.length > 0 && repairPadRaw !== '') options.repair_pad = Number(repairPadRaw);
-
-    if (deliverOnly) {
-      options.deliver_only = true;
-      if (repairActive) {
-        var repairSeedsRaw = qs('input[name="repair_seeds"]', form).value;
-        if (repairSeedsRaw !== '') options.repair_seeds = Number(repairSeedsRaw);
-      }
-      return options;
-    }
-
-    var denoiseFromDial = dialGroupValue(form, 'denoise');
-    var denoise;
-    if (denoiseFromDial === undefined) {
-      var denoiseRaw = qs('input[name="denoise"]', form).value;
-      denoise = denoiseRaw === '' ? null : Number(denoiseRaw);
-    } else {
-      denoise = denoiseFromDial;
-    }
-    options.denoise = denoise;
-
-    var repairLoraFromDial = dialGroupValue(form, 'repair_lora');
-    var repairLora;
-    if (repairLoraFromDial === undefined) {
-      var repairLoraRaw = qs('input[name="repair_lora"]', form).value;
-      repairLora = repairLoraRaw === '' ? null : Number(repairLoraRaw);
-    } else {
-      repairLora = repairLoraFromDial;
-    }
-    if (repair.length > 0 && repairLora !== null) options.repair_lora = repairLora;
-
     return options;
+  }
+
+  function optionsFrom(form, quiet) {
+    return formKind(form) === 'redraw' ? redrawOptionsFrom(form) : deliverOptionsFrom(form, quiet);
   }
 
   // The color input stays disabled while hidden so the browser's pattern check
   // cannot block submit on a control it has no way to show.
-  function syncFinalizeBackdropColor(form) {
+  function syncBackdropColor(form) {
     var checked = qs('input[name="backdrop"]:checked', form);
     var color = qs('input[name="backdrop_color"]', form);
+    if (!color) return;
     var on = !!checked && checked.value === 'color';
     color.hidden = !on;
     color.disabled = !on;
   }
 
-  function initFinalizeBackdropColor() {
-    qsa('.finalize-form').forEach(syncFinalizeBackdropColor);
+  function initBackdropColor() {
+    qsa('.option-form').forEach(syncBackdropColor);
     document.addEventListener('change', function (ev) {
       var radio = ev.target;
       if (!(radio instanceof HTMLInputElement) || radio.type !== 'radio' || radio.name !== 'backdrop') return;
-      var form = radio.closest('.finalize-form');
+      var form = radio.closest('.option-form');
       if (!form) return;
-      syncFinalizeBackdropColor(form);
+      syncBackdropColor(form);
       applyDofMode(form);
       if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
-    });
-  }
-
-  // denoise/keep_legwear/repair_lora are gated purely by deliver_only; repair_pad/repair_lora also
-  // by repairActive (a checked part or drawn region); repair_seeds needs both, since it's meaningless
-  // in redraw mode. initFinalizeRepairPad and initFinalizeDeliverOnly both funnel into this one sync
-  // so the three triggers (deliver_only, repair_hands/feet, region drawn/removed) stay in agreement.
-  function syncFinalizeDeliverOnly(form) {
-    var box = qs('input[name="deliver_only"]', form);
-    var deliverOnly = !!(box && box.checked);
-
-    var denoiseGroup = qs('[data-dial-key="denoise"]', form);
-    if (denoiseGroup) {
-      qsa('.dial-btn', denoiseGroup).forEach(function (b) { b.disabled = deliverOnly; });
-      var denoiseCustom = qs('.dial-custom-input', denoiseGroup);
-      if (denoiseCustom && (deliverOnly || !denoiseCustom.hidden)) denoiseCustom.disabled = deliverOnly;
-    } else {
-      qs('input[name="denoise"]', form).disabled = deliverOnly;
-    }
-
-    var keepLegwearGroup = qs('[data-dial-key="keep_legwear"]', form);
-    if (keepLegwearGroup) {
-      qsa('.dial-btn', keepLegwearGroup).forEach(function (b) { b.disabled = deliverOnly; });
-      var keepLegwearCustom = qs('.dial-custom-input', keepLegwearGroup);
-      if (keepLegwearCustom && (deliverOnly || !keepLegwearCustom.hidden)) keepLegwearCustom.disabled = deliverOnly;
-    } else {
-      var keepLegwearBox = qs('input[name="keep_legwear"]', form);
-      if (keepLegwearBox) keepLegwearBox.disabled = deliverOnly;
-    }
-
-    var hands = qs('input[name="repair_hands"]', form);
-    var feet = qs('input[name="repair_feet"]', form);
-    var repairPartChecked = !!((hands && hands.checked) || (feet && feet.checked));
-    var repairActive = repairPartChecked || regionsFor(form).length > 0;
-
-    var pad = qs('input[name="repair_pad"]', form);
-    if (pad) pad.disabled = !repairPartChecked;
-
-    var loraDisabled = deliverOnly || !repairPartChecked;
-    var loraGroup = qs('[data-dial-key="repair_lora"]', form);
-    if (loraGroup) {
-      qsa('.dial-btn', loraGroup).forEach(function (b) { b.disabled = loraDisabled; });
-      var loraCustom = qs('.dial-custom-input', loraGroup);
-      if (loraCustom && (loraDisabled || !loraCustom.hidden)) loraCustom.disabled = loraDisabled;
-    } else {
-      var loraInput = qs('input[name="repair_lora"]', form);
-      if (loraInput) loraInput.disabled = loraDisabled;
-    }
-
-    var seeds = qs('input[name="repair_seeds"]', form);
-    if (seeds) seeds.disabled = !(deliverOnly && repairActive);
-  }
-
-  function initFinalizeRepairPad() {
-    document.addEventListener('change', function (ev) {
-      var box = ev.target;
-      if (!(box instanceof HTMLInputElement) || (box.name !== 'repair_hands' && box.name !== 'repair_feet')) return;
-      var form = box.closest('.finalize-form');
-      if (form) syncFinalizeDeliverOnly(form);
-    });
-  }
-
-  function initFinalizeDeliverOnly() {
-    qsa('.finalize-form').forEach(syncFinalizeDeliverOnly);
-    document.addEventListener('change', function (ev) {
-      var box = ev.target;
-      if (!(box instanceof HTMLInputElement) || box.name !== 'deliver_only') return;
-      var form = box.closest('.finalize-form');
-      if (form) syncFinalizeDeliverOnly(form);
     });
   }
 
@@ -2986,11 +2908,11 @@ export const appJs = `
     return words && Object.prototype.hasOwnProperty.call(words, value) ? words[value] : null;
   }
 
-  // Mirrors finalizeOptionsFrom's payload so the preview can never drift from what gets sent.
-  function renderFinalizePreview(form) {
-    var preview = qs('.finalize-preview', form);
+  // Mirrors the payload of redrawOptionsFrom / deliverOptionsFrom so the preview can never drift from what gets sent.
+  function renderOptionPreview(form) {
+    var preview = qs('.option-preview', form);
     if (!preview) return;
-    var options = finalizeOptionsFrom(form, true);
+    var options = optionsFrom(form, true);
     if (!options) {
       preview.textContent = '送信内容: —';
       return;
@@ -2998,25 +2920,30 @@ export const appJs = `
     var dials = {};
     try { dials = JSON.parse(form.getAttribute('data-dials') || '{}'); } catch (e) { dials = {}; }
     var parts = [];
+    var deliver = formKind(form) === 'deliver';
     var profile = profileRefFrom(form);
     if (profile) parts.push('profile ' + profile.name + (profile.version !== undefined ? ' v' + profile.version : ''));
-    // backdrop is always sent and always meaningful, null included: null is the transparent choice.
-    parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
-    var fromSelect = lightFromSelect(form);
-    var styleSelect = qs('select[name="stroke_style"]', form);
-    var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
-    if (options.light) {
-      parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
-    } else if (fromSelect && !fromSelect.disabled) {
-      parts.push('光の向き ' + fromLabel);
+    if (deliver) {
+      // backdrop is always sent and always meaningful, null included: null is the transparent choice.
+      parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
+      var fromSelect = lightFromSelect(form);
+      var styleSelect = qs('select[name="stroke_style"]', form);
+      var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
+      if (options.light) {
+        parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
+      } else if (fromSelect && !fromSelect.disabled) {
+        parts.push('光の向き ' + fromLabel);
+      }
+      if (styleSelect) parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());
     }
-    if (styleSelect) parts.push('紫縁 ' + styleSelect.options[styleSelect.selectedIndex].textContent.trim());
     Object.keys(options).forEach(function (key) {
-      if (key === 'backdrop' || key === 'light' || key === 'stroke_light') return;
+      if (deliver && (key === 'backdrop' || key === 'light' || key === 'stroke_light')) return;
       var value = options[key];
       if (value === false || value === null || value === undefined) return;
       if (key === 'dof') {
         parts.push('dof f/' + value.f_number + ' @ ' + value.focus[0] + ', ' + value.focus[1] + (value.scope === 'all' ? ' · 背景も' : '') + (value.viewfinder === 'on' ? ' · ファインダー' : value.viewfinder === 'both' ? ' · ファインダー ON/OFF 2枚' : ''));
+      } else if (key === 'keep_regions') {
+        parts.push('keep_regions=' + value.length + '箇所');
       } else if (value === true) {
         parts.push(key);
       } else if (Array.isArray(value)) {
@@ -3031,35 +2958,39 @@ export const appJs = `
     preview.textContent = '送信内容: ' + parts.join(' · ');
   }
 
-  function initFinalizePreview() {
-    qsa('.finalize-form').forEach(renderFinalizePreview);
+  function initOptionPreview() {
+    qsa('.option-form').forEach(renderOptionPreview);
     ['change', 'input', 'click'].forEach(function (type) {
       document.addEventListener(type, function (ev) {
-        var form = ev.target.closest('.finalize-form');
+        var form = ev.target.closest('.option-form');
         if (!form) return;
-        renderFinalizePreview(form);
+        renderOptionPreview(form);
       });
     });
   }
 
-  function postFinalizeRequest(generationShortId, options, profile) {
+  function postOptionRequest(kind, generationShortId, options, profile) {
     var payload = { generation_id: generationShortId, options: options };
     if (profile) payload.profile = profile;
     return api('/api/v1/requests', 'POST', {
-      kind: 'finalize',
+      kind: kind,
       payload: payload,
-      idempotency_key: 'gui:finalize:' + generationShortId + ':' + crypto.randomUUID(),
+      idempotency_key: 'gui:' + kind + ':' + generationShortId + ':' + crypto.randomUUID(),
       created_by: 'gui',
     });
   }
 
-  // Same <li> markup FinalizeSection (src/ui/components/FinalizeSection.tsx) renders server-side.
+  // Same <li> markup RequestSection (src/ui/components/RequestSection.tsx) renders server-side.
   function requestStatusRow(request, showCreatedAt) {
     var li = document.createElement('li');
     li.className = 'request-status-' + request.status;
     li.setAttribute('data-request-id', request.id);
     li.setAttribute('data-request-status', request.status);
-    li.appendChild(document.createTextNode(request.status + ' '));
+    var kind = document.createElement('span');
+    kind.className = 'request-kind';
+    kind.textContent = requestKindLabel(request.kind);
+    li.appendChild(kind);
+    li.appendChild(document.createTextNode(' ' + request.status + ' '));
     var progress = document.createElement('span');
     progress.className = 'request-progress';
     li.appendChild(progress);
@@ -3094,36 +3025,34 @@ export const appJs = `
 
   // queued 行をその場に足すだけで reload しない。以後の running/done は registerRequestElement
   // 経由の initRequestLive が反映する。
-  function initFinalize() {
+  function initOptionForms() {
     document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.finalize-form');
+      const form = ev.target.closest('.option-form');
       if (!form) return;
       ev.preventDefault();
+      const kind = formKind(form);
       const shortId = form.getAttribute('data-generation-short-id');
-      const options = finalizeOptionsFrom(form);
+      const options = optionsFrom(form);
       if (!options) return;
       const profile = profileRefFrom(form);
       const feedback = submitButtonFeedback(form);
       try {
-        const request = await postFinalizeRequest(shortId, options, profile);
+        const request = await postOptionRequest(kind, shortId, options, profile);
         feedback.sent('Queued ✓');
-        track('finalize.submit', Object.assign({ scope: 'one', generation_id: shortId, profile: profile }, options));
-        const container = form.parentElement;
-        if (container) {
-          let list = qs('.request-status-list', container);
-          if (!list) {
-            list = document.createElement('ul');
-            list.className = 'request-status-list';
-            container.insertBefore(list, form.nextSibling);
-          }
-          const row = requestStatusRow(request, true);
-          list.insertBefore(row, list.firstChild);
-          registerRequestElement(row);
+        track(kind + '.submit', Object.assign({ scope: 'one', generation_id: shortId, profile: profile }, options));
+        let list = qs('.request-status-list');
+        if (!list) {
+          list = document.createElement('ul');
+          list.className = 'request-status-list';
+          form.parentElement.appendChild(list);
         }
+        const row = requestStatusRow(request, true);
+        list.insertBefore(row, list.firstChild);
+        registerRequestElement(row);
       } catch (e) {
         feedback.failed();
-        trackError('finalize.submit', e, { scope: 'one', generation_id: shortId });
-        alert('finalize failed: ' + e.message);
+        trackError(kind + '.submit', e, { scope: 'one', generation_id: shortId });
+        alert(kind + ' failed: ' + e.message);
       }
     });
   }
@@ -3250,27 +3179,28 @@ export const appJs = `
     });
   }
 
-  // [data-request-id] は .request-status-list の <li> と GenerationCard の finalize 進捗ピルの
-  // 2 種（後者は setFinalizeBadgeText が担当）。動的に追加された要素も registerRequestElement が
+  // [data-request-id] は .request-status-list の <li> と GenerationCard の request 進捗ピルの
+  // 2 種（後者は setRequestBadgeText が担当）。動的に追加された要素も registerRequestElement が
   // 都度登録し、未接続ならソケットを開く。
   var requestLive = { byId: {} };
 
-  function isFinalizeBadge(el) {
-    return el.classList.contains('card-finalize-badge');
+  function isRequestBadge(el) {
+    return el.classList.contains('card-request-badge');
   }
 
-  // kind 表示ラベル。src/ui/components/GenerationCard.tsx の finalizeKindLabel と同じ規則。
-  function finalizeKindLabel(kind) {
-    return kind === 'repair' ? 'repair' : kind === 'masked_redraw' ? 'masked redraw' : 'finalize';
+  // kind 表示ラベル。src/ui/components/OptionControls.tsx の REQUEST_KIND_LABELS と同じ規則。
+  function requestKindLabel(kind) {
+    var labels = { redraw: '描き直し', deliver: '納品', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };
+    return labels[kind] || kind || '';
   }
 
-  // GenerationCard.tsx の FinalizeBadge が組む構造と同じテキストを再現する。extra.step/total は
+  // GenerationCard.tsx の RequestBadge が組む構造と同じテキストを再現する。extra.step/total は
   // running中のprogressメッセージから、extra.resultShortId はdone確定後のresult取得から渡す。
-  function setFinalizeBadgeText(el, extra) {
+  function setRequestBadgeText(el, extra) {
     var kind = el.getAttribute('data-request-kind');
     var status = el.getAttribute('data-request-status');
     while (el.firstChild) el.removeChild(el.firstChild);
-    el.appendChild(document.createTextNode(finalizeKindLabel(kind) + ' · '));
+    el.appendChild(document.createTextNode(requestKindLabel(kind) + ' · '));
     if (status === 'running') {
       var text = 'running';
       if (extra && typeof extra.step === 'number' && typeof extra.total === 'number') {
@@ -3280,7 +3210,7 @@ export const appJs = `
     } else if (status === 'done') {
       el.appendChild(document.createTextNode('done → '));
       var code = document.createElement('span');
-      code.className = 'card-finalize-result';
+      code.className = 'card-request-result';
       code.textContent = (extra && extra.resultShortId) || '';
       el.appendChild(code);
     } else {
@@ -3291,9 +3221,9 @@ export const appJs = `
   function requestLiveApplyProgress(p) {
     var el = requestLive.byId[p.request_id];
     if (!el) return;
-    if (isFinalizeBadge(el)) {
+    if (isRequestBadge(el)) {
       if (el.getAttribute('data-request-status') === 'running') {
-        setFinalizeBadgeText(el, { step: p.step, total: p.total });
+        setRequestBadgeText(el, { step: p.step, total: p.total });
       }
       return;
     }
@@ -3311,14 +3241,14 @@ export const appJs = `
     el.classList.add('request-status-' + s.status);
     el.setAttribute('data-request-status', s.status);
 
-    if (isFinalizeBadge(el)) {
-      setFinalizeBadgeText(el);
+    if (isRequestBadge(el)) {
+      setRequestBadgeText(el);
       if (s.status !== 'done') return;
       try {
         var badgeDetail = await api('/api/v1/requests/' + s.request_id, 'GET');
         if (badgeDetail.result && badgeDetail.result.generation_ids && badgeDetail.result.generation_ids[0]) {
           var badgeGen = await api('/api/v1/generations/' + badgeDetail.result.generation_ids[0], 'GET');
-          setFinalizeBadgeText(el, { resultShortId: badgeGen.short_id });
+          setRequestBadgeText(el, { resultShortId: badgeGen.short_id });
         }
       } catch (e) {
         // 詳細取得に失敗してもstatusクラス自体は反映済みなので諦める
@@ -4989,14 +4919,13 @@ export const appJs = `
     initPublicationUrlSave();
     initPublicationRemove();
     initPoseReference();
-    initFinalize();
-        initFinalizeBackdropColor();
-    initFinalizeRepairRegions();
-    initFinalizeDof();
-    initFinalizeLight();
-    initFinalizeRepairPad();
-    initFinalizeDeliverOnly();
-    initFinalizePreview();
+    initOptionForms();
+    initBackdropColor();
+    initRegionDrawing();
+    initDofForm();
+    initLightForm();
+    initRedrawMethod();
+    initOptionPreview();
     initDialGroups();
     initProfileButtons();
     initPromoteToProfile();

@@ -13,8 +13,8 @@ import {
 import { parseJsonObject, type JsonObject } from './overrides';
 import { ApiError, badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
-import { canonicalizeMaskedRedrawPayload } from '../schemas/requests';
-import { applyFinalizeProfile, extractPins, pinPresets } from './presets';
+import { FINALIZE_CREATION_MESSAGE, canonicalizeMaskedRedrawPayload } from '../schemas/requests';
+import { applyDeliverProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import { createUniqueRequestShortId } from './shortid';
 import { normalizeResolution, resolutionStatements, type ResolutionInput } from './request-resolution';
@@ -74,7 +74,7 @@ export interface DerivationSource {
 }
 
 /**
- * `derive_request` の起点解決。finalize/repair が積む Request は `parameters_json` が
+ * `derive_request` の起点解決。redraw/deliver/repair が積む Request は `parameters_json` が
  * 仕上げ payload で generate parameters ではないため、そのまま親にすると worker のバリデーションに落ちる。
  * `generations.refines_generation_id` を遡り、仕上げ元の無い raw Generation とその Request まで戻す。
  */
@@ -110,7 +110,7 @@ export async function requestOfGeneration(db: D1Database, generation: Pick<Gener
 
 export interface BuildDerivedRequestPayloadInput {
   parentGenerationId: string;
-  /** Set only when the caller (derive_request) resolved a different Generation than the one requested — the finalized/repaired pick the agent looked at. Adds a second purpose="derive" reference. */
+  /** Set only when the caller (derive_request) resolved a different Generation than the one requested — the redrawn/delivered/repaired pick the agent looked at. Adds a second purpose="derive" reference. */
   requestedGenerationId?: string;
   /** null/empty means the parent Request is graph-mode (no single recipe) and cannot be derived. */
   parentRecipe: string | null;
@@ -177,7 +177,7 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
 
   const references: JsonObject[] = [reference];
   if (input.requestedGenerationId && input.requestedGenerationId !== input.parentGenerationId) {
-    references.push({ generation_id: input.requestedGenerationId, purpose: 'derive', aspect: 'finalized' });
+    references.push({ generation_id: input.requestedGenerationId, purpose: 'derive', aspect: 'delivered' });
   }
 
   return {
@@ -195,7 +195,15 @@ export async function getRequestOr404(db: D1Database, id: string): Promise<Reque
   return row;
 }
 
-/** The most recent finalize/redraw/repair/masked_redraw/deliver request whose `result.generation_ids` includes `generationId` — the request that produced it. */
+/** 納品された絵を産んだ Request か。deliver と古い finalize、および deliver_only の repair や hires-chain の出力。
+ * worker (comfyui-recipes の picture_source.is_delivered) と同じ判定で、redraw / repair / deliver の入力にできない。 */
+export function isDeliveredRequest(request: Pick<RequestRow, 'kind' | 'parameters_json'>): boolean {
+  if (request.kind === 'deliver' || request.kind === 'finalize') return true;
+  const parameters = parseJsonObject(request.parameters_json);
+  return parameters.kind === 'deliver' || parameters.kind === 'hires-chain' || (parameters.kind === 'repair' && parameters.deliver_only === true);
+}
+
+/** The most recent redraw/deliver/repair/masked_redraw (or older finalize) request whose `result.generation_ids` includes `generationId` — the request that produced it. */
 export async function findProducingRequest(db: D1Database, generationId: string): Promise<RequestRow | null> {
   return db
     .prepare(
@@ -262,18 +270,19 @@ export async function createRequest(
   options: CreateRequestOptions = {},
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
+  if (input.kind === 'finalize') throw badRequest(FINALIZE_CREATION_MESSAGE);
   if (input.kind === 'import') return createImportRequest(db, input, options);
   if (input.payload === undefined) throw badRequest('payload is required');
   // masked_redraw のエイリアス正規化、generate の preset pin (worker-protocol.md「preset の pin」)、
-  // finalize profile の展開 (worker-protocol.md「finalize profile」) は payload をハッシュする前にここで行う
+  // deliver profile の展開 (worker-protocol.md「deliver profile」) は payload をハッシュする前にここで行う
   // — 内部呼び出しや idempotency 再送もこの正規化を通す。
   const payload =
     input.kind === 'masked_redraw'
       ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject)
       : input.kind === 'generate'
         ? await pinPresets(db, input.payload)
-        : input.kind === 'finalize'
-          ? await applyFinalizeProfile(db, input.payload)
+        : input.kind === 'deliver'
+          ? await applyDeliverProfile(db, input.payload)
           : input.payload;
   const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
@@ -283,7 +292,7 @@ export async function createRequest(
     .first<RequestRow>();
   if (existing) return replayOrConflict(existing, input.kind, payloadHash);
 
-  // finalize/repair/masked_redraw の worker は generation_id 自身の画像を読む（derive_request の
+  // redraw/deliver/repair/masked_redraw の worker は generation_id 自身の画像を読む（derive_request の
   // resolveDerivationSource のような別 Generation への遡りはしない、docs/worker-protocol.md「元画像を読みます」）。
   // original purge 済みならその読み出しが失敗するのでここで止める。idempotency 再送（上の early return）は
   // ここを通らないので、purge より前に作られた行の再送は妨げない。
@@ -295,7 +304,7 @@ export async function createRequest(
         throw new ApiError(
           409,
           'original_purged',
-          `generation '${generation.short_id}' had its original image purged, so it can no longer be finalized, repaired or redrawn`,
+          `generation '${generation.short_id}' had its original image purged, so it can no longer be redrawn, delivered or repaired`,
         );
       }
     }
@@ -317,7 +326,7 @@ export async function createRequest(
       runId = run.id;
     }
   }
-  // finalize / repair / masked_redraw の payload.experiment は無視する。
+  // redraw / deliver / repair / masked_redraw の payload.experiment は無視する。
 
   const id = uuidv7();
   const now = nowIso();
@@ -630,7 +639,7 @@ export interface RequestSummaryWorker {
 
 export interface RequestSummaryGroup {
   key: string;
-  /** finalize / repair / masked_redraw の仕上げ元 Generation が属する Request。thumbnail はその最初の Generation。 */
+  /** redraw / deliver / repair / masked_redraw の仕上げ元 Generation が属する Request。thumbnail はその最初の Generation。 */
   request: { id: string; short_id: string | null; thumbnail_generation_short_id: string | null } | null;
   experiment: { id: string; short_id: string } | null;
   /** 仕上げ元 Request の最初の Generation (`/g/:short_id`) または Experiment 詳細 (`/experiments/:short_id`) への遷移先。無ければ null。 */
@@ -666,7 +675,7 @@ function extractPayloadGenerationId(payloadJson: string): string | null {
   }
 }
 
-/** finalize/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Request id を引く。 */
+/** redraw/deliver/repair/masked_redraw の payload.generation_id (UUID か short_id) から所属 Request id を引く。 */
 async function resolveGenerationRequestIds(db: D1Database, refs: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const unique = Array.from(new Set(refs));
@@ -726,7 +735,7 @@ interface SummaryBucket {
 
 /**
  * ナビの queue pill / パネル (docs/ui.md「キュー状態」) 向けの集計。1 グループ = 1 遷移先:
- * 仕上げ元の Request (finalize/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
+ * 仕上げ元の Request (redraw/deliver/repair/masked_redraw)、Experiment (generate で run_id あり)、request 単体 (generate で run_id 無し)。
  */
 export async function summarizeRequests(db: D1Database, now: string): Promise<RequestSummary> {
   const cutoff = new Date(new Date(now).getTime() - SUMMARY_FAILED_WINDOW_MS).toISOString();

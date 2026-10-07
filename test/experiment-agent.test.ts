@@ -239,7 +239,8 @@ describe('MCP server at /mcp', () => {
         'set_evaluation',
         'set_decision',
         'create_request',
-        'finalize_generation',
+        'redraw_generation',
+        'deliver_generation',
         'repair_generation',
         'masked_redraw_generation',
         'get_request',
@@ -352,7 +353,7 @@ describe('MCP server at /mcp', () => {
   it('tools/call create_request creates a row with created_by mcp, visible through the REST API', async () => {
     const { generation } = await createGeneration();
     const call = await mcpToolCall<{ created: boolean; request: { id: string; created_by: string } }>('create_request', {
-      kind: 'finalize',
+      kind: 'deliver',
       payload: { generation_id: generation.id, options: { repin: true } },
       idempotency_key: crypto.randomUUID(),
     });
@@ -363,7 +364,7 @@ describe('MCP server at /mcp', () => {
     const viaRest = await getJson<{ created_by: string; kind: string }>(`/api/v1/requests/${call.data?.request.id}`);
     expect(viaRest.status).toBe(200);
     expect(viaRest.body.created_by).toBe('mcp');
-    expect(viaRest.body.kind).toBe('finalize');
+    expect(viaRest.body.kind).toBe('deliver');
   });
 });
 
@@ -477,7 +478,8 @@ describe('MCP tool annotations', () => {
       'set_decision',
       'create_request',
       'derive_request',
-      'finalize_generation',
+      'redraw_generation',
+      'deliver_generation',
       'repair_generation',
       'masked_redraw_generation',
     ]) {

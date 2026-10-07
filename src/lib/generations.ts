@@ -212,13 +212,13 @@ export interface GenerationListItem {
   image_height: number | null;
   image_size: number | null;
   original_purged_at: string | null;
-  /** short_id of the raw Generation this item refines (finalize/repair/masked_redraw output), or null for a raw Generation. */
+  /** short_id of the raw Generation this item refines (redraw/deliver/repair/masked_redraw output), or null for a raw Generation. */
   refines_generation_short_id: string | null;
   /** 少なくとも1件の Publication を持つか (docs/domain-model.md#publication)。 */
   published: boolean;
   /** WD tagger の判定 (tags 抜き)。未採点は null。 */
   safety: SafetySummary | null;
-  /** このGenerationを対象にした最新のfinalize/repair/masked_redraw request (GenerationCardの進捗ピル)。無ければnull。 */
+  /** このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw (または古いfinalize) request (GenerationCardの進捗ピル)。無ければnull。 */
   finalize_request: GenerationFinalizeRequestBadge | null;
   /** このGenerationが pose の基準 render として pin されているか (preset_references, 現行行のみ)。無ければnull。 */
   reference: GenerationPoseReference | null;
@@ -233,7 +233,7 @@ export interface GenerationFinalizeRequestBadge {
 }
 
 /**
- * 各Generationを対象にした最新のfinalize/repair/masked_redraw requestを1クエリで集める。
+ * 各Generationを対象にした最新のrequest (redraw/deliver/repair/masked_redraw、古いfinalizeも) を1クエリで集める。
  * request.payload.generation_id はUUIDでもshort_idでもよい (worker-protocol.md「payload」) ので両方をIN句に渡し、
  * created_at DESCで取って各Generationにつき最初に見つかった行(=最新)だけを採用する。
  */

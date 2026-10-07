@@ -1,10 +1,10 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createGeneration, getJson, postJson, req } from './helpers';
+import { createGeneration, createRequest, getJson, postJson, req } from './helpers';
 
 interface FinalizeRequestBadge {
   id: string;
-  kind: 'finalize' | 'repair' | 'masked_redraw';
+  kind: 'finalize' | 'redraw' | 'deliver' | 'repair' | 'masked_redraw';
   status: string;
   result_short_id: string | null;
 }
@@ -224,15 +224,27 @@ describe('Generation search', () => {
 describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進捗ピル)', () => {
   async function createFinalizeLikeRequest(
     generationIdOrShortId: string,
-    kind: 'finalize' | 'repair' | 'masked_redraw',
+    kind: 'finalize' | 'redraw' | 'deliver' | 'repair' | 'masked_redraw',
     createdAt?: string,
   ): Promise<string> {
+    // 古い finalize は API から作れないので行を直接入れる。
+    if (kind === 'finalize') {
+      const { body } = await createRequest({
+        kind,
+        status: 'queued',
+        created_at: createdAt,
+        payload: { generation_id: generationIdOrShortId, options: { repin: true } },
+      });
+      return body.id;
+    }
     const payload =
       kind === 'masked_redraw'
         ? { generation_id: generationIdOrShortId, options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'x', denoise: 0.5 } }
         : kind === 'repair'
           ? { generation_id: generationIdOrShortId, options: { parts: ['hands'] } }
-          : { generation_id: generationIdOrShortId, options: { repin: true } };
+          : kind === 'redraw'
+            ? { generation_id: generationIdOrShortId, options: { method: 'light', scene: 'sunset' } }
+            : { generation_id: generationIdOrShortId, options: { repin: true } };
     const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
       kind,
       payload,
@@ -312,7 +324,20 @@ describe('Generation search: finalize_request badge (docs/ui.md「Gallery」進�
     });
   });
 
-  it('is null when no finalize/repair/masked_redraw request targets the generation', async () => {
+  it('resolves a redraw and a deliver request the same way', async () => {
+    const { generation } = await createGeneration();
+    const redrawId = await createFinalizeLikeRequest(generation.id, 'redraw', '2026-01-01T00:00:00.000Z');
+    expect((await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`)).body.items[0]?.finalize_request).toEqual({
+      id: redrawId,
+      kind: 'redraw',
+      status: 'queued',
+      result_short_id: null,
+    });
+    const deliverId = await createFinalizeLikeRequest(generation.id, 'deliver', '2026-01-02T00:00:00.000Z');
+    expect((await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`)).body.items[0]?.finalize_request?.id).toBe(deliverId);
+  });
+
+  it('is null when no redraw/deliver/repair/masked_redraw request targets the generation', async () => {
     const { generation } = await createGeneration();
     const res = await getJson<SearchResult>(`/api/v1/generations?ids=${generation.short_id}`);
     expect(res.body.items[0]?.finalize_request).toBeNull();

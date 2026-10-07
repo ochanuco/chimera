@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { RECIPE_REF_RE, finalizeOptionsSchema } from './requests';
+import { RECIPE_REF_RE, deliverOptionsSchema } from './requests';
 
-export const presetKindSchema = z.enum(['pose', 'costume', 'expression', 'finalize']);
+export const presetKindSchema = z.enum(['pose', 'costume', 'expression', 'deliver']);
 
 export const presetImportRequestSchema = z.object({
   recipe_ref: z.string().regex(RECIPE_REF_RE),
@@ -32,11 +32,11 @@ const presetBodyPromoteSchema = z
   })
   .strict();
 
-/** kind `finalize` の本文は `finalizeOptionsSchema` そのもの (docs/domain-model.md「Preset」)。base 参照も patches も持たず、
+/** kind `deliver` の本文は `deliverOptionsSchema` そのもの (docs/domain-model.md「Preset」)。base 参照も patches も持たず、
  * 各版は全文上書きでチェーンを作らない。 */
-export const presetBodyFinalizeSchema = z.object({ options: finalizeOptionsSchema }).strict();
+export const presetBodyDeliverSchema = z.object({ options: deliverOptionsSchema }).strict();
 
-export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema, presetBodyFinalizeSchema]);
+export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema, presetBodyDeliverSchema]);
 
 export type PresetBody = z.infer<typeof presetBodySchema>;
 
