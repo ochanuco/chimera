@@ -11,13 +11,13 @@ MCP には、既存 Generation を変更せず任意の矩形を garment / local
 ## 開発
 
 ```sh
-npm install
-npm run typecheck        # tsc --noEmit
-npm test                 # vitest (@cloudflare/vitest-plugin)
-npx wrangler d1 migrations apply chimera --local
-npx wrangler dev         # http://localhost:8787
+pnpm install
+pnpm run typecheck       # tsc --noEmit
+pnpm test                # vitest (@cloudflare/vitest-plugin)
+pnpm exec wrangler d1 migrations apply chimera --local
+pnpm exec wrangler dev   # http://localhost:8787
 ```
 
 ## デプロイ
 
-`main` に merge すると `production release PR` workflow が `production` への昇格 PR を作る。その PR を merge すると Cloudflare Workers Builds が `npm run deploy:production`（D1 migrations apply → wrangler deploy）を実行する。`wrangler deploy` の手打ちはしない。
+`main` に merge すると `production release PR` workflow が `production` への昇格 PR を作る。その PR を merge すると Cloudflare Workers Builds が `pnpm run deploy:production`（D1 migrations apply → wrangler deploy）を実行する。`wrangler deploy` の手打ちはしない。
