@@ -22,6 +22,7 @@ export const styleCss = `
   --graph-experiment: #c77dff;
   --nav-h: 3.25rem;
   --compare-bar-h: 3.75rem;
+  --rail-w: 56px;
   --thumb-ar: 2 / 3;
   /* 透過/余白を判別するための市松（img 自体は変更しない） */
   --checker:
@@ -838,7 +839,8 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   .gallery-pending-pill { min-height: 2.75rem; }
 }
 
-.load-more {
+.load-more,
+.load-newer {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
@@ -849,7 +851,100 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   color: var(--text-dim);
   font-size: 0.85rem;
 }
-.load-more:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.load-more:hover,
+.load-newer:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+/* Gallery タイムライン: 15 分枠の見出しはグリッドの全幅アイテム、右端に固定のレール (docs/ui.md「Gallery」) */
+.container:has([data-gallery-grid]) { padding-right: calc(var(--rail-w) + 1rem); }
+.gallery-date-header {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: var(--gallery-sticky-top, calc(var(--nav-h) + 3.5rem));
+  z-index: 2;
+  margin: 0 -4px;
+  padding: 8px 4px;
+  background: var(--bg);
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.gallery-date-header small {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+}
+.gallery-slot-header {
+  grid-column: 1 / -1;
+  margin-bottom: -0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.gallery-slot-header b { color: var(--text); font-weight: 600; }
+
+.gallery-rail {
+  position: fixed;
+  right: 0;
+  top: var(--nav-h);
+  bottom: 0;
+  width: var(--rail-w);
+  z-index: 12;
+  touch-action: none;
+  cursor: ns-resize;
+  user-select: none;
+}
+body:has(#compare-bar:not(.hidden)) .gallery-rail { bottom: var(--compare-bar-h); }
+.gallery-rail-track { position: absolute; inset: 14px 0; }
+.gallery-rail-line { position: absolute; top: 0; bottom: 0; right: 14px; width: 2px; background: var(--border); border-radius: 1px; }
+.gallery-rail-label {
+  position: absolute;
+  right: 22px;
+  transform: translateY(-50%);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.gallery-rail-dot { position: absolute; right: 13px; width: 4px; height: 4px; border-radius: 50%; background: #4a4a55; transform: translateY(-50%); }
+.gallery-rail-thumb {
+  position: absolute;
+  right: 6px;
+  width: 18px;
+  height: 32px;
+  transform: translateY(-50%);
+  border-radius: 9px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 156, 245, 0.18);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.gallery-rail:hover .gallery-rail-thumb, .gallery-rail.dragging .gallery-rail-thumb { opacity: 1; }
+.gallery-rail-bubble {
+  position: absolute;
+  right: calc(var(--rail-w) - 4px);
+  transform: translateY(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  display: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.gallery-rail-bubble b { display: block; font-size: 0.9rem; }
+.gallery-rail-bubble span { color: var(--text-dim); font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.gallery-rail:hover .gallery-rail-bubble, .gallery-rail.dragging .gallery-rail-bubble { display: block; }
+.gallery-rail:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .gallery-rail-thumb { transition: none; } }
+@media (max-width: 480px) {
+  :root { --rail-w: 44px; }
+  .gallery-rail-label { font-size: 0.65rem; }
+}
 
 @media (max-width: 600px) {
   .gallery-toolbar .view-switch { flex: 1 1 100%; }
@@ -3374,6 +3469,12 @@ export const appJs = `
     var grid = galleryGrid();
     if (!grid) return;
     var newCount = galleryPending.queue.length;
+    // at= で途中から始めた一覧の先頭へ新着を挿入すると履歴の途中に混ざるので、最新の一覧へ移る。
+    if (newCount > 0 && grid.getAttribute('data-gallery-at')) {
+      track('gallery.pending_apply', { new_count: newCount, hidden_count: 0, source: source, at: true });
+      location.assign(galleryUrlWithAt(null));
+      return;
+    }
     var badCards = qsa('.card.card-pending-hide', grid);
     // 先頭挿入を古い方から繰り返すと、最終的に新しい方が一番上に来る (newest first)。
     galleryPending.queue.forEach(function (item) {
@@ -3383,6 +3484,9 @@ export const appJs = `
     badCards.forEach(function (card) {
       card.remove();
     });
+    reflowGalleryHeaders(grid);
+    fillGalleryCounts(grid);
+    if (newCount > 0) scheduleGalleryTimelineRefresh();
     updateGalleryPendingUi();
     if (newCount > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
     track('gallery.pending_apply', { new_count: newCount, hidden_count: badCards.length, source: source });
@@ -4059,11 +4163,13 @@ export const appJs = `
     const wrapper = document.createElement('div');
     wrapper.innerHTML = html;
     const nextLoadMore = wrapper.querySelector('.load-more');
-    qsa('.card, .load-more', wrapper).forEach(function (node) {
+    qsa('.card, .gallery-date-header, .gallery-slot-header, .load-more', wrapper).forEach(function (node) {
       if (node !== nextLoadMore) grid.insertBefore(node, link);
     });
     link.remove();
     if (nextLoadMore) grid.appendChild(nextLoadMore);
+    reflowGalleryHeaders(grid);
+    fillGalleryCounts(grid);
     return nextLoadMore;
   }
 
@@ -4088,18 +4194,39 @@ export const appJs = `
     }
   }
 
-  // Back from a detail page re-renders only page 1, so the cards loaded by infinite scroll are
-  // fetched again in one request and the clicked card is put back where it was on screen.
-  async function restoreGalleryCards(grid, link, state) {
+  // Back from a detail page re-renders only the first page (the at= page in at mode), so the cards
+  // loaded by infinite scroll in either direction are fetched again and the clicked card is put
+  // back where it was on screen. galleryNewerCount is how many cards were prepended above the
+  // first rendered card.
+  async function restoreGalleryCards(grid, olderLink, newerLink, state) {
     galleryLoadMoreInFlight = true;
+    galleryNewerInFlight = true;
     grid.style.visibility = 'hidden';
     try {
-      const url = new URL(galleryPartialUrl(link.getAttribute('href')));
-      url.searchParams.set('until', state.galleryUntil);
-      const res = await fetch(url.toString());
-      if (!res.ok) return false;
-      appendGalleryFragment(grid, link, await res.text());
-      recordGalleryUntil(grid);
+      let link = newerLink;
+      let remaining = state.galleryNewerCount || 0;
+      while (link && remaining > 0) {
+        const newerUrl = new URL(galleryPartialUrl(link.getAttribute('href')));
+        newerUrl.searchParams.set('limit', String(Math.min(200, remaining)));
+        const newerRes = await fetch(newerUrl.toString());
+        if (!newerRes.ok) break;
+        const added = prependGalleryFragment(grid, link, await newerRes.text(), false);
+        if (added.count === 0) break;
+        remaining -= added.count;
+        link = added.next;
+      }
+      galleryNewerCount = (state.galleryNewerCount || 0) - Math.max(remaining, 0);
+      setGalleryState({ galleryNewerCount: galleryNewerCount });
+
+      if (olderLink && state.galleryUntil) {
+        const url = new URL(galleryPartialUrl(olderLink.getAttribute('href')));
+        url.searchParams.set('until', state.galleryUntil);
+        const res = await fetch(url.toString());
+        if (res.ok) {
+          appendGalleryFragment(grid, olderLink, await res.text());
+          recordGalleryUntil(grid);
+        }
+      }
       const anchor = qsa('.thumb-link', grid).find(function (a) {
         return a.getAttribute('data-short-id') === state.galleryAnchor;
       });
@@ -4116,12 +4243,60 @@ export const appJs = `
     } finally {
       grid.style.visibility = '';
       galleryLoadMoreInFlight = false;
+      galleryNewerInFlight = false;
     }
   }
 
   function isBackForwardNavigation() {
     const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
     return !!nav && nav.type === 'back_forward';
+  }
+
+  // The fragment of an after= page: [load-newer link][headers + cards, newest first]. Cards go
+  // above the current first card, the viewport is kept on that card, and the headers at the seam
+  // are deduplicated by reflowGalleryHeaders.
+  var galleryNewerInFlight = false;
+  var galleryNewerObserver = null;
+  var galleryNewerCount = 0;
+
+  function prependGalleryFragment(grid, link, html, keepViewport) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    const nextNewer = wrapper.querySelector('.load-newer');
+    const nodes = qsa('.card, .gallery-date-header, .gallery-slot-header', wrapper);
+    const anchor = qs('.card', grid);
+    const before = anchor ? anchor.getBoundingClientRect().top : 0;
+    nodes.forEach(function (node) {
+      grid.insertBefore(node, link);
+    });
+    link.remove();
+    if (nextNewer) grid.insertBefore(nextNewer, grid.firstChild);
+    reflowGalleryHeaders(grid);
+    fillGalleryCounts(grid);
+    if (keepViewport && anchor) window.scrollBy(0, anchor.getBoundingClientRect().top - before);
+    return { count: nodes.filter(function (n) { return n.classList.contains('card'); }).length, next: nextNewer };
+  }
+
+  async function loadNewerGalleryCards(link) {
+    const grid = galleryGrid();
+    if (!grid || !link || galleryNewerInFlight) return false;
+    galleryNewerInFlight = true;
+    if (galleryNewerObserver) galleryNewerObserver.unobserve(link);
+    try {
+      const res = await fetch(galleryPartialUrl(link.getAttribute('href')));
+      if (!res.ok) return false;
+      const added = prependGalleryFragment(grid, link, await res.text(), true);
+      galleryNewerCount += added.count;
+      setGalleryState({ galleryNewerCount: galleryNewerCount });
+      if (added.next && galleryNewerObserver) galleryNewerObserver.observe(added.next);
+      syncGalleryThumb();
+      return true;
+    } catch (e) {
+      trackError('gallery.load_newer', e, {});
+      return false;
+    } finally {
+      galleryNewerInFlight = false;
+    }
   }
 
   function initGalleryInfiniteScroll() {
@@ -4132,6 +4307,14 @@ export const appJs = `
         if (entry.isIntersecting) loadMoreGalleryCards(entry.target);
       });
     });
+    galleryNewerObserver = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) loadNewerGalleryCards(entry.target);
+        });
+      },
+      { rootMargin: '400px 0px 0px 0px' },
+    );
 
     grid.addEventListener('click', function (ev) {
       const thumb = ev.target.closest ? ev.target.closest('.thumb-link') : null;
@@ -4142,15 +4325,420 @@ export const appJs = `
     });
 
     const initial = qs('.load-more', grid);
+    const initialNewer = qs('.load-newer', grid);
     const state = history.state || {};
-    const restoring = !!(initial && state.galleryUntil && isBackForwardNavigation());
-    if (!restoring && state.galleryUntil) setGalleryState({ galleryUntil: null });
+    const restoring = !!(
+      isBackForwardNavigation() &&
+      ((initial && state.galleryUntil) || (initialNewer && state.galleryNewerCount))
+    );
+    if (!restoring && (state.galleryUntil || state.galleryNewerCount)) {
+      setGalleryState({ galleryUntil: null, galleryNewerCount: 0 });
+    }
     if (restoring) history.scrollRestoration = 'manual';
-    const done = restoring ? restoreGalleryCards(grid, initial, state) : Promise.resolve(false);
-    done.then(function (restored) {
-      const link = restored ? qs('.load-more', grid) : initial;
+    const done = restoring ? restoreGalleryCards(grid, initial, initialNewer, state) : Promise.resolve(false);
+    done.then(function () {
+      const link = qs('.load-more', grid);
       if (link) galleryScrollObserver.observe(link);
+      const newer = qs('.load-newer', grid);
+      if (newer) galleryNewerObserver.observe(newer);
     });
+  }
+
+  // ---- Gallery timeline: 15-minute JST slot headers + the right-edge rail (docs/ui.md「Gallery」) ----
+  var GALLERY_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+  var galleryTimeline = { ready: false, slots: [], counts: {}, days: {}, dayOrder: [], starts: [], total: 0, fraction: 0, dragging: false, refreshTimer: null, frame: 0 };
+
+  function galleryPad2(n) {
+    return (n < 10 ? '0' : '') + n;
+  }
+
+  function galleryDateLabel(dateKey) {
+    const p = dateKey.split('-');
+    const d = new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])));
+    return Number(p[1]) + '月' + Number(p[2]) + '日（' + GALLERY_WEEKDAYS[d.getUTCDay()] + '）';
+  }
+
+  function gallerySlotRange(slot) {
+    let hh = Number(slot.slice(11, 13));
+    let mm = Number(slot.slice(14, 16)) + 15;
+    if (mm === 60) {
+      hh = (hh + 1) % 24;
+      mm = 0;
+    }
+    return slot.slice(11, 16) + '–' + galleryPad2(hh) + ':' + galleryPad2(mm);
+  }
+
+  function galleryMakeDateHeader(date) {
+    const el = document.createElement('div');
+    el.className = 'gallery-date-header';
+    el.setAttribute('data-date-header', date);
+    el.appendChild(document.createTextNode(galleryDateLabel(date)));
+    const small = document.createElement('small');
+    small.setAttribute('data-count-date', date);
+    el.appendChild(small);
+    return el;
+  }
+
+  function galleryMakeSlotHeader(slot) {
+    const el = document.createElement('div');
+    el.className = 'gallery-slot-header';
+    el.setAttribute('data-slot-header', slot);
+    const b = document.createElement('b');
+    b.textContent = gallerySlotRange(slot);
+    const span = document.createElement('span');
+    span.setAttribute('data-count-slot', slot);
+    el.appendChild(b);
+    el.appendChild(span);
+    return el;
+  }
+
+  // Headers must precede exactly the first card of each date / slot run. Fragments, live insertion
+  // and card removal leave duplicates or orphans at the seams, so the grid is normalized here.
+  function reflowGalleryHeaders(grid) {
+    const headers = qsa('.gallery-date-header, .gallery-slot-header', grid);
+    for (let i = headers.length - 1; i >= 0; i--) {
+      const h = headers[i];
+      const next = h.nextElementSibling;
+      const slot = h.getAttribute('data-slot-header');
+      let orphan;
+      if (slot) {
+        orphan = !next || next.getAttribute('data-slot') !== slot;
+      } else {
+        const date = h.getAttribute('data-date-header');
+        const nextDate = next ? (next.getAttribute('data-slot') || next.getAttribute('data-slot-header') || '').slice(0, 10) : '';
+        orphan = nextDate !== date;
+      }
+      if (orphan) h.remove();
+    }
+    let lastSlot = null;
+    let lastDate = null;
+    Array.prototype.slice.call(grid.children).forEach(function (node) {
+      const dateHeader = node.getAttribute('data-date-header');
+      const slotHeader = node.getAttribute('data-slot-header');
+      if (dateHeader) {
+        if (dateHeader === lastDate) node.remove();
+        else lastDate = dateHeader;
+        return;
+      }
+      if (slotHeader) {
+        if (slotHeader === lastSlot) node.remove();
+        else lastSlot = slotHeader;
+        return;
+      }
+      const slot = node.getAttribute('data-slot');
+      if (!slot || slot === lastSlot) return;
+      const date = slot.slice(0, 10);
+      if (date !== lastDate) {
+        grid.insertBefore(galleryMakeDateHeader(date), node);
+        lastDate = date;
+      }
+      grid.insertBefore(galleryMakeSlotHeader(slot), node);
+      lastSlot = slot;
+    });
+  }
+
+  function fillGalleryCounts(root) {
+    const tl = galleryTimeline;
+    if (!tl.ready) return;
+    qsa('[data-count-slot]', root).forEach(function (el) {
+      const n = tl.counts[el.getAttribute('data-count-slot')];
+      el.textContent = n ? ' · ' + n + ' 枚' : '';
+    });
+    qsa('[data-count-date]', root).forEach(function (el) {
+      const day = tl.days[el.getAttribute('data-count-date')];
+      el.textContent = day ? day.count.toLocaleString() + ' 枚 · ' + day.slots + ' 枠' : '';
+    });
+  }
+
+  function galleryUrlWithAt(slot) {
+    const url = new URL(location.href);
+    ['cursor', 'until', 'partial', 'after', 'at'].forEach(function (k) {
+      url.searchParams.delete(k);
+    });
+    if (slot) url.searchParams.set('at', slot);
+    return url.toString();
+  }
+
+  function buildGalleryTimeline(slots) {
+    const tl = galleryTimeline;
+    tl.slots = slots;
+    tl.counts = {};
+    tl.days = {};
+    tl.dayOrder = [];
+    tl.starts = [];
+    tl.total = 0;
+    slots.forEach(function (s, i) {
+      tl.counts[s.slot] = s.count;
+      tl.starts.push(tl.total);
+      tl.total += s.count;
+      const date = s.slot.slice(0, 10);
+      if (!tl.days[date]) {
+        tl.days[date] = { count: 0, slots: 0, first: i };
+        tl.dayOrder.push(date);
+      }
+      tl.days[date].count += s.count;
+      tl.days[date].slots += 1;
+    });
+    tl.ready = slots.length > 0 && tl.total > 0;
+  }
+
+  function galleryRailSlotAt(f) {
+    const tl = galleryTimeline;
+    const target = f * tl.total;
+    let lo = 0;
+    let hi = tl.slots.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (tl.starts[mid] <= target) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  function galleryRailEls() {
+    const rail = document.getElementById('gallery-rail');
+    if (!rail) return null;
+    return { rail: rail, track: qs('.gallery-rail-track', rail), thumb: qs('.gallery-rail-thumb', rail), bubble: qs('.gallery-rail-bubble', rail) };
+  }
+
+  function showGalleryBubble(f) {
+    const els = galleryRailEls();
+    const tl = galleryTimeline;
+    if (!els || !tl.ready) return;
+    const s = tl.slots[galleryRailSlotAt(f)];
+    els.bubble.style.top = f * 100 + '%';
+    qs('b', els.bubble).textContent = galleryDateLabel(s.slot.slice(0, 10)) + ' ' + gallerySlotRange(s.slot);
+    qs('span', els.bubble).textContent = s.count + ' 枚';
+  }
+
+  function layoutGalleryRailLabels() {
+    const els = galleryRailEls();
+    if (!els) return;
+    const h = els.track.clientHeight;
+    let lastTop = -100;
+    qsa('.gallery-rail-label', els.track).forEach(function (label) {
+      const top = parseFloat(label.style.top) / 100 * h;
+      const hide = top - lastTop < 14;
+      label.style.display = hide ? 'none' : '';
+      if (!hide) lastTop = top;
+    });
+  }
+
+  function galleryRailFraction(ev, track) {
+    const r = track.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+  }
+
+  function galleryStickyOffset(grid) {
+    const toolbar = qs('.gallery-toolbar');
+    const nav = qs('.nav');
+    const top = toolbar ? toolbar.getBoundingClientRect().bottom : nav ? nav.getBoundingClientRect().bottom : 0;
+    const dateHeader = qs('.gallery-date-header', grid);
+    return top + (dateHeader ? dateHeader.offsetHeight : 0);
+  }
+
+  // Scrolls to the fraction f of the rail. Returns false when the slot is not in the DOM; with
+  // allowNavigate the page is then reloaded from that slot (at=).
+  function jumpGalleryTimeline(f, allowNavigate) {
+    const grid = galleryGrid();
+    const tl = galleryTimeline;
+    if (!grid || !tl.ready) return false;
+    const idx = galleryRailSlotAt(f);
+    const s = tl.slots[idx];
+    const header = grid.querySelector('[data-slot-header="' + s.slot + '"]');
+    if (!header) {
+      if (allowNavigate) location.assign(galleryUrlWithAt(idx > 0 ? s.slot : null));
+      return false;
+    }
+    const cards = qsa('.card[data-slot="' + s.slot + '"]', grid);
+    const within = Math.min(Math.max(f * tl.total - tl.starts[idx], 0), s.count);
+    const k = Math.floor(within);
+    const target = k > 0 && cards.length > 0 ? cards[Math.min(k, cards.length - 1)] : header;
+    const gap = target === header ? 4 : 0;
+    window.scrollTo(0, window.scrollY + target.getBoundingClientRect().top - galleryStickyOffset(grid) - gap);
+    return true;
+  }
+
+  // The topmost visible card gives the slot and the position inside it.
+  function syncGalleryThumb() {
+    const tl = galleryTimeline;
+    const els = galleryRailEls();
+    const grid = galleryGrid();
+    if (!els || !grid || !tl.ready || tl.dragging) return;
+    const cards = qsa('.card[data-slot]', grid);
+    if (cards.length === 0) return;
+    const offset = galleryStickyOffset(grid);
+    let lo = 0;
+    let hi = cards.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (cards[mid].getBoundingClientRect().bottom > offset) hi = mid;
+      else lo = mid + 1;
+    }
+    const card = cards[lo];
+    const slot = card.getAttribute('data-slot');
+    const idx = tl.slots.findIndex(function (s) {
+      return s.slot === slot;
+    });
+    if (idx === -1) return;
+    let k = 0;
+    for (let p = card.previousElementSibling; p; p = p.previousElementSibling) {
+      const ps = p.getAttribute('data-slot');
+      if (ps === null) continue;
+      if (ps !== slot) break;
+      k++;
+    }
+    const r = card.getBoundingClientRect();
+    const cardFrac = r.height > 0 ? Math.min(1, Math.max(0, (offset - r.top) / r.height)) : 0;
+    const f = Math.min(1, (tl.starts[idx] + Math.min(k + cardFrac, tl.slots[idx].count)) / tl.total);
+    tl.fraction = f;
+    els.thumb.style.top = f * 100 + '%';
+    els.rail.setAttribute('aria-valuenow', String(Math.round(f * 100)));
+    els.rail.setAttribute('aria-valuetext', galleryDateLabel(slot.slice(0, 10)) + ' ' + gallerySlotRange(slot));
+    showGalleryBubble(f);
+  }
+
+  function scheduleGalleryThumbSync() {
+    const tl = galleryTimeline;
+    if (tl.frame) return;
+    tl.frame = requestAnimationFrame(function () {
+      tl.frame = 0;
+      syncGalleryThumb();
+    });
+  }
+
+  function createGalleryRail() {
+    const rail = document.createElement('div');
+    rail.id = 'gallery-rail';
+    rail.className = 'gallery-rail';
+    rail.tabIndex = 0;
+    rail.setAttribute('role', 'slider');
+    rail.setAttribute('aria-label', '日時へ移動');
+    rail.setAttribute('aria-valuemin', '0');
+    rail.setAttribute('aria-valuemax', '100');
+    rail.innerHTML =
+      '<div class="gallery-rail-track"><div class="gallery-rail-line"></div><div class="gallery-rail-thumb"></div>' +
+      '<div class="gallery-rail-bubble"><b></b><span></span></div></div>';
+    const track = qs('.gallery-rail-track', rail);
+    const tl = galleryTimeline;
+    const finish = function () {
+      tl.dragging = false;
+      rail.classList.remove('dragging');
+    };
+    rail.addEventListener('pointerdown', function (ev) {
+      tl.dragging = true;
+      rail.classList.add('dragging');
+      rail.setPointerCapture(ev.pointerId);
+      const f = galleryRailFraction(ev, track);
+      showGalleryBubble(f);
+      qs('.gallery-rail-thumb', rail).style.top = f * 100 + '%';
+      jumpGalleryTimeline(f, false);
+    });
+    rail.addEventListener('pointermove', function (ev) {
+      const f = galleryRailFraction(ev, track);
+      showGalleryBubble(f);
+      if (tl.dragging) {
+        qs('.gallery-rail-thumb', rail).style.top = f * 100 + '%';
+        jumpGalleryTimeline(f, false);
+      }
+    });
+    rail.addEventListener('pointerup', function (ev) {
+      if (!tl.dragging) return;
+      const f = galleryRailFraction(ev, track);
+      finish();
+      jumpGalleryTimeline(f, true);
+      syncGalleryThumb();
+    });
+    rail.addEventListener('pointercancel', finish);
+    rail.addEventListener('mouseleave', syncGalleryThumb);
+    rail.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowDown' || ev.key === 'PageDown') {
+        jumpGalleryTimeline(Math.min(1, tl.fraction + 0.02), true);
+        ev.preventDefault();
+      } else if (ev.key === 'ArrowUp' || ev.key === 'PageUp') {
+        jumpGalleryTimeline(Math.max(0, tl.fraction - 0.02), true);
+        ev.preventDefault();
+      }
+    });
+    document.body.appendChild(rail);
+    return rail;
+  }
+
+  function renderGalleryRail() {
+    const tl = galleryTimeline;
+    let rail = document.getElementById('gallery-rail');
+    if (!tl.ready) {
+      if (rail) rail.hidden = true;
+      return;
+    }
+    if (!rail) rail = createGalleryRail();
+    rail.hidden = false;
+    const track = qs('.gallery-rail-track', rail);
+    qsa('.gallery-rail-label, .gallery-rail-dot', track).forEach(function (el) {
+      el.remove();
+    });
+    tl.dayOrder.forEach(function (date) {
+      const label = document.createElement('div');
+      label.className = 'gallery-rail-label';
+      label.style.top = (tl.starts[tl.days[date].first] / tl.total) * 100 + '%';
+      label.textContent = Number(date.slice(5, 7)) + '/' + Number(date.slice(8));
+      track.appendChild(label);
+    });
+    tl.slots.forEach(function (s, i) {
+      if (s.count < 20) return;
+      const dot = document.createElement('div');
+      dot.className = 'gallery-rail-dot';
+      dot.style.top = ((tl.starts[i] + s.count / 2) / tl.total) * 100 + '%';
+      track.appendChild(dot);
+    });
+    layoutGalleryRailLabels();
+    syncGalleryThumb();
+  }
+
+  async function fetchGalleryTimeline() {
+    const grid = galleryGrid();
+    const query = grid ? grid.getAttribute('data-timeline-query') : null;
+    if (!grid || query === null) return;
+    try {
+      const res = await fetch('/api/v1/generations/timeline' + (query ? '?' + query : ''));
+      if (!res.ok) return;
+      const data = await res.json();
+      buildGalleryTimeline(Array.isArray(data.slots) ? data.slots : []);
+      fillGalleryCounts(grid);
+      renderGalleryRail();
+    } catch (e) {
+      trackError('gallery.timeline', e, {});
+    }
+  }
+
+  function scheduleGalleryTimelineRefresh() {
+    const tl = galleryTimeline;
+    if (!galleryGrid() || galleryGrid().getAttribute('data-timeline-query') === null) return;
+    clearTimeout(tl.refreshTimer);
+    tl.refreshTimer = setTimeout(fetchGalleryTimeline, 800);
+  }
+
+  function updateGalleryStickyTop() {
+    const grid = galleryGrid();
+    const toolbar = qs('.gallery-toolbar');
+    const nav = qs('.nav');
+    if (!grid || !toolbar || !nav) return;
+    grid.style.setProperty('--gallery-sticky-top', nav.offsetHeight + toolbar.offsetHeight + 'px');
+  }
+
+  function initGalleryTimeline() {
+    const grid = galleryGrid();
+    if (!grid) return;
+    updateGalleryStickyTop();
+    const toolbar = qs('.gallery-toolbar');
+    if (toolbar && window.ResizeObserver) new ResizeObserver(updateGalleryStickyTop).observe(toolbar);
+    window.addEventListener('resize', function () {
+      updateGalleryStickyTop();
+      layoutGalleryRailLabels();
+      scheduleGalleryThumbSync();
+    });
+    window.addEventListener('scroll', scheduleGalleryThumbSync, { passive: true });
+    fetchGalleryTimeline();
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -4181,6 +4769,7 @@ export const appJs = `
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
+    initGalleryTimeline();
     initGalleryPending();
     initRequestLive();
     initNavQueue();

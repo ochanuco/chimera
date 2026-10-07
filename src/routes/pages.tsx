@@ -15,6 +15,7 @@ import { ComparePage } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
 import { decodeCursor, queryGenerations } from '../lib/generations';
+import { slotEndIso } from '../lib/timeline';
 import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
@@ -104,13 +105,19 @@ pages.get('/gallery', async (c) => {
   if (filters.bookmark) apiParams.set('bookmark', filters.bookmark);
   if (filters.published) apiParams.set('published', filters.published);
   if (filters.reference) apiParams.set('reference', filters.reference);
+  // タイムライン (docs/ui.md「Gallery」) は一覧と同じ絞り込みで枚数を数える。ids 指定では出さない。
+  const timelineQuery = ids ? undefined : apiParams.toString();
   const limit = q.limit ? Math.min(Math.max(Number(q.limit) || 24, 1), 200) : 24;
   apiParams.set('limit', String(limit));
-  if (q.cursor) apiParams.set('cursor', q.cursor);
+  // after は新しい方向のページ、at は枠の終端より前から始める先頭ページ。どちらも cursor とは併用しない。
+  const atEnd = !ids && !q.cursor && !q.after && q.at ? slotEndIso(q.at) : null;
+  if (q.after) apiParams.set('after', q.after);
+  else if (q.cursor) apiParams.set('cursor', q.cursor);
+  else if (atEnd) apiParams.set('created_before', atEnd);
 
-  type GalleryPageData = { items: GalleryItem[]; total: number; next_cursor: string | null };
+  type GalleryPageData = { items: GalleryItem[]; total: number; next_cursor: string | null; newer_cursor?: string | null };
   let genData: GalleryPageData;
-  if (q.cursor && q.until) {
+  if (q.cursor && q.until && !q.after) {
     const restored = await loadGalleryThrough(c, apiParams, q.cursor, q.until);
     if (restored instanceof Response) return restored;
     genData = restored;
@@ -126,10 +133,22 @@ pages.get('/gallery', async (c) => {
   }
 
   if (q.partial === '1') {
-    return c.html(<GalleryCards items={genData.items} nextCursor={genData.next_cursor} filters={filters} />);
+    return c.html(
+      <GalleryCards items={genData.items} nextCursor={genData.next_cursor} newerCursor={genData.newer_cursor ?? null} filters={filters} />,
+    );
   }
 
-  return c.html(<GalleryPage path={c.req.path} items={genData.items} nextCursor={genData.next_cursor} filters={filters} />);
+  return c.html(
+    <GalleryPage
+      path={c.req.path}
+      items={genData.items}
+      nextCursor={genData.next_cursor}
+      newerCursor={genData.newer_cursor ?? null}
+      filters={filters}
+      timelineQuery={timelineQuery}
+      at={atEnd ? q.at : undefined}
+    />,
+  );
 });
 
 // 廃止した Batch ページの URL (Discord などに貼られたもの) を壊さない。Request の short_id から最初の Generation へ飛ばす。
