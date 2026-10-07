@@ -4,6 +4,7 @@ import { CopyIdButton } from '../components/CopyIdButton';
 import type { GenerationFamily } from '../../lib/generation-family';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { RedrawSection, type RedrawFormData } from '../components/RedrawSection';
+import { RepairSection, type RepairFormData } from '../components/RepairSection';
 import { DeliverSection, type DeliverFormData } from '../components/DeliverSection';
 import { RequestSection, type RequestStatusLine } from '../components/RequestSection';
 import { NoteSection } from '../components/NoteSection';
@@ -163,6 +164,7 @@ export function GenerationDetailPage({
   requests,
   delivered,
   redrawForm,
+  repairForm,
   deliverForm,
   canPromoteToProfile,
   producedByOptions,
@@ -178,6 +180,7 @@ export function GenerationDetailPage({
   /** 納品済みの絵 (deliver / finalize が産んだ絵)。描き直し・納品の欄は出さない。 */
   delivered: boolean;
   redrawForm: RedrawFormData;
+  repairForm: RepairFormData;
   deliverForm: DeliverFormData;
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
@@ -232,12 +235,13 @@ export function GenerationDetailPage({
           <TagsEditor kind="generations" id={data.id} tags={tags} />
 
           {delivered ? (
-            <p class="image-meta">納品済みの絵なので、描き直し・納品は元の絵から行います。</p>
+            <p class="image-meta">納品済みの絵なので、描き直し・repair・納品は元の絵から行います。</p>
           ) : data.original_purged_at ? (
-            <p class="image-meta">原寸は破棄済みのため描き直し・納品は積めません。</p>
+            <p class="image-meta">原寸は破棄済みのため描き直し・repair・納品は積めません。</p>
           ) : (
             <>
               <RedrawSection shortId={data.short_id} form={redrawForm} />
+              <RepairSection shortId={data.short_id} form={repairForm} />
               <DeliverSection shortId={data.short_id} form={deliverForm} />
             </>
           )}
