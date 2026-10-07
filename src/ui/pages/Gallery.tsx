@@ -190,6 +190,22 @@ export function GalleryCards({
   );
 }
 
+/** 枠範囲フラグメント (`slot_from` / `slot_to`): 見出しもリンクも付けず、カードだけを返す。 */
+export function GallerySlotCards({ items }: { items: GalleryItem[] }) {
+  return (
+    <>
+      {items.map((g) => (
+        <GenerationCard g={g} />
+      ))}
+    </>
+  );
+}
+
+/** `<script type="application/json">` に埋めるための JSON (`</script>` を作れる `<` を潰す)。 */
+function inlineJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
 export function GalleryPage({
   path,
   items,
@@ -197,6 +213,7 @@ export function GalleryPage({
   newerCursor = null,
   filters,
   timelineQuery,
+  timeline,
   at,
 }: {
   path: string;
@@ -206,6 +223,8 @@ export function GalleryPage({
   filters: GalleryFilters;
   /** 絞り込み済みの `GET /api/v1/generations/timeline` の query。無ければタイムラインを出さない。 */
   timelineQuery?: string;
+  /** 同じ絞り込みの枠ごとの枚数。クライアントはこれで全件分のスケルトンを先に並べる。 */
+  timeline?: { slots: { slot: string; count: number }[] };
   /** `at=<枠キー>` で途中から始めたときの枠キー。 */
   at?: string;
 }) {
@@ -219,17 +238,22 @@ export function GalleryPage({
       {items.length === 0 ? (
         <p class="empty-state">No generations match this filter.</p>
       ) : (
-        <div
-          class="grid grid-gallery"
-          data-gallery-grid
-          data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}
-          data-gallery-view={filters.view}
-          data-gallery-live={galleryLiveEligible(filters) ? 'true' : undefined}
-          data-timeline-query={timelineQuery}
-          data-gallery-at={at}
-        >
-          <GalleryCards items={items} nextCursor={nextCursor} newerCursor={newerCursor} filters={filters} />
-        </div>
+        <>
+          {timeline ? (
+            <script type="application/json" id="gallery-timeline-data" dangerouslySetInnerHTML={{ __html: inlineJson(timeline) }} />
+          ) : null}
+          <div
+            class="grid grid-gallery"
+            data-gallery-grid
+            data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}
+            data-gallery-view={filters.view}
+            data-gallery-live={galleryLiveEligible(filters) ? 'true' : undefined}
+            data-timeline-query={timelineQuery}
+            data-gallery-at={at}
+          >
+            <GalleryCards items={items} nextCursor={nextCursor} newerCursor={newerCursor} filters={filters} />
+          </div>
+        </>
       )}
     </Layout>
   );

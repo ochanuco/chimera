@@ -21,6 +21,14 @@ export function slotEndIso(slot: string): string | null {
   return new Date(startMs - JST_OFFSET_MS + SLOT_MS).toISOString();
 }
 
+/** 枠の開始 (UTC ISO、その時刻を含む)。キーが不正なら null。 */
+export function slotStartIso(slot: string): string | null {
+  if (!SLOT_KEY.test(slot)) return null;
+  const startMs = Date.parse(`${slot}:00.000Z`);
+  if (Number.isNaN(startMs)) return null;
+  return new Date(startMs - JST_OFFSET_MS).toISOString();
+}
+
 /** `10月6日（火）` */
 export function dateLabel(dateKey: string): string {
   const [y, m, d] = dateKey.split('-').map(Number) as [number, number, number];
