@@ -406,7 +406,12 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .safety-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .safety-tag { border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.45rem; font-size: 0.78rem; background: var(--bg); }
 .safety-tag .safety-num { color: var(--text-dim); margin-left: 4px; }
-.safety-tag.hot { border-color: #5a4a23; }
+.safety-tag.hot { font-weight: 600; }
+.safety-tag.risk-exposure, .safety-tag.risk-certain, .risk-key.risk-certain { border-color: var(--r-explicit); }
+.safety-tag.risk-suspect, .risk-key.risk-suspect { border-color: var(--r-questionable); }
+.safety-tag.risk-safe { color: var(--text-dim); }
+.safety-tags-legend { margin-left: 0.6rem; font-size: 0.72rem; color: var(--text-dim); }
+.risk-key { display: inline-block; border: 1px solid var(--border); border-radius: 4px; padding: 0 0.35rem; margin-left: 0.25rem; }
 .card-safety-pct {
   position: absolute;
   right: 0.4rem;
