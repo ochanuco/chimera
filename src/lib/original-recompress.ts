@@ -14,7 +14,7 @@ export const ORIGINAL_RETENTION_DAYS = 30;
 const DEFAULT_BATCH_SIZE = 60;
 
 function resolveBatchSize(env: Bindings): number {
-  const raw = env.ORIGINAL_PURGE_BATCH_SIZE;
+  const raw = env.ORIGINAL_RECOMPRESS_BATCH_SIZE;
   if (!raw) return DEFAULT_BATCH_SIZE;
   const parsed = parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, DEFAULT_BATCH_SIZE) : DEFAULT_BATCH_SIZE;
