@@ -236,6 +236,7 @@ pages.get('/experiments/:id', async (c) => {
     c.env.DB,
     experiment.runs,
     experiment.base_parameters,
+    experiment.base_generation_id,
     parseSeedQuery(c.req.query('seed')),
     new URL(c.req.url).origin,
   );

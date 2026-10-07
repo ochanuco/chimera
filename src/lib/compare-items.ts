@@ -100,9 +100,11 @@ export interface ExperimentCompareRun {
 }
 
 export interface ExperimentCompare {
-  /** Run 列と同じ順。結果の無い Run は placeholder の CompareItem。 */
+  /** base Generation の列（あれば先頭）に続けて Run 列と同じ順。結果の無い Run は placeholder の CompareItem。 */
   items: CompareItem[];
   headers: string[];
+  /** items の先頭が Experiment の base Generation の列である。 */
+  baseColumn: boolean;
   /** 全 Run の Generation に現れる seed（出現順）。 */
   seeds: number[];
   selectedSeed: number | null;
@@ -141,12 +143,14 @@ function placeholderItem(): CompareItem {
 /**
  * Experiment の Run を列にした Compare 用データ。各列の Generation は選んだ seed と同じ seed の Generation
  * （無ければ placeholder。別の seed の画像を並べると比較にならないため、代わりの Generation は出さない）。変更点の行は Generation の Request ではなく Run の
- * objective / overrides.patches から取る。
+ * objective / overrides.patches から取る。base Generation があれば、seed に関係なく固定の参照として
+ * 先頭に 1 列足す（Run 数の上限には数えず、seeds / selectedSeed にも影響しない）。
  */
 export async function buildExperimentCompare(
   db: D1Database,
   runs: ExperimentCompareRun[],
   baseParameters: Record<string, unknown> | null,
+  baseGenerationId: string | null,
   seedQuery: number | null,
   origin: string,
 ): Promise<ExperimentCompare> {
@@ -183,23 +187,29 @@ export async function buildExperimentCompare(
     if (selectedSeed === null) return rows[0] ?? null;
     return rows.find((g) => g.seed === selectedSeed) ?? null;
   });
+  const baseRow = baseGenerationId
+    ? await db.prepare('SELECT * FROM generations WHERE id = ?').bind(baseGenerationId).first<GenerationRow>()
+    : null;
   const builtItems = await buildCompareItems(
     db,
-    chosen.filter((g): g is GenerationRow => g !== null),
+    [...(baseRow ? [baseRow] : []), ...chosen.filter((g): g is GenerationRow => g !== null)],
     origin,
   );
   const builtById = new Map(builtItems.map((item) => [item.id, item]));
 
-  const items = columns.map((run, i) => {
+  const runItems = columns.map((run, i) => {
     const generation = chosen[i];
     const item = (generation ? builtById.get(generation.id) : null) ?? placeholderItem();
     const patches = run.overrides.patches;
     return { ...item, raw_instruction: run.objective, patches: Array.isArray(patches) ? patches : [] };
   });
-  const headers = columns.map((run) => {
+  const baseItem = baseRow ? { ...builtById.get(baseRow.id)!, raw_instruction: null, patches: [] } : null;
+  const items = baseItem ? [baseItem, ...runItems] : runItems;
+  const runHeaders = columns.map((run) => {
     const arm = run.variables?.arm;
     return arm !== undefined ? String(arm) : `#${run.run_index}`;
   });
+  const headers = baseItem ? ['base', ...runHeaders] : runHeaders;
 
-  return { items, headers, seeds, selectedSeed, omittedRuns: runs.length - columns.length };
+  return { items, headers, baseColumn: baseItem !== null, seeds, selectedSeed, omittedRuns: runs.length - columns.length };
 }

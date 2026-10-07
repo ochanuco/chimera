@@ -249,6 +249,40 @@ describe('Experiment Detail as Compare', () => {
     expect(body).toContain('class="cmp-patch-part">expression</span>');
   });
 
+  async function setBase(experimentId: string, generationId: string | null) {
+    await env.DB.prepare('UPDATE experiments SET base_generation_id = ? WHERE id = ?').bind(generationId, experimentId).run();
+  }
+
+  it('puts the base Generation first, fixed across ?seed=, without adding its seed to the switcher', async () => {
+    const data = await setup([{ label: 'control' }]);
+    await finishRequest(data.runs[0]!.request_id!, [11, 22]);
+    const base = await createGeneration({ jobOverrides: { seed: 999 }, metadata: { seed: 999 } });
+    await setBase(data.experiment.id, base.generation.id);
+
+    for (const query of ['', '?seed=22']) {
+      const body = await (await req(`/experiments/${data.experiment.short_id}${query}`)).text();
+      expect(body).toContain('id="experiment-compare"');
+      expect(body).toContain('>base</div>');
+      expect(body.indexOf('>base</div>')).toBeLessThan(body.indexOf('>control</div>'));
+      expect(body).toContain(`/compare?ids=${base.generation.short_id},`);
+      expect(body).not.toContain('exp-compare-seed" href="/experiments/' + data.experiment.short_id + '?seed=999');
+      expect(body).not.toContain('<strong class="exp-compare-seed current">999</strong>');
+    }
+    const second = await (await req(`/experiments/${data.experiment.short_id}?seed=22`)).text();
+    expect(second).toContain('<strong class="exp-compare-seed current">22</strong>');
+  });
+
+  it('shows the compare grid for one Run plus a base Generation', async () => {
+    const data = await setup([{ label: 'only' }]);
+    await finishRequest(data.runs[0]!.request_id!, [11, 22]);
+    const base = await createGeneration();
+    await setBase(data.experiment.id, base.generation.id);
+    const body = await (await req(`/experiments/${data.experiment.short_id}`)).text();
+    expect(body).toContain('id="experiment-compare"');
+    expect(body).toContain('<strong class="exp-compare-seed current">11</strong>');
+    expect(body).not.toContain('先頭');
+  });
+
   it('is omitted for an Experiment with fewer than two Runs, and /compare still works', async () => {
     const data = await setup([{ label: 'only' }]);
     const body = await (await req(`/experiments/${data.experiment.short_id}`)).text();
