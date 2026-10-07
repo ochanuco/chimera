@@ -12,26 +12,45 @@ async function rated(r: ReturnType<typeof rating>, tags: Record<string, number> 
 
 describe('detail page 安全性 section', () => {
   it('shows the bar, gauges and risky tags without folding', async () => {
-    const g = await rated(rating(0.931), { pantyhose: 0.96, sitting: 0.82, feet: 0.3, shirt: 0.9 });
+    const g = await rated(rating(0.975), { pantyhose: 0.96, sitting: 0.82, feet: 0.3, ass: 0.2, cameltoe: 0.2, shirt: 0.9 });
     const html = await (await req(`/g/${g.short_id}`)).text();
     expect(html).not.toContain('<details class="safety-row"');
     expect(html).toContain('rating-bar-stack');
     expect(html).toContain('問題なし');
-    expect(html).toContain('あと 1.9pt で注意');
-    expect(html).toContain('safety-gap near');
     expect(html).toContain('あと 14.9pt でセンシティブ');
+    expect(html).toContain('少し際どい（参考）');
+    expect(html).not.toContain('で注意');
     expect(html).toContain('効いていそうなタグ');
-    expect(html).toMatch(/safety-tag hot">pantyhose/);
-    expect(html).toMatch(/safety-tag">feet/);
+    expect(html).toMatch(/safety-tag risk-certain">cameltoe/);
+    expect(html).toMatch(/safety-tag risk-suspect">ass/);
+    expect(html).toMatch(/safety-tag risk-safe hot">pantyhose/);
+    expect(html).toMatch(/safety-tag risk-safe">feet/);
+    expect(html).toContain('risk-key risk-suspect');
     expect(html).not.toContain('>shirt<');
+    expect(html.indexOf('cameltoe')).toBeLessThan(html.indexOf('>ass<'));
+    expect(html.indexOf('>ass<')).toBeLessThan(html.indexOf('pantyhose'));
     expect(html.indexOf('pantyhose')).toBeLessThan(html.indexOf('sitting'));
   });
 
-  it('reports the threshold overshoot and keeps the exposure reason for block', async () => {
+  it('explains a caution from the butt tag', async () => {
+    const g = await rated(rating(0.5), { ass: 0.6 });
+    const html = await (await req(`/g/${g.short_id}`)).text();
+    expect(html).toContain('ass 60%');
+    expect(html).toContain('尻・下着のタグ 50% 以上で注意');
+  });
+
+  it('explains a sensitive verdict from a chest/crotch tag or questionable', async () => {
+    const a = await rated(rating(0.5), { cameltoe: 0.4 });
+    expect(await (await req(`/g/${a.short_id}`)).text()).toContain('cameltoe 40%');
+    const b = await rated(rating(0.5, 0.2));
+    expect(await (await req(`/g/${b.short_id}`)).text()).toContain('かなり際どい 20%');
+  });
+
+  it('keeps the exposure reason for block', async () => {
     const g = await rated(rating(0.975), { nipples: 0.3 });
     const html = await (await req(`/g/${g.short_id}`)).text();
-    expect(html).toContain('注意の閾値を 2.5pt 超過');
     expect(html).toContain('露出タグ nipples 30%');
+    expect(html).toMatch(/safety-tag risk-exposure">nipples/);
   });
 });
 
@@ -44,7 +63,7 @@ describe('gallery card', () => {
   });
 
   it('draws the strip without the percentage when a badge shows', async () => {
-    const g = await rated(rating(0.975));
+    const g = await rated(rating(0.975), { ass: 0.6 });
     const html = await (await req(`/g/${g.short_id}?partial=card`)).text();
     expect(html).toContain('rating-bar-strip');
     expect(html).toContain('safety-badge-caution');

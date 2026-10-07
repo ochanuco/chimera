@@ -1421,8 +1421,8 @@ Generation は404。レスポンスと `GET /api/v1/generations/{id}`・MCP `get
 | verdict | 条件 |
 | --- | --- |
 | `block`（出さない） | 露出系タグ（nipples, areolae, pussy, penis, anus, completely_nude, nude, topless, bottomless, breasts_out）のいずれかが 0.15 以上 |
-| `sensitive`（センシティブ） | rating.questionable が 0.15 以上 |
-| `caution`（注意） | rating.sensitive が 0.95 以上 |
+| `sensitive`（センシティブ） | rating.questionable が 0.15 以上、または乳・股間のタグ（cameltoe, crotch, groin, crotch_seam, covered_nipples）のいずれかが 0.35 以上 |
+| `caution`（注意） | 尻・下着のタグ（ass, ass_focus, panties, pantyshot, upskirt, spread_legs, bent_over, cleavage）のいずれかが 0.5 以上 |
 | `none` | 上記以外 |
 
 ## Pose Reference Pin

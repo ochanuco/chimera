@@ -33,8 +33,28 @@ describe('computeSafetyVerdict', () => {
     expect(computeSafetyVerdict(rating(0.73, 0), { breasts: 0.9 })).toEqual({ verdict: 'none', reasons: [] });
   });
 
-  it('cautions on sensitive 0.975 with questionable 0.007', () => {
-    expect(computeSafetyVerdict(rating(0.975, 0.007), {}).verdict).toBe('caution');
+  it('leaves sensitive 0.975 alone when only legwear and feet show', () => {
+    expect(computeSafetyVerdict(rating(0.975, 0.007), { pantyhose: 0.99, feet: 0.9, soles: 0.8 })).toEqual({ verdict: 'none', reasons: [] });
+  });
+
+  it('cautions on a butt/underwear tag from 0.5', () => {
+    expect(computeSafetyVerdict(rating(0.5, 0.007), { ass: 0.6, panties: 0.7, cleavage: 0.4 })).toEqual({
+      verdict: 'caution',
+      reasons: ['panties 0.70', 'ass 0.60'],
+    });
+    expect(computeSafetyVerdict(rating(0.5, 0.007), { ass: 0.49 }).verdict).toBe('none');
+  });
+
+  it('flags a chest/crotch tag from 0.35 as sensitive', () => {
+    expect(computeSafetyVerdict(rating(0.5, 0.007), { cameltoe: 0.4, ass: 0.9 })).toEqual({
+      verdict: 'sensitive',
+      reasons: ['cameltoe 0.40'],
+    });
+    expect(computeSafetyVerdict(rating(0.5, 0.007), { cameltoe: 0.3 }).verdict).toBe('none');
+  });
+
+  it('flags questionable 0.2 as sensitive', () => {
+    expect(computeSafetyVerdict(rating(0.5, 0.2), {}).verdict).toBe('sensitive');
   });
 
   it('ignores exposure tags below the threshold', () => {

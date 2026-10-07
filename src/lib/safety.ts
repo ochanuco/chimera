@@ -16,33 +16,45 @@ export const EXPOSURE_TAGS = [
   'breasts_out',
 ] as const;
 
-/** 詳細ページで「効いていそうなタグ」として拾う、際どさに関わるタグ。tagger は判定理由を返さないので推定用。 */
-export const RISKY_TAGS: readonly string[] = [
-  'ass',
-  'thighs',
-  'legs',
+export const CERTAIN_TAGS = ['cameltoe', 'crotch', 'groin', 'crotch_seam', 'covered_nipples'] as const;
+export const SUSPECT_TAGS = ['ass', 'ass_focus', 'panties', 'pantyshot', 'upskirt', 'spread_legs', 'bent_over', 'cleavage'] as const;
+export const X_SAFE_TAGS = [
   'pantyhose',
   'thighband_pantyhose',
-  'knees_up',
-  'spread_legs',
-  'pantyshot',
-  'panties',
-  'cleavage',
-  'navel',
-  'midriff',
+  'thighs',
+  'legs',
   'feet',
   'soles',
+  'toes',
   'no_shoes',
   'sitting',
+  'knees_up',
   'wariza',
   'yokozuwari',
   'lying',
-  ...EXPOSURE_TAGS,
-];
+  'navel',
+  'midriff',
+] as const;
+
+export type TagXRisk = 'exposure' | 'certain' | 'suspect' | 'safe';
+
+/**
+ * タグごとの X での効き方。区分は持ち主の経験に従う: タイツ・足は X に flag されず、尻は怪しく、乳・股間は確実。
+ * 閾値は 2026-10-07 に保存済みの判定から決めた（suspect 0.5 以上は 9,491 枚中およそ 780 枚、X に flag された tuv2ha は ass 0.95）。
+ */
+export const TAG_X_RISK: Readonly<Record<string, TagXRisk>> = {
+  ...Object.fromEntries(X_SAFE_TAGS.map((t) => [t, 'safe' as const])),
+  ...Object.fromEntries(SUSPECT_TAGS.map((t) => [t, 'suspect' as const])),
+  ...Object.fromEntries(CERTAIN_TAGS.map((t) => [t, 'certain' as const])),
+  ...Object.fromEntries(EXPOSURE_TAGS.map((t) => [t, 'exposure' as const])),
+};
+
+export const RISKY_TAGS: readonly string[] = Object.keys(TAG_X_RISK);
 
 export const BLOCK_TAG_THRESHOLD = 0.15;
 export const SENSITIVE_QUESTIONABLE_THRESHOLD = 0.15;
-export const CAUTION_SENSITIVE_THRESHOLD = 0.95;
+export const CERTAIN_TAG_THRESHOLD = 0.35;
+export const SUSPECT_TAG_THRESHOLD = 0.5;
 
 export type SafetyVerdict = 'block' | 'sensitive' | 'caution' | 'none';
 
@@ -60,16 +72,25 @@ export interface SafetyVerdictResult {
 
 const fmt = (n: number) => n.toFixed(2);
 
+const byValueDesc = (a: string, b: string) => Number(b.split(' ')[1]) - Number(a.split(' ')[1]);
+
+const hits = (names: readonly string[], tags: Record<string, number>, threshold: number) =>
+  names
+    .filter((t) => (tags[t] ?? 0) >= threshold)
+    .sort((a, b) => tags[b]! - tags[a]!)
+    .map((t) => `${t} ${fmt(tags[t]!)}`);
+
 /** 先に当たった順 block > sensitive > caution > none。 */
 export function computeSafetyVerdict(rating: SafetyRating, tags: Record<string, number>): SafetyVerdictResult {
-  const exposure = EXPOSURE_TAGS.filter((t) => (tags[t] ?? 0) >= BLOCK_TAG_THRESHOLD).map((t) => `${t} ${fmt(tags[t]!)}`);
+  const exposure = hits(EXPOSURE_TAGS, tags, BLOCK_TAG_THRESHOLD);
   if (exposure.length > 0) return { verdict: 'block', reasons: exposure };
-  if (rating.questionable >= SENSITIVE_QUESTIONABLE_THRESHOLD) {
-    return { verdict: 'sensitive', reasons: [`questionable ${fmt(rating.questionable)}`] };
+  const certain = hits(CERTAIN_TAGS, tags, CERTAIN_TAG_THRESHOLD);
+  if (rating.questionable >= SENSITIVE_QUESTIONABLE_THRESHOLD || certain.length > 0) {
+    const questionable = rating.questionable >= SENSITIVE_QUESTIONABLE_THRESHOLD ? [`questionable ${fmt(rating.questionable)}`] : [];
+    return { verdict: 'sensitive', reasons: [...questionable, ...certain].sort(byValueDesc) };
   }
-  if (rating.sensitive >= CAUTION_SENSITIVE_THRESHOLD) {
-    return { verdict: 'caution', reasons: [`sensitive ${fmt(rating.sensitive)}`] };
-  }
+  const suspect = hits(SUSPECT_TAGS, tags, SUSPECT_TAG_THRESHOLD);
+  if (suspect.length > 0) return { verdict: 'caution', reasons: suspect };
   return { verdict: 'none', reasons: [] };
 }
 
