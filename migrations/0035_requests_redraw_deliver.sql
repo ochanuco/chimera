@@ -1,13 +1,15 @@
--- requests.kind に 'redraw' と 'deliver' を足す。SQLite は CHECK 制約を ALTER できないため表を作り直す
--- (0026 と同じ手順)。列・索引は 0026 時点のまま。トリガーは無い。
--- requests を参照する comfy_jobs / generations の外部キーは検査を COMMIT まで遅らせ、同じ名前の表に
--- 行を戻して解消する (0028 と同じ)。request_references は ON DELETE CASCADE なので、DROP で行が
--- 消えないよう退避して戻す。
+-- requests.kind に 'redraw' と 'deliver' を足す。SQLite は CHECK 制約を ALTER できないため表を作り直す。
+-- 外部キーの検査は COMMIT まで遅らせる。requests を消してから同じ名前で作り直し、行を戻す。
+-- 別名の表を作って RENAME すると、DROP で数えた comfy_jobs / generations の違反が戻した行で
+-- 打ち消されず、COMMIT で失敗する。request_references は ON DELETE CASCADE なので退避して戻す。
 PRAGMA defer_foreign_keys = true;
 
 CREATE TABLE _m35_request_references AS SELECT * FROM request_references;
+CREATE TABLE _m35_requests AS SELECT * FROM requests;
 
-CREATE TABLE requests_new (
+DROP TABLE requests;
+
+CREATE TABLE requests (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'import')),
   status TEXT NOT NULL DEFAULT 'queued'
@@ -39,15 +41,12 @@ CREATE TABLE requests_new (
   git_dirty INTEGER
 );
 
-INSERT INTO requests_new SELECT
+INSERT INTO requests SELECT
   id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
   claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
   short_id, recipe, raw_instruction, parameters_json, patches_json, pose_fingerprint, preset_versions_json,
   git_commit, git_dirty
-FROM requests;
-
-DROP TABLE requests;
-ALTER TABLE requests_new RENAME TO requests;
+FROM _m35_requests;
 
 CREATE INDEX idx_requests_status_created_at ON requests(status, created_at);
 CREATE INDEX idx_requests_run_id ON requests(run_id);
@@ -56,3 +55,4 @@ CREATE UNIQUE INDEX idx_requests_short_id ON requests(short_id);
 
 INSERT INTO request_references SELECT * FROM _m35_request_references;
 DROP TABLE _m35_request_references;
+DROP TABLE _m35_requests;
