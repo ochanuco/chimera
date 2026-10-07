@@ -1,4 +1,5 @@
 import { Layout } from '../layout';
+import { GenerationCard } from '../components/GenerationCard';
 import { CopyIdButton } from '../components/CopyIdButton';
 import { diffOverrides, formatOverrideValue, type JsonObject } from '../../lib/overrides';
 import { EXPERIMENT_STATUSES, allowedNextStatuses } from '../../lib/experiment-status';
@@ -566,17 +567,14 @@ function renderExperimentMatrix(matrix: ExperimentMatrix, omittedRuns: number) {
                 {row.cells.map((cell) =>
                   cell ? (
                     <td class="exp-matrix-cell">
-                      <a href={`/g/${cell.short_id}`}>
-                        <img src={`/g/${cell.short_id}/preview`} alt="" loading="lazy" />
-                      </a>
-                      <div class="exp-matrix-meta">
-                        <span class="exp-matrix-id">{cell.short_id}</span>
-                        {cell.rating ? <span class={`exp-matrix-rating ${cell.rating}`}>{cell.rating}</span> : null}
-                      </div>
+                      <GenerationCard g={cell} />
                     </td>
                   ) : (
                     <td class="exp-matrix-cell exp-matrix-empty">
-                      <div class="compare-placeholder">生成待ち</div>
+                      <div class="card">
+                        <div class="exp-matrix-wait">生成待ち</div>
+                        <div class="exp-matrix-wait-row"></div>
+                      </div>
                     </td>
                   ),
                 )}

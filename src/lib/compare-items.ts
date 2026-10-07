@@ -1,8 +1,9 @@
 // /compare と Experiment Detail の Compare 表が共有する、Generation 行 -> CompareItem の組み立て。
 
-import { queryGenerations } from './generations';
+import { MAX_GENERATION_IDS, queryGenerations } from './generations';
 import { parseJsonArray } from './preset-references';
 import { renderFactsForJob } from './render-facts';
+import type { GenerationCardData } from '../ui/components/GenerationCard';
 import type { CompareItem, CompareSemantic } from '../ui/pages/Compare';
 import type { ComfyJobRow, GenerationRow } from '../types';
 
@@ -99,10 +100,8 @@ export interface ExperimentCompareRun {
   request: { id: string } | null;
 }
 
-export interface ExperimentMatrixCell {
-  short_id: string;
-  rating: GenerationRow['rating'];
-}
+/** Gallery と同じ GenerationCard に渡すデータ（safety・bookmark・寸法などを含む）。 */
+export type ExperimentMatrixCell = GenerationCardData;
 
 export interface ExperimentMatrix {
   /** seed 列。base_parameters.seeds の順、続けて Run の Generation にだけ現れる seed（出現順）。 */
@@ -194,13 +193,25 @@ export async function buildExperimentCompare(
     const arm = run.variables?.arm;
     return arm !== undefined ? String(arm) : `#${run.run_index}`;
   };
+  const allGenerations = columns.flatMap(generationsOf);
+  const cardById = new Map<string, GenerationCardData>();
+  // queryGenerations の ids は 1 回 MAX_GENERATION_IDS 件まで（9 × 16 = 144 セルなら 2 回）。
+  const idChunks: string[][] = [];
+  for (let i = 0; i < allGenerations.length; i += MAX_GENERATION_IDS) {
+    idChunks.push(allGenerations.slice(i, i + MAX_GENERATION_IDS).map((g) => g.id));
+  }
+  const cardPages = await Promise.all(
+    idChunks.map((chunk) => queryGenerations(db, { ids: chunk.join(','), limit: String(chunk.length) }, origin)),
+  );
+  for (const page of cardPages) for (const item of page.items) cardById.set(item.id, item);
+
   const matrix: ExperimentMatrix = {
     seeds: matrixSeeds,
     rows: columns.map((run) => ({
       label: headerOf(run),
       cells: matrixSeeds.map((seed) => {
         const g = generationsOf(run).find((row) => row.seed === seed);
-        return g ? { short_id: g.short_id, rating: g.rating } : null;
+        return (g ? cardById.get(g.id) : undefined) ?? null;
       }),
     })),
   };

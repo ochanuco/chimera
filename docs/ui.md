@@ -859,8 +859,10 @@ Run（行）× seed（列）のマトリクスで、Experimentが描いた全Gen
 -   列はseedで、`base_parameters.seeds`の順に並べ、続けてRunのGenerationにだけ現れるseedを
     出現順に足します。seedは最大16個なので、幅が足りないときはマトリクスが横スクロールします。
 -   セルは、そのRunの結果Requestのうち、その列のseedを持つGenerationです。
-    サムネイル（`/g/<short_id>/preview`、`/g/<short_id>`へのリンク）にshort_idとratingを添えます。
-    そのseedのGenerationがまだ無い（生成中・失敗）セルは「生成待ち」のプレースホルダにします。
+    Gallery / Bookmarks / Compareと同じ`GenerationCard`で描きます（サムネイル、安全性の細帯とピル、
+    ホバー時の際どさ表示、short_idのコピー、ブックマーク、ratingボタン）。カードのデータは
+    マトリクス全体のGenerationをまとめて`queryGenerations`で引いたもの（100件ごとに1回）です。
+    そのseedのGenerationがまだ無い（生成中・失敗）セルは、カードと同じ外寸の「生成待ち」の破線枠にします。
 -   Runが1件でも出します（1行×seed数のセル）。
 
 マトリクスの下に、seed別の詳細として、Runを列にした[Compare](#compare)の表
