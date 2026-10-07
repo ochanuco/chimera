@@ -1,9 +1,11 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
+import { dateLabel, slotKeyOf, slotRangeLabel } from '../../lib/timeline';
 import { ViewSwitch, type GalleryView } from '../components/ViewSwitch';
 
 export interface GalleryItem extends GenerationCardData {
   tags: string[];
+  created_at: string;
 }
 
 export interface GalleryFilters {
@@ -121,21 +123,68 @@ function LoadMoreLink({ cursor, filters }: { cursor: string; filters: GalleryFil
   );
 }
 
-/** Card grid content, shared by the full page render and the `partial=1` infinite-scroll fragment. */
+function LoadNewerLink({ cursor, filters }: { cursor: string; filters: GalleryFilters }) {
+  const params = activeParams(filters);
+  params.set('after', cursor);
+  return (
+    <a class="load-newer" href={`/gallery?${params.toString()}`}>
+      新しい方を読み込む
+    </a>
+  );
+}
+
+/** 日付・枠の見出し。枚数はクライアントが timeline から埋める (`data-count-slot` / `data-count-date`)。 */
+function DateHeader({ date }: { date: string }) {
+  return (
+    <div class="gallery-date-header" data-date-header={date}>
+      {dateLabel(date)}
+      <small data-count-date={date}></small>
+    </div>
+  );
+}
+
+function SlotHeader({ slot }: { slot: string }) {
+  return (
+    <div class="gallery-slot-header" data-slot-header={slot}>
+      <b>{slotRangeLabel(slot)}</b>
+      <span data-count-slot={slot}></span>
+    </div>
+  );
+}
+
+/** Card grid content, shared by the full page render and the `partial=1` infinite-scroll fragment.
+ * 日付 / 15 分枠が変わるカードの直前に見出しを挟む。フラグメントの先頭カードにも必ず付け、直前と重なる見出しはクライアントが外す。 */
 export function GalleryCards({
   items,
   nextCursor,
+  newerCursor = null,
   filters,
 }: {
   items: GalleryItem[];
   nextCursor: string | null;
+  newerCursor?: string | null;
   filters: GalleryFilters;
 }) {
+  let lastSlot: string | null = null;
+  let lastDate: string | null = null;
   return (
     <>
-      {items.map((g) => (
-        <GenerationCard g={g} />
-      ))}
+      {newerCursor ? <LoadNewerLink cursor={newerCursor} filters={filters} /> : null}
+      {items.map((g) => {
+        const slot = slotKeyOf(g.created_at);
+        const date = slot ? slot.slice(0, 10) : null;
+        const showDate = date !== null && date !== lastDate;
+        const showSlot = slot !== null && slot !== lastSlot;
+        lastDate = date;
+        lastSlot = slot;
+        return (
+          <>
+            {showDate && date ? <DateHeader date={date} /> : null}
+            {showSlot && slot ? <SlotHeader slot={slot} /> : null}
+            <GenerationCard g={g} />
+          </>
+        );
+      })}
       {nextCursor ? <LoadMoreLink cursor={nextCursor} filters={filters} /> : null}
     </>
   );
@@ -145,12 +194,20 @@ export function GalleryPage({
   path,
   items,
   nextCursor,
+  newerCursor = null,
   filters,
+  timelineQuery,
+  at,
 }: {
   path: string;
   items: GalleryItem[];
   nextCursor: string | null;
+  newerCursor?: string | null;
   filters: GalleryFilters;
+  /** 絞り込み済みの `GET /api/v1/generations/timeline` の query。無ければタイムラインを出さない。 */
+  timelineQuery?: string;
+  /** `at=<枠キー>` で途中から始めたときの枠キー。 */
+  at?: string;
 }) {
   return (
     <Layout title="Gallery" path={path}>
@@ -168,8 +225,10 @@ export function GalleryPage({
           data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}
           data-gallery-view={filters.view}
           data-gallery-live={galleryLiveEligible(filters) ? 'true' : undefined}
+          data-timeline-query={timelineQuery}
+          data-gallery-at={at}
         >
-          <GalleryCards items={items} nextCursor={nextCursor} filters={filters} />
+          <GalleryCards items={items} nextCursor={nextCursor} newerCursor={newerCursor} filters={filters} />
         </div>
       )}
     </Layout>

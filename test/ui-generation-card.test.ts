@@ -28,7 +28,7 @@ async function createFinalizeLikeRequest(
 function cardHtml(html: string, shortId: string): string {
   const marker = html.indexOf(`data-short-id="${shortId}"`);
   if (marker === -1) throw new Error(`card for ${shortId} not found in: ${html}`);
-  const cardStart = html.lastIndexOf('<div class="card">', marker);
+  const cardStart = html.lastIndexOf('<div class="card"', marker);
   if (cardStart === -1) throw new Error(`no enclosing .card for ${shortId}`);
   const bookmarkIdx = html.indexOf('card-bookmark-btn', cardStart);
   if (bookmarkIdx === -1) throw new Error(`no card-bookmark-btn after .card for ${shortId}`);
