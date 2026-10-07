@@ -58,6 +58,20 @@ export async function notifyHubGeneration(env: Bindings, generation: HubNotifyGe
   }
 }
 
+/** 判定 (PUT /safety) が後から届いた Generation の viewer に、カードのバッジ更新を促す (docs/ui.md「Gallery」)。 */
+export async function notifyHubSafety(env: Bindings, safety: { generation_id: string; short_id: string }): Promise<void> {
+  try {
+    const stub = getWorkerHubStub(env);
+    await stub.fetch('https://hub/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'safety', generation_id: safety.generation_id, short_id: safety.short_id }),
+    });
+  } catch (err) {
+    console.error('notifyHubSafety failed', err);
+  }
+}
+
 /** `c.executionCtx` はテストハーネスでは未設定でアクセスすると例外を投げる。本番では waitUntil に積んで通知のレイテンシをレスポンスに乗せない。 */
 export function runInBackground(c: { executionCtx: Waitable }, promise: Promise<unknown>): void {
   let ctx: Waitable | undefined;

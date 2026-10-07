@@ -874,6 +874,7 @@ hub → viewer:
 {"type":"progress","request_id":"...","worker_id":"...","phase":"...","step":...,"total":...,"message":...,"at":"<ISO>"}
 {"type":"status","request_id":"...","status":"queued|running|done|failed|cancelled","kind":"..."}
 {"type":"generation","generation_id":"...","short_id":"...","request_id":"...","refines_generation_short_id":"..."|null,"created_at":"<ISO>"}
+{"type":"safety","generation_id":"...","short_id":"..."}
 ```
 
 `generation` は Generation ingest (`POST /api/v1/jobs/{job_id}/generations`, worker-protocol.md
@@ -884,6 +885,10 @@ non-nullです（[domain-model.md](domain-model.md#generation)）。Gallery の�
 通知で、`snapshot`と違いDO storageにキャッシュを持たず、接続中のviewerへその場でbroadcast
 するだけです（接続前に届いたものは取りこぼします — Gallery は元々ページ読み込み時点の
 一覧を持っているので、取りこぼしても再読み込みで揃います）。
+
+`safety` は `PUT /api/v1/generations/{id}/safety` が判定を保存したあとに送ります
+（[api.md](api.md#safety)）。判定は `generation` の通知より数秒遅れて届くので、Gallery が
+取得済みのカードのバッジを更新するための通知で、`generation` と同じくその場でbroadcastするだけです。
 
 未知の `type` は無視します。パースできないフレームも無視します。viewer から来たメッセージは
 （`type` を問わず）常に無視します — viewer は読み取り専用です。
