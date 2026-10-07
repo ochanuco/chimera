@@ -355,7 +355,7 @@ const MCP_INSTRUCTIONS =
   '5. A finalized / repaired / masked_redraw Generation exposes its pre-finalize source as `refines_generation` ' +
   '({id, short_id, rating}) in get_generation; it is null for a raw Generation.\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
-  'without patches, all sharing the same seeds. The experiment page shows the arms side by side per seed.';
+  'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
@@ -425,10 +425,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         'Non-destructive: only adds a new Experiment and its Runs. Never deletes or overwrites existing data. Idempotent by idempotency_key. ' +
         'This is the way to compare variants: one instruction = one Experiment. Each arm becomes one Run with its own generate request, ' +
-        'and the experiment page (url) lays the arms out as columns, one row of images per seed. ' +
+        'and the experiment page (url) shows every generation as a matrix, arms as rows and seeds as columns. ' +
         'recipe and parameters (pose, costume, ... and optionally count) are shared by every arm; pass seeds so all arms render the same seeds ' +
         'and the columns are comparable (seeds sets the request count, so omit count when giving seeds). ' +
-        'arms: 1-9 entries {label, instruction?, patches?}; label must be unique within the call and is the column header. ' +
+        'arms: 1-9 entries {label, instruction?, patches?}; label must be unique within the call and is the row header of the arm. ' +
         'Include the control as an arm without patches. patches is a diff against the recipe, each {target, op, reason, value/old by op}; ' +
         'change one aspect per arm with per-part targets "prompt.positive.<part>" (part names from get_catalog_pose `parts`) instead of replacing the whole prompt. ' +
         'instruction is the arm\'s instruction text (defaults to the label). ' +
