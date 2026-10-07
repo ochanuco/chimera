@@ -1,7 +1,7 @@
 // worker が Request へ直接書く契約 (resolution -> job -> ingest -> done) の検証。
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createGeneration, getJson, ingestGeneration, postJson } from './helpers';
+import { createGeneration, getJson, ingestGeneration, postJson, req } from './helpers';
 
 const WORKER = 'worker-test';
 
@@ -317,8 +317,12 @@ describe('kind import', () => {
 
   it('can neither be claimed nor patched', async () => {
     const created = await postJson<Req>('/api/v1/requests', importBody());
-    const claimed = await postJson<Req>('/api/v1/requests/claim', { worker_id: WORKER, kinds: ['generate', 'finalize', 'repair', 'masked_redraw'] });
-    expect(claimed.status === 204 || claimed.body.id !== created.body.id).toBe(true);
+    const claimed = await req('/api/v1/requests/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ worker_id: WORKER, kinds: ['generate', 'finalize', 'repair', 'masked_redraw'] }),
+    });
+    expect(claimed.status === 204 || ((await claimed.json()) as Req).id !== created.body.id).toBe(true);
     expect((await postJson('/api/v1/requests/claim', { worker_id: WORKER, kinds: ['import'] })).status).toBe(400);
     expect((await postJson(`/api/v1/requests/${created.body.id}`, { status: 'cancelled' }, 'PATCH')).status).toBe(409);
     expect((await postJson(`/api/v1/requests/${created.body.id}`, { status: 'running', worker_id: WORKER }, 'PATCH')).status).toBe(409);
