@@ -71,7 +71,7 @@ function trackMessages(ws: WebSocket): Tracker {
   return { messages, waitFor };
 }
 
-function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver')[]): void {
+function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver')[]): void {
   ws.send(JSON.stringify({ type: 'hello', worker_id: workerId, kinds }));
 }
 
@@ -247,7 +247,7 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     viewer.close();
   });
 
-  it('kinds filtering: a worker with kinds ["finalize"] does not get a generate queued', async () => {
+  it('kinds filtering: a worker with kinds ["deliver"] does not get a generate queued', async () => {
     const worker = await connectWs('/api/v1/worker/ws');
     const workerT = trackMessages(worker);
     hello(worker, 'w-deliver-only', ['deliver']);
