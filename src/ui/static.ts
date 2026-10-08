@@ -1092,6 +1092,13 @@ details.section .section-body { margin-top: 0.6rem; }
 .dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
 .dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .dof-f-row { display: flex; align-items: center; gap: 0.4rem; }
+/* The guide circle sits in a clip box so it never draws outside the picture. */
+.dof-guide-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.dof-guide-circle {
+  position: absolute; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
 /* White ring with a dark halo so the marker reads on both light and dark pictures. */
 .dof-focus-marker {
   position: absolute;
@@ -4662,6 +4669,9 @@ export const appJs = `
           loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
           overlay.appendChild(loupe);
           overlay.appendChild(wbEl('div', 'wb-rects'));
+          var guideClip = wbEl('div', 'dof-guide-clip');
+          guideClip.appendChild(wbEl('div', 'dof-guide-circle wb-guide'));
+          overlay.appendChild(guideClip);
           overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
           pane.appendChild(overlay);
           if (resizeObserver) resizeObserver.observe(pane);
@@ -4953,6 +4963,21 @@ export const appJs = `
         if (!marker.hidden) {
           marker.style.left = wb.focus[0] * 100 + '%';
           marker.style.top = wb.focus[1] * 100 + '%';
+        }
+        // Radius = guide_radius_per_f * F * long side; in percent of each side so a pane resize keeps it.
+        var guide = qs('.wb-guide', overlay);
+        var slider = dofSlider(phaseForm(5));
+        var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
+        var f = dofFNumber(phaseForm(5));
+        var w = overlay.offsetWidth;
+        var h = overlay.offsetHeight;
+        guide.hidden = marker.hidden || !(k > 0) || f === undefined || !w || !h;
+        if (!guide.hidden) {
+          var d = 2 * k * f * Math.max(w, h);
+          guide.style.width = (d / w) * 100 + '%';
+          guide.style.height = (d / h) * 100 + '%';
+          guide.style.left = (wb.focus[0] - d / w / 2) * 100 + '%';
+          guide.style.top = (wb.focus[1] - d / h / 2) * 100 + '%';
         }
       });
       var count = qs('[data-wb-rect-count]', root);
@@ -5507,6 +5532,7 @@ export const appJs = `
       if (!(input instanceof HTMLInputElement)) return;
       if (input.name === 'wb_denoise') qs('[data-wb-denoise-readout]', root).textContent = input.value;
       if (input.name === 'dof_f_stop') qs('[data-dof-f-readout]', root).textContent = 'f/' + dofFNumber(phaseForm(5));
+      if (input.name === 'dof_f_stop') updateOverlays();
       if (input.name === 'wb_patch') renderPanel();
     });
 
