@@ -27,17 +27,17 @@ Chimera
 Gallery
 Bookmarks
 ワークベンチ
-More（Experiments / 絵柄チェック）
+More（Experiments / 絵柄チェック / 統計）
 ```
 
 `More` は `<details><summary>`によるドロップダウンです。開くと
-`Experiments` `絵柄チェック` の2リンクを持つパネルが summary の直下に現れます。
+`Experiments` `絵柄チェック` `統計` の3リンクを持つパネルが summary の直下に現れます。
 パネル外クリックまたは
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
 var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/work` 配下（`/work/{short_id}`含む）ではワークベンチ、`/experiments` 配下
-（`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`では`More`のsummaryが
+（`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`・`/stats`では`More`のsummaryが
 アクティブになります。`/compare`はグリッドから入る
 導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
@@ -941,6 +941,21 @@ multi-output jobで同一seedに複数枚あるときは、Request内で最初�
 Nextを押すと完了メッセージとExperiment詳細への戻りリンクの状態に遷移します。
 `baseline` / `arm` が未指定・不正・別Experiment・結果Requestの無いRunを指すときは、
 ペア画面の代わりに警告文を表示します。
+
+## 統計（/stats）
+
+生成時間と生成数の集計ページです。`GET /api/v1/stats`（[api.md](api.md#timings)）と同じ集計を SSR し、表と素の SVG の折れ線で出します
+（チャートライブラリは使いません）。ヘッダに期間リンク（7d / 14d / 30d / 90d / 全期間、既定 30d、`requests.created_at` の窓）と、
+cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既定は含める）を置きます。
+
+-   件数: Generation 数、rating 別（good / neutral / bad / 未評価）、公開済み、kind / recipe / pose 別（pose は上位 10 件、残りは「その他」）、
+    GPU 時間（v2 と comfy_history の実行時間の合計。計測行の無い Request は claim→完了の合計を「概算」として別表示）、
+    Generation あたり平均、good 1 枚あたりの所要時間
+-   kind 別の所要時間: 日別（JST）の median を v1 / v2 の 2 系列で
+-   区間の内訳（v2）: kind ごとに 投入前 / 待ち / 実行 / 後処理 / 残り の median・p90・n
+-   ノード role 別の実行時間: checkpoint と canvas（render facts 由来、無ければ unknown）ごとの median・p90・n。cached ノードは除く
+-   サンプラーの step 別時間: role ごとの step index 別 median の折れ線と、step 1 と step 2..n の median の比較
+-   環境別の実行時間（v2）: ComfyUI バージョン・attention・argv ごとの kind 別 execute median と n
 
 ## Bookmarks
 
