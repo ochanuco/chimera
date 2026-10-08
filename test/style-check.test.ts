@@ -216,40 +216,50 @@ describe('GET /check', () => {
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
-  it('shows "pin 無し" for an unpinned pose, "まだ描いていない" for a pinned pose with no render yet, and the pin + queued status once one is enqueued', async () => {
+  /** The poses the page hands its client script. */
+  async function checkPoses(query = ''): Promise<{ html: string; poses: { pose: string; pin: { short_id: string } | null; request: { id: string; status: string } | null; result: { short_id: string } | null }[] }> {
+    const html = await (await req(`/check${query}`)).text();
+    const initial = html.match(/data-initial="([^"]*)"/)![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    return { html, poses: (JSON.parse(initial) as { poses: never[] }).poses };
+  }
+
+  it('hints "pin 無し" for an unpinned pose and "未描画" for a pinned pose with no render yet, then the queued status once one is enqueued', async () => {
     await publishAndImport('def5678');
     const bust = await pinPose('bust');
 
     const before = await req('/check');
     expect(before.status).toBe(200);
-    const beforeBody = await before.text();
-    expect(beforeBody).toContain(bust.shortId);
-    expect(beforeBody).toContain('まだ描いていない');
-    expect(beforeBody).toContain('pin 無し'); // coffee has no pin
+    const { html, poses } = await checkPoses();
+    expect(poses.find((p) => p.pose === 'bust')).toMatchObject({ pin: { short_id: bust.shortId }, request: null, result: null });
+    expect(poses.find((p) => p.pose === 'coffee')!.pin).toBeNull();
+    expect(html).toContain('>未描画</span>');
+    expect(html).toContain('>pin 無し</span>');
 
     const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
     const bustResult = render.body.results.find((r) => r.pose === 'bust');
     expect(bustResult!.created).toBe(true);
 
-    const after = await req('/check');
-    const afterBody = await after.text();
-    expect(afterBody).toContain(`data-request-id="${bustResult!.request_id}"`);
-    expect(afterBody).toContain('request-status-queued');
+    const after = await checkPoses();
+    expect(after.poses.find((p) => p.pose === 'bust')!.request).toMatchObject({ id: bustResult!.request_id, status: 'queued' });
+    expect(after.html).toContain('>queued</span>');
   });
 
-  it('keeps showing the existing render after a catalog commit change with the same pose content', async () => {
+  it('keeps showing the existing render after a catalog commit change with the same pose content, with the pose picker and the any-ID form', async () => {
     await publishAndImport('aaa1111');
     await pinPose('bust');
     const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
     const bustResult = render.body.results.find((r) => r.pose === 'bust')!;
 
     await publishAndImport('bbb2222');
-    const body = await (await req('/check')).text();
-    expect(body).toContain(`data-request-id="${bustResult.request_id}"`);
-    expect(body).toContain('ID を足して比較');
+    const { html, poses } = await checkPoses();
+    expect(poses.find((p) => p.pose === 'bust')!.request!.id).toBe(bustResult.request_id);
+    expect(html).toContain('data-sc-pose="bust"');
+    expect(html).toContain('data-sc-any-id');
+    expect(html).toContain('pin を差し替える');
+    expect(html).toContain('今の既定で描く');
   });
 
-  it('shows the resulting generation and a compare link once the plain-render request is done', async () => {
+  it('hands the resulting generation to the page once the plain-render request is done', async () => {
     await publishAndImport('feed001');
     const bust = await pinPose('bust');
 
@@ -272,9 +282,10 @@ describe('GET /check', () => {
     );
     expect(doneRes.status).toBe(200);
 
-    const page = await req('/check');
-    const body = await page.text();
-    expect(body).toContain(resultGen.generation.short_id);
-    expect(body).toContain(`/compare?ids=${bust.shortId},${resultGen.generation.short_id}`);
+    const { poses } = await checkPoses('?pose=bust');
+    const bustPose = poses.find((p) => p.pose === 'bust')!;
+    expect(bustPose.pin!.short_id).toBe(bust.shortId);
+    expect(bustPose.result!.short_id).toBe(resultGen.generation.short_id);
+    expect(bustPose.request!.status).toBe('done');
   });
 });

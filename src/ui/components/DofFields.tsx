@@ -1,9 +1,4 @@
 import type { DofCatalog } from '../../lib/catalogs';
-import { Help } from './OptionControls';
-
-export interface DofFormData {
-  dof: DofCatalog | null;
-}
 
 /** Used by the workbench when the published catalog has no top-level `dof` section. */
 export const FALLBACK_DOF: DofCatalog = {
@@ -76,23 +71,5 @@ export function DofFields({ dof, focusHint }: { dof: DofCatalog; focusHint: stri
         ))}
       </div>
     </>
-  );
-}
-
-/** `Dof` section of a delivered Generation (docs/ui.md「Generation Detail」「Dof」節). */
-export function DofSection({ shortId, form }: { shortId: string; form: DofFormData }) {
-  if (!form.dof) return null;
-  return (
-    <details class="section" open>
-      <summary>ボケ（Dof）</summary>
-      <div class="section-body">
-        <form class="option-form dof-form" data-request-kind="dof" data-generation-short-id={shortId} autocomplete="off">
-          <DofFields dof={form.dof} focusHint="画像をクリックしてピント位置を置く" />
-          <Help text={form.dof.focus ?? 'ピントを置いた位置の奥行きから離れるほどぼかす。F 値が小さいほど強くぼける。納品の層（人物・フチ・背景）ごとにぼかす範囲を選ぶ。ファインダーは三分割グリッドとピント位置の枠を重ねる。両方なら重ねない絵と重ねた絵の 2 枚'} />
-          <p class="option-preview"></p>
-          <button type="submit">ボケをかける</button>
-        </form>
-      </div>
-    </details>
   );
 }

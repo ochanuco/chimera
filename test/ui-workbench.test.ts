@@ -1,6 +1,8 @@
+import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearGenerationData, createGeneration, postJson, req } from './helpers';
 import { appJs } from '../src/ui/static';
+import { formatImageMetaText } from '../src/lib/image-meta';
 
 beforeEach(async () => {
   await clearGenerationData();
@@ -17,32 +19,49 @@ async function derive(source: { id: string; short_id: string }, kind: Kind, opti
 }
 
 describe('GET /work', () => {
-  it('lists raw Generations newest first and links each to its workbench, leaving out refined ones', async () => {
-    const { generation: older } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima' } });
-    const { generation: newer } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima-bust' } });
-    const refined = await derive(older, 'redraw', { method: 'hires' });
+  it('lists only worked-on raw Generations, newest activity first, with their state', async () => {
+    const { generation: untouched } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima' } });
+    const { generation: wip } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima' } });
+    const { generation: done } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima-bust' } });
+    const refined = await derive(wip, 'redraw', { method: 'hires' });
+    const delivered = await derive(done, 'deliver');
     const html = await (await req('/work')).text();
-    expect(html).toContain('<h1>元絵を選ぶ</h1>');
-    expect(html).toContain(`href="/work/${older.short_id}"`);
-    expect(html.indexOf(`/work/${newer.short_id}"`)).toBeLessThan(html.indexOf(`/work/${older.short_id}"`));
+    expect(html).toContain('<h1>ワークベンチ</h1>');
+    expect(html).not.toContain(`/work/${untouched.short_id}"`);
     expect(html).not.toContain(`/work/${refined.short_id}"`);
-    expect(html).toContain(`src="/g/${older.short_id}/preview"`);
-    expect(html).toContain('ワークベンチ');
+    expect(html).not.toContain(`/work/${delivered.short_id}"`);
+    expect(html).toContain(`href="/work/${wip.short_id}"`);
+    expect(html).toContain(`src="/g/${wip.short_id}/preview"`);
+    expect(html.indexOf(`/work/${done.short_id}"`)).toBeLessThan(html.indexOf(`/work/${wip.short_id}"`));
+    expect(html).toContain('work-state-wip');
+    expect(html).toContain('work-state-done');
   });
 
-  it('filters by rating and by recipe', async () => {
-    const { generation: good } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima' } });
-    const { generation: plain } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima-bust' } });
-    expect((await postJson(`/api/v1/generations/${good.id}/rating`, { rating: 'good' }, 'PUT')).status).toBe(200);
+  it('filters by state and by recipe', async () => {
+    const { generation: wip } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima' } });
+    const { generation: done } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima-bust' } });
+    await derive(wip, 'redraw');
+    await derive(done, 'deliver');
 
-    const goodOnly = await (await req('/work?rating=good')).text();
-    expect(goodOnly).toContain(`/work/${good.short_id}"`);
-    expect(goodOnly).not.toContain(`/work/${plain.short_id}"`);
+    const wipOnly = await (await req('/work?state=wip')).text();
+    expect(wipOnly).toContain(`/work/${wip.short_id}"`);
+    expect(wipOnly).not.toContain(`/work/${done.short_id}"`);
+
+    const doneOnly = await (await req('/work?state=done')).text();
+    expect(doneOnly).toContain(`/work/${done.short_id}"`);
+    expect(doneOnly).not.toContain(`/work/${wip.short_id}"`);
 
     const bust = await (await req('/work?recipe=yukari-anima-bust')).text();
-    expect(bust).toContain(`/work/${plain.short_id}"`);
-    expect(bust).not.toContain(`/work/${good.short_id}"`);
+    expect(bust).toContain(`/work/${done.short_id}"`);
+    expect(bust).not.toContain(`/work/${wip.short_id}"`);
     expect(bust).toContain('href="/work?recipe=yukari-anima"');
+  });
+
+  it('counts a saved workbench as worked on and shows the empty state otherwise', async () => {
+    expect(await (await req('/work')).text()).toContain('作業中の絵がありません');
+    const { generation: root } = await createGeneration();
+    expect((await postJson(`/api/v1/workbenches/${root.id}`, { picks: { '1': { skip: true } } }, 'PUT')).status).toBe(200);
+    expect(await (await req('/work')).text()).toContain(`/work/${root.short_id}"`);
   });
 });
 
@@ -124,14 +143,15 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('data-wb-part-chip="scene"');
   });
 
-  it('phase 4 has background and size, the outline editor open, and a closed 詳細 with the finishing controls', async () => {
+  it('phase 4 shows background and size, with the outline editor, backdrop pattern and finishing controls in closed details', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
     expect(form).toContain('data-wb-bg="transparent"');
     expect(form).toContain('data-wb-bg="backdrop"');
     expect(form).toContain('name="wb_deliver_size"');
-    expect(form).toMatch(/<details class="wb-acc" open="">\s*<summary>\s*フチ/);
+    expect(form).toMatch(/<details class="wb-acc">\s*<summary>\s*フチ/);
+    expect(form).toContain('data-wb-outline-summary');
     expect(form).toContain('data-outline-editor');
     expect(form).toContain('+ 外側に足す');
     expect(form).toContain('白・紫に戻す');
@@ -139,8 +159,46 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
-    expect(form).toContain('data-wb-backdrop-patterns');
+    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns[^>]* hidden=""[^>]*>\s*<summary>\s*背景柄/);
     expect(form).toContain('切り抜きは初回に作って保存し');
+  });
+
+  it('keeps the run button and its error in a footer outside the scrolling panel body', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const body = html.indexOf('class="wb-panel-body"');
+    const foot = html.indexOf('class="wb-panel-foot"');
+    expect(body).toBeGreaterThan(0);
+    expect(foot).toBeGreaterThan(body);
+    expect(html.indexOf('data-wb-run')).toBeGreaterThan(foot);
+    expect(html.indexOf('data-wb-error')).toBeGreaterThan(foot);
+    expect(html.indexOf('data-wb-form="5"')).toBeLessThan(foot);
+  });
+
+  it('captions both panes with the same resolution and size text as the Generation page', () => {
+    const start = appJs.indexOf('function imageMetaText(node) {');
+    const source = appJs.slice(start, appJs.indexOf('\n  }\n', start) + 4);
+    const imageMetaText = new Function(`${source}; return imageMetaText;`)() as (node: unknown) => string;
+    for (const [width, height, size] of [[1536, 1536, 3_040_870], [768, 1024, 800], [null, null, 5_000_000], [2048, 2560, 3 * 1024 ** 3]] as const) {
+      expect(imageMetaText({ image_width: width, image_height: height, image_size: size })).toBe(formatImageMetaText({ width, height, size }));
+    }
+    expect(imageMetaText({ image_width: 10, image_height: 10, image_size: null })).toBe('');
+    expect(imageMetaText(null)).toBe('');
+    expect(appJs).toContain("qs('[data-wb-input-meta]', root).textContent = imageMetaText(input);");
+    expect(appJs).toContain("qs('[data-wb-cmp-meta]', root).textContent = imageMetaText(cmp.node);");
+    expect(appJs).toContain("captionWithMeta(itemKind(item) + (isAdopted ? ' · 採用中' : ''), item.node)");
+  });
+
+  it('puts the image size on each tree node', async () => {
+    const { generation: root } = await createGeneration();
+    await env.DB.prepare('UPDATE generations SET image_width = 1536, image_height = 1024, image_size = 2048 WHERE id = ?').bind(root.id).run();
+    const body = (await (await req(`/api/v1/generations/${root.id}/tree`)).json()) as { nodes: { id: string; image_width: number; image_height: number; image_size: number }[] };
+    expect(body.nodes.find((n) => n.id === root.id)).toMatchObject({ image_width: 1536, image_height: 1024, image_size: 2048 });
+  });
+
+  it('summarises the outline list in the フチ summary', () => {
+    expect(appJs).toContain('function outlineSummaryText(editor)');
+    expect(appJs).toContain("OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' }");
   });
 
   it('phase 5 has the F-number slider over the catalog stops, the three scope boxes and the viewfinder choices', async () => {

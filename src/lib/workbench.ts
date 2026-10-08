@@ -58,6 +58,9 @@ export interface WorkbenchNode {
   options: Record<string, unknown> | null;
   rating: string | null;
   delivered: boolean;
+  image_width: number | null;
+  image_height: number | null;
+  image_size: number | null;
   created_at: string;
 }
 
@@ -82,7 +85,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
   const { results } = await db
     .prepare(
       `${SUBTREE_CTE}
-       SELECT g.id, g.short_id, g.refines_generation_id, g.rating, g.created_at,
+       SELECT g.id, g.short_id, g.refines_generation_id, g.rating, g.created_at, g.image_width, g.image_height, g.image_size,
               r.kind AS request_kind, r.payload_json, r.parameters_json
        FROM generations g
        JOIN subtree s ON s.id = g.id
@@ -96,6 +99,9 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       refines_generation_id: string | null;
       rating: string | null;
       created_at: string;
+      image_width: number | null;
+      image_height: number | null;
+      image_size: number | null;
       request_kind: RequestKind;
       payload_json: string;
       parameters_json: string | null;
@@ -115,6 +121,9 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       options,
       rating: row.rating,
       delivered: isDeliveredRequest({ kind: row.request_kind, parameters_json: row.parameters_json }),
+      image_width: row.image_width,
+      image_height: row.image_height,
+      image_size: row.image_size,
       created_at: row.created_at,
     };
   });

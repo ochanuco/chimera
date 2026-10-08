@@ -864,7 +864,7 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 
 `backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail }]`
 （`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。deliver の
-`backdrop` optionが取れるパターン名の一覧で、GUIのDeliverフォームはこれをサムネイル
+`backdrop` optionが取れるパターン名の一覧で、GUIのワークベンチの納品フェーズはこれをサムネイル
 ピッカーとして描画します。このキーが無い（旧workerが公開したカタログ）場合、GUIは
 サムネイル無しの`stripes`カード1枚にフォールバックします。`PUT`のレスポンス・
 `GET /api/v1/catalogs`の一覧・MCP `list_catalog`は`backdrops`をname/labelだけの
@@ -1369,7 +1369,8 @@ GET /api/v1/generations/{id}/tree
       "id": "...", "short_id": "abc123", "refines_generation_id": "<親の id。元絵は null>",
       "kind": "redraw", "method": "hires", "phase": 1,
       "options": { "method": "hires", "hires": 3072 },
-      "rating": "good", "delivered": false, "created_at": "..."
+      "rating": "good", "delivered": false,
+      "image_width": 3072, "image_height": 3072, "image_size": 9437184, "created_at": "..."
     }
   ],
   "pending": [
@@ -1387,6 +1388,7 @@ GET /api/v1/generations/{id}/tree
     `deliver` = 4、`dof` = 5。元絵と対応しない kind は `null`
 -   `options`: 作った Request の `payload.options`（元絵と options の無い kind は `null`）
 -   `delivered`: 納品の絵か（`dof` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
+-   `image_width` / `image_height` / `image_size`: 画像の寸法（px）とバイト数。未記録の行は `null`
 -   `nodes` は `created_at` の古い順
 -   `pending`: `status` が `queued` / `running` の redraw / repair / masked_redraw / deliver / dof で、`payload.generation_id` が
     この木のどれかを指すもの。処理中の候補を画面の再読み込み後に出すために使う。`source_generation_id` は入力の id

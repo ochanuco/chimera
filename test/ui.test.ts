@@ -360,61 +360,20 @@ describe('Web GUI pages', () => {
     expect(rawHtml).not.toContain('detail-from');
   });
 
-  it('GET /g/:short_id hides the Redraw and Deliver forms only for a delivered Generation', async () => {
+  it('GET /g/:short_id has no editing forms for any Generation and links to the workbench', async () => {
     const { generation: source } = await createGeneration();
     const delivered = await createGeneration({
       requestOverrides: { kind: 'deliver' },
       jobOverrides: { source_generation_id: source.id },
     });
-
-    const deliveredHtml = await (await req(`/g/${delivered.generation.short_id}`)).text();
-    expect(deliveredHtml).not.toContain('redraw-form');
-    expect(deliveredHtml).not.toContain('repair-form');
-    expect(deliveredHtml).not.toContain('deliver-form');
-    expect(deliveredHtml).toContain('納品済みの絵なので');
-
-    const rawHtml = await (await req(`/g/${source.short_id}`)).text();
-    expect(rawHtml).toContain('<details class="section" open=""><summary>描き直し（Redraw）</summary>');
-    expect(rawHtml).toContain('<summary>手足の描き直し（Repair）</summary>');
-    expect(rawHtml).toContain('<details class="section" open=""><summary>納品（Deliver）</summary>');
-    expect(rawHtml).not.toContain('納品済みの絵なので');
-  });
-
-  it('GET /g/:short_id keeps the forms for a redraw output, and hides them for finalize, deliver_only repair and hires-chain outputs', async () => {
-    const { generation: source } = await createGeneration();
-    const redrawn = await createGeneration({
-      requestOverrides: { kind: 'redraw', parameters: { kind: 'redraw', method: 'light' } },
-      jobOverrides: { source_generation_id: source.id },
-    });
-    const redrawnHtml = await (await req(`/g/${redrawn.generation.short_id}`)).text();
-    expect(redrawnHtml).toContain('redraw-form');
-    expect(redrawnHtml).toContain('repair-form');
-    expect(redrawnHtml).toContain('deliver-form');
-    // hires re-renders a generate output only
-    expect(redrawnHtml).toMatch(/name="redraw_method" value="hires" disabled/);
-
-    const cases: { kind: 'finalize' | 'repair' | 'generate'; parameters: Record<string, unknown> }[] = [
-      { kind: 'finalize', parameters: {} },
-      { kind: 'repair', parameters: { kind: 'repair', deliver_only: true } },
-      { kind: 'generate', parameters: { kind: 'hires-chain' } },
-    ];
-    for (const c of cases) {
-      const delivered = await createGeneration({
-        requestOverrides: { kind: c.kind, parameters: c.parameters },
-        jobOverrides: { source_generation_id: source.id },
-      });
-      const html = await (await req(`/g/${delivered.generation.short_id}`)).text();
-      expect(html).not.toContain('redraw-form');
-      expect(html).not.toContain('repair-form');
-      expect(html).not.toContain('deliver-form');
-      expect(html).toContain('納品済みの絵なので');
+    for (const g of [source, delivered.generation]) {
+      const html = await (await req(`/g/${g.short_id}`)).text();
+      expect(html).not.toContain('option-form');
+      expect(html).not.toContain('描き直し（Redraw）');
+      expect(html).not.toContain('納品（Deliver）');
+      expect(html).toContain(`href="/work/${g.short_id}"`);
+      expect(html).toContain('ワークベンチで開く');
     }
-
-    const plainRepair = await createGeneration({
-      requestOverrides: { kind: 'repair', parameters: { kind: 'repair' } },
-      jobOverrides: { source_generation_id: source.id },
-    });
-    expect(await (await req(`/g/${plainRepair.generation.short_id}`)).text()).toContain('redraw-form');
   });
 
   it('GET /g/:short_id still renders an old finalize Generation with its resolved options', async () => {
@@ -434,7 +393,6 @@ describe('Web GUI pages', () => {
     expect(html).toContain('仕上げの解決値');
     expect(html).toContain('deliver only');
     expect(html).toContain('紫縁');
-    expect(html).toContain('納品済みの絵なので');
   });
 
   it('GET /g/:short_id?partial=lightbox no longer returns a fragment -- the lightbox was dropped, so it renders the normal full page', async () => {
@@ -443,7 +401,7 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('<html');
-    expect(html).toContain('描き直し（Redraw）');
+    expect(html).toContain('ワークベンチで開く');
   });
 
   it('GET /gallery default view (all) hides bad-rated generations but shows raw and finalize-output', async () => {
@@ -672,15 +630,10 @@ describe('Web GUI pages', () => {
     expect(res.headers.get('location')).toBe(`/g/${generation.short_id}`);
   });
 
-  it('GET /g/{short_id} has the Redraw and Deliver forms, and lists a posted request with its kind label', async () => {
+  it('GET /g/{short_id} lists a posted request with its kind label', async () => {
     const { generation } = await createGeneration();
 
     const beforeHtml = await (await req(`/g/${generation.short_id}`)).text();
-    expect(beforeHtml).toContain('class="option-form redraw-form"');
-    expect(beforeHtml).toContain('class="option-form deliver-form"');
-    expect(beforeHtml).toContain('data-request-kind="redraw"');
-    expect(beforeHtml).toContain('data-request-kind="deliver"');
-    expect(beforeHtml).toContain(`data-generation-short-id="${generation.short_id}"`);
     expect(beforeHtml).toContain('<summary>Requests</summary>');
 
     await postJson('/api/v1/requests', {
@@ -702,16 +655,8 @@ describe('Web GUI pages', () => {
     expect(afterHtml).toContain('<span class="request-kind">描き直し</span>');
   });
 
-  it('the Repair form renders parts, region tools and the repair options, and the posted payload creates a repair request', async () => {
+  it('a posted repair payload creates a repair request listed on the Generation', async () => {
     const { generation } = await createGeneration();
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toContain('class="option-form repair-form"');
-    expect(html).toContain('data-request-kind="repair"');
-    expect(html).toMatch(/name="repair_part" value="hands" checked/);
-    expect(html).toMatch(/name="repair_part" value="feet" checked/);
-    expect(html).toContain('data-repair-region-tools');
-    for (const name of ['denoise', 'seeds', 'size', 'pad', 'lora']) expect(html).toContain(`name="${name}"`);
-
     const posted = await postJson<{ kind: string; payload: unknown }>('/api/v1/requests', {
       kind: 'repair',
       payload: { generation_id: generation.short_id, options: { parts: ['feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2], size: 1024, pad: 1.5, lora: true } },
@@ -739,105 +684,6 @@ describe('Web GUI pages', () => {
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toContain('redraw');
     expect(JSON.stringify(res.body)).toContain('deliver');
-  });
-
-  it('the Redraw form offers the three methods with canvas checked, and the matching fields per panel', async () => {
-    const { generation } = await createGeneration();
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toMatch(/name="redraw_method" value="canvas" checked/);
-    expect(html).toMatch(/name="redraw_method" value="hires"(?![^>]*disabled)/);
-    expect(html).toContain('name="redraw_method" value="light"');
-    expect(html).toContain('data-redraw-panel="canvas"');
-    expect(html).toMatch(/data-redraw-panel="hires" hidden/);
-    expect(html).toMatch(/data-redraw-panel="light" hidden/);
-    for (const name of ['denoise', 'size', 'route', 'keep_strength', 'hires', 'hires_denoise', 'light_scene']) {
-      expect(html).toContain(`name="${name}"`);
-    }
-    expect(html).toContain('data-repair-region-tools');
-    expect(html).toContain('data-repair-region-clear');
-    // Drawing is opt-in so a plain click / right-click on the image isn't captured by the overlay.
-    expect(html).toMatch(/data-repair-region-toggle[^>]*aria-pressed="false"/);
-    expect(html).toContain('<button type="submit">描き直す</button>');
-  });
-
-  it('the Redraw form disables the hires method unless the source is a generate output', async () => {
-    const { generation: raw } = await createGeneration();
-    expect(await (await req(`/g/${raw.short_id}`)).text()).not.toMatch(/name="redraw_method" value="hires" disabled/);
-
-    const { generation: source } = await createGeneration();
-    const repaired = await createGeneration({
-      requestOverrides: { kind: 'repair', parameters: { kind: 'repair' } },
-      jobOverrides: { source_generation_id: source.id },
-    });
-    expect(await (await req(`/g/${repaired.generation.short_id}`)).text()).toMatch(/name="redraw_method" value="hires" disabled/);
-  });
-
-  it('the Deliver form groups controls into 仕上げ / 納品の見た目 fieldsets and has no redraw or repair controls', async () => {
-    const { generation } = await createGeneration();
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    const form = deliver.slice(0, deliver.indexOf('</form>'));
-    expect(form).toContain('<legend>仕上げ</legend>');
-    expect(form).toContain('<legend>納品の見た目</legend>');
-    expect(form).toContain('<legend>フチ</legend>');
-    expect((form.match(/class="option-group"/g) ?? []).length).toBe(3);
-    expect(form).toContain('<button type="submit">納品する</button>');
-    for (const gone of ['deliver_only', 'repair_hands', 'repair_pad', 'repair_lora', 'repair_seeds', 'name="hires"', '部分描き直し']) {
-      expect(form).not.toContain(gone);
-    }
-    expect(html).not.toContain('name="deliver_only"');
-    expect(html).not.toContain('name="repair_pad"');
-    expect(html).not.toContain('name="repair_seeds"');
-  });
-
-  it('the Deliver form offers recolor, backdrop and stroke light', async () => {
-    const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari-il' } });
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toContain('name="repin"');
-    expect(html).toContain('name="recolor"');
-    expect(html).toContain('name="backdrop"');
-    expect(html).toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
-    expect(html).toContain('data-backdrop-value="transparent"');
-    expect(html).toContain('data-backdrop-value="color"');
-    expect(html).toContain('name="backdrop_color"');
-    expect(html).not.toContain('name="stroke_style"');
-    expect(html).toContain('data-outline-editor');
-    expect(html).toContain('data-stroke-mode="even"');
-    expect(html).toContain('name="light_from"');
-    expect(html).toContain('<option value="nw"');
-  });
-
-  it('the Deliver form edits the outline list with the catalog default or white-inside purple-outside, and no dof controls', async () => {
-    const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari-il' } });
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    const form = deliver.slice(0, deliver.indexOf('</form>'));
-    expect(form).toContain('data-outline-default="[{&quot;color&quot;:&quot;#ffffff&quot;,&quot;width&quot;:0.4},{&quot;color&quot;:&quot;#885b80&quot;,&quot;width&quot;:1.04}]"');
-    expect((form.slice(0, form.indexOf('<template')).match(/<div class="outline-row"/g) ?? []).length).toBe(2);
-    expect(form).toContain('data-outline-add');
-    expect(form).toContain('白・紫に戻す');
-    expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
-    expect(form).toContain('data-outline-max-count="6"');
-    expect(form).not.toContain('dof');
-    expect(form).not.toContain('ボケ');
-  });
-
-  it('the Deliver form shows Japanese help markers', async () => {
-    const { generation } = await createGeneration({ requestOverrides: { recipe: 'yukari' } });
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    const form = deliver.slice(0, deliver.indexOf('</form>'));
-    expect((form.match(/class="option-help"/g) ?? []).length).toBe(7);
-  });
-
-  it('the Deliver form offers all 8 stroke light directions', async () => {
-    const { generation } = await createGeneration();
-    const directions = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    for (const dir of directions) {
-      expect(html).toContain(`<option value="${dir}"`);
-      expect(html).toContain(`data-compass-dir="${dir}"`);
-    }
   });
 
   it('GET /stories 404s', async () => {
@@ -1317,14 +1163,6 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
     return `deliver-gui-${crypto.randomUUID()}`;
   }
 
-  async function publishRecipe(recipe: string, extra: Record<string, unknown>, top: Record<string, unknown> = {}) {
-    await postJson(
-      `/api/v1/catalogs/production`,
-      { schema_version: 1, recipes: [{ name: recipe, poses: [], ...extra }], patches: {}, ...top },
-      'PUT',
-    );
-  }
-
   async function setRatingGood(generationId: string): Promise<void> {
     const res = await postJson(`/api/v1/generations/${generationId}/rating`, { rating: 'good' }, 'PUT');
     expect(res.status).toBe(200);
@@ -1366,248 +1204,6 @@ describe('Deliver / Redraw profiles and word dials (GUI)', () => {
 
     return { source, delivered };
   }
-
-  async function detailHtml(extra: Record<string, unknown> | null, top: Record<string, unknown> = {}): Promise<string> {
-    const recipe = uniqueRecipe();
-    await publishRecipe(recipe, extra ?? {}, top);
-    const { generation } = await createGeneration({ requestOverrides: { recipe } });
-    return (await req(`/g/${generation.short_id}`)).text();
-  }
-
-  /** The selected option of `name`'s select; the Deliver form is read first, since Redraw's light panel shares some names. */
-  function selectedOf(html: string, name: string): string | null {
-    const deliverStart = html.indexOf('class="option-form deliver-form"');
-    html = deliverStart >= 0 ? html.slice(deliverStart) : html;
-    const select = html.match(new RegExp(`<select name="${name}"[^>]*>([\\s\\S]*?)</select>`));
-    const option = select?.[1]?.match(/<option value="([^"]*)"[^>]*selected/);
-    return option ? option[1]! : null;
-  }
-
-  const DOF_F = { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0] };
-
-  it('a recipe with no published catalog dials/profiles renders the plain keep_legwear checkbox and no denoise dial', async () => {
-    const { generation } = await createGeneration({ requestOverrides: { recipe: uniqueRecipe() } });
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toContain('<input type="checkbox" name="keep_legwear"/>');
-    expect(html).not.toContain('data-dial-key="denoise"');
-  });
-
-  it('catalog deliver.defaults preset repin; without them repin stays unchecked', async () => {
-    const withDefaults = await detailHtml({ deliver: { defaults: { repin: true, keep_legwear: true } } });
-    expect(withDefaults).toMatch(/name="repin"[^>]*checked/);
-    expect(withDefaults).toMatch(/name="keep_legwear"[^>]*checked/);
-
-    const without = await detailHtml(null);
-    expect(without).not.toMatch(/name="repin"[^>]*checked/);
-  });
-
-  it('a catalog stroke_light direction becomes the outline shading default, while the light direction follows redraw.light', async () => {
-    const html = await detailHtml({ deliver: { defaults: { stroke_light: 'n' } } });
-    expect(html).toContain('data-stroke-default="n"');
-    expect(html).toContain('<div class="outline-stroke" data-outline-stroke="true" data-value="n">');
-    expect(html).toMatch(/class="wb-pill compass-btn wb-pill-on" data-compass-dir="n"/);
-    expect(selectedOf(html, 'light_from')).toBe('n');
-    expect(html.slice(html.indexOf('class="option-form deliver-form"'))).toMatch(/<select name="light_from"[^>]*disabled/);
-  });
-
-  it('an unusable catalog stroke_light falls back to even shading, and the light direction to redraw.light.default_from', async () => {
-    const light = { scenes: ['sunset'], from: ['nw', 'n', 'se'], default_from: 'se' };
-    const html = await detailHtml({ deliver: { defaults: { stroke_light: 'none' } }, redraw: { light } });
-    expect(html).toContain('data-stroke-default="even"');
-    expect(selectedOf(html, 'light_from')).toBe('se');
-  });
-
-  it('the 光の向き select offers the eight 「〜から」 choices, and the shading has even and direction modes', async () => {
-    const html = await detailHtml(null);
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    const labels = [...deliver.matchAll(/<option value="(nw|n|ne|w|e|sw|s|se)"[^>]*>\s*([^<\s]+)\s*</g)].map((m) => `${m[1]}:${m[2]}`);
-    expect(labels).toEqual(['nw:左上から', 'n:上から', 'ne:右上から', 'w:左から', 'e:右から', 'sw:左下から', 's:下から', 'se:右下から']);
-    expect(deliver).toContain('data-stroke-mode="even"');
-    expect(deliver).toContain('data-stroke-mode="dir"');
-    expect(deliver).not.toContain('name="stroke_style"');
-    expect(deliver).toContain('data-stroke-default="even"');
-  });
-
-  it('the solid-colour backdrop input starts from the catalog deliver.backdrop_color, else #ffffff', async () => {
-    expect(await detailHtml({ deliver: { backdrop_color: '#a1b2c3' } })).toMatch(/name="backdrop_color"[^>]*value="#a1b2c3"/);
-    expect(await detailHtml({ deliver: { backdrop_color: 'red' } })).toMatch(/name="backdrop_color"[^>]*value="#ffffff"/);
-    expect(await detailHtml(null)).toMatch(/name="backdrop_color"[^>]*value="#ffffff"/);
-  });
-
-  it('a recipe with published catalog dials.redraw.denoise renders a denoise dial group in the Redraw form, not in Deliver', async () => {
-    const html = await detailHtml({ dials: { redraw: { denoise: { tidy: 0.65, heavy: 0.8 } } } });
-    expect(html).toContain('data-dial-key="denoise"');
-    expect(html).toContain('data-dial-value="tidy"');
-    expect(html).toContain('data-dial-value="heavy"');
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    expect(deliver).not.toContain('data-dial-key="denoise"');
-  });
-
-  it('a recipe with published catalog dials.deliver.keep_legwear renders the tri-state keep_legwear group', async () => {
-    const html = await detailHtml({ dials: { deliver: { keep_legwear: { light: 0.4 } } } });
-    expect(html).toContain('data-dial-key="keep_legwear"');
-    expect(html).not.toContain('<input type="checkbox" name="keep_legwear"/>');
-  });
-
-  it('catalog redraw.defaults become the Redraw form placeholders and the route default', async () => {
-    const html = await detailHtml({
-      redraw: { defaults: { canvas: { denoise: 0.4, size: 2560, route: 'pixel' }, hires: { hires_denoise: 0.45 } } },
-    });
-    expect(html).toMatch(/name="denoise"[^>]*placeholder="0.4"/);
-    expect(html).toMatch(/name="size"[^>]*placeholder="2560"/);
-    expect(html).toMatch(/<select name="route"[^>]*>[\s\S]*?<option value="pixel" selected/);
-    expect(html).toMatch(/name="hires_denoise"[^>]*placeholder="0.45"/);
-  });
-
-  it('the Redraw light panel offers the catalog redraw.light scenes and defaults the direction to default_from', async () => {
-    const html = await detailHtml({
-      redraw: { light: { scenes: ['sunset', 'moon', 'dawn'], from: ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'], default_from: 'ne' } },
-    });
-    const panel = html.slice(html.indexOf('data-redraw-panel="light"'));
-    const fieldset = panel.slice(0, panel.indexOf('</fieldset>'));
-    expect(fieldset).toContain('<option value="sunset">夕日</option>');
-    expect(fieldset).toContain('<option value="moon">月明かり</option>');
-    expect(fieldset).toContain('<option value="dawn">dawn</option>');
-    expect(fieldset).toMatch(/<option value="ne" selected/);
-  });
-
-  it('a recipe with published catalog backdrops renders a thumbnail card per pattern, with a cache-busting version query', async () => {
-    const html = await detailHtml(null, {
-      backdrops: [
-        { name: 'stripes', label: '斜めストライプ', thumbnail: 'data:image/png;base64,aGVsbG8=' },
-        { name: 'dots', label: '水玉', thumbnail: 'data:image/png;base64,aGVsbG8=' },
-      ],
-    });
-    expect(html).toContain('data-backdrop-value="stripes"');
-    expect(html).toContain('data-backdrop-value="dots"');
-    expect(html).toMatch(/<img class="backdrop-thumb" src="\/api\/v1\/catalogs\/production\/backdrops\/stripes\.png\?v=[^"]+"/);
-    expect(html).toMatch(/<img class="backdrop-thumb" src="\/api\/v1\/catalogs\/production\/backdrops\/dots\.png\?v=[^"]+"/);
-  });
-
-  it('a recipe with no published catalog backdrops falls back to a single unillustrated stripes card', async () => {
-    const html = await detailHtml(null);
-    expect(html).toContain('data-backdrop-value="stripes"');
-    expect(html).not.toContain('class="backdrop-thumb"');
-  });
-
-  /** A deliver output whose recipe publishes `top`; the dof section hangs off it. */
-  async function deliveredHtml(top: Record<string, unknown>): Promise<string> {
-    const recipe = uniqueRecipe();
-    await publishRecipe(recipe, {}, top);
-    const { delivered } = await createDeliverResult(recipe);
-    return (await req(`/g/${delivered.short_id}`)).text();
-  }
-
-  it('renders the dof form on a deliver output only when the catalog publishes the top-level dof', async () => {
-    const html = await deliveredHtml({ dof: { f_number: DOF_F, focus: 'fractions [x, y] of the source image' } });
-    expect(html).toContain('<summary>ボケ（Dof）</summary>');
-    expect(html).toContain('data-request-kind="dof"');
-    expect(html).toMatch(/<input type="range" name="dof_f_stop" min="0" max="3" step="1" value="0"/);
-    expect(html).toContain('data-dof-stops="[2.8,4,5.6,8]"');
-    expect(html).toContain('f/2.8');
-    expect(html).toContain('fractions [x, y] of the source image');
-    expect(html).toContain('<button type="submit">ボケをかける</button>');
-    expect(html).not.toContain('deliver-form');
-
-    const noDof = await deliveredHtml({});
-    expect(noDof).not.toContain('dof_f_stop');
-  });
-
-  it('does not render the dof form on a raw Generation or on a dof output', async () => {
-    const recipe = uniqueRecipe();
-    await publishRecipe(recipe, {}, { dof: { f_number: DOF_F } });
-    const { generation: raw } = await createGeneration({ requestOverrides: { recipe } });
-    expect(await (await req(`/g/${raw.short_id}`)).text()).not.toContain('dof_f_stop');
-    const { generation: blurred } = await createGeneration({ requestOverrides: { recipe, kind: 'dof' } });
-    const html = await (await req(`/g/${blurred.short_id}`)).text();
-    expect(html).toContain('納品済みの絵なので');
-    expect(html).not.toContain('dof_f_stop');
-  });
-
-  it('threads dof.guide_radius_per_f into the F slider and shows no dof checkbox', async () => {
-    const withGuide = await deliveredHtml({ dof: { f_number: DOF_F, guide_radius_per_f: 0.0417 } });
-    expect(withGuide).toMatch(/name="dof_f_stop"[^>]*data-dof-guide-radius="0.0417"/);
-    expect(withGuide).not.toContain('name="dof"');
-
-    const plain = await deliveredHtml({ dof: { f_number: DOF_F } });
-    expect(plain).toContain('name="dof_f_stop"');
-    expect(plain).not.toContain('data-dof-guide-radius');
-  });
-
-  it('presets the dof scope checkboxes from the catalog dof.scope, all on when absent', async () => {
-    const off = await deliveredHtml({ dof: { f_number: DOF_F, scope: { backdrop: false } } });
-    expect(off).toMatch(/<input type="checkbox" name="dof_scope_figure" checked/);
-    expect(off).toMatch(/<input type="checkbox" name="dof_scope_outline" checked/);
-    expect(off).not.toMatch(/name="dof_scope_backdrop"[^>]*checked/);
-    expect(off).toContain('ボカす範囲');
-
-    const on = await deliveredHtml({ dof: { f_number: DOF_F } });
-    for (const layer of ['figure', 'outline', 'backdrop']) {
-      expect(on).toMatch(new RegExp(`name="dof_scope_${layer}"[^>]*checked`));
-    }
-  });
-
-  it('renders the dof viewfinder choices from dof.viewfinder, off by default', async () => {
-    const html = await deliveredHtml({ dof: { f_number: DOF_F, viewfinder: { values: ['off', 'on', 'both'], default: 'off' } } });
-    expect(html).toMatch(/<input type="radio" name="dof_viewfinder" value="off" checked/);
-    expect(html).toMatch(/<input type="radio" name="dof_viewfinder" value="on"/);
-    expect(html).toMatch(/<input type="radio" name="dof_viewfinder" value="both"/);
-    expect(html).toContain('<span>両方</span>');
-  });
-
-  it('renders the Deliver 光源 select only when the catalog publishes redraw.light, with 光の向き disabled while no scene is chosen', async () => {
-    const html = await detailHtml({
-      redraw: { light: { scenes: ['sunset', 'moon', 'dawn'], from: ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'], default_from: 'nw' } },
-    });
-    const deliver = html.slice(html.indexOf('class="option-form deliver-form"'));
-    const look = deliver.slice(deliver.indexOf('<legend>納品の見た目</legend>'));
-    const fieldset = look.slice(0, look.indexOf('</fieldset>'));
-    expect(fieldset.indexOf('name="light_scene"')).toBeGreaterThan(-1);
-    expect(fieldset.indexOf('name="light_from"')).toBeGreaterThan(fieldset.indexOf('name="light_scene"'));
-    expect(fieldset).toMatch(/<option value="" selected[^>]*>\s*指定しない（引き継ぎ）\s*<\/option>/);
-    expect(fieldset).toContain('<option value="sunset">夕日</option>');
-    expect(fieldset).toContain('<option value="dawn">dawn</option>');
-    expect(fieldset).toMatch(/<select name="light_from"[^>]*disabled/);
-    expect(selectedOf(fieldset, 'light_from')).toBe('nw');
-
-    const plain = await detailHtml(null);
-    const plainDeliver = plain.slice(plain.indexOf('class="option-form deliver-form"'));
-    expect(plainDeliver.slice(0, plainDeliver.indexOf('</form>'))).not.toContain('light_scene');
-    expect(plainDeliver).toContain('name="light_from"');
-  });
-
-  it('presets the checked backdrop radio from deliver.defaults.backdrop when it names a published pattern', async () => {
-    const html = await detailHtml(
-      { deliver: { defaults: { backdrop: 'dots' } } },
-      {
-        backdrops: [
-          { name: 'stripes', label: '斜めストライプ', thumbnail: 'data:image/png;base64,aGVsbG8=' },
-          { name: 'dots', label: '水玉', thumbnail: 'data:image/png;base64,aGVsbG8=' },
-        ],
-      },
-    );
-    expect(html).toMatch(/<input type="radio" name="backdrop" value="dots" checked/);
-    expect(html).not.toMatch(/<input type="radio" name="backdrop" value="stripes" checked/);
-  });
-
-  it('a recipe with a promoted deliver Preset renders a profile button for it in the Deliver form only', async () => {
-    const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { repin: true });
-    await setRatingGood(delivered.id);
-    const promoted = await postJson<{ name: string; version: number }>('/api/v1/presets/promote-profile', {
-      generation_id: delivered.id,
-      name: 'daily',
-      idempotency_key: crypto.randomUUID(),
-    });
-    expect(promoted.status).toBe(200);
-
-    const { generation } = await createGeneration({ requestOverrides: { recipe } });
-    const html = await (await req(`/g/${generation.short_id}`)).text();
-    expect(html).toContain('data-profile-name="daily"');
-    expect(html).toContain('data-profile-version="1"');
-    const redraw = html.slice(html.indexOf('class="option-form redraw-form"'), html.indexOf('class="option-form deliver-form"'));
-    expect(redraw).not.toContain('data-profile-name');
-  });
 
   it('shows the promote-profile form only for a rating=good deliver-kind Generation, not for a plain one or an old finalize one', async () => {
     const recipe = uniqueRecipe();
