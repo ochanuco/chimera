@@ -983,7 +983,8 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
 
 -   段階 A、pose の登録。publish 済み catalog の pose 名を `{ recipe_pose }` の参照として
     presets へ入れます（`POST /api/v1/presets/import`）。同じ `(recipe, kind, name)` が
-    既にあれば飛ばすので、何度呼んでも同じ結果です。本文は持たないので、この時点で
+    既にあれば飛ばすので、何度呼んでも同じ結果です。ただし最新 active 版の根が別の
+    recipe pose なら、自名の `{ recipe_pose }` を根にした版を追記して付け替えます（`rerooted`）。本文は持たないので、この時点で
     comfyui-recipes 側の動作は何も変わりません。
 -   段階 B、pin と昇格。chimera が request に版を pin し、worker が pin された preset を
     解決して patches を `generation.patches` の前に畳みます。受領時 lint と

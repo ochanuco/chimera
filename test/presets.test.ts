@@ -46,6 +46,7 @@ interface PresetSummary {
 
 interface ImportResult {
   imported: PresetSummary[];
+  rerooted: PresetSummary[];
   skipped: { recipe: string; kind: string; name: string }[];
 }
 
@@ -121,6 +122,73 @@ describe('Preset import', () => {
 
     const versions = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets/${recipe}/pose/lounge`);
     expect(versions.body.items).toHaveLength(1);
+  });
+
+  it('re-roots a name whose latest active version roots on another pose, then skips it on the next import', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const recipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, sampleCatalog(recipe), 'PUT');
+    await env.DB.prepare(
+      `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, created_by, created_at)
+       VALUES (?, ?, 'pose', 'seated', 2, ?, 'active', 'promote', 'gui', ?)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        recipe,
+        JSON.stringify({ base: { recipe, kind: 'pose', name: 'lounge', version: 1 }, patches: [{ op: 'set', path: 'a', value: 1 }] }),
+        new Date().toISOString(),
+      )
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, created_by, created_at)
+       VALUES (?, ?, 'pose', 'lounge', 1, ?, 'active', 'import', 'system', ?)`,
+    )
+      .bind(crypto.randomUUID(), recipe, JSON.stringify({ recipe_pose: 'lounge' }), new Date().toISOString())
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO presets (id, recipe, kind, name, version, body_json, status, source, created_by, created_at)
+       VALUES (?, ?, 'pose', 'seated', 1, ?, 'active', 'import', 'system', ?)`,
+    )
+      .bind(crypto.randomUUID(), recipe, JSON.stringify({ recipe_pose: 'lounge' }), new Date().toISOString())
+      .run();
+
+    const first = await postJson<ImportResult>('/api/v1/presets/import', { recipe_ref: recipeRef });
+    expect(first.body.imported).toEqual([]);
+    expect(first.body.rerooted).toHaveLength(1);
+    expect(first.body.rerooted[0]).toMatchObject({ name: 'seated', version: 3, source: 'import', note: 're-rooted onto recipe pose seated (was lounge)' });
+    expect(first.body.skipped.map((s) => s.name)).toEqual(['lounge']);
+
+    const resolved = await getJson<{ version: number; record: unknown; patches: unknown[] }>(`/api/v1/presets/${recipe}/pose/seated/3`);
+    expect(resolved.body.version).toBe(3);
+    expect(resolved.body.record).toEqual({ recipe_pose: 'seated' });
+    expect(resolved.body.patches).toEqual([]);
+
+    const second = await postJson<ImportResult>('/api/v1/presets/import', { recipe_ref: recipeRef });
+    expect(second.body.rerooted).toEqual([]);
+    expect(second.body.skipped.map((s) => s.name).sort()).toEqual(['lounge', 'seated']);
+    const versions = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets/${recipe}/pose/seated`);
+    expect(versions.body.items).toHaveLength(3);
+  });
+
+  it('skips a name already rooted on its own pose even after a promote', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipeRef, recipe);
+    await insertPromoteRow({
+      recipe,
+      kind: 'pose',
+      name: 'lounge',
+      version: 2,
+      base: { recipe, kind: 'pose', name: 'lounge', version: 1 },
+      patches: [{ op: 'set', path: 'a', value: 1 }],
+    });
+
+    const again = await postJson<ImportResult>('/api/v1/presets/import', { recipe_ref: recipeRef });
+    expect(again.body.imported).toEqual([]);
+    expect(again.body.rerooted).toEqual([]);
+    expect(again.body.skipped).toHaveLength(2);
+    const versions = await getJson<{ items: PresetSummary[] }>(`/api/v1/presets/${recipe}/pose/lounge`);
+    expect(versions.body.items).toHaveLength(2);
   });
 
   it('404s importing a recipe_ref with no published catalog', async () => {
