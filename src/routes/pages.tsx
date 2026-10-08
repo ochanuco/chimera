@@ -16,8 +16,8 @@ import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
 import { WorkbenchPage, type WorkbenchData, type WorkbenchPart } from '../ui/pages/Workbench';
 import { buildWorkbenchTree, findRootGeneration, getWorkbench } from '../lib/workbench';
-import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
-import { decodeCursor, queryGenerations, queryTimeline } from '../lib/generations';
+import { StyleCheckPage, type StyleCheckNode, type StyleCheckPoseView } from '../ui/pages/StyleCheck';
+import { decodeCursor, queryTimeline } from '../lib/generations';
 import { slotEndIso, slotStartIso } from '../lib/timeline';
 import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
@@ -393,7 +393,7 @@ pages.get('/bookmarks', async (c) => {
   );
 });
 
-/** result_json.generation_ids[0] の解決結果を絵柄チェックの GenerationCardData に写す。result_json の形が壊れていても行は落とさず null (「まだ描いていない」と区別するのは呼び出し側)。 */
+/** result_json.generation_ids[0], or null when the request is not done or its result is malformed (the pose then reads as not rendered yet). */
 function resolveDoneGenerationId(request: { status: string; result_json: string | null }): string | null {
   if (request.status !== 'done' || !request.result_json) return null;
   try {
@@ -412,30 +412,27 @@ pages.get('/check', async (c) => {
 
   const rows = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
 
-  const pinGenerationIds = rows.map((r) => r.pin?.generation_id).filter((id): id is string => Boolean(id));
-  const resultGenerationIds = rows.map((r) => (r.request ? resolveDoneGenerationId(r.request) : null)).filter((id): id is string => Boolean(id));
-  const cardIds = Array.from(new Set([...pinGenerationIds, ...resultGenerationIds]));
+  const resultIds = rows.map((r) => (r.request ? resolveDoneGenerationId(r.request) : null));
+  const wanted = Array.from(new Set([...rows.map((r) => r.pin?.generation_id ?? null), ...resultIds].filter((id): id is string => Boolean(id))));
+  const { results: nodeRows } = wanted.length
+    ? await c.env.DB
+        .prepare(
+          `SELECT id, short_id, rating, image_width, image_height, image_size FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
+        )
+        .bind(JSON.stringify(wanted))
+        .all<Omit<StyleCheckNode, 'delivered'>>()
+    : { results: [] };
+  const nodeById = new Map((nodeRows ?? []).map((n) => [n.id, { ...n, delivered: false as const }]));
 
-  const origin = new URL(c.req.url).origin;
-  const cardData = cardIds.length > 0 ? await queryGenerations(c.env.DB, { ids: cardIds.join(',') }, origin) : { items: [] };
-  const cardById = new Map(cardData.items.map((item) => [item.id, item]));
+  const poses: StyleCheckPoseView[] = rows.map((row, i) => ({
+    framing: row.framing,
+    pose: row.pose,
+    pin: row.pin ? nodeById.get(row.pin.generation_id) ?? null : null,
+    request: row.request ? { id: row.request.id, status: row.request.status, error: row.request.error } : null,
+    result: resultIds[i] ? nodeById.get(resultIds[i]!) ?? null : null,
+  }));
 
-  const viewRows: StyleCheckRowView[] = rows.map((row) => {
-    const pinCard = row.pin ? cardById.get(row.pin.generation_id) ?? null : null;
-    let request: StyleCheckRowView['request'] = null;
-    if (row.request) {
-      const resultId = resolveDoneGenerationId(row.request);
-      request = {
-        id: row.request.id,
-        status: row.request.status,
-        error: row.request.error,
-        resultCard: resultId ? cardById.get(resultId) ?? null : null,
-      };
-    }
-    return { framing: row.framing, pose: row.pose, pin: pinCard, request };
-  });
-
-  return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} rows={viewRows} />);
+  return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} poses={poses} />);
 });
 
 pages.get('/compare', async (c) => {
@@ -473,12 +470,13 @@ pages.get('/compare', async (c) => {
 });
 
 pages.get('/work', async (c) => {
-  const rating = c.req.query('rating') === 'good' ? 'good' : undefined;
+  const stateQuery = c.req.query('state');
+  const state = stateQuery === 'wip' || stateQuery === 'done' ? stateQuery : undefined;
   const recipe = c.req.query('recipe') || undefined;
   const page = Math.max(Number(c.req.query('page')) || 1, 1);
-  const sources = await listWorkSources(c.env.DB, { rating, recipe, offset: (page - 1) * WORK_SOURCES_PAGE_SIZE });
+  const sources = await listWorkSources(c.env.DB, { state, recipe, offset: (page - 1) * WORK_SOURCES_PAGE_SIZE });
   return c.html(
-    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={sources.recipes} filters={{ rating, recipe, page }} hasMore={sources.hasMore} />,
+    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={sources.recipes} filters={{ state, recipe, page }} hasMore={sources.hasMore} />,
   );
 });
 

@@ -5,9 +5,13 @@ import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults, Redr
 import type { Dials } from '../option-forms';
 import { dialWordsFor } from '../option-forms';
 import { Compass, OutlineEditor } from '../components/OutlineEditor';
-import { DofFields, FALLBACK_DOF } from '../components/DofSection';
+import { DofFields, FALLBACK_DOF } from '../components/DofFields';
 import { LIGHT_SCENE_LABELS } from '../components/OptionControls';
-import type { BackdropOption } from '../components/DeliverSection';
+
+export interface BackdropOption {
+  name: string;
+  label: string;
+}
 
 export interface WorkbenchPart {
   name: string;
@@ -267,32 +271,19 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           </label>
         </div>
 
-        <details class="wb-acc" open>
+        <details class="wb-acc">
           <summary>
             フチ <span class="wb-acc-sub" data-wb-outline-summary></span>
           </summary>
           <OutlineEditor outlines={data.outlines} stroke={data.strokeDefault} />
         </details>
 
-        <details class="wb-acc">
-          <summary>詳細</summary>
+        <details class="wb-acc" data-wb-backdrop-patterns data-default={backdropDefault} hidden>
+          <summary>
+            背景柄 <span class="wb-acc-sub" data-wb-backdrop-summary></span>
+          </summary>
           <div class="wb-acc-body">
-            <label>
-              <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する（repin）
-            </label>
-            <label>
-              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
-            </label>
-            <label>
-              <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える（skin）
-            </label>
-            <label>
-              <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す（keep legwear）
-            </label>
-            <label>
-              <input type="checkbox" name="keep_scene" checked={defaults?.keep_scene === true} /> 元の場面を残す（keep scene）
-            </label>
-            <div class="backdrop-picker wb-backdrops" data-backdrop-group data-wb-backdrop-patterns data-default={backdropDefault} hidden>
+            <div class="backdrop-picker wb-backdrops" data-backdrop-group>
               <span class="dial-label">背景（backdrop）</span>
               {patterns.map((bd, i) => (
                 <label class="backdrop-option" data-backdrop-value={bd.name}>
@@ -319,6 +310,27 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
               <input type="radio" name="backdrop" value="transparent" checked />
             </label>
             <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" value={data.backdropColor ?? '#ffffff'} hidden disabled />
+          </div>
+        </details>
+
+        <details class="wb-acc">
+          <summary>詳細</summary>
+          <div class="wb-acc-body">
+            <label>
+              <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する（repin）
+            </label>
+            <label>
+              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
+            </label>
+            <label>
+              <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える（skin）
+            </label>
+            <label>
+              <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す（keep legwear）
+            </label>
+            <label>
+              <input type="checkbox" name="keep_scene" checked={defaults?.keep_scene === true} /> 元の場面を残す（keep scene）
+            </label>
           </div>
         </details>
         <p class="wb-note">切り抜きは初回に作って保存し、2 回目以降は使い回します。</p>
@@ -383,7 +395,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               <figure class="wb-fig">
                 <figcaption class="wb-cap">
                   <span>
-                    入力 <span class="mono" data-wb-input-kind></span>
+                    入力 <span class="mono" data-wb-input-kind></span> <span class="wb-meta" data-wb-input-meta></span>
                   </span>
                   <span data-wb-pane-hint></span>
                 </figcaption>
@@ -392,7 +404,8 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               <figure class="wb-fig">
                 <figcaption class="wb-cap">
                   <span>
-                    候補 <span class="mono" data-wb-cmp-kind></span> <span data-wb-cmp-badge></span> <span class="mono" data-wb-cmp-status></span>
+                    候補 <span class="mono" data-wb-cmp-kind></span> <span data-wb-cmp-badge></span> <span class="mono" data-wb-cmp-status></span>{' '}
+                    <span class="wb-meta" data-wb-cmp-meta></span>
                   </span>
                   <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
                     {(['bad', 'neutral', 'good'] as const).map((r) => (
@@ -436,22 +449,26 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
           </section>
 
           <section class="wb-panel" aria-label="候補を作る">
-            <div>
-              <p class="wb-note">
-                フェーズ <span data-wb-phase-no>1</span> / 5
-              </p>
-              <h2 class="wb-panel-title">
-                <span data-wb-phase-title>描き直し</span>の候補を作る
-              </h2>
-              <p class="wb-note">入力は前のフェーズで採用（またはスキップ）した絵。実行するたびに候補が 1 枚増えます。</p>
+            <div class="wb-panel-body">
+              <div>
+                <p class="wb-note">
+                  フェーズ <span data-wb-phase-no>1</span> / 5
+                </p>
+                <h2 class="wb-panel-title">
+                  <span data-wb-phase-title>描き直し</span>の候補を作る
+                </h2>
+                <p class="wb-note">入力は前のフェーズで採用（またはスキップ）した絵。実行するたびに候補が 1 枚増えます。</p>
+              </div>
+              <RedrawForm data={data} />
+              <LightForm data={data} />
+              <PartForm data={data} />
+              <DeliverForm data={data} />
+              <DofForm data={data} />
             </div>
-            <RedrawForm data={data} />
-            <LightForm data={data} />
-            <PartForm data={data} />
-            <DeliverForm data={data} />
-            <DofForm data={data} />
-            <p class="wb-error" data-wb-error role="alert" hidden></p>
-            <button type="button" class="wb-run" data-wb-run></button>
+            <div class="wb-panel-foot">
+              <p class="wb-error" data-wb-error role="alert" hidden></p>
+              <button type="button" class="wb-run" data-wb-run></button>
+            </div>
           </section>
         </div>
       </div>

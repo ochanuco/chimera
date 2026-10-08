@@ -1089,151 +1089,9 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
-.option-form { display: flex; flex-direction: column; gap: 0.7rem; }
-.option-form input[type="number"] { width: 5rem; }
-/* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial/profile ボタン全部がアクセント色で塗られ選択中が見えなくなる */
-.option-form button[type="submit"] {
-  align-self: flex-start;
-  background: var(--accent);
-  color: #10131c;
-  border: none;
-  border-radius: 6px;
-  padding: 0.35rem 0.9rem;
-  cursor: pointer;
-  transition: filter 0.1s, transform 0.05s, background-color 0.15s;
-}
-.option-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
-.option-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
-.option-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.option-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
-.option-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
-.option-form select,
-.option-form input[name="backdrop_color"] {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 0.25rem 0.4rem;
-  font-size: 0.85rem;
-}
-.option-form input[name="backdrop_color"] { width: 6.5rem; }
-.light-grid {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 14rem) auto;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  flex-basis: 100%;
-}
-.light-row { display: contents; }
-.light-row > span { grid-column: 1; }
-.light-row > select { grid-column: 2; }
-.light-grid .option-help { grid-column: 3; grid-row: 1; }
-.option-form input:disabled { opacity: 0.5; cursor: not-allowed; }
-.option-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem 0.8rem;
-  margin: 0;
-  /* 吹き出しの位置基準。マーカー基準だと右ペインの overflow-y: auto で横もクリップされ、右寄りのマーカーで切れる */
-  position: relative;
-}
-.option-group[hidden] { display: none; }
-.option-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
-.option-help {
-  display: inline-block;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  cursor: help;
-}
-.option-help::after {
-  content: attr(data-help);
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  margin-top: 0.3rem;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.8rem;
-  white-space: normal;
-  pointer-events: none;
-}
-.option-help:hover::after, .option-help:focus::after { display: block; }
-.option-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
-
-/* repair region drawing: dependency-free rectangle-drag overlay, sized in JS to match the
-   rendered <img> box so percentage-based rects stay aligned across zoom/object-fit scaling. */
-.repair-region-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
-.repair-region-clear {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.repair-region-clear:hover { color: var(--text); border-color: var(--accent); }
-.repair-region-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.repair-region-toggle[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: rgba(124, 156, 245, 0.18); }
-.repair-region-overlay { position: absolute; touch-action: none; cursor: crosshair; z-index: 1; }
-/* Drawing off: clicks/scroll fall through to the image; rects stay visible and removable. */
-.repair-region-overlay:not(.repair-region-drawing-on):not(.dof-focus-on) { pointer-events: none; touch-action: auto; cursor: auto; }
-.repair-region-overlay.dof-focus-on:not(.repair-region-drawing-on) { cursor: crosshair; }
-.repair-region-overlay:not(.repair-region-drawing-on) .repair-region-remove { pointer-events: auto; }
-.repair-region-rect {
-  position: absolute;
-  border: 1.5px solid var(--accent);
-  background: rgba(124, 156, 245, 0.18);
-  box-sizing: border-box;
-}
-.repair-region-rect-drawing { border-style: dashed; background: rgba(124, 156, 245, 0.1); }
-.repair-region-remove {
-  position: absolute;
-  top: -0.6rem;
-  right: -0.6rem;
-  width: 1.2rem;
-  height: 1.2rem;
-  line-height: 1;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0;
-}
-.repair-region-remove:hover { border-color: var(--bad); color: var(--bad); }
+.dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
 .dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .dof-f-row { display: flex; align-items: center; gap: 0.4rem; }
-/* The guide circle sits in a clip box so it never draws outside the picture. */
-.dof-guide-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.dof-guide-circle {
-  position: absolute;
-  box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
-  pointer-events: none;
-}
 /* White ring with a dark halo so the marker reads on both light and dark pictures. */
 .dof-focus-marker {
   position: absolute;
@@ -1282,20 +1140,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .backdrop-thumb { display: block; width: 100%; height: auto; aspect-ratio: 5 / 8; object-fit: cover; border-radius: 4px; }
 .backdrop-option-label { font-size: 0.7rem; color: var(--text-dim); line-height: 1.25; }
 
-.dial-group, .profile-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-.dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
-.dial-btn {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 0.15rem 0.6rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.dial-btn:hover:not(.dial-btn-active) { border-color: var(--accent); }
-.dial-btn:active { transform: scale(0.96); }
-.dial-btn-active { background: var(--accent); color: #10131c; border-color: var(--accent); }
 .promote-profile-form { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .promote-profile-status { font-size: 0.8rem; color: var(--text-dim); }
 
@@ -1317,14 +1161,9 @@ details.section .section-body { margin-top: 0.6rem; }
   cursor: pointer;
 }
 .style-check-render-btn:disabled { opacity: 0.6; cursor: default; }
-.style-check-row { margin: 1.5rem 0; padding-top: 1.25rem; border-top: 1px solid var(--border); }
-.style-check-compare-add { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
-.style-check-compare-add input { flex: 1; max-width: 22rem; }
-.style-check-row-title { margin-bottom: 0.6rem; }
-.style-check-row-pose { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
-.style-check-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 260px)); gap: 1rem; }
-.style-check-cell h3 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
-.style-check-cell .card { max-width: 260px; }
+.style-check-title { margin: 0; font-size: 1.1rem; }
+.style-check-any-id { display: flex; gap: 0.4rem; }
+.style-check-any-id input { width: 10rem; }
 
 
 .hidden { display: none !important; }
@@ -1643,7 +1482,16 @@ details.section .section-body { margin-top: 0.6rem; }
 .dof-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; margin: 0.3rem 0; padding: 0; border: 0; font-size: 0.85rem; }
 .dof-scope legend { float: left; padding: 0; margin-right: 0.5rem; color: var(--text-dim); }
 .dof-viewfinder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
-.workbench-open-link { font-weight: 600; }
+.detail-workbench { margin: 0.6rem 0 0; }
+.workbench-open-link {
+  display: inline-block;
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #10131c;
+  font-weight: 600;
+}
+.workbench-open-link:hover { filter: brightness(1.12); text-decoration: none; }
 
 .work-lead { margin: 0 0 1rem; color: var(--text-dim); max-width: 40rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
@@ -1658,6 +1506,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
 .work-rating { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--border); color: var(--text); }
+.work-state { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+.work-state-done { border-color: var(--good); color: var(--good); }
 .work-rating-good { background: var(--good); color: #0c1a10; }
 .work-rating-bad { background: var(--bad); color: #200a08; }
 .work-source-recipe { font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
@@ -1720,6 +1570,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-tile-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .wb-tile-pane { position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .wb-tile-cap { font-size: 0.75rem; }
+.wb-meta { color: var(--text-dim); font-size: 0.75rem; }
 
 .wb-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .wb-strip { display: flex; gap: 0.25rem; overflow-x: auto; flex: 1 1 14rem; min-width: 0; padding: 0.15rem; }
@@ -1738,9 +1589,15 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
 
 .wb-panel {
-  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow-y: auto;
-  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem;
-  display: flex; flex-direction: column; gap: 0.8rem;
+  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow: hidden;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
+  display: flex; flex-direction: column;
+}
+.wb-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.8rem; }
+/* The run button stays on the panel's bottom edge whichever phase scrolls above it. */
+.wb-panel-foot {
+  flex: none; position: sticky; bottom: 0; padding: 0.6rem 0.8rem; border-top: 1px solid var(--border);
+  background: var(--bg-elevated); border-radius: 0 0 12px 12px; display: flex; flex-direction: column; gap: 0.5rem;
 }
 .wb-panel-title { margin: 0 0 0.15rem; font-size: 1.1rem; }
 .wb-note { margin: 0; font-size: 0.8rem; color: var(--text-dim); }
@@ -1771,7 +1628,14 @@ details.section .section-body { margin-top: 0.6rem; }
 @media (max-width: 900px) {
   .wb-main { flex-direction: column; align-items: stretch; }
   .wb-compare, .wb-panel { flex: none; max-width: none; width: 100%; }
-  .wb-panel { max-height: none; }
+  .wb-panel { max-height: none; overflow: visible; }
+  .wb-panel-body { overflow: visible; padding-bottom: 6rem; }
+  /* Stacked under the compare panes, a sticky foot would only appear after scrolling past them. */
+  .wb-panel-foot {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; border-radius: 0;
+    padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+  }
   .wb-pane { height: auto; aspect-ratio: 4 / 5; min-height: 0; }
 }
 @media (max-width: 600px) {
@@ -2360,89 +2224,7 @@ export const appJs = `
     return mode; // the word itself, e.g. 'tidy'
   }
 
-  function setDialGroupValue(group, value) {
-    var input = qs('.dial-custom-input', group);
-    var isTristate = group.classList.contains('dial-group-tristate');
-    var mode, buttonValue;
-    if (value === null || value === undefined) {
-      mode = isTristate ? 'off' : 'default';
-      buttonValue = '';
-    } else if (value === true) {
-      mode = 'on';
-      buttonValue = 'on';
-    } else if (typeof value === 'string') {
-      mode = value;
-      buttonValue = value;
-    } else {
-      mode = 'custom';
-      buttonValue = '__custom__';
-    }
-    group.setAttribute('data-dial-mode', mode);
-    qsa('.dial-btn', group).forEach(function (b) {
-      b.classList.toggle('dial-btn-active', b.getAttribute('data-dial-value') === buttonValue);
-    });
-    if (input) {
-      if (mode === 'custom') {
-        input.hidden = false;
-        input.disabled = false;
-        input.value = typeof value === 'number' ? String(value) : '';
-      } else {
-        input.hidden = true;
-        input.disabled = true;
-        input.value = '';
-      }
-    }
-  }
-
-  function initDialGroups() {
-    document.addEventListener('click', function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('.dial-group .dial-btn') : null;
-      if (!btn) return;
-      var group = btn.closest('.dial-group');
-      if (!group) return;
-      ev.preventDefault();
-      var value = btn.getAttribute('data-dial-value');
-      var input = qs('.dial-custom-input', group);
-      var isTristate = group.classList.contains('dial-group-tristate');
-      if (value === '__custom__') {
-        group.setAttribute('data-dial-mode', 'custom');
-        if (input) { input.hidden = false; input.disabled = false; input.focus(); }
-      } else {
-        group.setAttribute('data-dial-mode', value === '' ? (isTristate ? 'off' : 'default') : value);
-        if (input) { input.hidden = true; input.disabled = true; input.value = ''; }
-      }
-      qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
-    });
-  }
-
-  // options.backdrop is null/a #RRGGBB color/a pattern name — never the literal 'transparent'/
-  // 'color' radio-value strings (deliverOptionsFrom's output, mirrored here for profile re-select).
-  function applyBackdropToForm(form, value) {
-    var mode;
-    if (value === null || value === undefined) {
-      mode = 'transparent';
-    } else if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
-      mode = 'color';
-      var color = qs('input[name="backdrop_color"]', form);
-      if (color) color.value = value;
-    } else if (typeof value === 'string') {
-      mode = value;
-    } else {
-      return;
-    }
-    var matched = false;
-    qsa('input[name="backdrop"]', form).forEach(function (r) {
-      r.checked = r.value === mode;
-      if (r.checked) matched = true;
-    });
-    if (matched) syncBackdropColor(form);
-  }
-
-  function selectHasValue(select, value) {
-    return qsa('option', select).some(function (o) { return o.value === value; });
-  }
-
-  // ---- フチ (outline list) editor, shared by the deliver form and the workbench ----
+  // ---- フチ (outline list) editor ----
   function outlineRows(editor) {
     return qsa('[data-outline-row]', editor);
   }
@@ -2462,7 +2244,20 @@ export const appJs = `
     qs('[data-outline-add]', editor).disabled = rows.length >= max;
     qs('[data-outline-stroke]', editor).hidden = rows.length === 0;
     var summary = editor.closest('details') ? qs('[data-wb-outline-summary]', editor.closest('details')) : null;
-    if (summary) summary.textContent = rows.length === 0 ? 'なし' : rows.length + ' 本 · ' + outlineStrokeValue(editor);
+    if (summary) summary.textContent = outlineSummaryText(editor);
+  }
+
+  var OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' };
+
+  // e.g. 「白 0.8 + 紫 3」; a directional shading is appended, an even one is the unremarkable default.
+  function outlineSummaryText(editor) {
+    var list = outlinesFrom(editor);
+    if (list.length === 0) return 'なし';
+    var text = list.map(function (o) {
+      return (OUTLINE_COLOR_NAMES[o.color.toLowerCase()] || o.color) + ' ' + outlineNumberLabel(o.width);
+    }).join(' + ');
+    var stroke = outlineStrokeValue(editor);
+    return stroke === 'even' ? text : text + ' · 陰影 ' + stroke;
   }
 
   function addOutlineRow(editor, color, width) {
@@ -2556,93 +2351,12 @@ export const appJs = `
       if (!(range instanceof HTMLInputElement) || !range.hasAttribute('data-outline-width')) return;
       var pct = qs('[data-outline-pct]', range.closest('[data-outline-row]'));
       if (pct) pct.textContent = outlineNumberLabel(range.value) + '%';
+      renumberOutlineRows(range.closest('[data-outline-editor]'));
     });
-  }
-
-  // Profile options: outlines (absent -> the catalog default) and stroke_light (even or a direction).
-  function applyOutlinesToForm(form, options) {
-    var editor = qs('[data-outline-editor]', form);
-    if (!editor) return;
-    setOutlineList(editor, Array.isArray(options.outlines) ? options.outlines : outlineDefaults(editor));
-    var stroke = options.stroke_light;
-    var known = stroke === 'even' || (typeof stroke === 'string' && !!qs('[data-compass="stroke"] [data-compass-dir="' + stroke + '"]', editor));
-    setOutlineStroke(editor, known ? stroke : (editor.getAttribute('data-stroke-default') || 'even'));
-  }
-
-  // Absent/null light resets the scene to なし. The light direction is only taken when it is a listed choice.
-  function applyLightToForm(form, options) {
-    var scene = lightSceneSelect(form);
-    var light = options.light;
-    if (scene) {
-      var known = light && typeof light === 'object' && selectHasValue(scene, light.scene);
-      scene.value = known ? light.scene : '';
-    }
-    var fromSelect = lightFromSelect(form);
-    if (fromSelect && light && typeof light === 'object' && selectHasValue(fromSelect, light.from)) fromSelect.value = light.from;
-    applyLightMode(form);
-  }
-
-  function applyProfileOptionsToForm(form, options) {
-    applyOutlinesToForm(form, options);
-    applyLightToForm(form, options);
-    Object.keys(options).forEach(function (key) {
-      var value = options[key];
-      if (key === 'light' || key === 'outlines' || key === 'stroke_light') return;
-      if (key === 'backdrop') {
-        applyBackdropToForm(form, value);
-        return;
-      }
-      var group = qs('[data-dial-key="' + key + '"]', form);
-      if (group) {
-        setDialGroupValue(group, value);
-        return;
-      }
-      var plainInput = qs('input[name="' + key + '"]', form);
-      if (plainInput && plainInput.type === 'number') {
-        plainInput.value = (value === null || value === undefined || typeof value === 'boolean') ? '' : String(value);
-        return;
-      }
-      if (plainInput && plainInput.type === 'checkbox') {
-        plainInput.checked = value === true;
-        return;
-      }
-      var select = qs('select[name="' + key + '"]', form);
-      if (select && typeof value === 'string') select.value = value;
+    document.addEventListener('input', function (ev) {
+      var color = ev.target;
+      if (color instanceof HTMLInputElement && color.hasAttribute('data-outline-color')) renumberOutlineRows(color.closest('[data-outline-editor]'));
     });
-  }
-
-  function initProfileButtons() {
-    document.addEventListener('click', function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('.profile-group .dial-btn') : null;
-      if (!btn) return;
-      var group = btn.closest('.profile-group');
-      var form = group ? group.closest('.option-form') : null;
-      if (!group || !form) return;
-      ev.preventDefault();
-      qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
-
-      var nameInput = qs('input[name="profile_name"]', form);
-      var versionInput = qs('input[name="profile_version"]', form);
-      if (btn.classList.contains('profile-btn-custom')) {
-        nameInput.value = '';
-        versionInput.value = '';
-        return;
-      }
-      nameInput.value = btn.getAttribute('data-profile-name') || '';
-      versionInput.value = btn.getAttribute('data-profile-version') || '';
-
-      var options = {};
-      try { options = JSON.parse(btn.getAttribute('data-profile-options') || '{}'); } catch (e) { options = {}; }
-      applyProfileOptionsToForm(form, options);
-    });
-  }
-
-  function profileRefFrom(form) {
-    var nameInput = qs('input[name="profile_name"]', form);
-    if (!nameInput || !nameInput.value) return null;
-    var versionInput = qs('input[name="profile_version"]', form);
-    var version = versionInput && versionInput.value ? Number(versionInput.value) : undefined;
-    return version === undefined ? { name: nameInput.value } : { name: nameInput.value, version: version };
   }
 
   // State keyed by the form itself in a WeakMap, since a set
@@ -2652,40 +2366,6 @@ export const appJs = `
   function regionsFor(form) {
     var state = repairRegionState.get(form);
     return state ? state.regions : [];
-  }
-
-  function findRegionImage() {
-    return qs('.gen-detail-hero img');
-  }
-
-  function syncRepairRegionOverlayGeometry(state) {
-    state.overlay.style.left = state.img.offsetLeft + 'px';
-    state.overlay.style.top = state.img.offsetTop + 'px';
-    state.overlay.style.width = state.img.offsetWidth + 'px';
-    state.overlay.style.height = state.img.offsetHeight + 'px';
-  }
-
-  function repairRegionCount(form) {
-    return qs('[data-repair-region-count]', form);
-  }
-
-  function repairRegionDrawingOn(form) {
-    var toggle = qs('[data-repair-region-toggle]', form);
-    return !!toggle && toggle.getAttribute('aria-pressed') === 'true';
-  }
-
-  function applyRepairRegionDrawingMode(form) {
-    var on = repairRegionDrawingOn(form);
-    var toggle = qs('[data-repair-region-toggle]', form);
-    if (toggle) toggle.textContent = on ? '範囲指定 ON' : '範囲指定 OFF';
-    var state = repairRegionState.get(form);
-    if (state) state.overlay.classList.toggle('repair-region-drawing-on', on);
-    applyDofMode(form);
-  }
-
-  // Focus placement for dof reuses the repair-region overlay, so it is only live while 範囲指定 is off.
-  function isDofForm(form) {
-    return form.getAttribute('data-request-kind') === 'dof';
   }
 
   function dofSlider(form) {
@@ -2713,24 +2393,6 @@ export const appJs = `
     return qs('select[name="light_from"]', form);
   }
 
-  // The direction only means something together with a light scene.
-  function applyLightMode(form) {
-    var scene = lightSceneSelect(form);
-    var fromSelect = lightFromSelect(form);
-    if (!fromSelect) return;
-    fromSelect.disabled = !scene || scene.value === '';
-  }
-
-  function initLightForm() {
-    qsa('.option-form').forEach(applyLightMode);
-    document.addEventListener('change', function (ev) {
-      var select = ev.target;
-      if (!(select instanceof HTMLSelectElement) || select.name !== 'light_scene') return;
-      var form = select.closest('.option-form');
-      if (form) applyLightMode(form);
-    });
-  }
-
   function dofStopsFor(form) {
     var slider = dofSlider(form);
     if (!slider) return [];
@@ -2743,297 +2405,9 @@ export const appJs = `
     return slider && stops.length > 0 ? stops[Number(slider.value)] : undefined;
   }
 
-  function dofFocusFor(form) {
-    var state = repairRegionState.get(form);
-    return state && state.dofFocus ? state.dofFocus : null;
-  }
-
-  // Radius = guide_radius_per_f * F * long side of the displayed image; hidden while no focus is set or the catalog has no coefficient.
-  function updateDofGuide(form) {
-    var state = repairRegionState.get(form);
-    if (!state || !state.dofGuide) return;
-    var slider = dofSlider(form);
-    var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
-    var f = dofFNumber(form);
-    var focus = state.dofFocus;
-    var show = !!focus && k > 0 && f !== undefined;
-    state.dofGuide.hidden = !show;
-    if (!show) return;
-    var w = state.img.offsetWidth;
-    var h = state.img.offsetHeight;
-    var d = 2 * k * f * Math.max(w, h);
-    state.dofGuide.style.width = d + 'px';
-    state.dofGuide.style.height = d + 'px';
-    state.dofGuide.style.left = (focus[0] * w - d / 2) + 'px';
-    state.dofGuide.style.top = (focus[1] * h - d / 2) + 'px';
-  }
-
-  function renderDofReadouts(form) {
-    var fReadout = qs('[data-dof-f-readout]', form);
-    var f = dofFNumber(form);
-    if (fReadout && f !== undefined) fReadout.textContent = 'f/' + f;
-    var focusReadout = qs('[data-dof-focus-readout]', form);
-    var focus = dofFocusFor(form);
-    if (focusReadout) focusReadout.textContent = focus ? 'ピント: ' + focus[0] + ', ' + focus[1] : '';
-    updateDofGuide(form);
-  }
-
-  function applyDofMode(form) {
-    if (!isDofForm(form)) return;
-    var state = repairRegionState.get(form);
-    if (state) {
-      state.overlay.classList.toggle('dof-focus-on', !repairRegionDrawingOn(form));
-      if (state.dofMarker) {
-        var focus = state.dofFocus;
-        state.dofMarker.hidden = !focus;
-        if (focus) {
-          state.dofMarker.style.left = focus[0] * 100 + '%';
-          state.dofMarker.style.top = focus[1] * 100 + '%';
-        }
-      }
-    }
-    renderDofReadouts(form);
-  }
-
-  function setDofFocus(form, focus) {
-    var state = repairRegionState.get(form);
-    if (!state) return;
-    state.dofFocus = focus;
-    applyDofMode(form);
-  }
-
-  function onRepairRegionsChanged(form) {
-    var countEl = repairRegionCount(form);
-    if (countEl) {
-      var n = regionsFor(form).length;
-      countEl.textContent = n > 0 ? '指定範囲: ' + n : '';
-    }
-    renderOptionPreview(form);
-  }
-
-  function addRepairRegionRect(state, form, x0, y0, x1, y1) {
-    state.regions.push([x0, y0, x1, y1]);
-    var rect = document.createElement('div');
-    rect.className = 'repair-region-rect';
-    rect.style.left = x0 * 100 + '%';
-    rect.style.top = y0 * 100 + '%';
-    rect.style.width = (x1 - x0) * 100 + '%';
-    rect.style.height = (y1 - y0) * 100 + '%';
-    var remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'repair-region-remove';
-    remove.setAttribute('aria-label', '範囲を消す');
-    remove.textContent = '×';
-    rect.appendChild(remove);
-    state.overlay.appendChild(rect);
-    remove.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-    remove.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      var idx = qsa('.repair-region-rect', state.overlay).indexOf(rect);
-      if (idx === -1) return;
-      state.regions.splice(idx, 1);
-      rect.remove();
-      onRepairRegionsChanged(form);
-    });
-    onRepairRegionsChanged(form);
-  }
-
-  // Fractions are relative to the overlay box (kept pinned to the rendered <img> by
-  // syncRepairRegionOverlayGeometry), matching the [x0,y0,x1,y1] convention repair/masked_redraw use server-side.
-  function attachRepairRegionDrawing(state, form) {
-    var overlay = state.overlay;
-    var drawing = null;
-
-    function localPoint(ev) {
-      var rect = overlay.getBoundingClientRect();
-      var x = Math.min(Math.max(ev.clientX - rect.left, 0), rect.width);
-      var y = Math.min(Math.max(ev.clientY - rect.top, 0), rect.height);
-      return { x: x, y: y, width: rect.width, height: rect.height };
-    }
-
-    function paintDrawingRect(x, y) {
-      var left = Math.min(drawing.startX, x);
-      var top = Math.min(drawing.startY, y);
-      drawing.el.style.left = left + 'px';
-      drawing.el.style.top = top + 'px';
-      drawing.el.style.width = Math.abs(x - drawing.startX) + 'px';
-      drawing.el.style.height = Math.abs(y - drawing.startY) + 'px';
-      drawing.lastX = x;
-      drawing.lastY = y;
-    }
-
-    overlay.addEventListener('pointerdown', function (ev) {
-      if (!repairRegionDrawingOn(form)) {
-        if (!isDofForm(form) || ev.target !== overlay) return;
-        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-        var rect = overlay.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        ev.preventDefault();
-        var fx = Math.min(Math.max(Math.round(((ev.clientX - rect.left) / rect.width) * 10000) / 10000, 0), 1);
-        var fy = Math.min(Math.max(Math.round(((ev.clientY - rect.top) / rect.height) * 10000) / 10000, 0), 1);
-        setDofFocus(form, [fx, fy]);
-        renderOptionPreview(form);
-        return;
-      }
-      if (ev.target !== overlay) return; // an existing rect or its remove button, not the backdrop
-      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-      ev.preventDefault();
-      var p = localPoint(ev);
-      var el = document.createElement('div');
-      el.className = 'repair-region-rect repair-region-rect-drawing';
-      overlay.appendChild(el);
-      drawing = { startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, el: el };
-      paintDrawingRect(p.x, p.y);
-      try { overlay.setPointerCapture(ev.pointerId); } catch (e) {}
-    });
-
-    overlay.addEventListener('pointermove', function (ev) {
-      if (!drawing) return;
-      var p = localPoint(ev);
-      paintDrawingRect(p.x, p.y);
-    });
-
-    function finishDrawing(ev) {
-      if (!drawing) return;
-      var el = drawing.el;
-      var rect = overlay.getBoundingClientRect();
-      var x0 = Math.min(drawing.startX, drawing.lastX);
-      var y0 = Math.min(drawing.startY, drawing.lastY);
-      var x1 = Math.max(drawing.startX, drawing.lastX);
-      var y1 = Math.max(drawing.startY, drawing.lastY);
-      el.remove();
-      drawing = null;
-      if (ev) { try { overlay.releasePointerCapture(ev.pointerId); } catch (e) {} }
-      if (x1 - x0 < 4 || y1 - y0 < 4 || rect.width <= 0 || rect.height <= 0) return; // a stray click/tap, not a drag
-      var x0f = Math.round((x0 / rect.width) * 10000) / 10000;
-      var y0f = Math.round((y0 / rect.height) * 10000) / 10000;
-      var x1f = Math.round((x1 / rect.width) * 10000) / 10000;
-      var y1f = Math.round((y1 / rect.height) * 10000) / 10000;
-      if (x1f <= x0f || y1f <= y0f) return;
-      addRepairRegionRect(state, form, x0f, y0f, x1f, y1f);
-    }
-
-    overlay.addEventListener('pointerup', finishDrawing);
-    overlay.addEventListener('pointercancel', function () {
-      if (drawing) { drawing.el.remove(); drawing = null; }
-    });
-
-    state.clear = function () {
-      qsa('.repair-region-rect', overlay).forEach(function (el) { el.remove(); });
-      state.regions.length = 0;
-      onRepairRegionsChanged(form);
-    };
-  }
-
-  // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass).
-  function ensureRepairRegionOverlay(form) {
-    if (!qs('[data-repair-region-tools]', form) && !isDofForm(form)) return null; // a form with neither region drawing nor a focus point
-    var img = findRegionImage();
-    var existing = repairRegionState.get(form);
-    if (existing && existing.img === img && existing.overlay.isConnected) return existing;
-    if (!img) {
-      if (existing) existing.overlay.remove();
-      repairRegionState.delete(form);
-      return null;
-    }
-
-    var parent = img.parentElement;
-    var owner = formKind(form);
-    var stale = qs('.repair-region-overlay[data-owner="' + owner + '"]', parent);
-    if (stale) stale.remove();
-
-    var overlay = document.createElement('div');
-    overlay.className = 'repair-region-overlay';
-    overlay.setAttribute('data-owner', owner);
-    parent.insertBefore(overlay, img.nextSibling);
-
-    var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null, dofGuide: null };
-    if (isDofForm(form)) {
-      var guideClip = document.createElement('div');
-      guideClip.className = 'dof-guide-clip';
-      state.dofGuide = document.createElement('div');
-      state.dofGuide.className = 'dof-guide-circle';
-      state.dofGuide.hidden = true;
-      guideClip.appendChild(state.dofGuide);
-      overlay.appendChild(guideClip);
-      state.dofMarker = document.createElement('div');
-      state.dofMarker.className = 'dof-focus-marker';
-      state.dofMarker.hidden = true;
-      overlay.appendChild(state.dofMarker);
-    }
-    syncRepairRegionOverlayGeometry(state);
-    attachRepairRegionDrawing(state, form);
-    repairRegionState.set(form, state);
-    applyRepairRegionDrawingMode(form);
-
-    var resync = function () { syncRepairRegionOverlayGeometry(state); updateDofGuide(form); };
-    img.addEventListener('load', resync);
-    window.addEventListener('resize', resync);
-    if (window.ResizeObserver) new ResizeObserver(resync).observe(img);
-
-    onRepairRegionsChanged(form);
-    syncRedrawMethod(form);
-    return state;
-  }
-
-  function initRegionDrawing() {
-    qsa('.option-form').forEach(ensureRepairRegionOverlay);
-    document.addEventListener('click', function (ev) {
-      var toggle = ev.target.closest ? ev.target.closest('[data-repair-region-toggle]') : null;
-      if (!toggle) return;
-      var form = toggle.closest('.option-form');
-      if (!form) return;
-      toggle.setAttribute('aria-pressed', repairRegionDrawingOn(form) ? 'false' : 'true');
-      applyRepairRegionDrawingMode(form);
-    });
-    document.addEventListener('click', function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('[data-repair-region-clear]') : null;
-      if (!btn) return;
-      var form = btn.closest('.option-form');
-      if (!form) return;
-      var state = repairRegionState.get(form);
-      if (state && state.clear) state.clear();
-    });
-  }
-
-  function initDofForm() {
-    qsa('.option-form').forEach(applyDofMode);
-    document.addEventListener('input', function (ev) {
-      var slider = ev.target;
-      if (!(slider instanceof HTMLInputElement) || slider.name !== 'dof_f_stop') return;
-      var form = slider.closest('.option-form');
-      if (form) renderDofReadouts(form);
-    });
-  }
-
-  function formKind(form) {
-    return form.getAttribute('data-request-kind');
-  }
-
   function redrawMethod(form) {
     var checked = qs('input[name="redraw_method"]:checked', form);
     return checked ? checked.value : 'canvas';
-  }
-
-  // Shows the fields of the chosen method only; the keep-region overlay is part of canvas.
-  function syncRedrawMethod(form) {
-    if (formKind(form) !== 'redraw') return;
-    var method = redrawMethod(form);
-    qsa('[data-redraw-panel]', form).forEach(function (panel) {
-      panel.hidden = panel.getAttribute('data-redraw-panel') !== method;
-    });
-    var state = repairRegionState.get(form);
-    if (state) state.overlay.style.display = method === 'canvas' ? '' : 'none';
-  }
-
-  function initRedrawMethod() {
-    qsa('.redraw-form').forEach(syncRedrawMethod);
-    document.addEventListener('change', function (ev) {
-      var radio = ev.target;
-      if (!(radio instanceof HTMLInputElement) || radio.name !== 'redraw_method') return;
-      var form = radio.closest('.option-form');
-      if (form) syncRedrawMethod(form);
-    });
   }
 
   // worker-protocol.md「redraw」: exactly one method per request. Blank fields are omitted so the
@@ -3066,48 +2440,6 @@ export const appJs = `
       options.keep_regions = regions;
       var keepStrengthRaw = qs('input[name="keep_strength"]', form).value;
       if (keepStrengthRaw !== '') options.keep_strength = Number(keepStrengthRaw);
-    }
-    return options;
-  }
-
-  // worker-protocol.md「repair」. Blank fields are omitted so the worker / recipe default applies.
-  // Returns null when the form can't become options; quiet mode silences the alert on malformed seeds.
-  function repairOptionsFrom(form, quiet) {
-    var options = {};
-    var parts = qsa('input[name="repair_part"]:checked', form).map(function (box) { return box.value; });
-    if (parts.length === 0) {
-      if (!quiet) alert('手か足のどちらかを選んでください');
-      return null;
-    }
-    if (parts.length < 2) options.parts = parts;
-    var regions = regionsFor(form);
-    if (regions.length > 0) options.regions = regions;
-    var denoiseFromDial = dialGroupValue(form, 'denoise');
-    if (denoiseFromDial === undefined) {
-      var denoiseRaw = qs('input[name="denoise"]', form).value;
-      if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);
-    } else if (denoiseFromDial !== null) {
-      options.denoise = denoiseFromDial;
-    }
-    var seedsRaw = qs('input[name="seeds"]', form).value.trim();
-    if (seedsRaw !== '') {
-      var seeds = seedsRaw.split(/[\\s,]+/).filter(function (s) { return s !== ''; });
-      if (seeds.length > 16 || !seeds.every(function (s) { return /^[0-9]+$/.test(s); })) {
-        if (!quiet) alert('seeds は 0 以上の整数をカンマ区切りで最大 16 件');
-        return null;
-      }
-      options.seeds = seeds.map(Number);
-    }
-    var sizeRaw = qs('input[name="size"]', form).value;
-    if (sizeRaw !== '') options.size = Number(sizeRaw);
-    var padRaw = qs('input[name="pad"]', form).value;
-    if (padRaw !== '') options.pad = Number(padRaw);
-    var loraFromDial = dialGroupValue(form, 'lora');
-    if (loraFromDial === undefined) {
-      var loraRaw = qs('input[name="lora"]', form).value;
-      if (loraRaw !== '') options.lora = Number(loraRaw);
-    } else if (loraFromDial !== null) {
-      options.lora = loraFromDial;
     }
     return options;
   }
@@ -3157,31 +2489,15 @@ export const appJs = `
     return options;
   }
 
-  // worker-protocol.md「dof」. focus is required, so a form without one cannot become options.
-  function dofOptionsFrom(form, quiet) {
-    var focus = dofFocusFor(form);
-    if (!focus) {
-      if (!quiet) alert('画像をクリックしてピント位置を置いてください');
-      return null;
-    }
-    var scope = dofScopeFrom(form);
-    if (!scope.figure && !scope.outline && !scope.backdrop) {
-      if (!quiet) alert('ボカす範囲を 1 つ以上選んでください');
-      return null;
-    }
-    return { focus: [focus[0], focus[1]], f_number: dofFNumber(form), scope: scope, viewfinder: dofViewfinderFrom(form) };
-  }
-
-  function optionsFrom(form, quiet) {
-    var kind = formKind(form);
-    if (kind === 'redraw') return redrawOptionsFrom(form);
-    if (kind === 'repair') return repairOptionsFrom(form, quiet);
-    if (kind === 'dof') return dofOptionsFrom(form, quiet);
-    return deliverOptionsFrom(form, quiet);
-  }
-
   // The color input stays disabled while hidden so the browser's pattern check
   // cannot block submit on a control it has no way to show.
+  function syncBackdropSummary(form) {
+    var summary = qs('[data-wb-backdrop-summary]', form);
+    var checked = qs('input[name="backdrop"]:checked', form);
+    var label = checked ? qs('.backdrop-option-label', checked.closest('label')) : null;
+    if (summary) summary.textContent = label ? label.textContent : '';
+  }
+
   function syncBackdropColor(form) {
     var checked = qs('input[name="backdrop"]:checked', form);
     var color = qs('input[name="backdrop_color"]', form);
@@ -3189,91 +2505,7 @@ export const appJs = `
     var on = !!checked && checked.value === 'color';
     color.hidden = !on;
     color.disabled = !on;
-  }
-
-  function initBackdropColor() {
-    qsa('.option-form').forEach(syncBackdropColor);
-    document.addEventListener('change', function (ev) {
-      var radio = ev.target;
-      if (!(radio instanceof HTMLInputElement) || radio.type !== 'radio' || radio.name !== 'backdrop') return;
-      var form = radio.closest('.option-form');
-      if (!form) return;
-      syncBackdropColor(form);
-      if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
-    });
-  }
-
-  // Resolves a dial word to its catalog number for display, e.g. denoise='tidy' -> 0.65.
-  function resolveDialNumber(dials, key, value) {
-    if (typeof value !== 'string') return null;
-    var words = dials && dials[key];
-    return words && Object.prototype.hasOwnProperty.call(words, value) ? words[value] : null;
-  }
-
-  // Mirrors the payload of redrawOptionsFrom / repairOptionsFrom / deliverOptionsFrom so the preview can never drift from what gets sent.
-  function renderOptionPreview(form) {
-    var preview = qs('.option-preview', form);
-    if (!preview) return;
-    var options = optionsFrom(form, true);
-    if (!options) {
-      preview.textContent = '送信内容: —';
-      return;
-    }
-    var dials = {};
-    try { dials = JSON.parse(form.getAttribute('data-dials') || '{}'); } catch (e) { dials = {}; }
-    var parts = [];
-    var deliver = formKind(form) === 'deliver';
-    var profile = profileRefFrom(form);
-    if (profile) parts.push('profile ' + profile.name + (profile.version !== undefined ? ' v' + profile.version : ''));
-    if (deliver) {
-      // backdrop is always sent and always meaningful, null included: null is the transparent choice.
-      parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
-      if (options.light) {
-        var fromSelect = lightFromSelect(form);
-        var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
-        parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
-      }
-      if (options.outlines) {
-        parts.push(options.outlines.length === 0 ? 'フチなし' : 'フチ ' + options.outlines.map(function (o) { return o.color + ' ' + outlineNumberLabel(o.width) + '%'; }).join(' → ') + ' · 陰影 ' + (options.stroke_light === 'even' ? '均一' : options.stroke_light));
-      }
-    }
-    Object.keys(options).forEach(function (key) {
-      if (deliver && (key === 'backdrop' || key === 'light' || key === 'outlines' || key === 'stroke_light')) return;
-      var value = options[key];
-      if (value === false || value === null || value === undefined) return;
-      if (key === 'focus') {
-        parts.push('ピント ' + value[0] + ', ' + value[1]);
-      } else if (key === 'f_number') {
-        parts.push('f/' + value);
-      } else if (key === 'scope') {
-        parts.push('範囲 ' + [['figure', '人物'], ['outline', 'フチ'], ['backdrop', '背景']].filter(function (l) { return value[l[0]]; }).map(function (l) { return l[1]; }).join('+'));
-      } else if (key === 'viewfinder') {
-        if (value !== 'off') parts.push(value === 'both' ? 'ファインダー ON/OFF 2枚' : 'ファインダー');
-      } else if (key === 'keep_regions' || key === 'regions') {
-        parts.push(key + '=' + value.length + '箇所');
-      } else if (value === true) {
-        parts.push(key);
-      } else if (Array.isArray(value)) {
-        parts.push(key + '=' + value.join('+'));
-      } else if (typeof value === 'string') {
-        var num = resolveDialNumber(dials, key, value);
-        parts.push(key + ' ' + value + (num !== null ? ' (' + num + ')' : ''));
-      } else {
-        parts.push(key + '=' + value);
-      }
-    });
-    preview.textContent = '送信内容: ' + parts.join(' · ');
-  }
-
-  function initOptionPreview() {
-    qsa('.option-form').forEach(renderOptionPreview);
-    ['change', 'input', 'click'].forEach(function (type) {
-      document.addEventListener(type, function (ev) {
-        var form = ev.target.closest('.option-form');
-        if (!form) return;
-        renderOptionPreview(form);
-      });
-    });
+    syncBackdropSummary(form);
   }
 
   function postOptionRequest(kind, generationShortId, options, profile, idempotencyKey) {
@@ -3305,65 +2537,6 @@ export const appJs = `
     return li;
   }
 
-  // queued 行はフォーム下に足され長いページでは視界外に出やすいため、ボタン自身で結果を返す
-  function submitButtonFeedback(form) {
-    var button = qs('button[type="submit"]', form);
-    if (!button) return { sent: function () {}, failed: function () {} };
-    var label = button.getAttribute('data-label') || button.textContent;
-    button.setAttribute('data-label', label);
-    clearTimeout(button._sentTimer);
-    button.classList.remove('is-sent');
-    button.disabled = true;
-    button.textContent = 'Queueing…';
-    function restore() {
-      button.classList.remove('is-sent');
-      button.disabled = false;
-      button.textContent = label;
-    }
-    return {
-      sent: function (text) {
-        button.classList.add('is-sent');
-        button.textContent = text;
-        button._sentTimer = setTimeout(restore, 1500);
-      },
-      failed: restore,
-    };
-  }
-
-  // queued 行をその場に足すだけで reload しない。以後の running/done は registerRequestElement
-  // 経由の initRequestLive が反映する。
-  function initOptionForms() {
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.option-form');
-      if (!form) return;
-      ev.preventDefault();
-      const kind = formKind(form);
-      const shortId = form.getAttribute('data-generation-short-id');
-      const options = optionsFrom(form);
-      if (!options) return;
-      const profile = profileRefFrom(form);
-      const feedback = submitButtonFeedback(form);
-      try {
-        const request = await postOptionRequest(kind, shortId, options, profile);
-        feedback.sent('Queued ✓');
-        track(kind + '.submit', Object.assign({ scope: 'one', generation_id: shortId, profile: profile }, options));
-        let list = qs('.request-status-list');
-        if (!list) {
-          list = document.createElement('ul');
-          list.className = 'request-status-list';
-          form.parentElement.appendChild(list);
-        }
-        const row = requestStatusRow(request, true);
-        list.insertBefore(row, list.firstChild);
-        registerRequestElement(row);
-      } catch (e) {
-        feedback.failed();
-        trackError(kind + '.submit', e, { scope: 'one', generation_id: shortId });
-        alert(kind + ' failed: ' + e.message);
-      }
-    });
-  }
-
   function initPromoteToProfile() {
     document.addEventListener('submit', async function (ev) {
       var form = ev.target.closest('.promote-profile-form');
@@ -3389,52 +2562,193 @@ export const appJs = `
     });
   }
 
-  // /check ボタン押下で代表ポーズ全件の plain render を積み、request id をその場の右セルに挿す
-  // だけ (reload しない)。以後は initRequestLive 経由で反映（requestLiveApplyStatus は下方定義だが関数宣言は巻き上がる）。
+  // 絵柄チェック (/check): ワークベンチと同じ比較ペイン (wbViewer) に、左 = pin (または任意の ID)、右 = そのポーズの最新の plain render を出す。
   function initStyleCheck() {
-    document.addEventListener('click', async function (ev) {
-      var button = ev.target.closest('[data-style-check-render]');
-      if (!button) return;
-      ev.preventDefault();
-      var recipe = button.getAttribute('data-recipe');
-      var label = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Queueing…';
-      try {
-        var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
-        (result.results || []).forEach(function (item) {
-          if (item.skipped || (!item.created && item.status === 'done')) return;
-          var slot = document.querySelector('[data-style-check-slot="' + item.pose + '"]');
-          if (!slot) return;
-          while (slot.firstChild) slot.removeChild(slot.firstChild);
-          var ul = document.createElement('ul');
-          ul.className = 'request-status-list';
-          var li = requestStatusRow({ id: item.request_id, status: item.status }, false);
-          ul.appendChild(li);
-          slot.appendChild(ul);
-          registerRequestElement(li);
-        });
-        track('style_check.render', { recipe: recipe });
-      } catch (e) {
-        trackError('style_check.render', e, { recipe: recipe });
-        alert('style check render failed: ' + e.message);
-      } finally {
-        button.disabled = false;
-        button.textContent = label;
+    var root = qs('[data-style-check]');
+    if (!root) return;
+    var initial = {};
+    try { initial = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { initial = {}; }
+    var recipe = root.getAttribute('data-recipe');
+    var sc = { poses: initial.poses || [], active: 0, override: null, cursor: null, loupe: { on: true, zoom: 3 }, timer: null };
+    var viewer = wbViewer(root, sc);
+    viewer.trackCursor();
+
+    var wanted = new URLSearchParams(location.search).get('pose');
+    sc.poses.forEach(function (p, i) { if (p.pose === wanted) sc.active = i; });
+
+    function current() {
+      return sc.poses[sc.active] || null;
+    }
+
+    function hint(p) {
+      if (!p.pin) return 'pin 無し';
+      if (!p.request) return '未描画';
+      if (p.request.status === 'done' && !p.result) return 'done';
+      return p.request.status;
+    }
+
+    function setEmpty(pane, text) {
+      pane.setAttribute('data-wb-key', 'none');
+      pane.removeAttribute('data-wb-imgpane');
+      pane.textContent = '';
+      pane.classList.remove('wb-checker');
+      pane.appendChild(wbEl('div', 'wb-empty', text));
+    }
+
+    function render() {
+      var p = current();
+      qsa('[data-sc-pose]', root).forEach(function (btn, i) {
+        btn.classList.toggle('wb-step-on', i === sc.active);
+        qs('[data-sc-hint]', btn).textContent = hint(sc.poses[i]);
+      });
+      if (!p) return;
+
+      var left = sc.override || p.pin;
+      var leftPane = qs('[data-wb-input-pane]', root);
+      if (left) viewer.fillPane(leftPane, left.id, 'input', left, null);
+      else setEmpty(leftPane, 'pin 無し');
+      qs('[data-sc-left-cap]', root).textContent = left ? captionWithMeta((sc.override ? '比較 ' : 'pin ') + left.short_id, left) : 'pin';
+      qs('[data-sc-left-reset]', root).hidden = !sc.override;
+
+      var rightPane = qs('[data-wb-cmp-pane]', root);
+      var rating = qs('[data-wb-rating]', root);
+      if (p.result) {
+        viewer.fillPane(rightPane, p.result.id, 'cmp', p.result, null);
+        qs('[data-sc-right-cap]', root).textContent = captionWithMeta('最新 ' + p.result.short_id, p.result);
+        rating.setAttribute('data-generation-id', p.result.id);
+        applyRatingToGroups(p.result.id, p.result.rating);
+      } else {
+        var message = !p.pin ? '' : !p.request ? '未描画。「今の既定で描く」で積みます。'
+          : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
+          : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
+        setEmpty(rightPane, message);
+        qs('[data-sc-right-cap]', root).textContent = '最新' + (p.request ? ' ' + p.request.status : '');
+      }
+      rating.hidden = !p.result;
+
+      qs('[data-sc-replace-pin]', root).disabled = !(p.pin && p.result && p.pin.id !== p.result.id);
+      var link = qs('[data-sc-compare-link]', root);
+      link.hidden = !(p.pin && p.result);
+      if (!link.hidden) link.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
+      viewer.updateCrosshair();
+    }
+
+    function selectPose(i) {
+      sc.active = i;
+      sc.override = null;
+      var url = new URL(location.href);
+      url.searchParams.set('pose', sc.poses[i].pose);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    function nodeOf(g) {
+      return { id: g.id, short_id: g.short_id, rating: g.rating || null, delivered: false, image_width: g.image_width, image_height: g.image_height, image_size: g.image_size };
+    }
+
+    async function syncRequests() {
+      var pending = sc.poses.filter(function (p) { return p.request && (p.request.status === 'queued' || p.request.status === 'running' || (p.request.status === 'done' && !p.result)); });
+      if (pending.length === 0) {
+        clearInterval(sc.timer);
+        sc.timer = null;
+        return;
+      }
+      for (var i = 0; i < pending.length; i++) {
+        var p = pending[i];
+        try {
+          var r = await api('/api/v1/requests/' + encodeURIComponent(p.request.id));
+          p.request.status = r.status;
+          p.request.error = r.error || null;
+          var id = r.status === 'done' && r.result && r.result.generation_ids ? r.result.generation_ids[0] : null;
+          if (id) p.result = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
+        } catch (e) { /* retry on the next tick */ }
+      }
+      render();
+    }
+
+    function startPolling() {
+      if (!sc.timer) sc.timer = setInterval(syncRequests, 3000);
+    }
+
+    root.addEventListener('click', async function (ev) {
+      var t = ev.target.closest ? ev.target : null;
+      if (!t) return;
+      var poseBtn = t.closest('[data-sc-pose]');
+      if (poseBtn) {
+        var idx = sc.poses.findIndex(function (p) { return p.pose === poseBtn.getAttribute('data-sc-pose'); });
+        if (idx >= 0) selectPose(idx);
+        return;
+      }
+      if (t.closest('[data-sc-left-reset]')) {
+        sc.override = null;
+        return render();
+      }
+      var renderBtn = t.closest('[data-style-check-render]');
+      if (renderBtn) {
+        var label = renderBtn.textContent;
+        renderBtn.disabled = true;
+        renderBtn.textContent = 'Queueing…';
+        try {
+          var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
+          (result.results || []).forEach(function (item) {
+            var p = sc.poses.find(function (q) { return q.pose === item.pose; });
+            if (!p || item.skipped || (!item.created && item.status === 'done')) return;
+            p.request = { id: item.request_id, status: item.status, error: null };
+            p.result = null;
+          });
+          render();
+          startPolling();
+          track('style_check.render', { recipe: recipe });
+        } catch (e) {
+          trackError('style_check.render', e, { recipe: recipe });
+          alert('style check render failed: ' + e.message);
+        } finally {
+          renderBtn.disabled = false;
+          renderBtn.textContent = label;
+        }
+        return;
+      }
+      if (t.closest('[data-sc-replace-pin]')) {
+        var q = current();
+        if (!q || !q.result) return;
+        if (!confirm(q.pose + ' の pin を ' + q.result.short_id + ' に差し替えます。以後の絵柄チェックはこの絵の seed で描きます。')) return;
+        try {
+          await api('/api/v1/generations/' + q.result.id + '/pose-reference', 'POST', {});
+          q.pin = q.result;
+          sc.override = null;
+          render();
+          track('pose_reference.set', { generation_id: q.result.id, from: 'style_check' });
+        } catch (e) {
+          trackError('pose_reference.set', e, { generation_id: q.result.id });
+          alert('failed to set pose reference: ' + e.message);
+        }
       }
     });
-  }
 
-  // /check の行ごとの入力欄: pin・今の結果に入力した ID を足して /compare を開く。
-  function initStyleCheckCompareAdd() {
-    document.addEventListener('submit', function (ev) {
-      var form = ev.target.closest('[data-style-check-compare-add]');
+    root.addEventListener('submit', async function (ev) {
+      var form = ev.target.closest ? ev.target.closest('[data-sc-any-id]') : null;
       if (!form) return;
       ev.preventDefault();
-      var extra = form.elements.ids.value.split(/[\\s,]+/).filter(Boolean);
-      var ids = form.getAttribute('data-base-ids').split(',').concat(extra);
-      window.location.href = '/compare?ids=' + ids.map(encodeURIComponent).join(',');
+      var id = form.elements.id.value.trim();
+      if (!id) return;
+      try {
+        sc.override = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
+        form.elements.id.value = '';
+        render();
+      } catch (e) {
+        alert('その ID の絵がありません: ' + id);
+      }
     });
+
+    document.addEventListener('chimera:rating', function (ev) {
+      sc.poses.forEach(function (p) {
+        [p.pin, p.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
+      });
+      if (sc.override && sc.override.id === ev.detail.id) sc.override.rating = ev.detail.rating;
+    });
+
+    render();
+    startPolling();
   }
 
   // /api/v1/requests/ws への接続を1本だけ共有する (docs/worker-protocol.md)。requestLive と
@@ -5274,6 +4588,222 @@ export const appJs = `
     return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   }
 
+  // Same text as formatImageMetaText in src/lib/image-meta.ts; '' while the size is unknown.
+  function imageMetaText(node) {
+    if (!node || node.image_size === null || node.image_size === undefined) return '';
+    var size = node.image_size;
+    var text;
+    if (size < 1024) {
+      text = size + ' B';
+    } else {
+      var units = ['KB', 'MB', 'GB'];
+      var value = size / 1024;
+      var unit = 0;
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+      }
+      text = value.toFixed(1) + ' ' + units[unit];
+    }
+    return node.image_width && node.image_height ? node.image_width + '×' + node.image_height + ' · ' + text : text;
+  }
+
+  function captionWithMeta(label, node) {
+    var meta = imageMetaText(node);
+    return meta ? label + ' · ' + meta : label;
+  }
+
+  // The image panes, crosshair and loupe the workbench and the style check share. wb is the caller's state: it supplies
+  // cursor ({x, y} on the image, or null) and loupe ({on, zoom}), which the viewer reads and the caller may also set.
+  function wbViewer(root, wb) {
+    var resizeObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) { layoutPane(entry.target); });
+    }) : null;
+
+    function layoutPane(pane) {
+      var img = qs('img', pane);
+      var overlay = qs('.wb-overlay', pane);
+      if (!img || !overlay || !img.naturalWidth || !pane.clientWidth) return;
+      var box = wbContainBox(pane.clientWidth, pane.clientHeight, img.naturalWidth, img.naturalHeight);
+      overlay.style.left = box[0] + 'px';
+      overlay.style.top = box[1] + 'px';
+      overlay.style.width = box[2] + 'px';
+      overlay.style.height = box[3] + 'px';
+      overlay.hidden = false;
+      scheduleLoupes();
+    }
+
+    // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
+    function fillPane(pane, key, role, node, pendingItem) {
+      var signature = role + ':' + key;
+      if (pane.getAttribute('data-wb-key') !== signature) {
+        pane.setAttribute('data-wb-key', signature);
+        pane.setAttribute('data-wb-role', role);
+        pane.setAttribute('data-wb-imgpane', '');
+        pane.textContent = '';
+        pane.classList.toggle('wb-checker', !!(node && node.delivered));
+        if (node) {
+          var img = document.createElement('img');
+          img.alt = node.short_id;
+          img.draggable = false;
+          img.addEventListener('load', function () { layoutPane(pane); });
+          img.addEventListener('error', function () {
+            if (img.getAttribute('src') !== '/g/' + node.short_id + '/preview') img.src = '/g/' + node.short_id + '/preview';
+          });
+          img.src = '/g/' + node.short_id + '/image';
+          pane.appendChild(img);
+          var overlay = wbEl('div', 'wb-overlay');
+          overlay.hidden = true;
+          overlay.appendChild(wbEl('div', 'wb-cross-x'));
+          overlay.appendChild(wbEl('div', 'wb-cross-y'));
+          var loupe = wbEl('div', 'wb-loupe');
+          loupe.hidden = true;
+          loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
+          overlay.appendChild(loupe);
+          overlay.appendChild(wbEl('div', 'wb-rects'));
+          overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
+          pane.appendChild(overlay);
+          if (resizeObserver) resizeObserver.observe(pane);
+        } else if (pendingItem) {
+          pane.appendChild(wbEl('div', 'wb-pending-note', '処理中…'));
+        }
+      }
+      if (pendingItem) {
+        var note = qs('.wb-pending-note', pane);
+        if (note) note.textContent = (pendingItem.status === 'queued' ? '待機中…' : '処理中…') + (pendingItem.progress ? ' ' + pendingItem.progress : '');
+      }
+    }
+
+    function imagePanes() {
+      return qsa('[data-wb-imgpane]', root);
+    }
+
+    // Coordinates are relative to the rendered image box (the overlay), never the pane.
+    function pointIn(pane, ev) {
+      var overlay = qs('.wb-overlay', pane);
+      if (!overlay || overlay.hidden) return null;
+      var r = overlay.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return null;
+      var x = (ev.clientX - r.left) / r.width;
+      var y = (ev.clientY - r.top) / r.height;
+      return { x: x, y: y, inside: x >= 0 && x <= 1 && y >= 0 && y <= 1 };
+    }
+
+    var loupeFrame = 0;
+
+    function scheduleLoupes() {
+      if (loupeFrame) return;
+      loupeFrame = requestAnimationFrame(function () {
+        loupeFrame = 0;
+        updateLoupes();
+      });
+    }
+
+    function updateLoupes() {
+      var show = !!(wb.cursor && wb.loupe.on);
+      imagePanes().forEach(function (pane) {
+        var overlay = qs('.wb-overlay', pane);
+        var loupe = overlay && qs('.wb-loupe', overlay);
+        var img = qs('img', pane);
+        if (!loupe) return;
+        var width = overlay.clientWidth;
+        var height = overlay.clientHeight;
+        loupe.hidden = !(show && !overlay.hidden && img && width > 0 && height > 0);
+        if (loupe.hidden) return;
+        var l = wbLoupeLayout(wb.cursor, { width: width, height: height }, wb.loupe.zoom, 280);
+        var src = (img.currentSrc || img.src).replace(/"/g, '%22');
+        var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
+        loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
+        loupe.classList.toggle('wb-loupe-pixel', wb.loupe.zoom >= 5);
+        loupe.style.left = l.left + 'px';
+        loupe.style.top = l.top + 'px';
+        loupe.style.width = l.size + 'px';
+        loupe.style.height = l.size + 'px';
+      });
+    }
+
+    function renderLoupeControls() {
+      var toggle = qs('[data-wb-loupe-toggle]', root);
+      if (toggle) toggle.classList.toggle('wb-pill-on', wb.loupe.on);
+      qsa('[data-wb-loupe-zoom]', root).forEach(function (b) {
+        b.classList.toggle('wb-pill-on', Number(b.getAttribute('data-wb-loupe-zoom')) === wb.loupe.zoom);
+      });
+    }
+
+    function setLoupe(on, zoom) {
+      wb.loupe = { on: on, zoom: zoom };
+      try { localStorage.setItem('wb.loupe', JSON.stringify(wb.loupe)); } catch (e) { /* localStorage unavailable */ }
+      renderLoupeControls();
+      scheduleLoupes();
+    }
+
+    function stepLoupeZoom(delta) {
+      var i = WB_LOUPE_ZOOMS.indexOf(wb.loupe.zoom) + delta;
+      if (i < 0 || i >= WB_LOUPE_ZOOMS.length) return;
+      setLoupe(wb.loupe.on, WB_LOUPE_ZOOMS[i]);
+    }
+
+    try {
+      var storedLoupe = JSON.parse(localStorage.getItem('wb.loupe') || 'null');
+      if (storedLoupe && WB_LOUPE_ZOOMS.indexOf(storedLoupe.zoom) >= 0) wb.loupe = { on: storedLoupe.on !== false, zoom: storedLoupe.zoom };
+    } catch (e) { /* localStorage unavailable */ }
+    renderLoupeControls();
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      var t = ev.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (ev.key === 'z' || ev.key === 'Z') setLoupe(!wb.loupe.on, wb.loupe.zoom);
+      else if (ev.key === '[') stepLoupeZoom(-1);
+      else if (ev.key === ']') stepLoupeZoom(1);
+    });
+
+    // Crosshair on every image pane; the caller draws anything else (rects, focus) itself.
+    function updateCrosshair() {
+      imagePanes().forEach(function (pane) {
+        var overlay = qs('.wb-overlay', pane);
+        if (!overlay) return;
+        var cx = qs('.wb-cross-x', overlay);
+        var cy = qs('.wb-cross-y', overlay);
+        cx.hidden = cy.hidden = !wb.cursor;
+        if (wb.cursor) {
+          cx.style.left = wb.cursor.x * 100 + '%';
+          cy.style.top = wb.cursor.y * 100 + '%';
+        }
+      });
+      scheduleLoupes();
+    }
+
+    root.addEventListener('click', function (ev) {
+      var t = ev.target.closest ? ev.target : null;
+      if (!t) return;
+      if (t.closest('[data-wb-loupe-toggle]')) return setLoupe(!wb.loupe.on, wb.loupe.zoom);
+      var loupeZoom = t.closest('[data-wb-loupe-zoom]');
+      if (loupeZoom) setLoupe(wb.loupe.on, Number(loupeZoom.getAttribute('data-wb-loupe-zoom')));
+    });
+
+    // Cursor tracking for callers with nothing to draw on the panes; the workbench tracks it itself while drawing.
+    function trackCursor() {
+      root.addEventListener('pointermove', function (ev) {
+        var pane = ev.target.closest ? ev.target.closest('[data-wb-imgpane]') : null;
+        if (!pane) return;
+        var p = pointIn(pane, ev);
+        wb.cursor = p && p.inside ? { x: p.x, y: p.y } : null;
+        updateCrosshair();
+      });
+      root.addEventListener('pointerleave', function () {
+        wb.cursor = null;
+        updateCrosshair();
+      });
+    }
+
+    return { fillPane: fillPane, layoutPane: layoutPane, imagePanes: imagePanes, pointIn: pointIn, scheduleLoupes: scheduleLoupes, updateCrosshair: updateCrosshair, trackCursor: trackCursor };
+  }
+
+  function clamp01(v) {
+    return Math.min(1, Math.max(0, v));
+  }
+
   function initWorkbench() {
     var root = qs('[data-workbench]');
     if (!root) return;
@@ -5298,6 +4828,12 @@ export const appJs = `
       error: '',
       timer: null,
     };
+    var viewer = wbViewer(root, wb);
+    var fillPane = viewer.fillPane;
+    var imagePanes = viewer.imagePanes;
+    var layoutPane = viewer.layoutPane;
+    var pointIn = viewer.pointIn;
+    var scheduleLoupes = viewer.scheduleLoupes;
 
     function nodeById(id) {
       for (var i = 0; i < wb.nodes.length; i++) if (wb.nodes[i].id === id) return wb.nodes[i];
@@ -5392,166 +4928,13 @@ export const appJs = `
       return item.node.delivered ? '納品' : '完了';
     }
 
-    // ---- images ----
-    var resizeObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
-      entries.forEach(function (entry) { layoutPane(entry.target); });
-    }) : null;
-
-    function layoutPane(pane) {
-      var img = qs('img', pane);
-      var overlay = qs('.wb-overlay', pane);
-      if (!img || !overlay || !img.naturalWidth || !pane.clientWidth) return;
-      var box = wbContainBox(pane.clientWidth, pane.clientHeight, img.naturalWidth, img.naturalHeight);
-      overlay.style.left = box[0] + 'px';
-      overlay.style.top = box[1] + 'px';
-      overlay.style.width = box[2] + 'px';
-      overlay.style.height = box[3] + 'px';
-      overlay.hidden = false;
-      scheduleLoupes();
-    }
-
-    // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
-    function fillPane(pane, key, role, node, pendingItem) {
-      var signature = role + ':' + key;
-      if (pane.getAttribute('data-wb-key') !== signature) {
-        pane.setAttribute('data-wb-key', signature);
-        pane.setAttribute('data-wb-role', role);
-        pane.setAttribute('data-wb-imgpane', '');
-        pane.textContent = '';
-        pane.classList.toggle('wb-checker', !!(node && node.delivered));
-        if (node) {
-          var img = document.createElement('img');
-          img.alt = node.short_id;
-          img.draggable = false;
-          img.addEventListener('load', function () { layoutPane(pane); });
-          img.addEventListener('error', function () {
-            if (img.getAttribute('src') !== '/g/' + node.short_id + '/preview') img.src = '/g/' + node.short_id + '/preview';
-          });
-          img.src = '/g/' + node.short_id + '/image';
-          pane.appendChild(img);
-          var overlay = wbEl('div', 'wb-overlay');
-          overlay.hidden = true;
-          overlay.appendChild(wbEl('div', 'wb-cross-x'));
-          overlay.appendChild(wbEl('div', 'wb-cross-y'));
-          var loupe = wbEl('div', 'wb-loupe');
-          loupe.hidden = true;
-          loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
-          overlay.appendChild(loupe);
-          overlay.appendChild(wbEl('div', 'wb-rects'));
-          overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
-          pane.appendChild(overlay);
-          if (resizeObserver) resizeObserver.observe(pane);
-        } else if (pendingItem) {
-          pane.appendChild(wbEl('div', 'wb-pending-note', '処理中…'));
-        }
-      }
-      if (pendingItem) {
-        var note = qs('.wb-pending-note', pane);
-        if (note) note.textContent = (pendingItem.status === 'queued' ? '待機中…' : '処理中…') + (pendingItem.progress ? ' ' + pendingItem.progress : '');
-      }
-    }
-
-    function imagePanes() {
-      return qsa('[data-wb-imgpane]', root);
-    }
-
-    // Coordinates are relative to the rendered image box (the overlay), never the pane.
-    function pointIn(pane, ev) {
-      var overlay = qs('.wb-overlay', pane);
-      if (!overlay || overlay.hidden) return null;
-      var r = overlay.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return null;
-      var x = (ev.clientX - r.left) / r.width;
-      var y = (ev.clientY - r.top) / r.height;
-      return { x: x, y: y, inside: x >= 0 && x <= 1 && y >= 0 && y <= 1 };
-    }
-
-    function clamp01(v) {
-      return Math.min(1, Math.max(0, v));
-    }
-
-    var loupeFrame = 0;
-
-    function scheduleLoupes() {
-      if (loupeFrame) return;
-      loupeFrame = requestAnimationFrame(function () {
-        loupeFrame = 0;
-        updateLoupes();
-      });
-    }
-
-    function updateLoupes() {
-      var show = !!(wb.cursor && wb.loupe.on);
-      imagePanes().forEach(function (pane) {
-        var overlay = qs('.wb-overlay', pane);
-        var loupe = overlay && qs('.wb-loupe', overlay);
-        var img = qs('img', pane);
-        if (!loupe) return;
-        var width = overlay.clientWidth;
-        var height = overlay.clientHeight;
-        loupe.hidden = !(show && !overlay.hidden && img && width > 0 && height > 0);
-        if (loupe.hidden) return;
-        var l = wbLoupeLayout(wb.cursor, { width: width, height: height }, wb.loupe.zoom, 280);
-        var src = (img.currentSrc || img.src).replace(/"/g, '%22');
-        var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
-        loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
-        loupe.classList.toggle('wb-loupe-pixel', wb.loupe.zoom >= 5);
-        loupe.style.left = l.left + 'px';
-        loupe.style.top = l.top + 'px';
-        loupe.style.width = l.size + 'px';
-        loupe.style.height = l.size + 'px';
-      });
-    }
-
-    function renderLoupeControls() {
-      var toggle = qs('[data-wb-loupe-toggle]', root);
-      if (toggle) toggle.classList.toggle('wb-pill-on', wb.loupe.on);
-      qsa('[data-wb-loupe-zoom]', root).forEach(function (b) {
-        b.classList.toggle('wb-pill-on', Number(b.getAttribute('data-wb-loupe-zoom')) === wb.loupe.zoom);
-      });
-    }
-
-    function setLoupe(on, zoom) {
-      wb.loupe = { on: on, zoom: zoom };
-      try { localStorage.setItem('wb.loupe', JSON.stringify(wb.loupe)); } catch (e) { /* localStorage unavailable */ }
-      renderLoupeControls();
-      scheduleLoupes();
-    }
-
-    function stepLoupeZoom(delta) {
-      var i = WB_LOUPE_ZOOMS.indexOf(wb.loupe.zoom) + delta;
-      if (i < 0 || i >= WB_LOUPE_ZOOMS.length) return;
-      setLoupe(wb.loupe.on, WB_LOUPE_ZOOMS[i]);
-    }
-
-    try {
-      var storedLoupe = JSON.parse(localStorage.getItem('wb.loupe') || 'null');
-      if (storedLoupe && WB_LOUPE_ZOOMS.indexOf(storedLoupe.zoom) >= 0) wb.loupe = { on: storedLoupe.on !== false, zoom: storedLoupe.zoom };
-    } catch (e) { /* localStorage unavailable */ }
-    renderLoupeControls();
-
-    document.addEventListener('keydown', function (ev) {
-      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-      var t = ev.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-      if (ev.key === 'z' || ev.key === 'Z') setLoupe(!wb.loupe.on, wb.loupe.zoom);
-      else if (ev.key === '[') stepLoupeZoom(-1);
-      else if (ev.key === ']') stepLoupeZoom(1);
-    });
-
     function updateOverlays() {
       var rectsActive = wb.active === 3 && wb.partMode === 'rect';
+      viewer.updateCrosshair();
       imagePanes().forEach(function (pane) {
         var overlay = qs('.wb-overlay', pane);
         if (!overlay) return;
         var role = pane.getAttribute('data-wb-role');
-        var cx = qs('.wb-cross-x', overlay);
-        var cy = qs('.wb-cross-y', overlay);
-        cx.hidden = cy.hidden = !wb.cursor;
-        if (wb.cursor) {
-          cx.style.left = wb.cursor.x * 100 + '%';
-          cy.style.top = wb.cursor.y * 100 + '%';
-        }
         var rects = qs('.wb-rects', overlay);
         rects.textContent = '';
         if (role === 'input' && rectsActive) {
@@ -5571,7 +4954,6 @@ export const appJs = `
           marker.style.top = wb.focus[1] * 100 + '%';
         }
       });
-      scheduleLoupes();
       var count = qs('[data-wb-rect-count]', root);
       if (count) count.textContent = '矩形 ' + wb.rects.length + ' か所';
       var readout = qs('[data-dof-focus-readout]', root);
@@ -5652,7 +5034,7 @@ export const appJs = `
       var inputPane = wbEl('div', 'wb-tile-pane');
       if (input) fillPane(inputPane, input.id, 'input', input, null);
       inputTile.appendChild(inputPane);
-      inputTile.appendChild(wbEl('figcaption', 'wb-tile-cap', '入力 ' + (input ? kindLabel(input) : '')));
+      inputTile.appendChild(wbEl('figcaption', 'wb-tile-cap', captionWithMeta('入力 ' + (input ? kindLabel(input) : ''), input)));
       grid.appendChild(inputTile);
       var adopted = pick(wb.active);
       list.forEach(function (item) {
@@ -5663,7 +5045,7 @@ export const appJs = `
         fillPane(pane, item.key, 'cmp', item.node, item.pending);
         tile.appendChild(pane);
         var isAdopted = item.node && adopted && !adopted.skip && adopted.generation_id === item.node.id;
-        tile.appendChild(wbEl('span', 'wb-tile-cap mono', itemKind(item) + (isAdopted ? ' · 採用中' : '')));
+        tile.appendChild(wbEl('span', 'wb-tile-cap mono', captionWithMeta(itemKind(item) + (isAdopted ? ' · 採用中' : ''), item.node)));
         grid.appendChild(tile);
       });
     }
@@ -5673,6 +5055,7 @@ export const appJs = `
       var cmpPane = qs('[data-wb-cmp-pane]', root);
       var cmp = candidateByKey(wb.active, wb.compareId);
       qs('[data-wb-input-kind]', root).textContent = input ? kindLabel(input) : '';
+      qs('[data-wb-input-meta]', root).textContent = imageMetaText(input);
       var hint = '';
       if (wb.active === 5) hint = 'クリックでピント';
       else if (wb.active === 3 && wb.partMode === 'rect') hint = 'ドラッグで矩形';
@@ -5690,6 +5073,7 @@ export const appJs = `
         qs('[data-wb-cmp-kind]', root).textContent = itemKind(cmp);
         qs('[data-wb-cmp-status]', root).textContent = itemStatus(cmp);
         qs('[data-wb-cmp-badge]', root).textContent = cmp.node && adopted && !adopted.skip && adopted.generation_id === cmp.node.id ? '· 採用中' : '';
+        qs('[data-wb-cmp-meta]', root).textContent = imageMetaText(cmp.node);
       } else {
         cmpPane.setAttribute('data-wb-key', 'none');
         cmpPane.removeAttribute('data-wb-imgpane');
@@ -5699,6 +5083,7 @@ export const appJs = `
         qs('[data-wb-cmp-kind]', root).textContent = '';
         qs('[data-wb-cmp-status]', root).textContent = '';
         qs('[data-wb-cmp-badge]', root).textContent = '';
+        qs('[data-wb-cmp-meta]', root).textContent = '';
       }
       var rating = qs('[data-wb-rating]', root);
       rating.hidden = !(cmp && cmp.node);
@@ -6034,9 +5419,6 @@ export const appJs = `
         wb.compareId = picked.getAttribute('data-wb-pick');
         return render();
       }
-      if (t.closest('[data-wb-loupe-toggle]')) return setLoupe(!wb.loupe.on, wb.loupe.zoom);
-      var loupeZoom = t.closest('[data-wb-loupe-zoom]');
-      if (loupeZoom) return setLoupe(wb.loupe.on, Number(loupeZoom.getAttribute('data-wb-loupe-zoom')));
       var mode = t.closest('[data-wb-compare-mode]');
       if (mode) {
         wb.mode = mode.getAttribute('data-wb-compare-mode');
@@ -6241,18 +5623,8 @@ export const appJs = `
     initPublicationRemove();
     initPoseReference();
     initOutlineEditors();
-    initOptionForms();
-    initBackdropColor();
-    initRegionDrawing();
-    initDofForm();
-    initLightForm();
-    initRedrawMethod();
-    initOptionPreview();
-    initDialGroups();
-    initProfileButtons();
     initPromoteToProfile();
     initStyleCheck();
-    initStyleCheckCompareAdd();
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();
