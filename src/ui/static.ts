@@ -1629,7 +1629,13 @@ details.section .section-body { margin-top: 0.6rem; }
   .wb-main { flex-direction: column; align-items: stretch; }
   .wb-compare, .wb-panel { flex: none; max-width: none; width: 100%; }
   .wb-panel { max-height: none; overflow: visible; }
-  .wb-panel-body { overflow: visible; }
+  .wb-panel-body { overflow: visible; padding-bottom: 6rem; }
+  /* Stacked under the compare panes, a sticky foot would only appear after scrolling past them. */
+  .wb-panel-foot {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; border-radius: 0;
+    padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+  }
   .wb-pane { height: auto; aspect-ratio: 4 / 5; min-height: 0; }
 }
 @media (max-width: 600px) {
