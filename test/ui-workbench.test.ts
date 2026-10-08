@@ -148,7 +148,7 @@ describe('GET /work/:shortId', () => {
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
     expect(form).toContain('data-wb-bg="transparent"');
-    expect(form).toContain('data-wb-bg="backdrop"');
+    expect(form).toContain('class="wb-pill wb-pill-on" data-wb-bg="backdrop"');
     expect(form).toContain('name="wb_deliver_size"');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>\s*フチ/);
     expect(form).toContain('data-wb-outline-summary');
@@ -159,7 +159,7 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
-    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns[^>]* hidden=""[^>]*>\s*<summary>\s*背景柄/);
+    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns(?![^>]* hidden="")[^>]*>\s*<summary>\s*背景柄/);
     expect(form).toContain('切り抜きは初回に作って保存し');
   });
 
