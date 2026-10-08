@@ -1697,6 +1697,15 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-overlay { position: absolute; pointer-events: none; }
 .wb-cross-x { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-cross-y { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid rgba(255, 0, 140, 0.85); }
+.wb-loupe {
+  position: absolute; box-sizing: border-box; overflow: hidden; border-radius: 12px;
+  border: 1.5px solid var(--border); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  background-repeat: no-repeat; pointer-events: none;
+}
+.wb-loupe-pixel { image-rendering: pixelated; }
+.wb-loupe-cross { position: absolute; inset: 0; }
+.wb-loupe-cross::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid rgba(255, 0, 140, 0.85); }
+.wb-loupe-cross::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-rects { position: absolute; inset: 0; }
 .wb-rect { position: absolute; border: 2px solid var(--accent); background: rgba(124, 156, 245, 0.2); box-sizing: border-box; }
 .wb-rect-draft { border-style: dashed; }
@@ -5234,6 +5243,33 @@ export const appJs = `
     return [(paneWidth - w) / 2, (paneHeight - h) / 2, w, h];
   }
 
+  var WB_LOUPE_ZOOMS = [2, 3, 5, 8];
+  var WB_LOUPE_OFFSET = 24;
+
+  // Loupe geometry in px relative to the overlay box.
+  function wbLoupeLayout(cursor, box, zoom, side) {
+    var size = Math.min(side, Math.min(box.width, box.height) * 0.5);
+    var bgW = box.width * zoom;
+    var bgH = box.height * zoom;
+    var flipX = cursor.x > 0.7;
+    var flipY = cursor.y < 0.3;
+    var px = cursor.x * box.width;
+    var py = cursor.y * box.height;
+    var left = flipX ? px - WB_LOUPE_OFFSET - size : px + WB_LOUPE_OFFSET;
+    var top = flipY ? py + WB_LOUPE_OFFSET : py - WB_LOUPE_OFFSET - size;
+    return {
+      left: Math.min(Math.max(left, 0), box.width - size),
+      top: Math.min(Math.max(top, 0), box.height - size),
+      size: size,
+      bgW: bgW,
+      bgH: bgH,
+      bgX: size / 2 - cursor.x * bgW,
+      bgY: size / 2 - cursor.y * bgH,
+      flipX: flipX,
+      flipY: flipY
+    };
+  }
+
   function wbRectsOverlap(a, b) {
     return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   }
@@ -5252,6 +5288,7 @@ export const appJs = `
       compareId: null,
       mode: 'pair',
       cursor: null,
+      loupe: { on: true, zoom: 3 },
       forcedInput: null,
       method: 'hires',
       partMode: 'auto',
@@ -5370,6 +5407,7 @@ export const appJs = `
       overlay.style.width = box[2] + 'px';
       overlay.style.height = box[3] + 'px';
       overlay.hidden = false;
+      scheduleLoupes();
     }
 
     // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
@@ -5395,6 +5433,10 @@ export const appJs = `
           overlay.hidden = true;
           overlay.appendChild(wbEl('div', 'wb-cross-x'));
           overlay.appendChild(wbEl('div', 'wb-cross-y'));
+          var loupe = wbEl('div', 'wb-loupe');
+          loupe.hidden = true;
+          loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
+          overlay.appendChild(loupe);
           overlay.appendChild(wbEl('div', 'wb-rects'));
           overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
           pane.appendChild(overlay);
@@ -5428,6 +5470,75 @@ export const appJs = `
       return Math.min(1, Math.max(0, v));
     }
 
+    var loupeFrame = 0;
+
+    function scheduleLoupes() {
+      if (loupeFrame) return;
+      loupeFrame = requestAnimationFrame(function () {
+        loupeFrame = 0;
+        updateLoupes();
+      });
+    }
+
+    function updateLoupes() {
+      var show = !!(wb.cursor && wb.loupe.on);
+      imagePanes().forEach(function (pane) {
+        var overlay = qs('.wb-overlay', pane);
+        var loupe = overlay && qs('.wb-loupe', overlay);
+        var img = qs('img', pane);
+        if (!loupe) return;
+        var width = overlay.clientWidth;
+        var height = overlay.clientHeight;
+        loupe.hidden = !(show && !overlay.hidden && img && width > 0 && height > 0);
+        if (loupe.hidden) return;
+        var l = wbLoupeLayout(wb.cursor, { width: width, height: height }, wb.loupe.zoom, 280);
+        var src = (img.currentSrc || img.src).replace(/"/g, '%22');
+        var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
+        loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
+        loupe.classList.toggle('wb-loupe-pixel', wb.loupe.zoom >= 5);
+        loupe.style.left = l.left + 'px';
+        loupe.style.top = l.top + 'px';
+        loupe.style.width = l.size + 'px';
+        loupe.style.height = l.size + 'px';
+      });
+    }
+
+    function renderLoupeControls() {
+      var toggle = qs('[data-wb-loupe-toggle]', root);
+      if (toggle) toggle.classList.toggle('wb-pill-on', wb.loupe.on);
+      qsa('[data-wb-loupe-zoom]', root).forEach(function (b) {
+        b.classList.toggle('wb-pill-on', Number(b.getAttribute('data-wb-loupe-zoom')) === wb.loupe.zoom);
+      });
+    }
+
+    function setLoupe(on, zoom) {
+      wb.loupe = { on: on, zoom: zoom };
+      try { localStorage.setItem('wb.loupe', JSON.stringify(wb.loupe)); } catch (e) { /* localStorage unavailable */ }
+      renderLoupeControls();
+      scheduleLoupes();
+    }
+
+    function stepLoupeZoom(delta) {
+      var i = WB_LOUPE_ZOOMS.indexOf(wb.loupe.zoom) + delta;
+      if (i < 0 || i >= WB_LOUPE_ZOOMS.length) return;
+      setLoupe(wb.loupe.on, WB_LOUPE_ZOOMS[i]);
+    }
+
+    try {
+      var storedLoupe = JSON.parse(localStorage.getItem('wb.loupe') || 'null');
+      if (storedLoupe && WB_LOUPE_ZOOMS.indexOf(storedLoupe.zoom) >= 0) wb.loupe = { on: storedLoupe.on !== false, zoom: storedLoupe.zoom };
+    } catch (e) { /* localStorage unavailable */ }
+    renderLoupeControls();
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      var t = ev.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (ev.key === 'z' || ev.key === 'Z') setLoupe(!wb.loupe.on, wb.loupe.zoom);
+      else if (ev.key === '[') stepLoupeZoom(-1);
+      else if (ev.key === ']') stepLoupeZoom(1);
+    });
+
     function updateOverlays() {
       var rectsActive = wb.active === 3 && wb.partMode === 'rect';
       imagePanes().forEach(function (pane) {
@@ -5460,6 +5571,7 @@ export const appJs = `
           marker.style.top = wb.focus[1] * 100 + '%';
         }
       });
+      scheduleLoupes();
       var count = qs('[data-wb-rect-count]', root);
       if (count) count.textContent = '矩形 ' + wb.rects.length + ' か所';
       var readout = qs('[data-dof-focus-readout]', root);
@@ -5922,6 +6034,9 @@ export const appJs = `
         wb.compareId = picked.getAttribute('data-wb-pick');
         return render();
       }
+      if (t.closest('[data-wb-loupe-toggle]')) return setLoupe(!wb.loupe.on, wb.loupe.zoom);
+      var loupeZoom = t.closest('[data-wb-loupe-zoom]');
+      if (loupeZoom) return setLoupe(wb.loupe.on, Number(loupeZoom.getAttribute('data-wb-loupe-zoom')));
       var mode = t.closest('[data-wb-compare-mode]');
       if (mode) {
         wb.mode = mode.getAttribute('data-wb-compare-mode');
