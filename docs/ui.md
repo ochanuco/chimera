@@ -478,23 +478,18 @@ rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refine
 
 originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
-`原寸は破棄済み（preview のみ）`と添えます。Redraw・Repair・Deliverセクションは出さず、代わりに
-「原寸は破棄済みのため描き直し・repair・納品は積めません。」という一文を表示します
-（Requestsセクションは表示したままです）。
+`原寸は破棄済み（preview のみ）`と添えます。
 
-納品済みの絵（deliver / 古いfinalizeが産んだGeneration、`parameters.kind`が`deliver` / `hires-chain`のrequestが産んだGeneration、
-`deliver_only`のrepairが産んだGeneration）でも、Redraw・Repair・Deliverセクションは出さず、
-「納品済みの絵なので、描き直し・repair・納品は元の絵から行います。」という一文を表示します
-（workerは納品済みの絵を描き直し・納品の入力にできません）。判定は`isDeliveredRequest`（`src/lib/requests.ts`）です。
+Generation Detailには生成要求を積む編集欄（描き直し・Repair・納品・ボケ）はありません。編集は
+[ワークベンチ](#workbench)で行い、画像の下に主ボタンの`ワークベンチで開く`（`/work/{short_id}`）を置きます。
+評価・ブックマーク、タグ、メモ、公開、基準にする、比較に追加、Requestsの一覧と`profile に登録`、安全性、系譜、解決値、
+親 / 子 / 兄弟のカードは従来どおりです。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
 Workflow の Raw graph）だけ既定で畳みます。
 
 ``` text
-描き直し（Redraw）
-手足の描き直し（Repair）
-納品（Deliver）
 Requests
 仕上げの解決値
 Summary
@@ -632,102 +627,13 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-Redraw・Repair・DeliverセクションはGeneration Detailから積める生成要求です（範囲は
-[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。
-masked_redrawのための独立したフォームはGUIに無く、API / MCPからだけ積めます。3つのフォームは
-`option-form`クラスを共有し（`redraw-form` / `repair-form` / `deliver-form`、`data-request-kind`で種類を持つ）、
-`fieldset`は`option-group`、各コントロールの直後の`?`は`option-help`マーカー、送信ボタンの上の
-一行は`option-preview`です。マーカーはホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけの
-CSS実装（JS不使用）です。
-
-#### Redraw
-
-絵を変える操作を1回の request で1つだけ積みます。先頭の`方法`グループのラジオ（`redraw_method`）で
-`canvas` / `hires` / `light`を選び、選んだ方法のfieldsetだけを出します（他は`hidden`）。
-送るのは`options: {method, ...}`で、空欄のフィールドは送らず、recipeの既定を使わせます。
-
--   `canvas`: `denoise`（catalogの`dials.redraw.denoise`があればwordボタンの列＋`既定`＋`custom`、無ければ数値入力）、
-    `size`（長辺の数値入力）、`route`（`既定` / `latent` / `pixel`）、画像の上にドラッグして矩形を描く
-    `範囲指定`（`keep_regions`）と`keep_strength`。placeholderと`route`の初期値はcatalogの
-    `redraw.defaults.canvas`です。範囲の描画は`repair-region-overlay`をJSで画像に重ねて行い（`範囲指定`トグルがONの間だけ
-    ドラッグ1回が矩形1つ、右上の消去ボタンと`範囲をすべて消す`で削除）、矩形は表示中の画像に対する分数
-    `[x0, y0, x1, y1]`（0〜4桁、0..1）です。矩形が1つ以上あるときだけ`keep_regions`（と入力があれば`keep_strength`）を送ります。
--   `hires`: 長辺のselect（`2048` / `2560` / `3072`）と`denoise`の数値入力（placeholderはcatalogの
-    `redraw.defaults.hires.hires_denoise`、無ければ`0.45`）。元Generationのgraphに同じseedのhiresを足して描き直します。
-    元Generationを産んだrequestが`generate`でないとき、このラジオは`disabled`です。
--   `light`: `光源`のselect（catalogの`redraw.light.scenes`、無ければ`夕日` / `月明かり`）と`光の向き`のselect
-    （`左上から` / `上から` / `右上から` / `左から` / `右から` / `左下から` / `下から` / `右下から`、既定はcatalogの`default_from`）。
-
-プレビューは`送信内容: method=canvas · denoise tidy (0.65)`のように、積まれるoptionsのkeyだけを`·`区切りで出します
-（`keep_regions`は`keep_regions=2箇所`、wordはcatalogの`dials.redraw`に数値があれば`<word> (<number>)`と添え、
-組み立てられないときは`送信内容: —`）。ボタンは`描き直す`で、`POST /api/v1/requests`（`kind: "redraw"`, `created_by: "gui"`、
-`idempotency_key`は`gui:redraw:`始まり）を1件積みます。
-
-#### Repair
-
-手足（hands / feet）だけをマスクして局所的に描き直す`repair`を積みます（既定は閉じた`<details>`）。
-送るのは`options`で、空欄のフィールドは送らず、workerとrecipeの既定を使わせます。
-
--   `部位`: `hands` / `feet`のチェックボックス（既定は両方オン）。片方だけオンのとき`parts`を送り、両方オンなら省略、両方オフなら送信を止めます。
--   `範囲`: Redrawのcanvasと同じ`範囲指定`トグルと矩形描画で、矩形が1つ以上あるときだけ`regions`を送ります（無ければworkerが自動検出）。
--   `denoise`: catalogの`dials.repair.denoise`があればwordボタンの列、無ければ数値入力（0より大きく1以下）。
--   `seeds`: カンマ区切りの整数（最大16件）。`size`（8の倍数、256以上）、`pad`（0.5〜3）。
--   `lora`: catalogの`dials.repair.lora`があればwordボタンの列、無ければ数値入力。空欄はoffです。
-
-ボタンは`手足を描き直す`で、`POST /api/v1/requests`（`kind: "repair"`, `payload: {generation_id, options}`,
-`created_by: "gui"`、`idempotency_key`は`gui:repair:`始まり）を1件積みます。
-
-#### Deliver
-
-切り抜き後の飾りだけを決めて積みます。切り抜きのasset（alpha / depth / cut）は最初の納品で作られ、以後の納品で使い回されます。
-フォームはグループに分かれます。
-
--   `profile`の行（そのrecipeの`deliver`プロファイルがあるときだけ）: `list_presets kind=deliver`の最新active版をボタンで並べ、
-    先頭に`custom`（プロファイルを指名しない）を置きます。押すと下のフィールドがそのプロファイルの`options`で埋まり、
-    以後編集してもプロファイルの指名（hiddenの`profile_name` / `profile_version`）は外れません。送信時は常にフォームの現在値を`options`として、
-    `profile`と一緒に送ります（サーバー側が`{ ...profile.options, ...options }`で合成し、明示したキーが勝ちます）。
--   `仕上げ`: `repin` / `recolor`のチェックボックス（既定はcatalogの`deliver.defaults`）と`keep legwear`
-    （catalogの`dials.deliver`かプロファイルがあるrecipeでは`off` / `on` / `custom`の3択、無ければチェックボックス。`on`は`true`）。
--   `納品の見た目`: `backdrop`のサムネイルピッカー（catalogの`backdrops`を1枚ずつカードにし、末尾に`透過 PNG`と`単色`。
-    サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png?v=<updated_at>`、`backdrops`が無ければサムネイル無しの`stripes`だけ）。
-    既定はcatalogの`deliver.defaults.backdrop`（無ければ先頭のパターン）です。`透過 PNG`は`backdrop: null`を送り、`単色`は
-    `#RRGGBB`のテキスト入力（初期値はcatalogの`deliver.backdrop_color`、無ければ`#ffffff`）を出し、形式違いなら送信せずalertします。
-    続けて`光源`のselect（`指定しない（引き継ぎ）` / catalogの`redraw.light.scenes`、`redraw.light`があるときだけ）と`光の向き`のselect
-    （`光源`を指定したときだけ有効）を並べます。`光源`を指定しないと納品の光源は元の絵の系譜でいちばん近い描き直し（light）から引き継がれ、
-    指定したときは`light: {scene, from}`を送ります。
--   `フチ`: [フチのリスト](#フチのリスト)。送るのは`outlines`と、フチが1本以上あるときの`stroke_light`（`even`か向き）です。`stroke_light: "none"`は送りません
-    （フチなしは`outlines: []`）。
--   `仕上げ`には`repin` / `recolor`に加えて`skin` / `keep scene`のチェックボックスもあり、`skin` / `keep_scene`を送ります。
--   `dof`はこのフォームにありません（[Dof](#dof)）。
-
-プレビューは`送信内容: profile daily v2 · backdrop=stripes · 紫縁 既定 · repin`のように積まれるoptionsを`·`区切りで出し、
-`backdrop`は`null`でも`backdrop=transparent`と必ず出し、`光源 月明かり（左上から）`・`フチ #ffffff 0.4% → #885b80 1.04% · 陰影 even`の形で光とフチを言葉で示します。
-プロファイルを指名していれば先頭に`profile <name> v<version>`を置きます。プロファイルを押すと`outlines` / `stroke_light` / `light` / `backdrop` /
-各チェックが選び直されます（`outlines`が無ければcatalogの既定のフチ、`stroke_light`が無ければ均一）。ボタンは`納品する`で、`POST /api/v1/requests`（`kind: "deliver"`,
-`idempotency_key`は`gui:deliver:`始まり）を積みます。
-
 #### フチのリスト
 
-納品フォームとワークベンチの納品フェーズが共有する編集欄（`OutlineEditor`）です。内側から外側の順に、1本ごとに色（`input[type=color]`）・幅
+ワークベンチの納品フェーズの編集欄（`OutlineEditor`）です。内側から外側の順に、1本ごとに色（`input[type=color]`）・幅
 （0.2〜`deliver.outlines.max_width`、刻み0.02、長辺に対する%）・内側へ / 外側へ / 消すのアイコンボタンを持つ行を並べます。`+ 外側に足す`
 （`deliver.outlines.max_count`、無ければ6本まで）と、catalogの`deliver.outlines.default`（無ければ白0.4% + 紫1.04%）に戻す`白・紫に戻す`があります。
 フチが1本以上あるときだけ`一番外の陰影`として`均一`（`even`）と`光の向きで陰影`（8方向のコンパス、向きが`stroke_light`）を出します。初期値は
 catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。「prompt で描いた白フチは、この内側に残ります。」と注記します。
-
-#### Dof
-
-納品の絵（deliver requestの出力）にだけ出す`ボケ（Dof）`欄です。dofの出力・raw・納品でない絵には出さず、catalogにトップレベルの`dof`が無いときも出しません。
-画像をクリックしてピント位置を置き（マーカーと`ピント: x, y`の表示）、F値のスライダーは`dof.f_number.stops`の段に吸着します（初期値は`default`に最も近い段）。
-`ボカす範囲`は`人物` / `フチ` / `背景`のチェックボックス（初期値は`dof.scope`、無ければすべてオン）、`ファインダー`は`dof.viewfinder`の選択肢
-（`なし` / `あり` / `両方`、初期値は`dof.viewfinder.default`）です。`dof.guide_radius_per_f`があるときは、ピント位置を中心にくっきり見える範囲の目安の円
-（半径は係数 × F値 × 表示中の画像の長辺）を重ねます。ピント位置が無い、またはボカす範囲が全部オフのときはalertして積みません。
-ボタンは`ボケをかける`で、`POST /api/v1/requests`（`kind: "dof"`, `payload: {generation_id, options: {focus, f_number, scope, viewfinder}}`,
-`idempotency_key`は`gui:dof:`始まり）を積みます。
-
-どのGeneration Detailにも、`ワークベンチで開く`のリンク（`/work/{short_id}`）があります。
-
-どちらのフォームも、積んだ直後にページを再読み込みせず、`queued`行をRequestsの一覧の先頭へ挿入します。送信中のボタンは`disabled`で
-`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`を表示して元のラベルに戻り、失敗時はすぐ戻ります。
 
 #### Requests
 
@@ -757,8 +663,12 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
 
 ### `/work`
 
-元絵（`origin=raw`、`refines_generation_id`が無い Generation）を新しい順に24枚ずつ並べる選択画面です。評価（`すべて` / `good だけ`）とrecipeの
+手を入れた元絵（`refines_generation_id`が無い Generation のうち、仕上げ先の Generation を持つか、保存済みの`workbenches`行がある物）を
+最終更新の新しい順（子孫の最新`created_at`と`workbenches.updated_at`の遅い方）に24枚ずつ並べる再開画面です。未着手の Generation は出ません。
+各カードに状態を出します。`しかかり`は納品済みの子孫がまだ無いもの、`完成`は子孫に納品済み（`isDeliveredRequest`と同じ判定: deliver / dof / finalize、
+または deliver / hires-chain / deliver_only の repair）があるものです。状態（`すべて` / `しかかり` / `完成`、`?state=wip|done`）とrecipeの
 絞り込みピルがあり、ページは`?page=`の前へ / 次へで送ります。カードをクリックすると`/work/{short_id}`へ進みます。
+新しく始めるときはギャラリーか`/g/{id}`の`ワークベンチで開く`から入る旨を冒頭に書いています。空のときは「作業中の絵がありません」を出します。
 
 ### `/work/{short_id}`
 
@@ -773,18 +683,23 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     `ルーペ`は十字線の位置を中心に、見えているすべての画像へ同期して拡大した窓（正方形、一辺280px、小さい画像では短い辺の半分まで縮む）を出します。
     倍率は`×2` `×3` `×5` `×8`（初期値は`×3`）で、描画された画像の箱に対する倍率なので解像度の違う画像でも同じ範囲が映ります。
     初期状態はオンで、`z`で切り替え、`[` / `]`で倍率を下げる / 上げます（入力欄にフォーカスがある間は効きません）。オンオフと倍率はブラウザに保存されます。
+    `入力`と`候補`の見出し、および全部並べたときの各タイルの見出しに、画像の寸法とサイズを`1536×1536 · 2.9 MB`の形で添えます（Generation Detailの画像meta欄と同じ書式。
+    サイズが未記録の画像と処理中の候補には出しません）。
     候補のサムネイル帯（評価の色の帯・採用の点・処理中の`…`）、比べ方の切り替え、`スキップ`（5では`ボケなしで完成にする`）、`採用`、
     採用が5まで済んだときの`完成しました。…`の文言。候補欄の見出しに`bad` / `neutral` / `good`があり、現在の評価を押すと外します
     （`PUT /api/v1/generations/{id}/rating`）。
 -   候補: フェーズ k の候補は、フェーズが k で`refines_generation_id`がフェーズ k の入力であるツリーのノード（`GET /api/v1/generations/{root}/tree`）と、
     入力を指す処理中の request（`pending`）です。採用・スキップは`PUT /api/v1/workbenches/{root}`に`picks`全体を送り、候補の系譜から決まる
     それ以前の採用（間は`skip`）に置き換えるので、前の採用を変えると後ろの採用は消えます。
--   右の欄（最大380px、独立スクロール）は現在のフェーズのフォームだけを出します。
+-   右の欄（最大380px）は現在のフェーズのフォームだけを出します。フォームは独立してスクロールし、実行ボタンとエラー表示は欄の下端に固定されます
+    （幅900px以下の縦積みでは、スクロール位置に関係なく画面の下端に固定されます）。
     1 描き直し: `hires`（先頭）/ `canvas`。hires は長辺と denoise、canvas は denoise（catalogの`dials.redraw.denoise`の語があれば値を入れるボタン付き）と寸法。
     2 光: catalogの`redraw.light.scenes`と8方向のコンパス。入力が`canvas`の出力なら「使えない」の説明だけで実行ボタンを出しません。
     3 部分: `手足を自動で探す`（`repair`、対象は手と足 / 手だけ / 足だけ）か`矩形を引く`（`masked_redraw`。入力の絵をドラッグして矩形を何か所でも引き、`全部消す`）。
     矩形では`足す語`が必須で、catalogの`parts`のチップはその part の本文（描いたposeの`parts`にあれば）か名前を末尾に足します。
-    4 納品: `透過` / `背景あり`とサイズ、[フチのリスト](#フチのリスト)（開いた状態）、閉じた`詳細`（`repin` `recolor` `skin` `keep legwear` `keep scene` `backdrop`）、切り抜きの注記。
+    4 納品: 見えているのは`透過` / `背景あり`とサイズだけです。閉じた`フチ`（見出しの右に現在のフチを`白 0.8 + 紫 3`のように色の名前（白・紫以外は色コード）と幅で要約し、
+    向きの陰影のときは`· 陰影 nw`を添える。[フチのリスト](#フチのリスト)を編集すると即座に更新）、`背景あり`のときだけ出る閉じた`背景柄`（選択中の柄を右に表示）、
+    閉じた`詳細`（`repin` `recolor` `skin` `keep legwear` `keep scene`）と切り抜きの注記が続きます。
     入力が納品済みなら実行できません。
     5 ボケ: [Dof](#dof)と同じ操作（ピントは入力の絵のクリック）。入力が納品の絵でなければ実行できません。
 -   実行すると`POST /api/v1/requests`（`created_by: "gui"`、`idempotency_key`は`gui:workbench:<kind>:<入力のshort_id>:<uuid>`）を積み、
@@ -808,28 +723,31 @@ full      dance
 full      anyo
 ```
 
-ポーズごとに1行、左右2カラムで並べます。
+[ワークベンチ](#workbench)の比較ペイン（`入力` / `候補`と同じ2枚並び・十字線・ルーペ）で1ポーズずつ見比べます。
 
--   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` /
-    `referenceView`）。[Gallery](#gallery)と同じ[GenerationCard](#gallery)（サムネイル・
-    short_idリンク・基準ピル）で表示します。pinが無ければ行全体を「pin 無し」とだけ表示し、
-    右カラムは出しません（描けないため）。
--   右: 今の描画内容での、そのposeのplain render。idempotency key
+-   上部のバー: ポーズのボタン（`bust (bust)`のように`framing (pose)`）をワークベンチのステッパーと同じ形で並べ、各ボタンに状態を出します。
+    `pin 無し` / `未描画` / `queued` / `running` / `done` / `failed`。押すとそのポーズに切り替え、URLを`?pose=<pose>`に書き換えます
+    （既定は先頭のポーズ、不明な値も先頭）。
+-   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` / `referenceView`）。pinが無ければ「pin 無し」とだけ出し、右は描けません。
+    見出しはワークベンチと同じ書式の画像meta（`1536×1536 · 2.9 MB`）を添えます。
+-   右: 今の描画内容での、そのposeの最新のplain render。idempotency key
     (`style-check:<recipe>:<pose>:<sha256>`、`src/lib/style-check.ts`の
-    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「まだ
-    描いていない」と表示します。ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
+    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「未描画」と案内します。
+    ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
     カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
     git commit・generated_at・patches・backdropsは入れないので、docsや納品の既定だけの
-    変更・worker再起動ではkeyが変わらず、右カラムは空になりません。requestがqueued/runningなら
-    status行（[Requests](#generation-detail)の`request-status-list`と同じ`<li
-    data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
--   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
-    <結果のshort_id>`）を出します。
--   pinがある行には入力欄と`ID を足して比較`ボタンを出します。pin・今の結果（あれば）の
-    short_idに、入力したID（カンマか空白区切り）を足した`/compare?ids=...`を開きます。
+    変更・worker再起動ではkeyが変わらず、右は空になりません。requestがqueued/runningなら待機中 / 処理中の表示で、
+    ページを開いている間は3秒ごとにrequestを取り直し、doneになればその結果Generationを出します。見出しに画像metaを添え、
+    結果があるときは`bad` / `neutral` / `good`の評価ボタン（ワークベンチの評価と同じ`PUT /api/v1/generations/{id}/rating`）を出します。
+-   `pin を差し替える`: 最新の結果を、そのposeのpin（基準にする）にします。確認ダイアログのあと
+    `POST /api/v1/generations/{id}/pose-reference`を呼びます。結果がまだ無いか、すでにpinと同じ絵のときは押せません。
+    結果は同じseedで描かれているので、差し替えてもkeyは変わらず、右の結果はそのまま残ります。
+-   `任意 ID と比較`: 入力したshort_id（またはid）の絵を、pinの代わりに左へ出します（見出しは`比較 <short_id>`）。`pin に戻す`で戻り、
+    ポーズを切り替えても戻ります。見つからなければalertします。
+-   pinと結果の両方が揃ったときは`/compare で開く`リンク（`/compare?ids=<pinのshort_id>,<結果のshort_id>`）を出します。
 
 ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
-（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに1行、MCP
+（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに、MCP
 `plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
 gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
 keyが上と同じなので、描画内容が同じ間の連打は積み直さず既存行を返します
@@ -1058,12 +976,11 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `publication.add` | `generation_id`, `has_url` | Publicationの追加（`initPublicationAdd`） |
 | `publication.url` | `generation_id`, `has_url` | PublicationのURL入力（`initPublicationUrlSave`） |
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
-| `pose_reference.set` | `generation_id` | Generation Detailの`基準にする`（`initPoseReference`） |
+| `pose_reference.set` | `generation_id`, `from`（絵柄チェックのときだけ`style_check`） | Generation Detailの`基準にする`（`initPoseReference`）、絵柄チェックの`pin を差し替える` |
 | `promote_profile.submit` | `generation_id`, `name`, `version` | Generation Detailの`profile に登録`（`initPromoteToProfile`） |
 | `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
 | `queue.group.click` | `kinds`, `has_request` | キュー状態パネルの行クリック（`navQueueRow`） |
-| `redraw.submit` / `deliver.submit` | `scope`, `generation_id`, `profile`, 送ったoptions | 描き直し・納品の送信（`initOptionForms`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
 | `compare.remove` | `generation_id`, `count` | compareバーのチップで外す（`initCompareBar`） |
