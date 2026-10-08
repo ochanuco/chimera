@@ -636,7 +636,7 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 （0.2〜`deliver.outlines.max_width`、刻み0.02、長辺に対する%）・内側へ / 外側へ / 消すのアイコンボタンを持つ行を並べます。`+ 外側に足す`
 （`deliver.outlines.max_count`、無ければ6本まで）と、catalogの`deliver.outlines.default`（無ければ白0.4% + 紫1.04%）に戻す`白・紫に戻す`があります。
 フチが1本以上あるときだけ`一番外の陰影`として`均一`（`even`）と`光の向きで陰影`（8方向のコンパス、向きが`stroke_light`）を出します。初期値は
-catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。「prompt で描いた白フチは、この内側に残ります。」と注記します。
+catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。
 
 #### Requests
 

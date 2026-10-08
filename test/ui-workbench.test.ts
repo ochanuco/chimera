@@ -175,7 +175,6 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('+ 外側に足す');
     expect(form).toContain('白・紫に戻す');
     expect(form).toContain('一番外の陰影');
-    expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
     expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns(?![^>]* hidden="")[^>]*>\s*<summary>\s*背景柄/);

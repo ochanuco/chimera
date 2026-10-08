@@ -120,7 +120,6 @@ export function OutlineEditor({ outlines, stroke }: { outlines: DeliverOutlines 
           <Compass name="stroke" value={dir ? stroke : 'nw'} />
         </div>
       </div>
-      <p class="outline-note">prompt で描いた白フチは、この内側に残ります。</p>
     </div>
   );
 }

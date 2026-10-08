@@ -1489,7 +1489,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .outline-actions .wb-pill { flex: 1 1 0; }
 .outline-stroke { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-dim); }
 .outline-stroke-compass { flex-basis: 100%; }
-.outline-note { margin: 0; font-size: 0.78rem; color: var(--text-dim); }
 .dof-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; margin: 0.3rem 0; padding: 0; border: 0; font-size: 0.85rem; }
 .dof-scope legend { float: left; padding: 0; margin-right: 0.5rem; color: var(--text-dim); }
 .dof-viewfinder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
