@@ -41,14 +41,14 @@ export function ExperimentsPage({
   status?: string;
 }) {
   return (
-    <Layout title="Experiments" path={path}>
-      <h1>Experiments</h1>
+    <Layout title="実験" path={path}>
+      <h1>実験</h1>
       <form class="filter-form" method="get" action="/experiments">
         <label>
-          Status
+          状態
           <select name="status">
             <option value="" selected={!status}>
-              All
+              すべて
             </option>
             {EXPERIMENT_STATUSES.map((s) => (
               <option value={s} selected={status === s}>
@@ -57,11 +57,11 @@ export function ExperimentsPage({
             ))}
           </select>
         </label>
-        <button type="submit">Search</button>
+        <button type="submit">検索</button>
       </form>
 
       {items.length === 0 ? (
-        <p class="empty-state">No experiments yet.</p>
+        <p class="empty-state">実験がありません</p>
       ) : (
         <table class="kv-table">
           {items.map((e) => (
@@ -73,7 +73,7 @@ export function ExperimentsPage({
               <td>
                 <StatusBadge value={e.status} />
               </td>
-              <td>{e.run_count} runs</td>
+              <td>{e.run_count} Run</td>
               <td>{e.latest_run ? `#${e.latest_run.run_index}` : '-'}</td>
               <td>{e.latest_run && e.latest_run.evaluation_overall ? <StatusBadge value={e.latest_run.evaluation_overall} /> : '-'}</td>
               <td>{e.updated_at}</td>

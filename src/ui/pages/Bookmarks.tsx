@@ -20,15 +20,15 @@ export function BookmarksPage({
   view: GalleryView;
 }) {
   return (
-    <Layout title="Bookmarks" path={path}>
-      <h1>Bookmarks</h1>
+    <Layout title="ブックマーク" path={path}>
+      <h1>ブックマーク</h1>
       <datalist id="tag-suggestions"></datalist>
 
       <section class="bookmark-section">
         <h2>Generations</h2>
         <ViewSwitch basePath="/bookmarks" current={view} params={new URLSearchParams()} />
         {generations.length === 0 ? (
-          <p class="empty-state">No bookmarked generations.</p>
+          <p class="empty-state">Generation のブックマークはありません</p>
         ) : (
           <div class="grid grid-gallery">
             {generations.map((g) => (
@@ -39,9 +39,9 @@ export function BookmarksPage({
       </section>
 
       <section class="bookmark-section">
-        <h2>Experiments</h2>
+        <h2>実験</h2>
         {experiments.length === 0 ? (
-          <p class="empty-state">No bookmarked experiments.</p>
+          <p class="empty-state">実験のブックマークはありません</p>
         ) : (
           <ul>
             {experiments.map((e) => (

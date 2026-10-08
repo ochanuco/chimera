@@ -48,7 +48,7 @@ describe('served app.js', () => {
 
   it('sends backdrop null for the transparent choice and checks the colour format', () => {
     expect(appJs).toContain("var backdrop = backdropMode === 'transparent' ? null : backdropMode;");
-    expect(appJs).toContain("alert('backdrop color must be #RRGGBB')");
+    expect(appJs).toContain("alert('背景色は #RRGGBB で指定してください')");
   });
 
   it('labels request kinds 描き直し / 納品 / ボケ / repair / masked redraw / finalize without defaulting new kinds to finalize', () => {

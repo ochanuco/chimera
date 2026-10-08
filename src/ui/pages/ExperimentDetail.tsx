@@ -226,14 +226,14 @@ function renderPatchDelta(runPatches: Patch[], basePatches: Patch[] | null, labe
   return (
     <div class="exp-delta">
       <div class="exp-delta-label">{label}</div>
-      {lines.length === 0 ? <div class="exp-delta-empty">(no override change)</div> : lines}
+      {lines.length === 0 ? <div class="exp-delta-empty">(overrides 変更なし)</div> : lines}
     </div>
   );
 }
 
 function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
   const base = findBaseRun(run, runs);
-  const label = base ? `Changed from #${base.run_index}` : 'Initial overrides';
+  const label = base ? `#${base.run_index} からの変更` : '初期 overrides';
   const runPatches = readPatches(run.overrides);
   if (runPatches) {
     // base が patch 形式でないと突き合わせ軸が違い base 側が全部消えたように見えるため、その組み合わせは leaf diff に落とす。
@@ -246,7 +246,7 @@ function renderRunDelta(run: ExperimentDetailRun, runs: ExperimentDetailRun[]) {
   return (
     <div class="exp-delta">
       <div class="exp-delta-label">{label}</div>
-      {entries.length === 0 ? <div class="exp-delta-empty">(no override change)</div> : entries.map(renderDeltaLine)}
+      {entries.length === 0 ? <div class="exp-delta-empty">(overrides 変更なし)</div> : entries.map(renderDeltaLine)}
     </div>
   );
 }
@@ -537,7 +537,7 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
         </tbody>
         <tbody class="exp-facts-prompts">{renderExpFactsPromptRows(runs, baseline, columnCount)}</tbody>
       </table>
-      {baseline ? <p class="exp-facts-legend">Highlighted cells differ from #{baseline.run_index}</p> : null}
+      {baseline ? <p class="exp-facts-legend">#{baseline.run_index} と異なるセルを強調</p> : null}
     </>
   );
 }
@@ -546,7 +546,7 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
 function renderExperimentMatrix(matrix: ExperimentMatrix, omittedRuns: number) {
   return (
     <section id="experiment-compare" class="exp-compare">
-      <h3>Compare</h3>
+      <h3>比較</h3>
       {omittedRuns > 0 ? (
         <p class="empty-state">先頭 {matrix.rows.length} 件の Run だけを表示しています（ほか {omittedRuns} 件）。</p>
       ) : null}
@@ -682,7 +682,7 @@ export function ExperimentDetailPage({
           </td>
         </tr>
         <tr>
-          <td>Character</td>
+          <td>キャラクター</td>
           <td>{experiment.character ? experiment.character.name : '-'}</td>
         </tr>
         <tr>
@@ -700,32 +700,32 @@ export function ExperimentDetailPage({
           </td>
         </tr>
         <tr>
-          <td>Created</td>
+          <td>作成</td>
           <td>{experiment.created_at}</td>
         </tr>
         <tr>
-          <td>Updated</td>
+          <td>更新</td>
           <td>{experiment.updated_at}</td>
         </tr>
         <tr>
-          <td>Completed</td>
+          <td>完了</td>
           <td>{experiment.completed_at ?? '-'}</td>
         </tr>
       </table>
 
-      <h2>Runs</h2>
+      <h2>Run</h2>
       {compare && compare.matrix.rows.length >= 1 ? renderExperimentMatrix(compare.matrix, compare.omittedRuns) : null}
       {compare && compare.items.length >= 2 ? renderExperimentCompare(experiment.short_id, compare) : null}
       {renderExpFactsTable(experiment.runs, baseline)}
       {experiment.runs.length === 0 ? (
-        <p class="empty-state">No runs yet.</p>
+        <p class="empty-state">Run がありません</p>
       ) : (
         experiment.runs.map((run) => renderRun(run, experiment.runs, experiment.short_id, baseline))
       )}
 
       <h2>A/B</h2>
       {judgments.pairs.length === 0 ? (
-        <p class="empty-state">No judgments yet.</p>
+        <p class="empty-state">判定がありません</p>
       ) : (
         <table class="kv-table exp-ab-pairs">
           <tr>
@@ -773,9 +773,9 @@ export function ExperimentDetailPage({
         </table>
       ) : null}
 
-      <h2>Promotions</h2>
+      <h2>昇格</h2>
       {experiment.promotions.length === 0 ? (
-        <p class="empty-state">No promotions yet.</p>
+        <p class="empty-state">昇格がありません</p>
       ) : (
         experiment.promotions.map((p) => renderPromotion(p, experiment.runs))
       )}

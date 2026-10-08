@@ -44,7 +44,7 @@ export function ExperimentAbPage({ path, data }: { path: string; data: Experimen
       ) : (
         <>
           <p class="ab-subtitle">
-            A/B blind: run #{baseline_run_index} vs #{arm_run_index}
+            A/B 盲検: Run #{baseline_run_index} と #{arm_run_index}
           </p>
           <p>
             <span class="ab-progress">
@@ -65,7 +65,7 @@ export function ExperimentAbPage({ path, data }: { path: string; data: Experimen
             </script>
 
             <p class="ab-done" hidden={pairs.length > 0}>
-              All seeds judged. <a href={`/experiments/${experiment.short_id}`}>Back to experiment</a>
+              全 seed 判定済み <a href={`/experiments/${experiment.short_id}`}>実験へ戻る</a>
             </p>
 
             <div class="ab-pair-area" hidden={pairs.length === 0}>
@@ -87,17 +87,17 @@ export function ExperimentAbPage({ path, data }: { path: string; data: Experimen
                   A
                 </button>
                 <button type="button" class="ab-vote" data-verdict="tie">
-                  Tie
+                  同等
                 </button>
                 <button type="button" class="ab-vote" data-verdict="right">
                   B
                 </button>
               </div>
-              <p class="ab-hint">Keys: 1 / ← = A, 2 / → = B, 0 / T = Tie</p>
+              <p class="ab-hint">キー: 1 / ← = A, 2 / → = B, 0 / T = 同等</p>
               <div class="ab-reveal" hidden>
                 <p class="ab-reveal-line"></p>
                 <button type="button" class="ab-next">
-                  Next
+                  次へ
                 </button>
               </div>
             </div>

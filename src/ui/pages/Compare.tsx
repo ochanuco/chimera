@@ -409,9 +409,9 @@ export function CompareView({ items, headers }: { items: CompareItem[]; headers?
   return (
     <div id="compare-page">
       <div class="compare-cols-picker">
-        <label for="compare-cols">Columns:</label>
+        <label for="compare-cols">列数:</label>
         <select id="compare-cols">
-          <option value="auto">Auto</option>
+          <option value="auto">自動</option>
           {[2, 3, 4, 5, 6, 7, 8].map((n) => (
             <option value={String(n)}>{n}</option>
           ))}
@@ -429,8 +429,7 @@ export function CompareView({ items, headers }: { items: CompareItem[]; headers?
 
       {items.some((item) => !item.semantic && !item.placeholder) ? (
         <p class="empty-state">
-          Some generations are not semantically analyzed yet — their semantic rows show "(not analyzed)". Run
-          semantic analysis (UC-11) to compare them.
+          未解析の Generation があります
         </p>
       ) : null}
 
@@ -464,7 +463,7 @@ export function CompareView({ items, headers }: { items: CompareItem[]; headers?
 
       {promptRows.length > 0 ? (
         <details class="compare-prompts">
-          <summary>プロンプト全文（差分）を表示</summary>
+          <summary>プロンプト全文</summary>
           <div class="compare-table-wrap">
             <CompareTable items={items} rows={promptRows} headers={headers} />
           </div>
@@ -486,13 +485,13 @@ export function ComparePage({
   warning?: string;
 }) {
   return (
-    <Layout title="Compare" path={path}>
-      <h1>Compare</h1>
+    <Layout title="比較" path={path}>
+      <h1>比較</h1>
       {warning ? <p class="empty-state">{warning}</p> : null}
-      {missingIds.length > 0 ? <p class="empty-state">Not found: {missingIds.join(', ')}</p> : null}
+      {missingIds.length > 0 ? <p class="empty-state">見つかりません: {missingIds.join(', ')}</p> : null}
 
       {items.length < 2 ? (
-        <p class="empty-state">Select 2–9 generations from the Gallery to compare.</p>
+        <p class="empty-state">Generation を 2〜9 件選んでください</p>
       ) : (
         <CompareView items={items} />
       )}
