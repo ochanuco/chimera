@@ -28,13 +28,12 @@ export function nearestStopIndex(stops: number[], value: number): number {
 }
 
 /** Focus point, F number, blurred layers and viewfinder of a `dof` request. The focus is placed by clicking the picture. */
-export function DofFields({ dof, focusHint }: { dof: DofCatalog; focusHint: string }) {
+export function DofFields({ dof }: { dof: DofCatalog }) {
   const defaultIndex = nearestStopIndex(dof.stops, dof.default);
   const viewfinder = dof.viewfinder ?? FALLBACK_DOF.viewfinder!;
   return (
     <>
       <div class="dof-tools" data-dof-tools>
-        <span class="repair-region-hint">{focusHint}</span>
         <span class="dof-focus-readout" data-dof-focus-readout></span>
       </div>
       <label class="dof-f-row">

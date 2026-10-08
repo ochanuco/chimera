@@ -24,14 +24,14 @@ Compare は semantic metadata の diff を表示するところまでです（�
 
 ``` text
 Chimera
-Gallery
-Bookmarks
+ギャラリー
+ブックマーク
 ワークベンチ
-More（Experiments / 絵柄チェック / 統計）
+その他（実験 / 絵柄チェック / 統計）
 ```
 
-`More` は `<details><summary>`によるドロップダウンです。開くと
-`Experiments` `絵柄チェック` `統計` の3リンクを持つパネルが summary の直下に現れます。
+`その他` は `<details><summary>`によるドロップダウンです。開くと
+`実験` `絵柄チェック` `統計` の3リンクを持つパネルが summary の直下に現れます。
 パネル外クリックまたは
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
@@ -286,7 +286,7 @@ short_idは等幅の文字そのものがボタンで、クリックするとク
 変えて末尾に✓を出します。サムネイルは[Generation Detail](#generation-detail)への素のリンク
 `<a href="/g/{short_id}">`です。サムネイル左上には
 （上から順に、両方あれば縦に積みます）、このGenerationがredraw/deliver/repair/
-masked_redrawで書き換えた元のraw Generationがあるとき`from <short_id>`バッジ（`#402e21`地に
+masked_redrawで書き換えた元のraw Generationがあるとき`元 <short_id>`バッジ（`#402e21`地に
 橙文字、short_idは等幅）。バッジはクリックで元のshort_idをコピーし（遷移しない）、コピー後は
 short_idのボタンと同じく0.9秒間`--good`色に変えて✓を出します。サムネイルのリンク内なので
 `<button>`ではなく`role="button"`・`tabindex="0"`の`<span>`で、Enter / Spaceでも動きます。
@@ -320,7 +320,7 @@ short_idを取得して`kind · done → <short_id>`に差し替えます）。
 
 ``` text
 [ IMAGE ]
- from abc123          ← rawを書き換えた出力のときだけ
+ 元 abc123            ← rawを書き換えた出力のときだけ
  納品 · queued        ← redraw/deliver/repair/masked_redraw requestがあるときだけ
  公開済み             ← Publicationが1件以上あるときだけ
 
@@ -454,7 +454,7 @@ telemetry `compare.add`）。
     （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
     10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
 -   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
--   `Compare (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
+-   `比較 (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
 
 別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーを描き直します。
 
@@ -474,7 +474,7 @@ telemetry `compare.add`）。
 
 見出しのshort_idとコピーボタンの隣には、このGenerationがredraw / deliver / repair /
 masked_redrawで書き換えた元のraw Generationがあるとき、小さな`--text-dim`色の
-`from <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
+`元 <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
 rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refines_generation`）。
 
 originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
@@ -490,10 +490,9 @@ Generation にだけ出ます（import など振り直せない元絵には出�
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
-Workflow の Raw graph）だけ既定で畳みます。
+Workflow の Raw graph）と、末尾のRequestsだけ既定で畳みます。
 
 ``` text
-Requests
 仕上げの解決値
 Summary
 Semantic
@@ -505,7 +504,10 @@ Workflow
 ComfyUI Job
 Git
 Note
+Requests
 ```
+
+ページの`<title>`は`<short_id> · 詳細`です。この画面はワークベンチとリロールの見出しでは`詳細`と呼びます。
 
 rating/bookmark行の直後は「基準」行です。このGenerationがposeの基準 renderとしてpinされていれば
 `基準 <pose名>`ピルを、されていなければ`基準にする`ボタンを表示します。ボタンは
@@ -636,7 +638,7 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 （0.2〜`deliver.outlines.max_width`、刻み0.02、長辺に対する%）・内側へ / 外側へ / 消すのアイコンボタンを持つ行を並べます。`+ 外側に足す`
 （`deliver.outlines.max_count`、無ければ6本まで）と、catalogの`deliver.outlines.default`（無ければ白0.4% + 紫1.04%）に戻す`白・紫に戻す`があります。
 フチが1本以上あるときだけ`一番外の陰影`として`均一`（`even`）と`光の向きで陰影`（8方向のコンパス、向きが`stroke_light`）を出します。初期値は
-catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。「prompt で描いた白フチは、この内側に残ります。」と注記します。
+catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。
 
 #### Requests
 
@@ -678,8 +680,8 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
 元絵でない Generation を渡すと、元絵の`/work/<root short_id>?at=<渡したshort_id>`へ302で転送します。`?at=`はその Generation のフェーズと候補を
 開いた時点で選んだ状態にします（保存済みの採用とつながらない系譜なら、その Generation の入力を一時的な入力にします）。
 
--   ヘッダー: `元絵を選び直す`（`/work`へ）と、`元絵 › 1. 描き直し › 2. 光 › 3. 部分 › 4. 納品 › 5. ボケ`のステッパー。各段に採用した kind
-    （redraw は`redraw · hires`の形）・`スキップ`・`いま`（到達済みで未採用）・`—`（未到達）を出し、到達済みの段だけ押せます。
+-   ヘッダー: `元絵を選び直す`（`/work`へ）と、`元絵 › 1. 描き直し › 2. 光 › 3. 部分 › 4. 納品 › 5. ボケ`のステッパー。各段は1行で、全段が同じ固定幅（ラベルが
+    あふれたら省略記号）です。現在の段を塗りで示し、未採用の段は破線の枠にします。到達済みの段だけ押せます。
 -   主領域: `入力`（前フェーズの採用、スキップなら更に前の入力。1 では元絵）と`候補`（選択中の候補）を大きく2枚並べるか、`同じフェーズを全部並べる`で入力と
     このフェーズの全候補を格子に並べます。画像は`/g/{short_id}/image`（原寸が破棄済みなら`/preview`）を`object-fit: contain`で出し、
     十字線・矩形・ピントのマーカーは描画された画像の箱（余白を除く）に対する正規化座標で、見えているすべての画像に同期して出ます。
@@ -688,14 +690,15 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     初期状態はオンで、`z`で切り替え、`[` / `]`で倍率を下げる / 上げます（入力欄にフォーカスがある間は効きません）。オンオフと倍率はブラウザに保存されます。
     `入力`と`候補`の見出し、および全部並べたときの各タイルの見出しに、画像の寸法とサイズを`1536×1536 · 2.9 MB`の形で添えます（Generation Detailの画像meta欄と同じ書式。
     サイズが未記録の画像と処理中の候補には出しません）。
-    候補のサムネイル帯（評価の色の帯・採用の点・処理中の`…`）、比べ方の切り替え、`スキップ`（5では`ボケなしで完成にする`）、`採用`、
-    採用が5まで済んだときの`完成しました。…`の文言。入力欄と候補欄の見出しにはそれぞれ、その絵の short_id（押すとコピー）、`/g/<short_id>`へのリンク、`bad` / `neutral` / `good`、🔖が並びます。
+    候補のサムネイル帯（評価の色の帯・採用の点・処理中の`…`）、比べ方の切り替え、`スキップ`、`次へ`（5では`完成`）、
+    採用が5まで済んだときの`完成しました。`の文言。入力欄と候補欄の見出しにはそれぞれ、その絵の short_id（押すとコピー）、詳細（`/g/<short_id>`）へのリンク`詳細`、`bad` / `neutral` / `good`、🔖が並びます。
     現在の評価を押すと外し（`PUT /api/v1/generations/{id}/rating`）、🔖はブックマークを足し外しします（`PUT` / `DELETE /api/v1/generations/{id}/bookmark`）。
 -   候補: フェーズ k の候補は、フェーズが k で`refines_generation_id`がフェーズ k の入力であるツリーのノード（`GET /api/v1/generations/{root}/tree`）と、
     入力を指す処理中の request（`pending`）です。採用・スキップは`PUT /api/v1/workbenches/{root}`に`picks`全体を送り、候補の系譜から決まる
     それ以前の採用（間は`skip`）に置き換えるので、前の採用を変えると後ろの採用は消えます。
 -   右の欄（最大380px）は現在のフェーズのフォームだけを出します。比較の2枚と右の欄は画面の下端で終わるよう高さを測って合わせ、ページ自体はスクロールしません。
-    フォームは欄の中で独立してスクロールし、実行ボタンとエラー表示は欄の下端に固定されます
+    右の欄の高さはフェーズによらず一定で、フォームは欄の中で独立してスクロールし、実行ボタン（右寄せ）とエラー表示は欄の下端に固定されるので、
+    実行ボタンの位置は全フェーズで同じです
     （幅900px以下の縦積みでは、スクロール位置に関係なく画面の下端に固定されます）。
     1 描き直し: `hires`（先頭）/ `canvas`。hires は長辺と denoise、canvas は denoise（catalogの`dials.redraw.denoise`の語があれば値を入れるボタン付き）と寸法。
     2 光: catalogの`redraw.light.scenes`と8方向のコンパス。入力が`canvas`の出力なら「使えない」の説明だけで実行ボタンを出しません。
@@ -726,7 +729,7 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     十字線とルーペ（`ルーペ`のオンオフと`×2` `×3` `×5` `×8`、`z` / `[` / `]`）は元絵と4枚のすべてに同期して出ます。盤全体の高さは画面の下端で終わるよう
     測って合わせ、幅900px以下ではページ自体のスクロールで、元絵を全幅、候補を2列で縦に積みます。
 -   見出し: 元絵と各候補に、寸法とサイズ（`1536×1536 · 2.9 MB`）を添えます。操作の箱はワークベンチの`入力` / `候補`の見出しと共通の部品（`CapActions`）で、
-    short_id（押すとコピー）、`/g/<short_id>`、`bad` / `neutral` / `good`、🔖に加えて`ワークベンチへ`（`/work/<short_id>`）を出します。
+    short_id（押すとコピー）、`詳細`（`/g/<short_id>`）、`bad` / `neutral` / `good`、🔖に加えて`ワークベンチへ`（`/work/<short_id>`）を出します。
 -   回のタブ: 盤の上に`1 回目` `2 回目`…をワークベンチのピルと同じ見た目で並べ、表示中の回を強調します。完了していない回には`待機中` / `処理中` / `失敗` / `中止`を添えます。
     選んだ回は URL の`?round=N`（`history.replaceState`）に反映し、無ければ最新の回を開きます。まだ回が無いときはタブ行を出しません。
 -   リロール前: 候補は`未実行`の空きタイル4つで、主ボタン`4 枚振る`を出します。押すと`POST /api/v1/generations/{id}/reroll`を呼び、
@@ -859,8 +862,7 @@ Compareセクションの下のRunsには、少なくとも1つのRunがrender_f
 に続けて、全Runの`variables`キーの和集合（アルファベット順）を1キー1列で追加した
 ものです。値は各Runのrender_factsサマリと`variables`から取り、値なしは `—`。
 baseline（`run_index`が最小のRun）以外の行では、baselineと異なる値のセルを
-黄系ハイライト（`exp-facts-diff`）し、表の下に「Highlighted cells differ from
-#<baseline run_index>」という凡例を出します。テーブルの2番目のtbodyには、
+黄系ハイライト（`exp-facts-diff`）し、表の下に「#<baseline run_index> と異なるセルを強調」という凡例を出します。テーブルの2番目のtbodyには、
 `overrides.patches`を持つRunごとにpatch単位の行（`#<run_index>` /
 `<target> <op> <value>`、replaceは`<old> → <value>`）を並べます。
 
@@ -883,11 +885,11 @@ negative`の行、値がnullなら行ごと省略）。baseline以外のRunは�
 
 ``` text
 #1  PASS なし
-    Initial overrides
+    初期 overrides
       prompt.positive  append  , light purple thighhigh socks
 
 #2  FAIL
-    Changed from #1
+    #1 からの変更
       prompt.positive  append  , light purple thighhigh socks
     + render.cfg       set     4.5
     thumbnail / evaluation / decision
@@ -926,15 +928,15 @@ multi-output jobで同一seedに複数枚あるときは、Request内で最初�
 と `seed` 値だけを出し、Run名 / objective / short_id / rating
 などbaseline・arm判別につながる情報は一切出しません。画像クリックでオリジナル画像を新しいタブで開きます。
 
-投票は3つのボタン（A / Tie / B）またはキーボードショートカット（`1` /
-`←` = A、`2` / `→` = B、`0` / `t` = Tie）で行います。投票すると即座に次のペアへは進まず、
+投票は3つのボタン（A / 同等 / B）またはキーボードショートカット（`1` /
+`←` = A、`2` / `→` = B、`0` / `t` = 同等）で行います。投票すると即座に次のペアへは進まず、
 判定結果の reveal（PairwiseJudgment作成レスポンスの `reveal`、
 [api.md](api.md#pairwisejudgment)参照）を1行で表示します：
 `A = #<left.run_index> (<left.role>) · B = #<right.run_index> (<right.role>)`
 に続けて、`render_diff` の各エントリを並べます。`delta`
 を持つエントリ（`positive` / `negative`）は ` · <column>: <delta>`、
 それ以外は ` · <column>: <baseline> → <arm>`（差分が無ければ
-` · no fact difference`）です。すでに判定済み（409）の
+` · 事実の差なし`）です。すでに判定済み（409）の
 場合は reveal の代わりに「already judged」とだけ出します。reveal表示中は投票
 ボタンを無効化し、「Next」ボタン（キーボードは Enter / Space）を押すと次のペアへ
 進んでreveal表示を隠します。全seedを判定し終えたペアでもreveal自体は表示され、
@@ -959,11 +961,11 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 
 ## Bookmarks
 
-Bookmarkした対象を素早く呼び出します。
+ブックマークした対象を素早く呼び出します。
 
 ``` text
 Generations
-Experiments
+実験
 ```
 
 BookmarkはFavoriteではなく再利用・再訪のための導線です。どの対象も🔖の1操作で切り替えます。

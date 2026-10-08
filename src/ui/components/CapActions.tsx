@@ -5,9 +5,9 @@
 export function CapActions({ side, work = false }: { side: string; work?: boolean }) {
   return (
     <div class="wb-cap-actions" data-wb-cap-actions={side} hidden>
-      <span class="copy-id-btn copy-id-text" data-wb-cap-id role="button" tabindex={0} title="ID をコピー"></span>
-      <a class="wb-cap-link" data-wb-cap-link title="詳細を開く">
-        /g/
+      <span class="copy-id-btn copy-id-text" data-wb-cap-id role="button" tabindex={0}></span>
+      <a class="wb-cap-link" data-wb-cap-link>
+        詳細
       </a>
       {work ? (
         <a class="wb-cap-link" data-wb-cap-work title="ワークベンチで開く">

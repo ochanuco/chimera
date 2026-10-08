@@ -122,7 +122,7 @@ export function StyleCheckPage({
                 pin を差し替える
               </button>
               <form class="style-check-any-id" data-sc-any-id>
-                <input type="text" name="id" placeholder="任意の short_id" aria-label="左に出す ID" autocomplete="off" />
+                <input type="text" name="id" placeholder="short_id" aria-label="左に出す ID" autocomplete="off" />
                 <button type="submit" class="wb-pill">
                   任意 ID と比較
                 </button>
