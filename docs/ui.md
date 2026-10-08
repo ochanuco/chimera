@@ -296,7 +296,8 @@ request（JSONのフィールド名は`refinement_request`）があるとき進�
 pin されているとき`基準 <pose名>`ピル（[domain-model.md](domain-model.md#基準-render-の-pin)）を、両方
 あれば横並びで重ねます。幅600px以下ではbookmarkをサムネイル
 右上の2.75rem角のタップ領域へ移し、ratingの3ボタンは行いっぱいに広がります（各2.75rem以上）。
-short_idのボタンも高さ2.75rem以上にします。`card-row`の高さは固定（short_idの行とratingの行を各
+short_idのボタンも高さ2.75rem以上にします。仕上げ元の無い（raw の）カードには、short_idの行のbookmarkの隣に
+小さな`↻`リンク（`/reroll/{short_id}`、[リロール](#リロール)）を置きます（幅600px以下でもタップ領域は2.75rem角）。`card-row`の高さは固定（short_idの行とratingの行を各
 1.5rem、幅600px以下は各2.75rem。パディング・gapを含む）で、バッジなどで変わりません。
 読み込み前のスケルトンと同じ外寸にするためです（[Gallery timeline](#gallery-timeline)）。
 
@@ -482,6 +483,8 @@ Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表
 
 Generation Detailには生成要求を積む編集欄（描き直し・Repair・納品・ボケ）はありません。編集は
 [ワークベンチ](#workbench)で行い、画像の下に主ボタンの`ワークベンチで開く`（`/work/{short_id}`）を置きます。
+`ワークベンチで開く`の右に副ボタン`リロール`（`/reroll/{short_id}`）を置きます。仕上げ済みの Generation か、recipe を持つ generate から作られた
+Generation にだけ出ます（import など振り直せない元絵には出しません）。
 評価・ブックマーク、タグ、メモ、公開、基準にする、比較に追加、Requestsの一覧と`profile に登録`、安全性、系譜、解決値、
 親 / 子 / 兄弟のカードは従来どおりです。
 
@@ -708,6 +711,27 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     候補が処理中としてすぐ増えます。進み具合は`/api/v1/requests/ws`の`status` / `progress`で受け、終わったらツリーを取り直して新しい候補を選びます
     （処理中がある間は4秒ごとにも取り直します）。
 -   幅900px以下では右の欄が主領域の下に積まれ、600px以下では`入力`と`候補`の2枚も縦に並びます。
+
+## リロール
+
+元絵の生成条件をそのままに、seed だけ変えて4枚振り直して見比べる画面です。prompt も recipe も触らないので semantic 判断を伴わず、GUI から積めます。
+元絵1枚につき1回だけで、結果は`requests.reroll_of_generation_id`で元絵に結び付いて残ります（[api.md](api.md#reroll)）。
+
+### `/reroll/{short_id}`
+
+元絵でない Generation を渡すと、元絵の`/reroll/<root short_id>`へ302で転送します。不明な ID は404です。
+
+-   ヘッダー: `詳細へ戻る`（`/g/<short_id>`へ）、`リロール <short_id>`、元絵の recipe 名。
+-   主領域: 左に元絵（固定、縦2段ぶんの高さ）、右に候補4枚の2列×2段。画像は[ワークベンチ](#workbench)と同じ比較ペイン（`wbViewer`）で、
+    十字線とルーペ（`ルーペ`のオンオフと`×2` `×3` `×5` `×8`、`z` / `[` / `]`）は元絵と4枚のすべてに同期して出ます。盤全体の高さは画面の下端で終わるよう
+    測って合わせ、幅900px以下ではページ自体のスクロールで、元絵を全幅、候補を2列で縦に積みます。
+-   見出し: 元絵と各候補に、寸法とサイズ（`1536×1536 · 2.9 MB`）を添えます。操作の箱はワークベンチの`入力` / `候補`の見出しと共通の部品（`CapActions`）で、
+    short_id（押すとコピー）、`/g/<short_id>`、`bad` / `neutral` / `good`、🔖に加えて`ワークベンチへ`（`/work/<short_id>`）を出します。
+-   リロール前: 候補は`未実行`の空きタイル4つで、主ボタン`4 枚振る`を出します。押すと`POST /api/v1/generations/{id}/reroll`を呼び、
+    タイルが`待機中…` / `処理中…`（進み具合は`/api/v1/requests/ws`の`progress`）になり、終わった順に画像に変わります。
+    処理中は3秒ごとに`GET /api/v1/generations/{id}/reroll`でも取り直します。失敗したときはボタンの横にエラーを出します。
+-   リロール後（実行中・完了・失敗を問わず）: ボタンは出ません。既存の結果をそのまま見せます。失敗した Request のタイルには失敗の理由を出します。
+-   recipe を持つ generate から作られていない元絵では、ボタンの代わりに振り直せない旨を出します。
 
 ## 絵柄チェック
 
