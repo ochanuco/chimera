@@ -1161,14 +1161,9 @@ details.section .section-body { margin-top: 0.6rem; }
   cursor: pointer;
 }
 .style-check-render-btn:disabled { opacity: 0.6; cursor: default; }
-.style-check-row { margin: 1.5rem 0; padding-top: 1.25rem; border-top: 1px solid var(--border); }
-.style-check-compare-add { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
-.style-check-compare-add input { flex: 1; max-width: 22rem; }
-.style-check-row-title { margin-bottom: 0.6rem; }
-.style-check-row-pose { color: var(--text-dim); font-weight: 400; font-size: 0.85em; }
-.style-check-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 260px)); gap: 1rem; }
-.style-check-cell h3 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
-.style-check-cell .card { max-width: 260px; }
+.style-check-title { margin: 0; font-size: 1.1rem; }
+.style-check-any-id { display: flex; gap: 0.4rem; }
+.style-check-any-id input { width: 10rem; }
 
 
 .hidden { display: none !important; }
@@ -2561,52 +2556,193 @@ export const appJs = `
     });
   }
 
-  // /check ボタン押下で代表ポーズ全件の plain render を積み、request id をその場の右セルに挿す
-  // だけ (reload しない)。以後は initRequestLive 経由で反映（requestLiveApplyStatus は下方定義だが関数宣言は巻き上がる）。
+  // 絵柄チェック (/check): ワークベンチと同じ比較ペイン (wbViewer) に、左 = pin (または任意の ID)、右 = そのポーズの最新の plain render を出す。
   function initStyleCheck() {
-    document.addEventListener('click', async function (ev) {
-      var button = ev.target.closest('[data-style-check-render]');
-      if (!button) return;
-      ev.preventDefault();
-      var recipe = button.getAttribute('data-recipe');
-      var label = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Queueing…';
-      try {
-        var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
-        (result.results || []).forEach(function (item) {
-          if (item.skipped || (!item.created && item.status === 'done')) return;
-          var slot = document.querySelector('[data-style-check-slot="' + item.pose + '"]');
-          if (!slot) return;
-          while (slot.firstChild) slot.removeChild(slot.firstChild);
-          var ul = document.createElement('ul');
-          ul.className = 'request-status-list';
-          var li = requestStatusRow({ id: item.request_id, status: item.status }, false);
-          ul.appendChild(li);
-          slot.appendChild(ul);
-          registerRequestElement(li);
-        });
-        track('style_check.render', { recipe: recipe });
-      } catch (e) {
-        trackError('style_check.render', e, { recipe: recipe });
-        alert('style check render failed: ' + e.message);
-      } finally {
-        button.disabled = false;
-        button.textContent = label;
+    var root = qs('[data-style-check]');
+    if (!root) return;
+    var initial = {};
+    try { initial = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { initial = {}; }
+    var recipe = root.getAttribute('data-recipe');
+    var sc = { poses: initial.poses || [], active: 0, override: null, cursor: null, loupe: { on: true, zoom: 3 }, timer: null };
+    var viewer = wbViewer(root, sc);
+    viewer.trackCursor();
+
+    var wanted = new URLSearchParams(location.search).get('pose');
+    sc.poses.forEach(function (p, i) { if (p.pose === wanted) sc.active = i; });
+
+    function current() {
+      return sc.poses[sc.active] || null;
+    }
+
+    function hint(p) {
+      if (!p.pin) return 'pin 無し';
+      if (!p.request) return '未描画';
+      if (p.request.status === 'done' && !p.result) return 'done';
+      return p.request.status;
+    }
+
+    function setEmpty(pane, text) {
+      pane.setAttribute('data-wb-key', 'none');
+      pane.removeAttribute('data-wb-imgpane');
+      pane.textContent = '';
+      pane.classList.remove('wb-checker');
+      pane.appendChild(wbEl('div', 'wb-empty', text));
+    }
+
+    function render() {
+      var p = current();
+      qsa('[data-sc-pose]', root).forEach(function (btn, i) {
+        btn.classList.toggle('wb-step-on', i === sc.active);
+        qs('[data-sc-hint]', btn).textContent = hint(sc.poses[i]);
+      });
+      if (!p) return;
+
+      var left = sc.override || p.pin;
+      var leftPane = qs('[data-wb-input-pane]', root);
+      if (left) viewer.fillPane(leftPane, left.id, 'input', left, null);
+      else setEmpty(leftPane, 'pin 無し');
+      qs('[data-sc-left-cap]', root).textContent = left ? captionWithMeta((sc.override ? '比較 ' : 'pin ') + left.short_id, left) : 'pin';
+      qs('[data-sc-left-reset]', root).hidden = !sc.override;
+
+      var rightPane = qs('[data-wb-cmp-pane]', root);
+      var rating = qs('[data-wb-rating]', root);
+      if (p.result) {
+        viewer.fillPane(rightPane, p.result.id, 'cmp', p.result, null);
+        qs('[data-sc-right-cap]', root).textContent = captionWithMeta('最新 ' + p.result.short_id, p.result);
+        rating.setAttribute('data-generation-id', p.result.id);
+        applyRatingToGroups(p.result.id, p.result.rating);
+      } else {
+        var message = !p.pin ? '' : !p.request ? '未描画。「今の既定で描く」で積みます。'
+          : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
+          : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
+        setEmpty(rightPane, message);
+        qs('[data-sc-right-cap]', root).textContent = '最新' + (p.request ? ' ' + p.request.status : '');
+      }
+      rating.hidden = !p.result;
+
+      qs('[data-sc-replace-pin]', root).disabled = !(p.pin && p.result && p.pin.id !== p.result.id);
+      var link = qs('[data-sc-compare-link]', root);
+      link.hidden = !(p.pin && p.result);
+      if (!link.hidden) link.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
+      viewer.updateCrosshair();
+    }
+
+    function selectPose(i) {
+      sc.active = i;
+      sc.override = null;
+      var url = new URL(location.href);
+      url.searchParams.set('pose', sc.poses[i].pose);
+      history.replaceState(null, '', url);
+      render();
+    }
+
+    function nodeOf(g) {
+      return { id: g.id, short_id: g.short_id, rating: g.rating || null, delivered: false, image_width: g.image_width, image_height: g.image_height, image_size: g.image_size };
+    }
+
+    async function syncRequests() {
+      var pending = sc.poses.filter(function (p) { return p.request && (p.request.status === 'queued' || p.request.status === 'running' || (p.request.status === 'done' && !p.result)); });
+      if (pending.length === 0) {
+        clearInterval(sc.timer);
+        sc.timer = null;
+        return;
+      }
+      for (var i = 0; i < pending.length; i++) {
+        var p = pending[i];
+        try {
+          var r = await api('/api/v1/requests/' + encodeURIComponent(p.request.id));
+          p.request.status = r.status;
+          p.request.error = r.error || null;
+          var id = r.status === 'done' && r.result && r.result.generation_ids ? r.result.generation_ids[0] : null;
+          if (id) p.result = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
+        } catch (e) { /* retry on the next tick */ }
+      }
+      render();
+    }
+
+    function startPolling() {
+      if (!sc.timer) sc.timer = setInterval(syncRequests, 3000);
+    }
+
+    root.addEventListener('click', async function (ev) {
+      var t = ev.target.closest ? ev.target : null;
+      if (!t) return;
+      var poseBtn = t.closest('[data-sc-pose]');
+      if (poseBtn) {
+        var idx = sc.poses.findIndex(function (p) { return p.pose === poseBtn.getAttribute('data-sc-pose'); });
+        if (idx >= 0) selectPose(idx);
+        return;
+      }
+      if (t.closest('[data-sc-left-reset]')) {
+        sc.override = null;
+        return render();
+      }
+      var renderBtn = t.closest('[data-style-check-render]');
+      if (renderBtn) {
+        var label = renderBtn.textContent;
+        renderBtn.disabled = true;
+        renderBtn.textContent = 'Queueing…';
+        try {
+          var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
+          (result.results || []).forEach(function (item) {
+            var p = sc.poses.find(function (q) { return q.pose === item.pose; });
+            if (!p || item.skipped || (!item.created && item.status === 'done')) return;
+            p.request = { id: item.request_id, status: item.status, error: null };
+            p.result = null;
+          });
+          render();
+          startPolling();
+          track('style_check.render', { recipe: recipe });
+        } catch (e) {
+          trackError('style_check.render', e, { recipe: recipe });
+          alert('style check render failed: ' + e.message);
+        } finally {
+          renderBtn.disabled = false;
+          renderBtn.textContent = label;
+        }
+        return;
+      }
+      if (t.closest('[data-sc-replace-pin]')) {
+        var q = current();
+        if (!q || !q.result) return;
+        if (!confirm(q.pose + ' の pin を ' + q.result.short_id + ' に差し替えます。以後の絵柄チェックはこの絵の seed で描きます。')) return;
+        try {
+          await api('/api/v1/generations/' + q.result.id + '/pose-reference', 'POST', {});
+          q.pin = q.result;
+          sc.override = null;
+          render();
+          track('pose_reference.set', { generation_id: q.result.id, from: 'style_check' });
+        } catch (e) {
+          trackError('pose_reference.set', e, { generation_id: q.result.id });
+          alert('failed to set pose reference: ' + e.message);
+        }
       }
     });
-  }
 
-  // /check の行ごとの入力欄: pin・今の結果に入力した ID を足して /compare を開く。
-  function initStyleCheckCompareAdd() {
-    document.addEventListener('submit', function (ev) {
-      var form = ev.target.closest('[data-style-check-compare-add]');
+    root.addEventListener('submit', async function (ev) {
+      var form = ev.target.closest ? ev.target.closest('[data-sc-any-id]') : null;
       if (!form) return;
       ev.preventDefault();
-      var extra = form.elements.ids.value.split(/[\\s,]+/).filter(Boolean);
-      var ids = form.getAttribute('data-base-ids').split(',').concat(extra);
-      window.location.href = '/compare?ids=' + ids.map(encodeURIComponent).join(',');
+      var id = form.elements.id.value.trim();
+      if (!id) return;
+      try {
+        sc.override = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
+        form.elements.id.value = '';
+        render();
+      } catch (e) {
+        alert('その ID の絵がありません: ' + id);
+      }
     });
+
+    document.addEventListener('chimera:rating', function (ev) {
+      sc.poses.forEach(function (p) {
+        [p.pin, p.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
+      });
+      if (sc.override && sc.override.id === ev.detail.id) sc.override.rating = ev.detail.rating;
+    });
+
+    render();
+    startPolling();
   }
 
   // /api/v1/requests/ws への接続を1本だけ共有する (docs/worker-protocol.md)。requestLive と
@@ -4471,6 +4607,197 @@ export const appJs = `
     return meta ? label + ' · ' + meta : label;
   }
 
+  // The image panes, crosshair and loupe the workbench and the style check share. wb is the caller's state: it supplies
+  // cursor ({x, y} on the image, or null) and loupe ({on, zoom}), which the viewer reads and the caller may also set.
+  function wbViewer(root, wb) {
+    var resizeObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) { layoutPane(entry.target); });
+    }) : null;
+
+    function layoutPane(pane) {
+      var img = qs('img', pane);
+      var overlay = qs('.wb-overlay', pane);
+      if (!img || !overlay || !img.naturalWidth || !pane.clientWidth) return;
+      var box = wbContainBox(pane.clientWidth, pane.clientHeight, img.naturalWidth, img.naturalHeight);
+      overlay.style.left = box[0] + 'px';
+      overlay.style.top = box[1] + 'px';
+      overlay.style.width = box[2] + 'px';
+      overlay.style.height = box[3] + 'px';
+      overlay.hidden = false;
+      scheduleLoupes();
+    }
+
+    // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
+    function fillPane(pane, key, role, node, pendingItem) {
+      var signature = role + ':' + key;
+      if (pane.getAttribute('data-wb-key') !== signature) {
+        pane.setAttribute('data-wb-key', signature);
+        pane.setAttribute('data-wb-role', role);
+        pane.setAttribute('data-wb-imgpane', '');
+        pane.textContent = '';
+        pane.classList.toggle('wb-checker', !!(node && node.delivered));
+        if (node) {
+          var img = document.createElement('img');
+          img.alt = node.short_id;
+          img.draggable = false;
+          img.addEventListener('load', function () { layoutPane(pane); });
+          img.addEventListener('error', function () {
+            if (img.getAttribute('src') !== '/g/' + node.short_id + '/preview') img.src = '/g/' + node.short_id + '/preview';
+          });
+          img.src = '/g/' + node.short_id + '/image';
+          pane.appendChild(img);
+          var overlay = wbEl('div', 'wb-overlay');
+          overlay.hidden = true;
+          overlay.appendChild(wbEl('div', 'wb-cross-x'));
+          overlay.appendChild(wbEl('div', 'wb-cross-y'));
+          var loupe = wbEl('div', 'wb-loupe');
+          loupe.hidden = true;
+          loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
+          overlay.appendChild(loupe);
+          overlay.appendChild(wbEl('div', 'wb-rects'));
+          overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
+          pane.appendChild(overlay);
+          if (resizeObserver) resizeObserver.observe(pane);
+        } else if (pendingItem) {
+          pane.appendChild(wbEl('div', 'wb-pending-note', '処理中…'));
+        }
+      }
+      if (pendingItem) {
+        var note = qs('.wb-pending-note', pane);
+        if (note) note.textContent = (pendingItem.status === 'queued' ? '待機中…' : '処理中…') + (pendingItem.progress ? ' ' + pendingItem.progress : '');
+      }
+    }
+
+    function imagePanes() {
+      return qsa('[data-wb-imgpane]', root);
+    }
+
+    // Coordinates are relative to the rendered image box (the overlay), never the pane.
+    function pointIn(pane, ev) {
+      var overlay = qs('.wb-overlay', pane);
+      if (!overlay || overlay.hidden) return null;
+      var r = overlay.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return null;
+      var x = (ev.clientX - r.left) / r.width;
+      var y = (ev.clientY - r.top) / r.height;
+      return { x: x, y: y, inside: x >= 0 && x <= 1 && y >= 0 && y <= 1 };
+    }
+
+    var loupeFrame = 0;
+
+    function scheduleLoupes() {
+      if (loupeFrame) return;
+      loupeFrame = requestAnimationFrame(function () {
+        loupeFrame = 0;
+        updateLoupes();
+      });
+    }
+
+    function updateLoupes() {
+      var show = !!(wb.cursor && wb.loupe.on);
+      imagePanes().forEach(function (pane) {
+        var overlay = qs('.wb-overlay', pane);
+        var loupe = overlay && qs('.wb-loupe', overlay);
+        var img = qs('img', pane);
+        if (!loupe) return;
+        var width = overlay.clientWidth;
+        var height = overlay.clientHeight;
+        loupe.hidden = !(show && !overlay.hidden && img && width > 0 && height > 0);
+        if (loupe.hidden) return;
+        var l = wbLoupeLayout(wb.cursor, { width: width, height: height }, wb.loupe.zoom, 280);
+        var src = (img.currentSrc || img.src).replace(/"/g, '%22');
+        var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
+        loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
+        loupe.classList.toggle('wb-loupe-pixel', wb.loupe.zoom >= 5);
+        loupe.style.left = l.left + 'px';
+        loupe.style.top = l.top + 'px';
+        loupe.style.width = l.size + 'px';
+        loupe.style.height = l.size + 'px';
+      });
+    }
+
+    function renderLoupeControls() {
+      var toggle = qs('[data-wb-loupe-toggle]', root);
+      if (toggle) toggle.classList.toggle('wb-pill-on', wb.loupe.on);
+      qsa('[data-wb-loupe-zoom]', root).forEach(function (b) {
+        b.classList.toggle('wb-pill-on', Number(b.getAttribute('data-wb-loupe-zoom')) === wb.loupe.zoom);
+      });
+    }
+
+    function setLoupe(on, zoom) {
+      wb.loupe = { on: on, zoom: zoom };
+      try { localStorage.setItem('wb.loupe', JSON.stringify(wb.loupe)); } catch (e) { /* localStorage unavailable */ }
+      renderLoupeControls();
+      scheduleLoupes();
+    }
+
+    function stepLoupeZoom(delta) {
+      var i = WB_LOUPE_ZOOMS.indexOf(wb.loupe.zoom) + delta;
+      if (i < 0 || i >= WB_LOUPE_ZOOMS.length) return;
+      setLoupe(wb.loupe.on, WB_LOUPE_ZOOMS[i]);
+    }
+
+    try {
+      var storedLoupe = JSON.parse(localStorage.getItem('wb.loupe') || 'null');
+      if (storedLoupe && WB_LOUPE_ZOOMS.indexOf(storedLoupe.zoom) >= 0) wb.loupe = { on: storedLoupe.on !== false, zoom: storedLoupe.zoom };
+    } catch (e) { /* localStorage unavailable */ }
+    renderLoupeControls();
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      var t = ev.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (ev.key === 'z' || ev.key === 'Z') setLoupe(!wb.loupe.on, wb.loupe.zoom);
+      else if (ev.key === '[') stepLoupeZoom(-1);
+      else if (ev.key === ']') stepLoupeZoom(1);
+    });
+
+    // Crosshair on every image pane; the caller draws anything else (rects, focus) itself.
+    function updateCrosshair() {
+      imagePanes().forEach(function (pane) {
+        var overlay = qs('.wb-overlay', pane);
+        if (!overlay) return;
+        var cx = qs('.wb-cross-x', overlay);
+        var cy = qs('.wb-cross-y', overlay);
+        cx.hidden = cy.hidden = !wb.cursor;
+        if (wb.cursor) {
+          cx.style.left = wb.cursor.x * 100 + '%';
+          cy.style.top = wb.cursor.y * 100 + '%';
+        }
+      });
+      scheduleLoupes();
+    }
+
+    root.addEventListener('click', function (ev) {
+      var t = ev.target.closest ? ev.target : null;
+      if (!t) return;
+      if (t.closest('[data-wb-loupe-toggle]')) return setLoupe(!wb.loupe.on, wb.loupe.zoom);
+      var loupeZoom = t.closest('[data-wb-loupe-zoom]');
+      if (loupeZoom) setLoupe(wb.loupe.on, Number(loupeZoom.getAttribute('data-wb-loupe-zoom')));
+    });
+
+    // Cursor tracking for callers with nothing to draw on the panes; the workbench tracks it itself while drawing.
+    function trackCursor() {
+      root.addEventListener('pointermove', function (ev) {
+        var pane = ev.target.closest ? ev.target.closest('[data-wb-imgpane]') : null;
+        if (!pane) return;
+        var p = pointIn(pane, ev);
+        wb.cursor = p && p.inside ? { x: p.x, y: p.y } : null;
+        updateCrosshair();
+      });
+      root.addEventListener('pointerleave', function () {
+        wb.cursor = null;
+        updateCrosshair();
+      });
+    }
+
+    return { fillPane: fillPane, imagePanes: imagePanes, pointIn: pointIn, scheduleLoupes: scheduleLoupes, updateCrosshair: updateCrosshair, trackCursor: trackCursor };
+  }
+
+  function clamp01(v) {
+    return Math.min(1, Math.max(0, v));
+  }
+
   function initWorkbench() {
     var root = qs('[data-workbench]');
     if (!root) return;
@@ -4495,6 +4822,11 @@ export const appJs = `
       error: '',
       timer: null,
     };
+    var viewer = wbViewer(root, wb);
+    var fillPane = viewer.fillPane;
+    var imagePanes = viewer.imagePanes;
+    var pointIn = viewer.pointIn;
+    var scheduleLoupes = viewer.scheduleLoupes;
 
     function nodeById(id) {
       for (var i = 0; i < wb.nodes.length; i++) if (wb.nodes[i].id === id) return wb.nodes[i];
@@ -4589,166 +4921,13 @@ export const appJs = `
       return item.node.delivered ? '納品' : '完了';
     }
 
-    // ---- images ----
-    var resizeObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
-      entries.forEach(function (entry) { layoutPane(entry.target); });
-    }) : null;
-
-    function layoutPane(pane) {
-      var img = qs('img', pane);
-      var overlay = qs('.wb-overlay', pane);
-      if (!img || !overlay || !img.naturalWidth || !pane.clientWidth) return;
-      var box = wbContainBox(pane.clientWidth, pane.clientHeight, img.naturalWidth, img.naturalHeight);
-      overlay.style.left = box[0] + 'px';
-      overlay.style.top = box[1] + 'px';
-      overlay.style.width = box[2] + 'px';
-      overlay.style.height = box[3] + 'px';
-      overlay.hidden = false;
-      scheduleLoupes();
-    }
-
-    // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
-    function fillPane(pane, key, role, node, pendingItem) {
-      var signature = role + ':' + key;
-      if (pane.getAttribute('data-wb-key') !== signature) {
-        pane.setAttribute('data-wb-key', signature);
-        pane.setAttribute('data-wb-role', role);
-        pane.setAttribute('data-wb-imgpane', '');
-        pane.textContent = '';
-        pane.classList.toggle('wb-checker', !!(node && node.delivered));
-        if (node) {
-          var img = document.createElement('img');
-          img.alt = node.short_id;
-          img.draggable = false;
-          img.addEventListener('load', function () { layoutPane(pane); });
-          img.addEventListener('error', function () {
-            if (img.getAttribute('src') !== '/g/' + node.short_id + '/preview') img.src = '/g/' + node.short_id + '/preview';
-          });
-          img.src = '/g/' + node.short_id + '/image';
-          pane.appendChild(img);
-          var overlay = wbEl('div', 'wb-overlay');
-          overlay.hidden = true;
-          overlay.appendChild(wbEl('div', 'wb-cross-x'));
-          overlay.appendChild(wbEl('div', 'wb-cross-y'));
-          var loupe = wbEl('div', 'wb-loupe');
-          loupe.hidden = true;
-          loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
-          overlay.appendChild(loupe);
-          overlay.appendChild(wbEl('div', 'wb-rects'));
-          overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
-          pane.appendChild(overlay);
-          if (resizeObserver) resizeObserver.observe(pane);
-        } else if (pendingItem) {
-          pane.appendChild(wbEl('div', 'wb-pending-note', '処理中…'));
-        }
-      }
-      if (pendingItem) {
-        var note = qs('.wb-pending-note', pane);
-        if (note) note.textContent = (pendingItem.status === 'queued' ? '待機中…' : '処理中…') + (pendingItem.progress ? ' ' + pendingItem.progress : '');
-      }
-    }
-
-    function imagePanes() {
-      return qsa('[data-wb-imgpane]', root);
-    }
-
-    // Coordinates are relative to the rendered image box (the overlay), never the pane.
-    function pointIn(pane, ev) {
-      var overlay = qs('.wb-overlay', pane);
-      if (!overlay || overlay.hidden) return null;
-      var r = overlay.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return null;
-      var x = (ev.clientX - r.left) / r.width;
-      var y = (ev.clientY - r.top) / r.height;
-      return { x: x, y: y, inside: x >= 0 && x <= 1 && y >= 0 && y <= 1 };
-    }
-
-    function clamp01(v) {
-      return Math.min(1, Math.max(0, v));
-    }
-
-    var loupeFrame = 0;
-
-    function scheduleLoupes() {
-      if (loupeFrame) return;
-      loupeFrame = requestAnimationFrame(function () {
-        loupeFrame = 0;
-        updateLoupes();
-      });
-    }
-
-    function updateLoupes() {
-      var show = !!(wb.cursor && wb.loupe.on);
-      imagePanes().forEach(function (pane) {
-        var overlay = qs('.wb-overlay', pane);
-        var loupe = overlay && qs('.wb-loupe', overlay);
-        var img = qs('img', pane);
-        if (!loupe) return;
-        var width = overlay.clientWidth;
-        var height = overlay.clientHeight;
-        loupe.hidden = !(show && !overlay.hidden && img && width > 0 && height > 0);
-        if (loupe.hidden) return;
-        var l = wbLoupeLayout(wb.cursor, { width: width, height: height }, wb.loupe.zoom, 280);
-        var src = (img.currentSrc || img.src).replace(/"/g, '%22');
-        var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
-        loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
-        loupe.classList.toggle('wb-loupe-pixel', wb.loupe.zoom >= 5);
-        loupe.style.left = l.left + 'px';
-        loupe.style.top = l.top + 'px';
-        loupe.style.width = l.size + 'px';
-        loupe.style.height = l.size + 'px';
-      });
-    }
-
-    function renderLoupeControls() {
-      var toggle = qs('[data-wb-loupe-toggle]', root);
-      if (toggle) toggle.classList.toggle('wb-pill-on', wb.loupe.on);
-      qsa('[data-wb-loupe-zoom]', root).forEach(function (b) {
-        b.classList.toggle('wb-pill-on', Number(b.getAttribute('data-wb-loupe-zoom')) === wb.loupe.zoom);
-      });
-    }
-
-    function setLoupe(on, zoom) {
-      wb.loupe = { on: on, zoom: zoom };
-      try { localStorage.setItem('wb.loupe', JSON.stringify(wb.loupe)); } catch (e) { /* localStorage unavailable */ }
-      renderLoupeControls();
-      scheduleLoupes();
-    }
-
-    function stepLoupeZoom(delta) {
-      var i = WB_LOUPE_ZOOMS.indexOf(wb.loupe.zoom) + delta;
-      if (i < 0 || i >= WB_LOUPE_ZOOMS.length) return;
-      setLoupe(wb.loupe.on, WB_LOUPE_ZOOMS[i]);
-    }
-
-    try {
-      var storedLoupe = JSON.parse(localStorage.getItem('wb.loupe') || 'null');
-      if (storedLoupe && WB_LOUPE_ZOOMS.indexOf(storedLoupe.zoom) >= 0) wb.loupe = { on: storedLoupe.on !== false, zoom: storedLoupe.zoom };
-    } catch (e) { /* localStorage unavailable */ }
-    renderLoupeControls();
-
-    document.addEventListener('keydown', function (ev) {
-      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-      var t = ev.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-      if (ev.key === 'z' || ev.key === 'Z') setLoupe(!wb.loupe.on, wb.loupe.zoom);
-      else if (ev.key === '[') stepLoupeZoom(-1);
-      else if (ev.key === ']') stepLoupeZoom(1);
-    });
-
     function updateOverlays() {
       var rectsActive = wb.active === 3 && wb.partMode === 'rect';
+      viewer.updateCrosshair();
       imagePanes().forEach(function (pane) {
         var overlay = qs('.wb-overlay', pane);
         if (!overlay) return;
         var role = pane.getAttribute('data-wb-role');
-        var cx = qs('.wb-cross-x', overlay);
-        var cy = qs('.wb-cross-y', overlay);
-        cx.hidden = cy.hidden = !wb.cursor;
-        if (wb.cursor) {
-          cx.style.left = wb.cursor.x * 100 + '%';
-          cy.style.top = wb.cursor.y * 100 + '%';
-        }
         var rects = qs('.wb-rects', overlay);
         rects.textContent = '';
         if (role === 'input' && rectsActive) {
@@ -4768,7 +4947,6 @@ export const appJs = `
           marker.style.top = wb.focus[1] * 100 + '%';
         }
       });
-      scheduleLoupes();
       var count = qs('[data-wb-rect-count]', root);
       if (count) count.textContent = '矩形 ' + wb.rects.length + ' か所';
       var readout = qs('[data-dof-focus-readout]', root);
@@ -5234,9 +5412,6 @@ export const appJs = `
         wb.compareId = picked.getAttribute('data-wb-pick');
         return render();
       }
-      if (t.closest('[data-wb-loupe-toggle]')) return setLoupe(!wb.loupe.on, wb.loupe.zoom);
-      var loupeZoom = t.closest('[data-wb-loupe-zoom]');
-      if (loupeZoom) return setLoupe(wb.loupe.on, Number(loupeZoom.getAttribute('data-wb-loupe-zoom')));
       var mode = t.closest('[data-wb-compare-mode]');
       if (mode) {
         wb.mode = mode.getAttribute('data-wb-compare-mode');
@@ -5443,7 +5618,6 @@ export const appJs = `
     initOutlineEditors();
     initPromoteToProfile();
     initStyleCheck();
-    initStyleCheckCompareAdd();
     initGalleryFilter();
     initGalleryView();
     initGalleryInfiniteScroll();

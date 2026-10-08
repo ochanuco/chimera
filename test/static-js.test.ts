@@ -62,4 +62,13 @@ describe('served app.js', () => {
     expect(appJs).toContain('function regionsFor(form)');
     expect(appJs).toContain('var regions = regionsFor(form);');
   });
+
+  it('drives the style check from the workbench viewer: pose picker, pin replacement with confirm, and an any-ID left pane', () => {
+    expect(appJs).toContain('function wbViewer(root, wb)');
+    expect(appJs).toContain('var viewer = wbViewer(root, sc);');
+    expect(appJs).toContain("api('/api/v1/generations/' + q.result.id + '/pose-reference', 'POST', {})");
+    expect(appJs).toContain("url.searchParams.set('pose', sc.poses[i].pose);");
+    expect(appJs).toContain("'/api/v1/style-check/' + encodeURIComponent(recipe)");
+    expect(appJs).not.toContain('data-style-check-compare-add');
+  });
 });

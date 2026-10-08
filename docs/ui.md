@@ -723,28 +723,31 @@ full      dance
 full      anyo
 ```
 
-ポーズごとに1行、左右2カラムで並べます。
+[ワークベンチ](#workbench)の比較ペイン（`入力` / `候補`と同じ2枚並び・十字線・ルーペ）で1ポーズずつ見比べます。
 
--   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` /
-    `referenceView`）。[Gallery](#gallery)と同じ[GenerationCard](#gallery)（サムネイル・
-    short_idリンク・基準ピル）で表示します。pinが無ければ行全体を「pin 無し」とだけ表示し、
-    右カラムは出しません（描けないため）。
--   右: 今の描画内容での、そのposeのplain render。idempotency key
+-   上部のバー: ポーズのボタン（`bust (bust)`のように`framing (pose)`）をワークベンチのステッパーと同じ形で並べ、各ボタンに状態を出します。
+    `pin 無し` / `未描画` / `queued` / `running` / `done` / `failed`。押すとそのポーズに切り替え、URLを`?pose=<pose>`に書き換えます
+    （既定は先頭のポーズ、不明な値も先頭）。
+-   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` / `referenceView`）。pinが無ければ「pin 無し」とだけ出し、右は描けません。
+    見出しはワークベンチと同じ書式の画像meta（`1536×1536 · 2.9 MB`）を添えます。
+-   右: 今の描画内容での、そのposeの最新のplain render。idempotency key
     (`style-check:<recipe>:<pose>:<sha256>`、`src/lib/style-check.ts`の
-    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「まだ
-    描いていない」と表示します。ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
+    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「未描画」と案内します。
+    ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
     カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
     git commit・generated_at・patches・backdropsは入れないので、docsや納品の既定だけの
-    変更・worker再起動ではkeyが変わらず、右カラムは空になりません。requestがqueued/runningなら
-    status行（[Requests](#generation-detail)の`request-status-list`と同じ`<li
-    data-request-id>`）、doneならその結果GenerationをGenerationCardで表示します。
--   pinと結果の両方が揃った行には `pin と比較` リンク（`/compare?ids=<pinのshort_id>,
-    <結果のshort_id>`）を出します。
--   pinがある行には入力欄と`ID を足して比較`ボタンを出します。pin・今の結果（あれば）の
-    short_idに、入力したID（カンマか空白区切り）を足した`/compare?ids=...`を開きます。
+    変更・worker再起動ではkeyが変わらず、右は空になりません。requestがqueued/runningなら待機中 / 処理中の表示で、
+    ページを開いている間は3秒ごとにrequestを取り直し、doneになればその結果Generationを出します。見出しに画像metaを添え、
+    結果があるときは`bad` / `neutral` / `good`の評価ボタン（ワークベンチの評価と同じ`PUT /api/v1/generations/{id}/rating`）を出します。
+-   `pin を差し替える`: 最新の結果を、そのposeのpin（基準にする）にします。確認ダイアログのあと
+    `POST /api/v1/generations/{id}/pose-reference`を呼びます。結果がまだ無いか、すでにpinと同じ絵のときは押せません。
+    結果は同じseedで描かれているので、差し替えてもkeyは変わらず、右の結果はそのまま残ります。
+-   `任意 ID と比較`: 入力したshort_id（またはid）の絵を、pinの代わりに左へ出します（見出しは`比較 <short_id>`）。`pin に戻す`で戻り、
+    ポーズを切り替えても戻ります。見つからなければalertします。
+-   pinと結果の両方が揃ったときは`/compare で開く`リンク（`/compare?ids=<pinのshort_id>,<結果のshort_id>`）を出します。
 
 ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
-（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに1行、MCP
+（[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに、MCP
 `plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
 gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
 keyが上と同じなので、描画内容が同じ間の連打は積み直さず既存行を返します
@@ -973,7 +976,7 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `publication.add` | `generation_id`, `has_url` | Publicationの追加（`initPublicationAdd`） |
 | `publication.url` | `generation_id`, `has_url` | PublicationのURL入力（`initPublicationUrlSave`） |
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
-| `pose_reference.set` | `generation_id` | Generation Detailの`基準にする`（`initPoseReference`） |
+| `pose_reference.set` | `generation_id`, `from`（絵柄チェックのときだけ`style_check`） | Generation Detailの`基準にする`（`initPoseReference`）、絵柄チェックの`pin を差し替える` |
 | `promote_profile.submit` | `generation_id`, `name`, `version` | Generation Detailの`profile に登録`（`initPromoteToProfile`） |
 | `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
