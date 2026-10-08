@@ -61,8 +61,8 @@ export const fmtPct = (value: number) => `${value < 0.001 ? '0' : (Math.round(va
 const ratingText = (rating: SafetyRatingView) =>
   RATING_LABELS.map(([key, label]) => `${label} ${fmtPct(rating[key])}`).join('、');
 
-/** 4 区分の積み上げ帯。サムネイル下の細帯 (`strip`)、詳細の太帯 (`stack`)、比較の小帯 (`mini`) が共有する。 */
-export function RatingBar({ rating, variant }: { rating: SafetyRatingView; variant: 'strip' | 'stack' | 'mini' }) {
+/** 4 区分の積み上げ帯。サムネイル下の細帯 (`strip`) と比較の小帯 (`mini`) が共有する。 */
+export function RatingBar({ rating, variant }: { rating: SafetyRatingView; variant: 'strip' | 'mini' }) {
   return (
     <div class={`rating-bar rating-bar-${variant}`} role="img" aria-label={ratingText(rating)}>
       {RATING_LABELS.map(([key]) => (
@@ -92,41 +92,6 @@ function reasonText(verdict: SafetyVerdictView, reasons: string[]): string | nul
   return null;
 }
 
-interface GaugeProps {
-  label: string;
-  value: number;
-  colorVar: string;
-  limit?: number;
-  verdictLabel?: string;
-  note?: string;
-}
-
-/** 区分の値。limit があれば閾値の目盛りと距離を出し、閾値の 5pt 手前からは強調する。なければ参考表示。 */
-function Gauge({ label, value, colorVar, limit, verdictLabel, note }: GaugeProps) {
-  const left = limit === undefined ? 0 : limit - value;
-  const gap =
-    limit === undefined
-      ? null
-      : left > 0
-        ? `あと ${(left * 100).toFixed(1)}pt で${verdictLabel}`
-        : `${verdictLabel}の閾値を ${(-left * 100).toFixed(1)}pt 超過`;
-  const near = left > 0 && left < 0.05;
-  return (
-    <div class="safety-gauge">
-      <span class="safety-label">{label}</span>
-      <div class="safety-track">
-        <div class="safety-fill" style={`width:${value * 100}%;background:var(${colorVar})`} />
-        {limit !== undefined ? (
-          <div class="safety-tick" style={`left:calc(${limit * 100}% - 1px)`} data-label={`${Math.round(limit * 100)}%`} />
-        ) : null}
-      </div>
-      <span class="safety-num">{fmtPct(value)}</span>
-      {gap ? <span class={`safety-gap${near ? ' near' : ''}`}>{gap}</span> : null}
-      {note ? <span class="safety-gap">{note}</span> : null}
-    </div>
-  );
-}
-
 const HOT_TAG_THRESHOLD = 0.5;
 const MAX_RISKY_TAGS = 8;
 
@@ -139,7 +104,7 @@ function riskyTags(tags: Record<string, number> | undefined): [string, number][]
     .slice(0, MAX_RISKY_TAGS);
 }
 
-/** 詳細ページの `安全性` セクション。4 区分の帯・閾値つきメーター・効いていそうなタグを常に出す。未採点は「未採点」。 */
+/** 詳細ページの `安全性` セクション。4 区分の 2×2 セル・タグを常に出す。未採点は「未採点」。 */
 export function SafetySection({ safety }: { safety: SafetyDetailData | null | undefined }) {
   if (!safety) {
     return (
@@ -157,48 +122,31 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
         {safety.verdict === 'none' ? <span class="safety-ok">問題なし</span> : <SafetyBadge safety={safety} />}
       </div>
       {reason ? <p class="safety-reasons">{reason}</p> : null}
-      <RatingBar rating={safety.rating} variant="stack" />
-      <div class="safety-legend">
-        {RATING_LABELS.map(([key, label]) => (
-          <span>
-            <i style={`background:var(${RATING_COLOR_VARS[key]})`} />
-            {label} <b class="safety-num">{fmtPct(safety.rating[key])}</b>
-          </span>
-        ))}
-      </div>
-      <div class="safety-gauges">
-        <Gauge
-          label="かなり際どい"
-          value={safety.rating.questionable}
-          limit={SENSITIVE_QUESTIONABLE_THRESHOLD}
-          colorVar="--r-questionable"
-          verdictLabel="センシティブ"
-        />
-        <Gauge
-          label="少し際どい（参考）"
-          value={safety.rating.sensitive}
-          colorVar="--r-sensitive"
-          note="タイツ・脚・足で上がりやすく、X の判定には効きにくい"
-        />
+      <div class="safety-cells">
+        {RATING_LABELS.map(([key, label]) => {
+          const limited = key === 'questionable';
+          const over = limited && safety.rating[key] >= SENSITIVE_QUESTIONABLE_THRESHOLD;
+          return (
+            <div
+              class={`safety-cell${over ? ' over' : ''}`}
+              style={`--c:var(${RATING_COLOR_VARS[key]});--p:${safety.rating[key] * 100}%`}
+            >
+              {limited ? <span class="safety-cell-tick" style={`left:${SENSITIVE_QUESTIONABLE_THRESHOLD * 100}%`} /> : null}
+              <span class="safety-cell-label">{label}</span>
+              <span class="safety-cell-value safety-num">{fmtPct(safety.rating[key])}</span>
+              {limited ? <span class="safety-cell-limit safety-num">/ {pct(SENSITIVE_QUESTIONABLE_THRESHOLD)}</span> : null}
+            </div>
+          );
+        })}
       </div>
       {tags.length > 0 ? (
-        <div>
-          <div class="safety-label safety-tags-title">
-            効いていそうなタグ
-            <span class="safety-tags-legend">
-              枠: <span class="risk-key risk-certain">乳・股間</span>
-              <span class="risk-key risk-suspect">尻・下着</span>
-              <span class="risk-key risk-safe">X では効きにくい</span>
+        <div class="safety-tags">
+          {tags.map(([name, value]) => (
+            <span class={`safety-tag risk-${TAG_X_RISK[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
+              {name}
+              <span class="safety-num">{Math.round(value * 100)}%</span>
             </span>
-          </div>
-          <div class="safety-tags">
-            {tags.map(([name, value]) => (
-              <span class={`safety-tag risk-${TAG_X_RISK[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
-                {name}
-                <span class="safety-num">{Math.round(value * 100)}%</span>
-              </span>
-            ))}
-          </div>
+          ))}
         </div>
       ) : null}
     </section>

@@ -11,25 +11,41 @@ async function rated(r: ReturnType<typeof rating>, tags: Record<string, number> 
 }
 
 describe('detail page 安全性 section', () => {
-  it('shows the bar, gauges and risky tags without folding', async () => {
+  it('shows the four cells, threshold tick and risky tags without folding', async () => {
     const g = await rated(rating(0.975), { pantyhose: 0.96, sitting: 0.82, feet: 0.3, ass: 0.2, cameltoe: 0.2, shirt: 0.9 });
     const html = await (await req(`/g/${g.short_id}`)).text();
     expect(html).not.toContain('<details class="safety-row"');
-    expect(html).toContain('rating-bar-stack');
+    expect(html.match(/class="safety-cell[ "]/g)).toHaveLength(4);
+    for (const label of ['全年齢', '少し際どい', 'かなり際どい', '成人向け']) expect(html).toContain(`>${label}<`);
+    expect(html).toContain('97.5%');
+    expect(html.match(/class="safety-cell-tick"/g)).toHaveLength(1);
+    expect(html).toContain('left:15%');
+    expect(html).toContain('/ 15%');
+    expect(html).not.toContain('safety-cell over');
     expect(html).toContain('問題なし');
-    expect(html).toContain('あと 14.9pt でセンシティブ');
-    expect(html).toContain('少し際どい（参考）');
+    expect(html).toContain('少し際どい');
     expect(html).not.toContain('で注意');
-    expect(html).toContain('効いていそうなタグ');
+    expect(html).not.toContain('rating-bar-stack');
+    expect(html).not.toContain('safety-gauge');
+    expect(html).not.toContain('あと ');
+    expect(html).not.toContain('超過');
+    expect(html).not.toContain('効いていそうなタグ');
     expect(html).toMatch(/safety-tag risk-certain">cameltoe/);
     expect(html).toMatch(/safety-tag risk-suspect">ass/);
     expect(html).toMatch(/safety-tag risk-safe hot">pantyhose/);
     expect(html).toMatch(/safety-tag risk-safe">feet/);
-    expect(html).toContain('risk-key risk-suspect');
     expect(html).not.toContain('>shirt<');
     expect(html.indexOf('cameltoe')).toBeLessThan(html.indexOf('>ass<'));
     expect(html.indexOf('>ass<')).toBeLessThan(html.indexOf('pantyhose'));
     expect(html.indexOf('pantyhose')).toBeLessThan(html.indexOf('sitting'));
+  });
+
+  it('marks the かなり際どい cell over once it reaches the threshold', async () => {
+    const g = await rated(rating(0.5, 0.27));
+    const html = await (await req(`/g/${g.short_id}`)).text();
+    expect(html.match(/class="safety-cell over"/g)).toHaveLength(1);
+    expect(html).toMatch(/safety-cell over"[^>]*--p:27%/);
+    expect(html).toContain('27.0%');
   });
 
   it('explains a caution from the butt tag', async () => {
