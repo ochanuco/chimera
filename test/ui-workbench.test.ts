@@ -219,6 +219,62 @@ describe('workbench client script', () => {
     expect(box(400, 400, 800, 800)).toEqual([0, 0, 400, 400]);
   });
 
+  describe('loupe', () => {
+    type Layout = { left: number; top: number; size: number; bgW: number; bgH: number; bgX: number; bgY: number; flipX: boolean; flipY: boolean };
+    const layout = () =>
+      new Function(
+        'WB_LOUPE_OFFSET',
+        `return (${appJs.slice(appJs.indexOf('function wbLoupeLayout('), appJs.indexOf('\n  }\n', appJs.indexOf('function wbLoupeLayout(')) + 4).trim()})`,
+      )(24) as (c: { x: number; y: number }, b: { width: number; height: number }, zoom: number, side: number) => Layout;
+
+    it('centres the zoomed image on the cursor without flipping in the middle', () => {
+      const l = layout()({ x: 0.5, y: 0.5 }, { width: 800, height: 750 }, 3, 280);
+      expect(l.size).toBe(280);
+      expect([l.bgW, l.bgH]).toEqual([2400, 2250]);
+      expect([l.bgX, l.bgY]).toEqual([140 - 1200, 140 - 1125]);
+      expect([l.flipX, l.flipY]).toEqual([false, false]);
+      expect([l.left, l.top]).toEqual([400 + 24, 375 - 24 - 280]);
+    });
+
+    it('flips towards the inside near the right and top edges and stays within the box', () => {
+      const l = layout()({ x: 0.95, y: 0.05 }, { width: 600, height: 750 }, 3, 280);
+      expect([l.flipX, l.flipY]).toEqual([true, true]);
+      expect(l.left).toBe(570 - 24 - 280);
+      expect(l.top).toBe(37.5 + 24);
+      const corner = layout()({ x: 1, y: 0 }, { width: 600, height: 750 }, 3, 280);
+      expect(corner.left + corner.size).toBeLessThanOrEqual(600);
+      expect(corner.top).toBeGreaterThanOrEqual(0);
+    });
+
+    it('shrinks to half of the shorter side in a small box', () => {
+      const l = layout()({ x: 0.5, y: 0.5 }, { width: 300, height: 200 }, 2, 280);
+      expect(l.size).toBe(100);
+      expect(l.bgX).toBe(50 - 300);
+    });
+
+    it('puts the same fraction of the image under the loupe centre for boxes of different sizes', () => {
+      const fn = layout();
+      const cursor = { x: 0.3, y: 0.8 };
+      const a = fn(cursor, { width: 400, height: 500 }, 5, 280);
+      const b = fn(cursor, { width: 600, height: 750 }, 5, 280);
+      const fraction = (l: Layout) => [(l.size / 2 - l.bgX) / l.bgW, (l.size / 2 - l.bgY) / l.bgH];
+      expect(fraction(a)).toEqual([0.3, 0.8]);
+      expect(fraction(b)).toEqual([0.3, 0.8]);
+      expect([a.flipX, a.flipY]).toEqual([b.flipX, b.flipY]);
+    });
+
+    it('wires the toggle, zoom buttons and keys, persisting the choice', () => {
+      expect(appJs).toContain("t.closest('[data-wb-loupe-toggle]')");
+      expect(appJs).toContain("t.closest('[data-wb-loupe-zoom]')");
+      expect(appJs).toContain("ev.key === 'z' || ev.key === 'Z'");
+      expect(appJs).toContain("ev.key === '['");
+      expect(appJs).toContain("ev.key === ']'");
+      expect(appJs).toContain("localStorage.setItem('wb.loupe'");
+      expect(appJs).toContain('requestAnimationFrame(function () {');
+      expect(appJs).toContain('img.currentSrc || img.src');
+    });
+  });
+
   it('detects overlapping rectangles but not touching ones', () => {
     const overlap = extract<(a: number[], b: number[]) => boolean>('wbRectsOverlap');
     expect(overlap([0, 0, 0.5, 0.5], [0.4, 0.4, 0.9, 0.9])).toBe(true);

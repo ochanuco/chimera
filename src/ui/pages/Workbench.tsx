@@ -417,6 +417,16 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                   同じフェーズを全部並べる
                 </button>
               </div>
+              <div class="wb-pills" role="group" aria-label="ルーペ">
+                <button type="button" class="wb-pill wb-pill-on" data-wb-loupe-toggle title="z で切り替え">
+                  ルーペ
+                </button>
+                {[2, 3, 5, 8].map((z) => (
+                  <button type="button" class="wb-pill" data-wb-loupe-zoom={String(z)} title="[ ] で倍率">
+                    ×{z}
+                  </button>
+                ))}
+              </div>
               <button type="button" class="wb-pill" data-wb-skip></button>
               <button type="button" class="wb-adopt" data-wb-adopt></button>
             </div>
