@@ -18,14 +18,13 @@ describe('detail page 安全性 section', () => {
     expect(html).toContain('rating-bar-stack');
     expect(html).toContain('問題なし');
     expect(html).toContain('あと 14.9pt でセンシティブ');
-    expect(html).toContain('少し際どい（参考）');
+    expect(html).toContain('少し際どい');
     expect(html).not.toContain('で注意');
     expect(html).toContain('効いていそうなタグ');
     expect(html).toMatch(/safety-tag risk-certain">cameltoe/);
     expect(html).toMatch(/safety-tag risk-suspect">ass/);
     expect(html).toMatch(/safety-tag risk-safe hot">pantyhose/);
     expect(html).toMatch(/safety-tag risk-safe">feet/);
-    expect(html).toContain('risk-key risk-suspect');
     expect(html).not.toContain('>shirt<');
     expect(html.indexOf('cameltoe')).toBeLessThan(html.indexOf('>ass<'));
     expect(html.indexOf('>ass<')).toBeLessThan(html.indexOf('pantyhose'));

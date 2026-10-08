@@ -98,11 +98,10 @@ interface GaugeProps {
   colorVar: string;
   limit?: number;
   verdictLabel?: string;
-  note?: string;
 }
 
 /** 区分の値。limit があれば閾値の目盛りと距離を出し、閾値の 5pt 手前からは強調する。なければ参考表示。 */
-function Gauge({ label, value, colorVar, limit, verdictLabel, note }: GaugeProps) {
+function Gauge({ label, value, colorVar, limit, verdictLabel }: GaugeProps) {
   const left = limit === undefined ? 0 : limit - value;
   const gap =
     limit === undefined
@@ -122,7 +121,6 @@ function Gauge({ label, value, colorVar, limit, verdictLabel, note }: GaugeProps
       </div>
       <span class="safety-num">{fmtPct(value)}</span>
       {gap ? <span class={`safety-gap${near ? ' near' : ''}`}>{gap}</span> : null}
-      {note ? <span class="safety-gap">{note}</span> : null}
     </div>
   );
 }
@@ -175,22 +173,14 @@ export function SafetySection({ safety }: { safety: SafetyDetailData | null | un
           verdictLabel="センシティブ"
         />
         <Gauge
-          label="少し際どい（参考）"
+          label="少し際どい"
           value={safety.rating.sensitive}
           colorVar="--r-sensitive"
-          note="タイツ・脚・足で上がりやすく、X の判定には効きにくい"
         />
       </div>
       {tags.length > 0 ? (
         <div>
-          <div class="safety-label safety-tags-title">
-            効いていそうなタグ
-            <span class="safety-tags-legend">
-              枠: <span class="risk-key risk-certain">乳・股間</span>
-              <span class="risk-key risk-suspect">尻・下着</span>
-              <span class="risk-key risk-safe">X では効きにくい</span>
-            </span>
-          </div>
+          <div class="safety-label safety-tags-title">効いていそうなタグ</div>
           <div class="safety-tags">
             {tags.map(([name, value]) => (
               <span class={`safety-tag risk-${TAG_X_RISK[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
