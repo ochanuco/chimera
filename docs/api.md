@@ -1395,6 +1395,41 @@ GET /api/v1/generations/{id}/tree
 
 不明な `{id}` は404です。
 
+### Reroll
+
+``` text
+GET  /api/v1/generations/{id}/reroll
+POST /api/v1/generations/{id}/reroll
+```
+
+リロールは、元絵（raw Generation）の generate payload をそのままに seed だけ変えて4枚振り直す `kind = generate` の Request です
+（[worker-protocol.md](worker-protocol.md#gui)）。`{id}` は UUID / short_id のどちらでもよく、`refines_generation_id` を raw Generation まで
+さかのぼった元絵を対象にします。不明な `{id}` は404です。
+
+`POST` は body を取りません。元絵の Request の `payload` から `request.seeds` と `experiment` を外し、`request.count = 4`、
+`created_by = gui`、`idempotency_key = reroll:<元絵の id>`、`recipe_ref` は元の Request と同じで積み、`requests.reroll_of_generation_id` に
+元絵の id を持たせます。元絵1枚につき1件で、既にあれば何も積まずその状態を200で返します（新規は201）。元絵の Request が
+`kind = generate` でない、または `payload.generation.recipe` が無い（graph-mode など）ときは409です。
+
+どちらも同じ形を返します。
+
+``` json
+{
+  "root": {
+    "id": "<元絵の id>", "short_id": "abc123", "rating": null, "bookmark": false, "delivered": false,
+    "image_width": 1024, "image_height": 1280, "image_size": 2097152, "created_at": "..."
+  },
+  "recipe": "yukari-anima",
+  "request": { "id": "...", "status": "running", "error": null, "created_at": "..." },
+  "generations": [ { "id": "...", "short_id": "def456", "rating": null, "bookmark": false, "delivered": false,
+                     "image_width": 1024, "image_height": 1280, "image_size": 2097152, "created_at": "..." } ]
+}
+```
+
+-   `recipe`: 元絵の `payload.generation.recipe`。振り直せない元絵は `null`
+-   `request`: リロールの Request。まだ無ければ `null`。進み具合の細かい `progress` は `/api/v1/requests/ws` で流れる
+-   `generations`: リロールの Request が産んだ Generation を `created_at` の古い順に。まだ無ければ空
+
 ### Workbench
 
 ``` text
@@ -1634,6 +1669,7 @@ PUT /api/v1/generations/{id}/rating
 ``` text
 /g/{short_id}
 /b/{short_id}    # Request の short_id。最初の Generation の /g/ へ 302
+/reroll/{short_id}   # リロール画面（仕上げ済みの id は元絵の /reroll/ へ 302）
 ```
 
 Experiment の人間向けパスは `/experiments/{short_id}` です。
