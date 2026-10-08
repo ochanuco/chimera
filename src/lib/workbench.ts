@@ -57,6 +57,7 @@ export interface WorkbenchNode {
   phase: number | null;
   options: Record<string, unknown> | null;
   rating: string | null;
+  bookmark: boolean;
   delivered: boolean;
   image_width: number | null;
   image_height: number | null;
@@ -85,7 +86,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
   const { results } = await db
     .prepare(
       `${SUBTREE_CTE}
-       SELECT g.id, g.short_id, g.refines_generation_id, g.rating, g.created_at, g.image_width, g.image_height, g.image_size,
+       SELECT g.id, g.short_id, g.refines_generation_id, g.rating, g.bookmark, g.created_at, g.image_width, g.image_height, g.image_size,
               r.kind AS request_kind, r.payload_json, r.parameters_json
        FROM generations g
        JOIN subtree s ON s.id = g.id
@@ -98,6 +99,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       short_id: string;
       refines_generation_id: string | null;
       rating: string | null;
+      bookmark: number;
       created_at: string;
       image_width: number | null;
       image_height: number | null;
@@ -120,6 +122,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       phase: workbenchPhase(row.request_kind, method),
       options,
       rating: row.rating,
+      bookmark: row.bookmark === 1,
       delivered: isDeliveredRequest({ kind: row.request_kind, parameters_json: row.parameters_json }),
       image_width: row.image_width,
       image_height: row.image_height,

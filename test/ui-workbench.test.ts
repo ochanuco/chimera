@@ -196,6 +196,15 @@ describe('GET /work/:shortId', () => {
     expect(body.nodes.find((n) => n.id === root.id)).toMatchObject({ image_width: 1536, image_height: 1024, image_size: 2048 });
   });
 
+  it('puts the bookmark on each tree node and a bookmark button beside the candidate rating', async () => {
+    const { generation: root } = await createGeneration();
+    await req(`/api/v1/generations/${root.id}/bookmark`, { method: 'PUT' });
+    const body = (await (await req(`/api/v1/generations/${root.id}/tree`)).json()) as { nodes: { id: string; bookmark: boolean }[] };
+    expect(body.nodes.find((n) => n.id === root.id)?.bookmark).toBe(true);
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    expect(html).toMatch(/data-wb-rating[\s\S]*?class="bookmark-btn" data-wb-bookmark="true" data-kind="generations"/);
+  });
+
   it('summarises the outline list in the フチ summary', () => {
     expect(appJs).toContain('function outlineSummaryText(editor)');
     expect(appJs).toContain("OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' }");
