@@ -687,7 +687,7 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     サイズが未記録の画像と処理中の候補には出しません）。
     候補のサムネイル帯（評価の色の帯・採用の点・処理中の`…`）、比べ方の切り替え、`スキップ`（5では`ボケなしで完成にする`）、`採用`、
     採用が5まで済んだときの`完成しました。…`の文言。候補欄の見出しに`bad` / `neutral` / `good`があり、現在の評価を押すと外します
-    （`PUT /api/v1/generations/{id}/rating`）。
+    （`PUT /api/v1/generations/{id}/rating`）。その右の🔖で候補をブックマークに足し外しします（`PUT` / `DELETE /api/v1/generations/{id}/bookmark`）。
 -   候補: フェーズ k の候補は、フェーズが k で`refines_generation_id`がフェーズ k の入力であるツリーのノード（`GET /api/v1/generations/{root}/tree`）と、
     入力を指す処理中の request（`pending`）です。採用・スキップは`PUT /api/v1/workbenches/{root}`に`picks`全体を送り、候補の系譜から決まる
     それ以前の採用（間は`skip`）に置き換えるので、前の採用を変えると後ろの採用は消えます。
