@@ -1542,7 +1542,9 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .wb-fig { margin: 0; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
 .wb-cap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.25rem 0.5rem; min-height: 2.25rem; font-size: 0.78rem; color: var(--text-dim); }
-.wb-cap-actions { display: flex; align-items: center; gap: 0.25rem; }
+.wb-cap-actions { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+.wb-cap-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-dim); text-decoration: none; }
+.wb-cap-link:hover { color: var(--accent); }
 .wb-pane {
   position: relative; width: 100%; height: var(--wb-pane-h, calc(100vh - 18rem)); min-height: 14rem; border-radius: 8px;
   border: 1px solid var(--border); background: var(--bg-elevated); overflow: hidden; user-select: none;
@@ -5076,6 +5078,21 @@ export const appJs = `
       });
     }
 
+    function renderCapActions(side, node) {
+      var box = qs('[data-wb-cap-actions="' + side + '"]', root);
+      box.hidden = !node;
+      if (!node) return;
+      var id = qs('[data-wb-cap-id]', box);
+      id.textContent = node.short_id;
+      id.setAttribute('data-copy-id', node.short_id);
+      qs('[data-wb-cap-link]', box).setAttribute('href', '/g/' + node.short_id);
+      qs('.rating-group', box).setAttribute('data-generation-id', node.id);
+      applyRatingToGroups(node.id, node.rating);
+      var bookmark = qs('[data-wb-bookmark]', box);
+      bookmark.setAttribute('data-id', node.id);
+      bookmark.setAttribute('data-bookmarked', node.bookmark ? 'true' : 'false');
+    }
+
     function renderPanes(list, input) {
       var inputPane = qs('[data-wb-input-pane]', root);
       var cmpPane = qs('[data-wb-cmp-pane]', root);
@@ -5111,16 +5128,8 @@ export const appJs = `
         qs('[data-wb-cmp-badge]', root).textContent = '';
         qs('[data-wb-cmp-meta]', root).textContent = '';
       }
-      var rating = qs('[data-wb-rating]', root);
-      var bookmark = qs('[data-wb-bookmark]', root);
-      rating.hidden = !(cmp && cmp.node);
-      bookmark.hidden = rating.hidden;
-      if (cmp && cmp.node) {
-        rating.setAttribute('data-generation-id', cmp.node.id);
-        applyRatingToGroups(cmp.node.id, cmp.node.rating);
-        bookmark.setAttribute('data-id', cmp.node.id);
-        bookmark.setAttribute('data-bookmarked', cmp.node.bookmark ? 'true' : 'false');
-      }
+      renderCapActions('input', input);
+      renderCapActions('cmp', cmp && cmp.node);
     }
 
     function renderControls(list) {
