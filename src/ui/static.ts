@@ -4791,7 +4791,7 @@ export const appJs = `
       });
     }
 
-    return { fillPane: fillPane, imagePanes: imagePanes, pointIn: pointIn, scheduleLoupes: scheduleLoupes, updateCrosshair: updateCrosshair, trackCursor: trackCursor };
+    return { fillPane: fillPane, layoutPane: layoutPane, imagePanes: imagePanes, pointIn: pointIn, scheduleLoupes: scheduleLoupes, updateCrosshair: updateCrosshair, trackCursor: trackCursor };
   }
 
   function clamp01(v) {
@@ -4825,6 +4825,7 @@ export const appJs = `
     var viewer = wbViewer(root, wb);
     var fillPane = viewer.fillPane;
     var imagePanes = viewer.imagePanes;
+    var layoutPane = viewer.layoutPane;
     var pointIn = viewer.pointIn;
     var scheduleLoupes = viewer.scheduleLoupes;
 
