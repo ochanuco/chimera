@@ -12,6 +12,8 @@ import { ExperimentAbPage, type AbPair, type ExperimentAbData } from '../ui/page
 import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
+import { StatsPage } from '../ui/pages/Stats';
+import { getStats, STATS_PERIODS, type StatsCold, type StatsPeriod } from '../lib/stats';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
 import { WorkbenchPage, type WorkbenchData, type WorkbenchPart } from '../ui/pages/Workbench';
@@ -435,6 +437,13 @@ pages.get('/check', async (c) => {
   }));
 
   return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} poses={poses} />);
+});
+
+pages.get('/stats', async (c) => {
+  const rawPeriod = c.req.query('period');
+  const period: StatsPeriod = STATS_PERIODS.find((p) => p === rawPeriod) ?? '30d';
+  const cold: StatsCold = c.req.query('cold') === 'exclude' ? 'exclude' : 'include';
+  return c.html(<StatsPage path={c.req.path} stats={await getStats(c.env.DB, period, cold)} />);
 });
 
 pages.get('/compare', async (c) => {

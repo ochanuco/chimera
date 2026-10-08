@@ -267,6 +267,50 @@ worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要はあ�
 GET /api/v1/requests/{id}
 ```
 
+### Timings
+
+``` text
+PUT /api/v1/requests/{id}/timings
+```
+
+worker は最終 PATCH（done / failed / release）が返った後に、その試行の計測を best-effort で送ります。失敗しても
+Request の結果には影響させません（再送は同じ (request_id, attempt, version) の行を置き換えます）。時刻はすべて
+worker 機の epoch ミリ秒で、所要時間は送らず chimera が導出します。
+
+``` jsonc
+{
+  "worker_id": "gpu-box-1",
+  "attempt": 1,              // claim した requests 行の attempt
+  "version": "v2",           // 計測方式。v1 | v2
+  "source": "worker",        // worker | comfy_history | requests
+  "status": "done",          // done | failed | cancelled | released
+  "claimed_at": 0,           // claim の応答を受けた時刻 (nullable)
+  "finished_at": 0,          // 最終 PATCH が返った時刻 (nullable)
+  "env": { "comfyui_version": "0.37.0", "argv": ["..."], "attention": "ck", "pytorch_version": "...",
+           "worker_commit": "...", "worker_dirty": false, "gpu_name": "...", "gpu_driver": "..." },  // nullable、各項目も nullable
+  "cold_load": true,         // loader 系ノードが cache されず実行された (nullable)
+  "prompts": [{
+    "prompt_id": "uuid", "purpose": "render",   // render | pose_detect | 他の短い slug
+    "resumed": false,                           // ComfyUI が既に知っていた prompt
+    "submitted_at": 0, "execution_start_at": 0, "execution_end_at": 0,   // execution_* は /history の messages 由来
+    "outputs_ready_at": 0,      // 完了した history を worker が見た時刻
+    "ingested_at": 0,           // 出力を chimera に登録し終えた時刻
+    "status": "success",        // success | error | interrupted | unknown
+    "nodes": [{ "node_id": "3", "class_type": "KSampler", "role": "base_sampler", "cached": false,
+                "started_at": 0, "ended_at": 0, "steps_total": 30, "step_ms": [410, 395] }]
+  }]
+}
+```
+
+応答は 200 `{ "ok": true }`。Request が無ければ 404。各時刻は nullable で、cached ノードの `started_at` / `ended_at` は null です。
+`comfy_job_id` は `prompt_id` を `comfy_jobs.comfy_prompt_id` で引いて chimera が解決します。`role` は worker が
+ノードの `_meta.title` に書く安定名（`base_sampler` `hires_sampler` `vae_decode` `unet_loader` `save_image` など、
+無ければ snake_case の `class_type`、重複は `_2` `_3`）です。
+
+計測行が無い Request は、集計側が `requests` 行の `finished_at - claimed_at` を v1（source `requests`）の所要時間として
+扱います（実体化はしません）。ComfyUI の `/history` スナップショットは
+`POST /api/v1/timings/import-comfy-history`（[api.md](api.md#timings)）で v1 / `comfy_history` として取り込みます。
+
 ### result
 
 ``` json
