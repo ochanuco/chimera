@@ -395,7 +395,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               <figure class="wb-fig">
                 <figcaption class="wb-cap">
                   <span>
-                    入力 <span class="mono" data-wb-input-kind></span>
+                    入力 <span class="mono" data-wb-input-kind></span> <span class="wb-meta" data-wb-input-meta></span>
                   </span>
                   <span data-wb-pane-hint></span>
                 </figcaption>
@@ -404,7 +404,8 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               <figure class="wb-fig">
                 <figcaption class="wb-cap">
                   <span>
-                    候補 <span class="mono" data-wb-cmp-kind></span> <span data-wb-cmp-badge></span> <span class="mono" data-wb-cmp-status></span>
+                    候補 <span class="mono" data-wb-cmp-kind></span> <span data-wb-cmp-badge></span> <span class="mono" data-wb-cmp-status></span>{' '}
+                    <span class="wb-meta" data-wb-cmp-meta></span>
                   </span>
                   <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
                     {(['bad', 'neutral', 'good'] as const).map((r) => (

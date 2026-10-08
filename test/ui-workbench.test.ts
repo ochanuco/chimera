@@ -1,6 +1,8 @@
+import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearGenerationData, createGeneration, postJson, req } from './helpers';
 import { appJs } from '../src/ui/static';
+import { formatImageMetaText } from '../src/lib/image-meta';
 
 beforeEach(async () => {
   await clearGenerationData();
@@ -171,6 +173,27 @@ describe('GET /work/:shortId', () => {
     expect(html.indexOf('data-wb-run')).toBeGreaterThan(foot);
     expect(html.indexOf('data-wb-error')).toBeGreaterThan(foot);
     expect(html.indexOf('data-wb-form="5"')).toBeLessThan(foot);
+  });
+
+  it('captions both panes with the same resolution and size text as the Generation page', () => {
+    const start = appJs.indexOf('function imageMetaText(node) {');
+    const source = appJs.slice(start, appJs.indexOf('\n  }\n', start) + 4);
+    const imageMetaText = new Function(`${source}; return imageMetaText;`)() as (node: unknown) => string;
+    for (const [width, height, size] of [[1536, 1536, 3_040_870], [768, 1024, 800], [null, null, 5_000_000], [2048, 2560, 3 * 1024 ** 3]] as const) {
+      expect(imageMetaText({ image_width: width, image_height: height, image_size: size })).toBe(formatImageMetaText({ width, height, size }));
+    }
+    expect(imageMetaText({ image_width: 10, image_height: 10, image_size: null })).toBe('');
+    expect(imageMetaText(null)).toBe('');
+    expect(appJs).toContain("qs('[data-wb-input-meta]', root).textContent = imageMetaText(input);");
+    expect(appJs).toContain("qs('[data-wb-cmp-meta]', root).textContent = imageMetaText(cmp.node);");
+    expect(appJs).toContain("captionWithMeta(itemKind(item) + (isAdopted ? ' · 採用中' : ''), item.node)");
+  });
+
+  it('puts the image size on each tree node', async () => {
+    const { generation: root } = await createGeneration();
+    await env.DB.prepare('UPDATE generations SET image_width = 1536, image_height = 1024, image_size = 2048 WHERE id = ?').bind(root.id).run();
+    const body = (await (await req(`/api/v1/generations/${root.id}/tree`)).json()) as { nodes: { id: string; image_width: number; image_height: number; image_size: number }[] };
+    expect(body.nodes.find((n) => n.id === root.id)).toMatchObject({ image_width: 1536, image_height: 1024, image_size: 2048 });
   });
 
   it('summarises the outline list in the フチ summary', () => {

@@ -1575,6 +1575,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-tile-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .wb-tile-pane { position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .wb-tile-cap { font-size: 0.75rem; }
+.wb-meta { color: var(--text-dim); font-size: 0.75rem; }
 
 .wb-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .wb-strip { display: flex; gap: 0.25rem; overflow-x: auto; flex: 1 1 14rem; min-width: 0; padding: 0.15rem; }
@@ -4445,6 +4446,31 @@ export const appJs = `
     return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   }
 
+  // Same text as formatImageMetaText in src/lib/image-meta.ts; '' while the size is unknown.
+  function imageMetaText(node) {
+    if (!node || node.image_size === null || node.image_size === undefined) return '';
+    var size = node.image_size;
+    var text;
+    if (size < 1024) {
+      text = size + ' B';
+    } else {
+      var units = ['KB', 'MB', 'GB'];
+      var value = size / 1024;
+      var unit = 0;
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+      }
+      text = value.toFixed(1) + ' ' + units[unit];
+    }
+    return node.image_width && node.image_height ? node.image_width + '×' + node.image_height + ' · ' + text : text;
+  }
+
+  function captionWithMeta(label, node) {
+    var meta = imageMetaText(node);
+    return meta ? label + ' · ' + meta : label;
+  }
+
   function initWorkbench() {
     var root = qs('[data-workbench]');
     if (!root) return;
@@ -4823,7 +4849,7 @@ export const appJs = `
       var inputPane = wbEl('div', 'wb-tile-pane');
       if (input) fillPane(inputPane, input.id, 'input', input, null);
       inputTile.appendChild(inputPane);
-      inputTile.appendChild(wbEl('figcaption', 'wb-tile-cap', '入力 ' + (input ? kindLabel(input) : '')));
+      inputTile.appendChild(wbEl('figcaption', 'wb-tile-cap', captionWithMeta('入力 ' + (input ? kindLabel(input) : ''), input)));
       grid.appendChild(inputTile);
       var adopted = pick(wb.active);
       list.forEach(function (item) {
@@ -4834,7 +4860,7 @@ export const appJs = `
         fillPane(pane, item.key, 'cmp', item.node, item.pending);
         tile.appendChild(pane);
         var isAdopted = item.node && adopted && !adopted.skip && adopted.generation_id === item.node.id;
-        tile.appendChild(wbEl('span', 'wb-tile-cap mono', itemKind(item) + (isAdopted ? ' · 採用中' : '')));
+        tile.appendChild(wbEl('span', 'wb-tile-cap mono', captionWithMeta(itemKind(item) + (isAdopted ? ' · 採用中' : ''), item.node)));
         grid.appendChild(tile);
       });
     }
@@ -4844,6 +4870,7 @@ export const appJs = `
       var cmpPane = qs('[data-wb-cmp-pane]', root);
       var cmp = candidateByKey(wb.active, wb.compareId);
       qs('[data-wb-input-kind]', root).textContent = input ? kindLabel(input) : '';
+      qs('[data-wb-input-meta]', root).textContent = imageMetaText(input);
       var hint = '';
       if (wb.active === 5) hint = 'クリックでピント';
       else if (wb.active === 3 && wb.partMode === 'rect') hint = 'ドラッグで矩形';
@@ -4861,6 +4888,7 @@ export const appJs = `
         qs('[data-wb-cmp-kind]', root).textContent = itemKind(cmp);
         qs('[data-wb-cmp-status]', root).textContent = itemStatus(cmp);
         qs('[data-wb-cmp-badge]', root).textContent = cmp.node && adopted && !adopted.skip && adopted.generation_id === cmp.node.id ? '· 採用中' : '';
+        qs('[data-wb-cmp-meta]', root).textContent = imageMetaText(cmp.node);
       } else {
         cmpPane.setAttribute('data-wb-key', 'none');
         cmpPane.removeAttribute('data-wb-imgpane');
@@ -4870,6 +4898,7 @@ export const appJs = `
         qs('[data-wb-cmp-kind]', root).textContent = '';
         qs('[data-wb-cmp-status]', root).textContent = '';
         qs('[data-wb-cmp-badge]', root).textContent = '';
+        qs('[data-wb-cmp-meta]', root).textContent = '';
       }
       var rating = qs('[data-wb-rating]', root);
       rating.hidden = !(cmp && cmp.node);
