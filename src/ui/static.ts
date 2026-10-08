@@ -1669,6 +1669,7 @@ details.section .section-body { margin-top: 0.6rem; }
 /* リロール: 左に元絵、右に候補 2x2。デスクトップでは盤全体の高さを JS (fitBoard) がビューポート下端に合わせる。 */
 .reroll-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 0.5rem; height: calc(100vh - 12rem); min-height: 20rem; }
 .reroll-original { grid-row: 1 / span 2; }
+.reroll .wb-compare { flex: none; }
 .reroll-board .wb-fig { min-height: 0; }
 .reroll-board .wb-cap { min-height: 2.25rem; }
 .reroll-board .wb-cap-actions { flex-wrap: wrap; }
