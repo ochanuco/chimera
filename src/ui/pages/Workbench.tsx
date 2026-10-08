@@ -253,10 +253,10 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
       <div data-wb-form-body>
         <div class="wb-row">
           <div class="wb-pills" role="group" aria-label="背景">
-            <button type="button" class="wb-pill wb-pill-on" data-wb-bg="transparent">
+            <button type="button" class="wb-pill" data-wb-bg="transparent">
               透過
             </button>
-            <button type="button" class="wb-pill" data-wb-bg="backdrop">
+            <button type="button" class="wb-pill wb-pill-on" data-wb-bg="backdrop">
               背景あり
             </button>
           </div>
@@ -278,7 +278,7 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           <OutlineEditor outlines={data.outlines} stroke={data.strokeDefault} />
         </details>
 
-        <details class="wb-acc" data-wb-backdrop-patterns data-default={backdropDefault} hidden>
+        <details class="wb-acc" data-wb-backdrop-patterns data-default={backdropDefault}>
           <summary>
             背景柄 <span class="wb-acc-sub" data-wb-backdrop-summary></span>
           </summary>

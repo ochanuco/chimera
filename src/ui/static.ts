@@ -1536,7 +1536,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-fig { margin: 0; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
 .wb-cap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.25rem 0.5rem; min-height: 2.25rem; font-size: 0.78rem; color: var(--text-dim); }
 .wb-pane {
-  position: relative; width: 100%; height: calc(100vh - 18rem); min-height: 22rem; border-radius: 8px;
+  position: relative; width: 100%; height: var(--wb-pane-h, calc(100vh - 18rem)); min-height: 14rem; border-radius: 8px;
   border: 1px solid var(--border); background: var(--bg-elevated); overflow: hidden; user-select: none;
   display: flex; align-items: center; justify-content: center;
 }
@@ -1589,7 +1589,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
 
 .wb-panel {
-  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow: hidden;
+  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100dvh - var(--wb-panel-top, 6rem) - 1.5rem); overflow: hidden;
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
   display: flex; flex-direction: column;
 }
@@ -5170,6 +5170,7 @@ export const appJs = `
       renderControls(list);
       renderPanel();
       updateOverlays();
+      fitPanel();
       imagePanes().forEach(layoutPane);
     }
 
@@ -5476,22 +5477,7 @@ export const appJs = `
       }
       var bg = t.closest('[data-wb-bg]');
       if (bg) {
-        var choice = bg.getAttribute('data-wb-bg');
-        qsa('[data-wb-bg]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === bg); });
-        var radios = qsa('input[name="backdrop"]', phaseForm(4));
-        var patterns = qs('[data-wb-backdrop-patterns]', root);
-        patterns.hidden = choice === 'transparent';
-        if (choice === 'transparent') {
-          radios.forEach(function (r) { r.checked = r.value === 'transparent'; });
-        } else if (!radios.some(function (r) { return r.checked && r.value !== 'transparent'; })) {
-          var wanted = patterns.getAttribute('data-default');
-          radios.forEach(function (r) { r.checked = r.value === wanted; });
-          if (!radios.some(function (r) { return r.checked; })) {
-            var first = qs('[data-wb-backdrop-first]', patterns);
-            if (first) first.checked = true;
-          }
-        }
-        syncBackdropColor(phaseForm(4));
+        setDeliverBg(bg.getAttribute('data-wb-bg'));
         return;
       }
     });
@@ -5584,6 +5570,48 @@ export const appJs = `
       updateOverlays();
     });
 
+    // A transparent delivery starts without bands; a backdrop one starts from the catalog's.
+    function setDeliverBg(choice) {
+      var form = phaseForm(4);
+      qsa('[data-wb-bg]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-bg') === choice); });
+      var radios = qsa('input[name="backdrop"]', form);
+      var patterns = qs('[data-wb-backdrop-patterns]', root);
+      patterns.hidden = choice === 'transparent';
+      if (choice === 'transparent') {
+        radios.forEach(function (r) { r.checked = r.value === 'transparent'; });
+      } else if (!radios.some(function (r) { return r.checked && r.value !== 'transparent'; })) {
+        var wanted = patterns.getAttribute('data-default');
+        radios.forEach(function (r) { r.checked = r.value === wanted; });
+        if (!radios.some(function (r) { return r.checked; })) {
+          var first = qs('[data-wb-backdrop-first]', patterns);
+          if (first) first.checked = true;
+        }
+      }
+      var editor = qs('[data-outline-editor]', form);
+      if (editor) {
+        setOutlineList(editor, choice === 'transparent' ? [] : outlineDefaults(editor));
+        setOutlineStroke(editor, editor.getAttribute('data-stroke-default') || 'even');
+      }
+      syncBackdropColor(form);
+    }
+
+    // The header and stepper wrap at varying heights; the panes and the panel measure from
+    // where they start so the page ends at the viewport bottom with the run button in view.
+    function fitPanel() {
+      var panel = qs('.wb-panel', root);
+      var pane = qs('.wb-pane', root);
+      if (!panel || !pane) return;
+      root.style.removeProperty('--wb-pane-h');
+      root.style.setProperty('--wb-panel-top', Math.round(panel.getBoundingClientRect().top + window.scrollY) + 'px');
+      if (window.matchMedia('(max-width: 900px)').matches) return;
+      // A shorter pane can unwrap the controls row, so a second pass settles what the first left.
+      for (var pass = 0; pass < 2; pass++) {
+        var excess = document.documentElement.scrollHeight - window.innerHeight;
+        if (excess <= 0 || pane.offsetHeight === 0) break;
+        root.style.setProperty('--wb-pane-h', Math.floor(pane.getBoundingClientRect().height - excess) + 'px');
+      }
+    }
+
     // ---- start ----
     var at = initial.at ? wbNodeByShort(wb.nodes, initial.at) : null;
     if (at && at.phase) {
@@ -5596,11 +5624,8 @@ export const appJs = `
       wb.active = open;
     }
     var deliverForm = phaseForm(4);
-    if (deliverForm) {
-      syncBackdropColor(deliverForm);
-      var firstEditor = qs('[data-outline-editor]', deliverForm);
-      if (firstEditor) renumberOutlineRows(firstEditor);
-    }
+    if (deliverForm) setDeliverBg('backdrop');
+    window.addEventListener('resize', function () { fitPanel(); imagePanes().forEach(layoutPane); });
     render();
     if (wb.pending.length > 0) startPolling();
   }
