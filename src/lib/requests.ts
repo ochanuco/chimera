@@ -246,6 +246,8 @@ export interface CreateRequestInput {
   recipe_ref?: string;
   idempotency_key: string;
   created_by: RequestCreatedBy;
+  /** kind=generate のリロールだけが持つ。元絵の raw Generation id。 */
+  reroll_of_generation_id?: string;
 }
 
 export interface CreateRequestResult {
@@ -338,8 +340,8 @@ export async function createRequest(
         `INSERT INTO requests (
            id, kind, status, payload_json, payload_hash, recipe_ref, run_id, worker_id, attempt, max_attempts,
            claimed_at, heartbeat_at, finished_at, error, result_json, idempotency_key, created_by, created_at, updated_at,
-           short_id
-         ) VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)`,
+           short_id, reroll_of_generation_id
+         ) VALUES (?, ?, 'queued', ?, ?, ?, ?, NULL, 0, 3, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -353,6 +355,7 @@ export async function createRequest(
         now,
         now,
         await createUniqueRequestShortId(db),
+        input.reroll_of_generation_id ?? null,
       )
       .run();
   } catch (err) {
