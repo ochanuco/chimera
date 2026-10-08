@@ -696,7 +696,10 @@ recipe を持たない graph-mode なら 409、Request が patches を持たな�
 `POST /api/v1/presets/import` は `recipe_catalogs` に publish 済みの catalog の pose 名を
 `{ "recipe_pose": "<name>" }` の参照として `source = import` の version 1 で取り込みます
 （body は `{ "recipe_ref": "production" }`）。同じ `(recipe, kind, name)` が既にあれば飛ばす
-ので、何度呼んでも同じ結果です。取り込むのは pose だけで、catalog の `costumes` /
+ので、何度呼んでも同じ結果です。ただし既存の最新 active 版の根が別の recipe pose（例: gao の
+上の patches として昇格した `anyo`）なら、自名の `{ "recipe_pose": "<name>" }` を根にした版を
+追記して付け替え、レスポンスの `rerooted` に載せます（レスポンスは
+`{ imported, rerooted, skipped }`）。取り込むのは pose だけで、catalog の `costumes` /
 `expressions` は名前の配列でしか publish されておらず、参照にしても何も足しません。移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)。
 
