@@ -50,15 +50,21 @@ function summarizePreset(row: PresetRow): PresetSummary {
 
 export interface PresetImportResult {
   imported: PresetSummary[];
+  rerooted: PresetSummary[];
   skipped: { recipe: string; kind: PresetKind; name: string }[];
 }
 
-/** Idempotent: a name already present at any version is skipped, so repeated calls converge rather than accumulating duplicate version-1 rows (docs/worker-protocol.md「preset の移行」段階 A). */
+/**
+ * Idempotent: a name already present is skipped unless its latest active version roots on a different recipe pose,
+ * in which case a new version rooted on the pose of its own name is appended; repeated calls converge rather than
+ * accumulating rows (docs/worker-protocol.md「preset の移行」段階 A).
+ */
 export async function importFromCatalog(db: D1Database, recipeRef: string): Promise<PresetImportResult> {
   const found = await getCatalog(db, recipeRef);
   if (!found) throw notFound('recipe catalog');
 
   const imported: PresetSummary[] = [];
+  const rerooted: PresetSummary[] = [];
   const skipped: { recipe: string; kind: PresetKind; name: string }[] = [];
   const now = nowIso();
 
@@ -90,9 +96,21 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
       if (name === null) continue;
 
       const key = [recipeName, kind, name].join('\u0000');
-      if (seen.has(key)) {
-        skipped.push({ recipe: recipeName, kind, name });
-        continue;
+      let version = 1;
+      let note: string | null = null;
+      const isNew = !seen.has(key);
+      if (!isNew) {
+        const previousRoot = await staleRootPose(db, recipeName, kind, name);
+        if (previousRoot === null) {
+          skipped.push({ recipe: recipeName, kind, name });
+          continue;
+        }
+        const max = await db
+          .prepare('SELECT MAX(version) AS v FROM presets WHERE recipe = ? AND kind = ? AND name = ?')
+          .bind(recipeName, kind, name)
+          .first<{ v: number }>();
+        version = (max?.v ?? 0) + 1;
+        note = `re-rooted onto recipe pose ${name} (was ${previousRoot})`;
       }
       seen.add(key);
 
@@ -101,12 +119,12 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
         recipe: recipeName,
         kind,
         name,
-        version: 1,
+        version,
         body_json: JSON.stringify({ recipe_pose: name }),
         status: 'active',
         source: 'import',
         source_generation_id: null,
-        note: null,
+        note,
         created_by: 'system',
         created_at: now,
         idempotency_key: null,
@@ -129,13 +147,26 @@ export async function importFromCatalog(db: D1Database, recipeRef: string): Prom
           row.base_fingerprint,
         ),
       );
-      imported.push(summarizePreset(row));
+      (isNew ? imported : rerooted).push(summarizePreset(row));
     }
   }
 
   if (inserts.length > 0) await db.batch(inserts);
 
-  return { imported, skipped };
+  return { imported, rerooted, skipped };
+}
+
+/** The other recipe pose that the latest active version of `name` roots on; null when it roots on `name` itself, is not a pose chain, or cannot be resolved. */
+async function staleRootPose(db: D1Database, recipe: string, kind: PresetKind, name: string): Promise<string | null> {
+  const latest = await getPresetRow(db, recipe, kind, name);
+  if (!latest) return null;
+  try {
+    const { record } = await resolvePreset(db, latest);
+    const root = (record as Record<string, unknown>).recipe_pose;
+    return typeof root === 'string' && root !== name ? root : null;
+  } catch {
+    return null;
+  }
 }
 
 const PIN_KINDS: PresetKind[] = ['pose', 'costume', 'expression'];
