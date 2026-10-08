@@ -4657,7 +4657,7 @@ export const appJs = `
   function wbRenderCapActions(root, side, node) {
     var box = qs('[data-wb-cap-actions="' + side + '"]', root);
     box.hidden = !node;
-    if (!node) return;
+    if (!node) return box.removeAttribute('data-wb-cap-for');
     box.setAttribute('data-wb-cap-for', node.id);
     var id = qs('[data-wb-cap-id]', box);
     id.textContent = node.short_id;
