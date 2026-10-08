@@ -864,7 +864,7 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 
 `backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail }]`
 （`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。deliver の
-`backdrop` optionが取れるパターン名の一覧で、GUIのDeliverフォームはこれをサムネイル
+`backdrop` optionが取れるパターン名の一覧で、GUIのワークベンチの納品フェーズはこれをサムネイル
 ピッカーとして描画します。このキーが無い（旧workerが公開したカタログ）場合、GUIは
 サムネイル無しの`stripes`カード1枚にフォールバックします。`PUT`のレスポンス・
 `GET /api/v1/catalogs`の一覧・MCP `list_catalog`は`backdrops`をname/labelだけの

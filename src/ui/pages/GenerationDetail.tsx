@@ -3,10 +3,6 @@ import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import type { GenerationFamily } from '../../lib/generation-family';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
-import { RedrawSection, type RedrawFormData } from '../components/RedrawSection';
-import { RepairSection, type RepairFormData } from '../components/RepairSection';
-import { DeliverSection, type DeliverFormData } from '../components/DeliverSection';
-import { DofSection, type DofFormData } from '../components/DofSection';
 import { RequestSection, type RequestStatusLine } from '../components/RequestSection';
 import { NoteSection } from '../components/NoteSection';
 import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
@@ -163,12 +159,6 @@ export function GenerationDetailPage({
   family,
   imageMeta,
   requests,
-  delivered,
-  redrawForm,
-  repairForm,
-  deliverForm,
-  dofForm,
-  dofAvailable,
   canPromoteToProfile,
   producedByOptions,
 }: {
@@ -180,14 +170,6 @@ export function GenerationDetailPage({
   imageMeta: ImageMeta | null;
   /** 最新の request 一覧 (最大5件、新しい順)。GUI はここに積むだけで進捗もここで見る。 */
   requests: RequestSummary[];
-  /** 納品済みの絵 (deliver / finalize が産んだ絵)。描き直し・納品の欄は出さない。 */
-  delivered: boolean;
-  redrawForm: RedrawFormData;
-  repairForm: RepairFormData;
-  deliverForm: DeliverFormData;
-  dofForm: DofFormData;
-  /** deliver が産んだ絵 (dof の入力にできる絵)。dof の出力や納品でない絵には欄を出さない。 */
-  dofAvailable: boolean;
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
@@ -214,6 +196,11 @@ export function GenerationDetailPage({
           </div>
           {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
           {data.original_purged_at ? <p class="image-meta">原寸は破棄済み（preview のみ）</p> : null}
+          <p class="detail-workbench">
+            <a class="workbench-open-link" href={`/work/${data.short_id}`}>
+              ワークベンチで開く
+            </a>
+          </p>
         </div>
         <div class="detail-right">
           <h1>
@@ -239,27 +226,6 @@ export function GenerationDetailPage({
 
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />
-
-          <p class="image-meta">
-            <a class="workbench-open-link" href={`/work/${data.short_id}`}>
-              ワークベンチで開く
-            </a>
-          </p>
-
-          {delivered ? (
-            <>
-              <p class="image-meta">納品済みの絵なので、描き直し・repair・納品は元の絵から行います。</p>
-              {dofAvailable ? <DofSection shortId={data.short_id} form={dofForm} /> : null}
-            </>
-          ) : data.original_purged_at ? (
-            <p class="image-meta">原寸は破棄済みのため描き直し・repair・納品は積めません。</p>
-          ) : (
-            <>
-              <RedrawSection shortId={data.short_id} form={redrawForm} />
-              <RepairSection shortId={data.short_id} form={repairForm} />
-              <DeliverSection shortId={data.short_id} form={deliverForm} />
-            </>
-          )}
 
           <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
 

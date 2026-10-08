@@ -907,9 +907,6 @@ describe('result.resolved_options (worker-written, opaque)', () => {
     expect(html).toContain('<td>方法</td><td>light</td>');
     expect(html).toContain('<td>光源</td><td>月明かり</td>');
     expect(html).toContain('<td>光の向き</td><td>左上から</td>');
-    // A redrawn picture can still be redrawn or delivered: both forms stay.
-    expect(html).toContain('redraw-form');
-    expect(html).toContain('deliver-form');
   });
 
   it('an old finalize Generation still renders its resolved options', async () => {

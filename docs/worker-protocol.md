@@ -845,11 +845,8 @@ worker は requests だけを見ます。
 
 段階 2 の GUI は requests 行を積むことと status を表示することだけです。
 
-- Generation Detail: `描き直し（Redraw）` と `納品（Deliver）` の 2 つの form。Redraw は method（canvas / hires / light）を
-  1 つ選んでその method の欄だけを持ち、Deliver は `repin` / `recolor` / `keep legwear` のチェックボックス、背景、
-  光源・光の向き・紫縁の陰影、フチのリスト、profile を持ちます。納品の絵には `ボケ（dof）` の form も出ます。どれも `POST /api/v1/requests`（`kind = redraw` / `deliver` / `dof`、
-  `created_by = gui`）を積み、積んだ後は最新 request の status（queued / running / done / failed）と、
-  done なら出力 Generation へのリンクを出す。表示中の Generation が納品済みの絵なら、どちらの form も出さない。
+- Generation Detail には積む form が無く、最新 request の status（queued / running / done / failed）と、done なら出力 Generation へのリンクを出す。
+  request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `repair` / `masked_redraw` / `deliver` / `dof`、`created_by = gui`）から積む。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`

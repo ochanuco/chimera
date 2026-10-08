@@ -5,9 +5,13 @@ import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults, Redr
 import type { Dials } from '../option-forms';
 import { dialWordsFor } from '../option-forms';
 import { Compass, OutlineEditor } from '../components/OutlineEditor';
-import { DofFields, FALLBACK_DOF } from '../components/DofSection';
+import { DofFields, FALLBACK_DOF } from '../components/DofFields';
 import { LIGHT_SCENE_LABELS } from '../components/OptionControls';
-import type { BackdropOption } from '../components/DeliverSection';
+
+export interface BackdropOption {
+  name: string;
+  label: string;
+}
 
 export interface WorkbenchPart {
   name: string;

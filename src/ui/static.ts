@@ -1089,151 +1089,9 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
-.option-form { display: flex; flex-direction: column; gap: 0.7rem; }
-.option-form input[type="number"] { width: 5rem; }
-/* type="submit" に絞る: 素の button だと .dial-btn より詳細度が高く、dial/profile ボタン全部がアクセント色で塗られ選択中が見えなくなる */
-.option-form button[type="submit"] {
-  align-self: flex-start;
-  background: var(--accent);
-  color: #10131c;
-  border: none;
-  border-radius: 6px;
-  padding: 0.35rem 0.9rem;
-  cursor: pointer;
-  transition: filter 0.1s, transform 0.05s, background-color 0.15s;
-}
-.option-form button[type="submit"]:hover:not(:disabled) { filter: brightness(1.12); }
-.option-form button[type="submit"]:active:not(:disabled) { filter: brightness(0.85); transform: translateY(1px) scale(0.97); }
-.option-form button[type="submit"]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-.option-form button[type="submit"]:disabled { opacity: 0.6; cursor: progress; }
-.option-form button[type="submit"].is-sent { background: var(--good); opacity: 1; cursor: default; }
-.option-form select,
-.option-form input[name="backdrop_color"] {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 0.25rem 0.4rem;
-  font-size: 0.85rem;
-}
-.option-form input[name="backdrop_color"] { width: 6.5rem; }
-.light-grid {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 14rem) auto;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  flex-basis: 100%;
-}
-.light-row { display: contents; }
-.light-row > span { grid-column: 1; }
-.light-row > select { grid-column: 2; }
-.light-grid .option-help { grid-column: 3; grid-row: 1; }
-.option-form input:disabled { opacity: 0.5; cursor: not-allowed; }
-.option-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem 0.8rem;
-  margin: 0;
-  /* 吹き出しの位置基準。マーカー基準だと右ペインの overflow-y: auto で横もクリップされ、右寄りのマーカーで切れる */
-  position: relative;
-}
-.option-group[hidden] { display: none; }
-.option-group legend { padding: 0 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
-.option-help {
-  display: inline-block;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  cursor: help;
-}
-.option-help::after {
-  content: attr(data-help);
-  display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  margin-top: 0.3rem;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.8rem;
-  white-space: normal;
-  pointer-events: none;
-}
-.option-help:hover::after, .option-help:focus::after { display: block; }
-.option-preview { margin: 0; font-size: 0.85rem; color: var(--text-dim); }
-
-/* repair region drawing: dependency-free rectangle-drag overlay, sized in JS to match the
-   rendered <img> box so percentage-based rects stay aligned across zoom/object-fit scaling. */
-.repair-region-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
-.repair-region-clear {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.repair-region-clear:hover { color: var(--text); border-color: var(--accent); }
-.repair-region-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  border-radius: 6px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.repair-region-toggle[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: rgba(124, 156, 245, 0.18); }
-.repair-region-overlay { position: absolute; touch-action: none; cursor: crosshair; z-index: 1; }
-/* Drawing off: clicks/scroll fall through to the image; rects stay visible and removable. */
-.repair-region-overlay:not(.repair-region-drawing-on):not(.dof-focus-on) { pointer-events: none; touch-action: auto; cursor: auto; }
-.repair-region-overlay.dof-focus-on:not(.repair-region-drawing-on) { cursor: crosshair; }
-.repair-region-overlay:not(.repair-region-drawing-on) .repair-region-remove { pointer-events: auto; }
-.repair-region-rect {
-  position: absolute;
-  border: 1.5px solid var(--accent);
-  background: rgba(124, 156, 245, 0.18);
-  box-sizing: border-box;
-}
-.repair-region-rect-drawing { border-style: dashed; background: rgba(124, 156, 245, 0.1); }
-.repair-region-remove {
-  position: absolute;
-  top: -0.6rem;
-  right: -0.6rem;
-  width: 1.2rem;
-  height: 1.2rem;
-  line-height: 1;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0;
-}
-.repair-region-remove:hover { border-color: var(--bad); color: var(--bad); }
+.dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
 .dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .dof-f-row { display: flex; align-items: center; gap: 0.4rem; }
-/* The guide circle sits in a clip box so it never draws outside the picture. */
-.dof-guide-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.dof-guide-circle {
-  position: absolute;
-  box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
-  pointer-events: none;
-}
 /* White ring with a dark halo so the marker reads on both light and dark pictures. */
 .dof-focus-marker {
   position: absolute;
@@ -1282,20 +1140,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .backdrop-thumb { display: block; width: 100%; height: auto; aspect-ratio: 5 / 8; object-fit: cover; border-radius: 4px; }
 .backdrop-option-label { font-size: 0.7rem; color: var(--text-dim); line-height: 1.25; }
 
-.dial-group, .profile-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-.dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
-.dial-btn {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 0.15rem 0.6rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.dial-btn:hover:not(.dial-btn-active) { border-color: var(--accent); }
-.dial-btn:active { transform: scale(0.96); }
-.dial-btn-active { background: var(--accent); color: #10131c; border-color: var(--accent); }
 .promote-profile-form { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .promote-profile-status { font-size: 0.8rem; color: var(--text-dim); }
 
@@ -1643,7 +1487,16 @@ details.section .section-body { margin-top: 0.6rem; }
 .dof-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; margin: 0.3rem 0; padding: 0; border: 0; font-size: 0.85rem; }
 .dof-scope legend { float: left; padding: 0; margin-right: 0.5rem; color: var(--text-dim); }
 .dof-viewfinder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
-.workbench-open-link { font-weight: 600; }
+.detail-workbench { margin: 0.6rem 0 0; }
+.workbench-open-link {
+  display: inline-block;
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #10131c;
+  font-weight: 600;
+}
+.workbench-open-link:hover { filter: brightness(1.12); text-decoration: none; }
 
 .work-lead { margin: 0 0 1rem; color: var(--text-dim); max-width: 40rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
@@ -2362,89 +2215,7 @@ export const appJs = `
     return mode; // the word itself, e.g. 'tidy'
   }
 
-  function setDialGroupValue(group, value) {
-    var input = qs('.dial-custom-input', group);
-    var isTristate = group.classList.contains('dial-group-tristate');
-    var mode, buttonValue;
-    if (value === null || value === undefined) {
-      mode = isTristate ? 'off' : 'default';
-      buttonValue = '';
-    } else if (value === true) {
-      mode = 'on';
-      buttonValue = 'on';
-    } else if (typeof value === 'string') {
-      mode = value;
-      buttonValue = value;
-    } else {
-      mode = 'custom';
-      buttonValue = '__custom__';
-    }
-    group.setAttribute('data-dial-mode', mode);
-    qsa('.dial-btn', group).forEach(function (b) {
-      b.classList.toggle('dial-btn-active', b.getAttribute('data-dial-value') === buttonValue);
-    });
-    if (input) {
-      if (mode === 'custom') {
-        input.hidden = false;
-        input.disabled = false;
-        input.value = typeof value === 'number' ? String(value) : '';
-      } else {
-        input.hidden = true;
-        input.disabled = true;
-        input.value = '';
-      }
-    }
-  }
-
-  function initDialGroups() {
-    document.addEventListener('click', function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('.dial-group .dial-btn') : null;
-      if (!btn) return;
-      var group = btn.closest('.dial-group');
-      if (!group) return;
-      ev.preventDefault();
-      var value = btn.getAttribute('data-dial-value');
-      var input = qs('.dial-custom-input', group);
-      var isTristate = group.classList.contains('dial-group-tristate');
-      if (value === '__custom__') {
-        group.setAttribute('data-dial-mode', 'custom');
-        if (input) { input.hidden = false; input.disabled = false; input.focus(); }
-      } else {
-        group.setAttribute('data-dial-mode', value === '' ? (isTristate ? 'off' : 'default') : value);
-        if (input) { input.hidden = true; input.disabled = true; input.value = ''; }
-      }
-      qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
-    });
-  }
-
-  // options.backdrop is null/a #RRGGBB color/a pattern name — never the literal 'transparent'/
-  // 'color' radio-value strings (deliverOptionsFrom's output, mirrored here for profile re-select).
-  function applyBackdropToForm(form, value) {
-    var mode;
-    if (value === null || value === undefined) {
-      mode = 'transparent';
-    } else if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
-      mode = 'color';
-      var color = qs('input[name="backdrop_color"]', form);
-      if (color) color.value = value;
-    } else if (typeof value === 'string') {
-      mode = value;
-    } else {
-      return;
-    }
-    var matched = false;
-    qsa('input[name="backdrop"]', form).forEach(function (r) {
-      r.checked = r.value === mode;
-      if (r.checked) matched = true;
-    });
-    if (matched) syncBackdropColor(form);
-  }
-
-  function selectHasValue(select, value) {
-    return qsa('option', select).some(function (o) { return o.value === value; });
-  }
-
-  // ---- フチ (outline list) editor, shared by the deliver form and the workbench ----
+  // ---- フチ (outline list) editor ----
   function outlineRows(editor) {
     return qsa('[data-outline-row]', editor);
   }
@@ -2561,92 +2332,6 @@ export const appJs = `
     });
   }
 
-  // Profile options: outlines (absent -> the catalog default) and stroke_light (even or a direction).
-  function applyOutlinesToForm(form, options) {
-    var editor = qs('[data-outline-editor]', form);
-    if (!editor) return;
-    setOutlineList(editor, Array.isArray(options.outlines) ? options.outlines : outlineDefaults(editor));
-    var stroke = options.stroke_light;
-    var known = stroke === 'even' || (typeof stroke === 'string' && !!qs('[data-compass="stroke"] [data-compass-dir="' + stroke + '"]', editor));
-    setOutlineStroke(editor, known ? stroke : (editor.getAttribute('data-stroke-default') || 'even'));
-  }
-
-  // Absent/null light resets the scene to なし. The light direction is only taken when it is a listed choice.
-  function applyLightToForm(form, options) {
-    var scene = lightSceneSelect(form);
-    var light = options.light;
-    if (scene) {
-      var known = light && typeof light === 'object' && selectHasValue(scene, light.scene);
-      scene.value = known ? light.scene : '';
-    }
-    var fromSelect = lightFromSelect(form);
-    if (fromSelect && light && typeof light === 'object' && selectHasValue(fromSelect, light.from)) fromSelect.value = light.from;
-    applyLightMode(form);
-  }
-
-  function applyProfileOptionsToForm(form, options) {
-    applyOutlinesToForm(form, options);
-    applyLightToForm(form, options);
-    Object.keys(options).forEach(function (key) {
-      var value = options[key];
-      if (key === 'light' || key === 'outlines' || key === 'stroke_light') return;
-      if (key === 'backdrop') {
-        applyBackdropToForm(form, value);
-        return;
-      }
-      var group = qs('[data-dial-key="' + key + '"]', form);
-      if (group) {
-        setDialGroupValue(group, value);
-        return;
-      }
-      var plainInput = qs('input[name="' + key + '"]', form);
-      if (plainInput && plainInput.type === 'number') {
-        plainInput.value = (value === null || value === undefined || typeof value === 'boolean') ? '' : String(value);
-        return;
-      }
-      if (plainInput && plainInput.type === 'checkbox') {
-        plainInput.checked = value === true;
-        return;
-      }
-      var select = qs('select[name="' + key + '"]', form);
-      if (select && typeof value === 'string') select.value = value;
-    });
-  }
-
-  function initProfileButtons() {
-    document.addEventListener('click', function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('.profile-group .dial-btn') : null;
-      if (!btn) return;
-      var group = btn.closest('.profile-group');
-      var form = group ? group.closest('.option-form') : null;
-      if (!group || !form) return;
-      ev.preventDefault();
-      qsa('.dial-btn', group).forEach(function (b) { b.classList.toggle('dial-btn-active', b === btn); });
-
-      var nameInput = qs('input[name="profile_name"]', form);
-      var versionInput = qs('input[name="profile_version"]', form);
-      if (btn.classList.contains('profile-btn-custom')) {
-        nameInput.value = '';
-        versionInput.value = '';
-        return;
-      }
-      nameInput.value = btn.getAttribute('data-profile-name') || '';
-      versionInput.value = btn.getAttribute('data-profile-version') || '';
-
-      var options = {};
-      try { options = JSON.parse(btn.getAttribute('data-profile-options') || '{}'); } catch (e) { options = {}; }
-      applyProfileOptionsToForm(form, options);
-    });
-  }
-
-  function profileRefFrom(form) {
-    var nameInput = qs('input[name="profile_name"]', form);
-    if (!nameInput || !nameInput.value) return null;
-    var versionInput = qs('input[name="profile_version"]', form);
-    var version = versionInput && versionInput.value ? Number(versionInput.value) : undefined;
-    return version === undefined ? { name: nameInput.value } : { name: nameInput.value, version: version };
-  }
-
   // State keyed by the form itself in a WeakMap, since a set
   // of rectangles has no single DOM home; redrawOptionsFrom reads it back via regionsFor(form).
   var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
@@ -2654,40 +2339,6 @@ export const appJs = `
   function regionsFor(form) {
     var state = repairRegionState.get(form);
     return state ? state.regions : [];
-  }
-
-  function findRegionImage() {
-    return qs('.gen-detail-hero img');
-  }
-
-  function syncRepairRegionOverlayGeometry(state) {
-    state.overlay.style.left = state.img.offsetLeft + 'px';
-    state.overlay.style.top = state.img.offsetTop + 'px';
-    state.overlay.style.width = state.img.offsetWidth + 'px';
-    state.overlay.style.height = state.img.offsetHeight + 'px';
-  }
-
-  function repairRegionCount(form) {
-    return qs('[data-repair-region-count]', form);
-  }
-
-  function repairRegionDrawingOn(form) {
-    var toggle = qs('[data-repair-region-toggle]', form);
-    return !!toggle && toggle.getAttribute('aria-pressed') === 'true';
-  }
-
-  function applyRepairRegionDrawingMode(form) {
-    var on = repairRegionDrawingOn(form);
-    var toggle = qs('[data-repair-region-toggle]', form);
-    if (toggle) toggle.textContent = on ? '範囲指定 ON' : '範囲指定 OFF';
-    var state = repairRegionState.get(form);
-    if (state) state.overlay.classList.toggle('repair-region-drawing-on', on);
-    applyDofMode(form);
-  }
-
-  // Focus placement for dof reuses the repair-region overlay, so it is only live while 範囲指定 is off.
-  function isDofForm(form) {
-    return form.getAttribute('data-request-kind') === 'dof';
   }
 
   function dofSlider(form) {
@@ -2715,24 +2366,6 @@ export const appJs = `
     return qs('select[name="light_from"]', form);
   }
 
-  // The direction only means something together with a light scene.
-  function applyLightMode(form) {
-    var scene = lightSceneSelect(form);
-    var fromSelect = lightFromSelect(form);
-    if (!fromSelect) return;
-    fromSelect.disabled = !scene || scene.value === '';
-  }
-
-  function initLightForm() {
-    qsa('.option-form').forEach(applyLightMode);
-    document.addEventListener('change', function (ev) {
-      var select = ev.target;
-      if (!(select instanceof HTMLSelectElement) || select.name !== 'light_scene') return;
-      var form = select.closest('.option-form');
-      if (form) applyLightMode(form);
-    });
-  }
-
   function dofStopsFor(form) {
     var slider = dofSlider(form);
     if (!slider) return [];
@@ -2745,297 +2378,9 @@ export const appJs = `
     return slider && stops.length > 0 ? stops[Number(slider.value)] : undefined;
   }
 
-  function dofFocusFor(form) {
-    var state = repairRegionState.get(form);
-    return state && state.dofFocus ? state.dofFocus : null;
-  }
-
-  // Radius = guide_radius_per_f * F * long side of the displayed image; hidden while no focus is set or the catalog has no coefficient.
-  function updateDofGuide(form) {
-    var state = repairRegionState.get(form);
-    if (!state || !state.dofGuide) return;
-    var slider = dofSlider(form);
-    var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
-    var f = dofFNumber(form);
-    var focus = state.dofFocus;
-    var show = !!focus && k > 0 && f !== undefined;
-    state.dofGuide.hidden = !show;
-    if (!show) return;
-    var w = state.img.offsetWidth;
-    var h = state.img.offsetHeight;
-    var d = 2 * k * f * Math.max(w, h);
-    state.dofGuide.style.width = d + 'px';
-    state.dofGuide.style.height = d + 'px';
-    state.dofGuide.style.left = (focus[0] * w - d / 2) + 'px';
-    state.dofGuide.style.top = (focus[1] * h - d / 2) + 'px';
-  }
-
-  function renderDofReadouts(form) {
-    var fReadout = qs('[data-dof-f-readout]', form);
-    var f = dofFNumber(form);
-    if (fReadout && f !== undefined) fReadout.textContent = 'f/' + f;
-    var focusReadout = qs('[data-dof-focus-readout]', form);
-    var focus = dofFocusFor(form);
-    if (focusReadout) focusReadout.textContent = focus ? 'ピント: ' + focus[0] + ', ' + focus[1] : '';
-    updateDofGuide(form);
-  }
-
-  function applyDofMode(form) {
-    if (!isDofForm(form)) return;
-    var state = repairRegionState.get(form);
-    if (state) {
-      state.overlay.classList.toggle('dof-focus-on', !repairRegionDrawingOn(form));
-      if (state.dofMarker) {
-        var focus = state.dofFocus;
-        state.dofMarker.hidden = !focus;
-        if (focus) {
-          state.dofMarker.style.left = focus[0] * 100 + '%';
-          state.dofMarker.style.top = focus[1] * 100 + '%';
-        }
-      }
-    }
-    renderDofReadouts(form);
-  }
-
-  function setDofFocus(form, focus) {
-    var state = repairRegionState.get(form);
-    if (!state) return;
-    state.dofFocus = focus;
-    applyDofMode(form);
-  }
-
-  function onRepairRegionsChanged(form) {
-    var countEl = repairRegionCount(form);
-    if (countEl) {
-      var n = regionsFor(form).length;
-      countEl.textContent = n > 0 ? '指定範囲: ' + n : '';
-    }
-    renderOptionPreview(form);
-  }
-
-  function addRepairRegionRect(state, form, x0, y0, x1, y1) {
-    state.regions.push([x0, y0, x1, y1]);
-    var rect = document.createElement('div');
-    rect.className = 'repair-region-rect';
-    rect.style.left = x0 * 100 + '%';
-    rect.style.top = y0 * 100 + '%';
-    rect.style.width = (x1 - x0) * 100 + '%';
-    rect.style.height = (y1 - y0) * 100 + '%';
-    var remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'repair-region-remove';
-    remove.setAttribute('aria-label', '範囲を消す');
-    remove.textContent = '×';
-    rect.appendChild(remove);
-    state.overlay.appendChild(rect);
-    remove.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-    remove.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      var idx = qsa('.repair-region-rect', state.overlay).indexOf(rect);
-      if (idx === -1) return;
-      state.regions.splice(idx, 1);
-      rect.remove();
-      onRepairRegionsChanged(form);
-    });
-    onRepairRegionsChanged(form);
-  }
-
-  // Fractions are relative to the overlay box (kept pinned to the rendered <img> by
-  // syncRepairRegionOverlayGeometry), matching the [x0,y0,x1,y1] convention repair/masked_redraw use server-side.
-  function attachRepairRegionDrawing(state, form) {
-    var overlay = state.overlay;
-    var drawing = null;
-
-    function localPoint(ev) {
-      var rect = overlay.getBoundingClientRect();
-      var x = Math.min(Math.max(ev.clientX - rect.left, 0), rect.width);
-      var y = Math.min(Math.max(ev.clientY - rect.top, 0), rect.height);
-      return { x: x, y: y, width: rect.width, height: rect.height };
-    }
-
-    function paintDrawingRect(x, y) {
-      var left = Math.min(drawing.startX, x);
-      var top = Math.min(drawing.startY, y);
-      drawing.el.style.left = left + 'px';
-      drawing.el.style.top = top + 'px';
-      drawing.el.style.width = Math.abs(x - drawing.startX) + 'px';
-      drawing.el.style.height = Math.abs(y - drawing.startY) + 'px';
-      drawing.lastX = x;
-      drawing.lastY = y;
-    }
-
-    overlay.addEventListener('pointerdown', function (ev) {
-      if (!repairRegionDrawingOn(form)) {
-        if (!isDofForm(form) || ev.target !== overlay) return;
-        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-        var rect = overlay.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        ev.preventDefault();
-        var fx = Math.min(Math.max(Math.round(((ev.clientX - rect.left) / rect.width) * 10000) / 10000, 0), 1);
-        var fy = Math.min(Math.max(Math.round(((ev.clientY - rect.top) / rect.height) * 10000) / 10000, 0), 1);
-        setDofFocus(form, [fx, fy]);
-        renderOptionPreview(form);
-        return;
-      }
-      if (ev.target !== overlay) return; // an existing rect or its remove button, not the backdrop
-      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
-      ev.preventDefault();
-      var p = localPoint(ev);
-      var el = document.createElement('div');
-      el.className = 'repair-region-rect repair-region-rect-drawing';
-      overlay.appendChild(el);
-      drawing = { startX: p.x, startY: p.y, lastX: p.x, lastY: p.y, el: el };
-      paintDrawingRect(p.x, p.y);
-      try { overlay.setPointerCapture(ev.pointerId); } catch (e) {}
-    });
-
-    overlay.addEventListener('pointermove', function (ev) {
-      if (!drawing) return;
-      var p = localPoint(ev);
-      paintDrawingRect(p.x, p.y);
-    });
-
-    function finishDrawing(ev) {
-      if (!drawing) return;
-      var el = drawing.el;
-      var rect = overlay.getBoundingClientRect();
-      var x0 = Math.min(drawing.startX, drawing.lastX);
-      var y0 = Math.min(drawing.startY, drawing.lastY);
-      var x1 = Math.max(drawing.startX, drawing.lastX);
-      var y1 = Math.max(drawing.startY, drawing.lastY);
-      el.remove();
-      drawing = null;
-      if (ev) { try { overlay.releasePointerCapture(ev.pointerId); } catch (e) {} }
-      if (x1 - x0 < 4 || y1 - y0 < 4 || rect.width <= 0 || rect.height <= 0) return; // a stray click/tap, not a drag
-      var x0f = Math.round((x0 / rect.width) * 10000) / 10000;
-      var y0f = Math.round((y0 / rect.height) * 10000) / 10000;
-      var x1f = Math.round((x1 / rect.width) * 10000) / 10000;
-      var y1f = Math.round((y1 / rect.height) * 10000) / 10000;
-      if (x1f <= x0f || y1f <= y0f) return;
-      addRepairRegionRect(state, form, x0f, y0f, x1f, y1f);
-    }
-
-    overlay.addEventListener('pointerup', finishDrawing);
-    overlay.addEventListener('pointercancel', function () {
-      if (drawing) { drawing.el.remove(); drawing = null; }
-    });
-
-    state.clear = function () {
-      qsa('.repair-region-rect', overlay).forEach(function (el) { el.remove(); });
-      state.regions.length = 0;
-      onRepairRegionsChanged(form);
-    };
-  }
-
-  // Idempotent: safe to call again on the same form (Generation Detail's DOMContentLoaded pass).
-  function ensureRepairRegionOverlay(form) {
-    if (!qs('[data-repair-region-tools]', form) && !isDofForm(form)) return null; // a form with neither region drawing nor a focus point
-    var img = findRegionImage();
-    var existing = repairRegionState.get(form);
-    if (existing && existing.img === img && existing.overlay.isConnected) return existing;
-    if (!img) {
-      if (existing) existing.overlay.remove();
-      repairRegionState.delete(form);
-      return null;
-    }
-
-    var parent = img.parentElement;
-    var owner = formKind(form);
-    var stale = qs('.repair-region-overlay[data-owner="' + owner + '"]', parent);
-    if (stale) stale.remove();
-
-    var overlay = document.createElement('div');
-    overlay.className = 'repair-region-overlay';
-    overlay.setAttribute('data-owner', owner);
-    parent.insertBefore(overlay, img.nextSibling);
-
-    var state = { img: img, overlay: overlay, regions: [], dofFocus: null, dofMarker: null, dofGuide: null };
-    if (isDofForm(form)) {
-      var guideClip = document.createElement('div');
-      guideClip.className = 'dof-guide-clip';
-      state.dofGuide = document.createElement('div');
-      state.dofGuide.className = 'dof-guide-circle';
-      state.dofGuide.hidden = true;
-      guideClip.appendChild(state.dofGuide);
-      overlay.appendChild(guideClip);
-      state.dofMarker = document.createElement('div');
-      state.dofMarker.className = 'dof-focus-marker';
-      state.dofMarker.hidden = true;
-      overlay.appendChild(state.dofMarker);
-    }
-    syncRepairRegionOverlayGeometry(state);
-    attachRepairRegionDrawing(state, form);
-    repairRegionState.set(form, state);
-    applyRepairRegionDrawingMode(form);
-
-    var resync = function () { syncRepairRegionOverlayGeometry(state); updateDofGuide(form); };
-    img.addEventListener('load', resync);
-    window.addEventListener('resize', resync);
-    if (window.ResizeObserver) new ResizeObserver(resync).observe(img);
-
-    onRepairRegionsChanged(form);
-    syncRedrawMethod(form);
-    return state;
-  }
-
-  function initRegionDrawing() {
-    qsa('.option-form').forEach(ensureRepairRegionOverlay);
-    document.addEventListener('click', function (ev) {
-      var toggle = ev.target.closest ? ev.target.closest('[data-repair-region-toggle]') : null;
-      if (!toggle) return;
-      var form = toggle.closest('.option-form');
-      if (!form) return;
-      toggle.setAttribute('aria-pressed', repairRegionDrawingOn(form) ? 'false' : 'true');
-      applyRepairRegionDrawingMode(form);
-    });
-    document.addEventListener('click', function (ev) {
-      var btn = ev.target.closest ? ev.target.closest('[data-repair-region-clear]') : null;
-      if (!btn) return;
-      var form = btn.closest('.option-form');
-      if (!form) return;
-      var state = repairRegionState.get(form);
-      if (state && state.clear) state.clear();
-    });
-  }
-
-  function initDofForm() {
-    qsa('.option-form').forEach(applyDofMode);
-    document.addEventListener('input', function (ev) {
-      var slider = ev.target;
-      if (!(slider instanceof HTMLInputElement) || slider.name !== 'dof_f_stop') return;
-      var form = slider.closest('.option-form');
-      if (form) renderDofReadouts(form);
-    });
-  }
-
-  function formKind(form) {
-    return form.getAttribute('data-request-kind');
-  }
-
   function redrawMethod(form) {
     var checked = qs('input[name="redraw_method"]:checked', form);
     return checked ? checked.value : 'canvas';
-  }
-
-  // Shows the fields of the chosen method only; the keep-region overlay is part of canvas.
-  function syncRedrawMethod(form) {
-    if (formKind(form) !== 'redraw') return;
-    var method = redrawMethod(form);
-    qsa('[data-redraw-panel]', form).forEach(function (panel) {
-      panel.hidden = panel.getAttribute('data-redraw-panel') !== method;
-    });
-    var state = repairRegionState.get(form);
-    if (state) state.overlay.style.display = method === 'canvas' ? '' : 'none';
-  }
-
-  function initRedrawMethod() {
-    qsa('.redraw-form').forEach(syncRedrawMethod);
-    document.addEventListener('change', function (ev) {
-      var radio = ev.target;
-      if (!(radio instanceof HTMLInputElement) || radio.name !== 'redraw_method') return;
-      var form = radio.closest('.option-form');
-      if (form) syncRedrawMethod(form);
-    });
   }
 
   // worker-protocol.md「redraw」: exactly one method per request. Blank fields are omitted so the
@@ -3068,48 +2413,6 @@ export const appJs = `
       options.keep_regions = regions;
       var keepStrengthRaw = qs('input[name="keep_strength"]', form).value;
       if (keepStrengthRaw !== '') options.keep_strength = Number(keepStrengthRaw);
-    }
-    return options;
-  }
-
-  // worker-protocol.md「repair」. Blank fields are omitted so the worker / recipe default applies.
-  // Returns null when the form can't become options; quiet mode silences the alert on malformed seeds.
-  function repairOptionsFrom(form, quiet) {
-    var options = {};
-    var parts = qsa('input[name="repair_part"]:checked', form).map(function (box) { return box.value; });
-    if (parts.length === 0) {
-      if (!quiet) alert('手か足のどちらかを選んでください');
-      return null;
-    }
-    if (parts.length < 2) options.parts = parts;
-    var regions = regionsFor(form);
-    if (regions.length > 0) options.regions = regions;
-    var denoiseFromDial = dialGroupValue(form, 'denoise');
-    if (denoiseFromDial === undefined) {
-      var denoiseRaw = qs('input[name="denoise"]', form).value;
-      if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);
-    } else if (denoiseFromDial !== null) {
-      options.denoise = denoiseFromDial;
-    }
-    var seedsRaw = qs('input[name="seeds"]', form).value.trim();
-    if (seedsRaw !== '') {
-      var seeds = seedsRaw.split(/[\\s,]+/).filter(function (s) { return s !== ''; });
-      if (seeds.length > 16 || !seeds.every(function (s) { return /^[0-9]+$/.test(s); })) {
-        if (!quiet) alert('seeds は 0 以上の整数をカンマ区切りで最大 16 件');
-        return null;
-      }
-      options.seeds = seeds.map(Number);
-    }
-    var sizeRaw = qs('input[name="size"]', form).value;
-    if (sizeRaw !== '') options.size = Number(sizeRaw);
-    var padRaw = qs('input[name="pad"]', form).value;
-    if (padRaw !== '') options.pad = Number(padRaw);
-    var loraFromDial = dialGroupValue(form, 'lora');
-    if (loraFromDial === undefined) {
-      var loraRaw = qs('input[name="lora"]', form).value;
-      if (loraRaw !== '') options.lora = Number(loraRaw);
-    } else if (loraFromDial !== null) {
-      options.lora = loraFromDial;
     }
     return options;
   }
@@ -3159,29 +2462,6 @@ export const appJs = `
     return options;
   }
 
-  // worker-protocol.md「dof」. focus is required, so a form without one cannot become options.
-  function dofOptionsFrom(form, quiet) {
-    var focus = dofFocusFor(form);
-    if (!focus) {
-      if (!quiet) alert('画像をクリックしてピント位置を置いてください');
-      return null;
-    }
-    var scope = dofScopeFrom(form);
-    if (!scope.figure && !scope.outline && !scope.backdrop) {
-      if (!quiet) alert('ボカす範囲を 1 つ以上選んでください');
-      return null;
-    }
-    return { focus: [focus[0], focus[1]], f_number: dofFNumber(form), scope: scope, viewfinder: dofViewfinderFrom(form) };
-  }
-
-  function optionsFrom(form, quiet) {
-    var kind = formKind(form);
-    if (kind === 'redraw') return redrawOptionsFrom(form);
-    if (kind === 'repair') return repairOptionsFrom(form, quiet);
-    if (kind === 'dof') return dofOptionsFrom(form, quiet);
-    return deliverOptionsFrom(form, quiet);
-  }
-
   // The color input stays disabled while hidden so the browser's pattern check
   // cannot block submit on a control it has no way to show.
   function syncBackdropColor(form) {
@@ -3191,91 +2471,6 @@ export const appJs = `
     var on = !!checked && checked.value === 'color';
     color.hidden = !on;
     color.disabled = !on;
-  }
-
-  function initBackdropColor() {
-    qsa('.option-form').forEach(syncBackdropColor);
-    document.addEventListener('change', function (ev) {
-      var radio = ev.target;
-      if (!(radio instanceof HTMLInputElement) || radio.type !== 'radio' || radio.name !== 'backdrop') return;
-      var form = radio.closest('.option-form');
-      if (!form) return;
-      syncBackdropColor(form);
-      if (radio.value === 'color') qs('input[name="backdrop_color"]', form).focus();
-    });
-  }
-
-  // Resolves a dial word to its catalog number for display, e.g. denoise='tidy' -> 0.65.
-  function resolveDialNumber(dials, key, value) {
-    if (typeof value !== 'string') return null;
-    var words = dials && dials[key];
-    return words && Object.prototype.hasOwnProperty.call(words, value) ? words[value] : null;
-  }
-
-  // Mirrors the payload of redrawOptionsFrom / repairOptionsFrom / deliverOptionsFrom so the preview can never drift from what gets sent.
-  function renderOptionPreview(form) {
-    var preview = qs('.option-preview', form);
-    if (!preview) return;
-    var options = optionsFrom(form, true);
-    if (!options) {
-      preview.textContent = '送信内容: —';
-      return;
-    }
-    var dials = {};
-    try { dials = JSON.parse(form.getAttribute('data-dials') || '{}'); } catch (e) { dials = {}; }
-    var parts = [];
-    var deliver = formKind(form) === 'deliver';
-    var profile = profileRefFrom(form);
-    if (profile) parts.push('profile ' + profile.name + (profile.version !== undefined ? ' v' + profile.version : ''));
-    if (deliver) {
-      // backdrop is always sent and always meaningful, null included: null is the transparent choice.
-      parts.push('backdrop=' + (options.backdrop === null ? 'transparent' : options.backdrop));
-      if (options.light) {
-        var fromSelect = lightFromSelect(form);
-        var fromLabel = fromSelect && fromSelect.selectedIndex >= 0 ? fromSelect.options[fromSelect.selectedIndex].textContent.trim() : '';
-        parts.push('光源 ' + (options.light.scene === 'sunset' ? '夕日' : options.light.scene === 'moon' ? '月明かり' : options.light.scene) + '（' + fromLabel + '）');
-      }
-      if (options.outlines) {
-        parts.push(options.outlines.length === 0 ? 'フチなし' : 'フチ ' + options.outlines.map(function (o) { return o.color + ' ' + outlineNumberLabel(o.width) + '%'; }).join(' → ') + ' · 陰影 ' + (options.stroke_light === 'even' ? '均一' : options.stroke_light));
-      }
-    }
-    Object.keys(options).forEach(function (key) {
-      if (deliver && (key === 'backdrop' || key === 'light' || key === 'outlines' || key === 'stroke_light')) return;
-      var value = options[key];
-      if (value === false || value === null || value === undefined) return;
-      if (key === 'focus') {
-        parts.push('ピント ' + value[0] + ', ' + value[1]);
-      } else if (key === 'f_number') {
-        parts.push('f/' + value);
-      } else if (key === 'scope') {
-        parts.push('範囲 ' + [['figure', '人物'], ['outline', 'フチ'], ['backdrop', '背景']].filter(function (l) { return value[l[0]]; }).map(function (l) { return l[1]; }).join('+'));
-      } else if (key === 'viewfinder') {
-        if (value !== 'off') parts.push(value === 'both' ? 'ファインダー ON/OFF 2枚' : 'ファインダー');
-      } else if (key === 'keep_regions' || key === 'regions') {
-        parts.push(key + '=' + value.length + '箇所');
-      } else if (value === true) {
-        parts.push(key);
-      } else if (Array.isArray(value)) {
-        parts.push(key + '=' + value.join('+'));
-      } else if (typeof value === 'string') {
-        var num = resolveDialNumber(dials, key, value);
-        parts.push(key + ' ' + value + (num !== null ? ' (' + num + ')' : ''));
-      } else {
-        parts.push(key + '=' + value);
-      }
-    });
-    preview.textContent = '送信内容: ' + parts.join(' · ');
-  }
-
-  function initOptionPreview() {
-    qsa('.option-form').forEach(renderOptionPreview);
-    ['change', 'input', 'click'].forEach(function (type) {
-      document.addEventListener(type, function (ev) {
-        var form = ev.target.closest('.option-form');
-        if (!form) return;
-        renderOptionPreview(form);
-      });
-    });
   }
 
   function postOptionRequest(kind, generationShortId, options, profile, idempotencyKey) {
@@ -3305,65 +2500,6 @@ export const appJs = `
     li.appendChild(progress);
     if (showCreatedAt && request.created_at) li.appendChild(document.createTextNode(' · ' + request.created_at));
     return li;
-  }
-
-  // queued 行はフォーム下に足され長いページでは視界外に出やすいため、ボタン自身で結果を返す
-  function submitButtonFeedback(form) {
-    var button = qs('button[type="submit"]', form);
-    if (!button) return { sent: function () {}, failed: function () {} };
-    var label = button.getAttribute('data-label') || button.textContent;
-    button.setAttribute('data-label', label);
-    clearTimeout(button._sentTimer);
-    button.classList.remove('is-sent');
-    button.disabled = true;
-    button.textContent = 'Queueing…';
-    function restore() {
-      button.classList.remove('is-sent');
-      button.disabled = false;
-      button.textContent = label;
-    }
-    return {
-      sent: function (text) {
-        button.classList.add('is-sent');
-        button.textContent = text;
-        button._sentTimer = setTimeout(restore, 1500);
-      },
-      failed: restore,
-    };
-  }
-
-  // queued 行をその場に足すだけで reload しない。以後の running/done は registerRequestElement
-  // 経由の initRequestLive が反映する。
-  function initOptionForms() {
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.option-form');
-      if (!form) return;
-      ev.preventDefault();
-      const kind = formKind(form);
-      const shortId = form.getAttribute('data-generation-short-id');
-      const options = optionsFrom(form);
-      if (!options) return;
-      const profile = profileRefFrom(form);
-      const feedback = submitButtonFeedback(form);
-      try {
-        const request = await postOptionRequest(kind, shortId, options, profile);
-        feedback.sent('Queued ✓');
-        track(kind + '.submit', Object.assign({ scope: 'one', generation_id: shortId, profile: profile }, options));
-        let list = qs('.request-status-list');
-        if (!list) {
-          list = document.createElement('ul');
-          list.className = 'request-status-list';
-          form.parentElement.appendChild(list);
-        }
-        const row = requestStatusRow(request, true);
-        list.insertBefore(row, list.firstChild);
-        registerRequestElement(row);
-      } catch (e) {
-        feedback.failed();
-        trackError(kind + '.submit', e, { scope: 'one', generation_id: shortId });
-        alert(kind + ' failed: ' + e.message);
-      }
-    });
   }
 
   function initPromoteToProfile() {
@@ -6243,15 +5379,6 @@ export const appJs = `
     initPublicationRemove();
     initPoseReference();
     initOutlineEditors();
-    initOptionForms();
-    initBackdropColor();
-    initRegionDrawing();
-    initDofForm();
-    initLightForm();
-    initRedrawMethod();
-    initOptionPreview();
-    initDialGroups();
-    initProfileButtons();
     initPromoteToProfile();
     initStyleCheck();
     initStyleCheckCompareAdd();

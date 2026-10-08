@@ -478,23 +478,18 @@ rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refine
 
 originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
-`原寸は破棄済み（preview のみ）`と添えます。Redraw・Repair・Deliverセクションは出さず、代わりに
-「原寸は破棄済みのため描き直し・repair・納品は積めません。」という一文を表示します
-（Requestsセクションは表示したままです）。
+`原寸は破棄済み（preview のみ）`と添えます。
 
-納品済みの絵（deliver / 古いfinalizeが産んだGeneration、`parameters.kind`が`deliver` / `hires-chain`のrequestが産んだGeneration、
-`deliver_only`のrepairが産んだGeneration）でも、Redraw・Repair・Deliverセクションは出さず、
-「納品済みの絵なので、描き直し・repair・納品は元の絵から行います。」という一文を表示します
-（workerは納品済みの絵を描き直し・納品の入力にできません）。判定は`isDeliveredRequest`（`src/lib/requests.ts`）です。
+Generation Detailには生成要求を積む編集欄（描き直し・Repair・納品・ボケ）はありません。編集は
+[ワークベンチ](#workbench)で行い、画像の下に主ボタンの`ワークベンチで開く`（`/work/{short_id}`）を置きます。
+評価・ブックマーク、タグ、メモ、公開、基準にする、比較に追加、Requestsの一覧と`profile に登録`、安全性、系譜、解決値、
+親 / 子 / 兄弟のカードは従来どおりです。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
 表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
 Workflow の Raw graph）だけ既定で畳みます。
 
 ``` text
-描き直し（Redraw）
-手足の描き直し（Repair）
-納品（Deliver）
 Requests
 仕上げの解決値
 Summary
@@ -632,102 +627,13 @@ promptをpass 1のpositiveに対して差分表示したチップ）を追加し
 `Output`行は最初の（node id順）`SaveImage`の`filename_prefix`です。
 末尾の折りたたみ`Raw graph`にはComfyJobの`graph`をそのままJSON整形して表示します。
 
-Redraw・Repair・DeliverセクションはGeneration Detailから積める生成要求です（範囲は
-[Core Principle](#core-principle)、契約は[worker-protocol.md](worker-protocol.md)）。
-masked_redrawのための独立したフォームはGUIに無く、API / MCPからだけ積めます。3つのフォームは
-`option-form`クラスを共有し（`redraw-form` / `repair-form` / `deliver-form`、`data-request-kind`で種類を持つ）、
-`fieldset`は`option-group`、各コントロールの直後の`?`は`option-help`マーカー、送信ボタンの上の
-一行は`option-preview`です。マーカーはホバー/フォーカスで日本語の説明を`::after`吹き出しで表示するだけの
-CSS実装（JS不使用）です。
-
-#### Redraw
-
-絵を変える操作を1回の request で1つだけ積みます。先頭の`方法`グループのラジオ（`redraw_method`）で
-`canvas` / `hires` / `light`を選び、選んだ方法のfieldsetだけを出します（他は`hidden`）。
-送るのは`options: {method, ...}`で、空欄のフィールドは送らず、recipeの既定を使わせます。
-
--   `canvas`: `denoise`（catalogの`dials.redraw.denoise`があればwordボタンの列＋`既定`＋`custom`、無ければ数値入力）、
-    `size`（長辺の数値入力）、`route`（`既定` / `latent` / `pixel`）、画像の上にドラッグして矩形を描く
-    `範囲指定`（`keep_regions`）と`keep_strength`。placeholderと`route`の初期値はcatalogの
-    `redraw.defaults.canvas`です。範囲の描画は`repair-region-overlay`をJSで画像に重ねて行い（`範囲指定`トグルがONの間だけ
-    ドラッグ1回が矩形1つ、右上の消去ボタンと`範囲をすべて消す`で削除）、矩形は表示中の画像に対する分数
-    `[x0, y0, x1, y1]`（0〜4桁、0..1）です。矩形が1つ以上あるときだけ`keep_regions`（と入力があれば`keep_strength`）を送ります。
--   `hires`: 長辺のselect（`2048` / `2560` / `3072`）と`denoise`の数値入力（placeholderはcatalogの
-    `redraw.defaults.hires.hires_denoise`、無ければ`0.45`）。元Generationのgraphに同じseedのhiresを足して描き直します。
-    元Generationを産んだrequestが`generate`でないとき、このラジオは`disabled`です。
--   `light`: `光源`のselect（catalogの`redraw.light.scenes`、無ければ`夕日` / `月明かり`）と`光の向き`のselect
-    （`左上から` / `上から` / `右上から` / `左から` / `右から` / `左下から` / `下から` / `右下から`、既定はcatalogの`default_from`）。
-
-プレビューは`送信内容: method=canvas · denoise tidy (0.65)`のように、積まれるoptionsのkeyだけを`·`区切りで出します
-（`keep_regions`は`keep_regions=2箇所`、wordはcatalogの`dials.redraw`に数値があれば`<word> (<number>)`と添え、
-組み立てられないときは`送信内容: —`）。ボタンは`描き直す`で、`POST /api/v1/requests`（`kind: "redraw"`, `created_by: "gui"`、
-`idempotency_key`は`gui:redraw:`始まり）を1件積みます。
-
-#### Repair
-
-手足（hands / feet）だけをマスクして局所的に描き直す`repair`を積みます（既定は閉じた`<details>`）。
-送るのは`options`で、空欄のフィールドは送らず、workerとrecipeの既定を使わせます。
-
--   `部位`: `hands` / `feet`のチェックボックス（既定は両方オン）。片方だけオンのとき`parts`を送り、両方オンなら省略、両方オフなら送信を止めます。
--   `範囲`: Redrawのcanvasと同じ`範囲指定`トグルと矩形描画で、矩形が1つ以上あるときだけ`regions`を送ります（無ければworkerが自動検出）。
--   `denoise`: catalogの`dials.repair.denoise`があればwordボタンの列、無ければ数値入力（0より大きく1以下）。
--   `seeds`: カンマ区切りの整数（最大16件）。`size`（8の倍数、256以上）、`pad`（0.5〜3）。
--   `lora`: catalogの`dials.repair.lora`があればwordボタンの列、無ければ数値入力。空欄はoffです。
-
-ボタンは`手足を描き直す`で、`POST /api/v1/requests`（`kind: "repair"`, `payload: {generation_id, options}`,
-`created_by: "gui"`、`idempotency_key`は`gui:repair:`始まり）を1件積みます。
-
-#### Deliver
-
-切り抜き後の飾りだけを決めて積みます。切り抜きのasset（alpha / depth / cut）は最初の納品で作られ、以後の納品で使い回されます。
-フォームはグループに分かれます。
-
--   `profile`の行（そのrecipeの`deliver`プロファイルがあるときだけ）: `list_presets kind=deliver`の最新active版をボタンで並べ、
-    先頭に`custom`（プロファイルを指名しない）を置きます。押すと下のフィールドがそのプロファイルの`options`で埋まり、
-    以後編集してもプロファイルの指名（hiddenの`profile_name` / `profile_version`）は外れません。送信時は常にフォームの現在値を`options`として、
-    `profile`と一緒に送ります（サーバー側が`{ ...profile.options, ...options }`で合成し、明示したキーが勝ちます）。
--   `仕上げ`: `repin` / `recolor`のチェックボックス（既定はcatalogの`deliver.defaults`）と`keep legwear`
-    （catalogの`dials.deliver`かプロファイルがあるrecipeでは`off` / `on` / `custom`の3択、無ければチェックボックス。`on`は`true`）。
--   `納品の見た目`: `backdrop`のサムネイルピッカー（catalogの`backdrops`を1枚ずつカードにし、末尾に`透過 PNG`と`単色`。
-    サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png?v=<updated_at>`、`backdrops`が無ければサムネイル無しの`stripes`だけ）。
-    既定はcatalogの`deliver.defaults.backdrop`（無ければ先頭のパターン）です。`透過 PNG`は`backdrop: null`を送り、`単色`は
-    `#RRGGBB`のテキスト入力（初期値はcatalogの`deliver.backdrop_color`、無ければ`#ffffff`）を出し、形式違いなら送信せずalertします。
-    続けて`光源`のselect（`指定しない（引き継ぎ）` / catalogの`redraw.light.scenes`、`redraw.light`があるときだけ）と`光の向き`のselect
-    （`光源`を指定したときだけ有効）を並べます。`光源`を指定しないと納品の光源は元の絵の系譜でいちばん近い描き直し（light）から引き継がれ、
-    指定したときは`light: {scene, from}`を送ります。
--   `フチ`: [フチのリスト](#フチのリスト)。送るのは`outlines`と、フチが1本以上あるときの`stroke_light`（`even`か向き）です。`stroke_light: "none"`は送りません
-    （フチなしは`outlines: []`）。
--   `仕上げ`には`repin` / `recolor`に加えて`skin` / `keep scene`のチェックボックスもあり、`skin` / `keep_scene`を送ります。
--   `dof`はこのフォームにありません（[Dof](#dof)）。
-
-プレビューは`送信内容: profile daily v2 · backdrop=stripes · 紫縁 既定 · repin`のように積まれるoptionsを`·`区切りで出し、
-`backdrop`は`null`でも`backdrop=transparent`と必ず出し、`光源 月明かり（左上から）`・`フチ #ffffff 0.4% → #885b80 1.04% · 陰影 even`の形で光とフチを言葉で示します。
-プロファイルを指名していれば先頭に`profile <name> v<version>`を置きます。プロファイルを押すと`outlines` / `stroke_light` / `light` / `backdrop` /
-各チェックが選び直されます（`outlines`が無ければcatalogの既定のフチ、`stroke_light`が無ければ均一）。ボタンは`納品する`で、`POST /api/v1/requests`（`kind: "deliver"`,
-`idempotency_key`は`gui:deliver:`始まり）を積みます。
-
 #### フチのリスト
 
-納品フォームとワークベンチの納品フェーズが共有する編集欄（`OutlineEditor`）です。内側から外側の順に、1本ごとに色（`input[type=color]`）・幅
+ワークベンチの納品フェーズの編集欄（`OutlineEditor`）です。内側から外側の順に、1本ごとに色（`input[type=color]`）・幅
 （0.2〜`deliver.outlines.max_width`、刻み0.02、長辺に対する%）・内側へ / 外側へ / 消すのアイコンボタンを持つ行を並べます。`+ 外側に足す`
 （`deliver.outlines.max_count`、無ければ6本まで）と、catalogの`deliver.outlines.default`（無ければ白0.4% + 紫1.04%）に戻す`白・紫に戻す`があります。
 フチが1本以上あるときだけ`一番外の陰影`として`均一`（`even`）と`光の向きで陰影`（8方向のコンパス、向きが`stroke_light`）を出します。初期値は
 catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。「prompt で描いた白フチは、この内側に残ります。」と注記します。
-
-#### Dof
-
-納品の絵（deliver requestの出力）にだけ出す`ボケ（Dof）`欄です。dofの出力・raw・納品でない絵には出さず、catalogにトップレベルの`dof`が無いときも出しません。
-画像をクリックしてピント位置を置き（マーカーと`ピント: x, y`の表示）、F値のスライダーは`dof.f_number.stops`の段に吸着します（初期値は`default`に最も近い段）。
-`ボカす範囲`は`人物` / `フチ` / `背景`のチェックボックス（初期値は`dof.scope`、無ければすべてオン）、`ファインダー`は`dof.viewfinder`の選択肢
-（`なし` / `あり` / `両方`、初期値は`dof.viewfinder.default`）です。`dof.guide_radius_per_f`があるときは、ピント位置を中心にくっきり見える範囲の目安の円
-（半径は係数 × F値 × 表示中の画像の長辺）を重ねます。ピント位置が無い、またはボカす範囲が全部オフのときはalertして積みません。
-ボタンは`ボケをかける`で、`POST /api/v1/requests`（`kind: "dof"`, `payload: {generation_id, options: {focus, f_number, scope, viewfinder}}`,
-`idempotency_key`は`gui:dof:`始まり）を積みます。
-
-どのGeneration Detailにも、`ワークベンチで開く`のリンク（`/work/{short_id}`）があります。
-
-どちらのフォームも、積んだ直後にページを再読み込みせず、`queued`行をRequestsの一覧の先頭へ挿入します。送信中のボタンは`disabled`で
-`Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`を表示して元のラベルに戻り、失敗時はすぐ戻ります。
 
 #### Requests
 
@@ -1067,7 +973,6 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
 | `queue.group.click` | `kinds`, `has_request` | キュー状態パネルの行クリック（`navQueueRow`） |
-| `redraw.submit` / `deliver.submit` | `scope`, `generation_id`, `profile`, 送ったoptions | 描き直し・納品の送信（`initOptionForms`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
 | `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
 | `compare.remove` | `generation_id`, `count` | compareバーのチップで外す（`initCompareBar`） |

@@ -8,21 +8,7 @@ import { gone, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, generationImageUrl } from '../lib/serialize';
 import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
-import { defaultRecipeRef, findProducingRequest, isDeliveredRequest, requestOfGeneration } from '../lib/requests';
-import {
-  getCatalog,
-  findDeliverDials,
-  findDeliverDefaults,
-  findDof,
-  findDeliverOutlines,
-  findDeliverBackdropColor,
-  findRedrawDials,
-  findRepairDials,
-  findRedrawDefaults,
-  findRedrawLight,
-  findBackdrops,
-} from '../lib/catalogs';
-import { listDeliverProfiles } from '../lib/presets';
+import { findProducingRequest } from '../lib/requests';
 import { isDeliverResult } from '../lib/promote';
 import {
   GenerationDetailPage,
@@ -145,15 +131,6 @@ images.get('/:shortId', async (c) => {
   // Requests セクション: 最新の request の状態表示（GUI は request を積むだけ、worker-protocol.md）。
   const requests = await requestSummaries<RequestSummary>(db, requestsRes);
 
-  const recipe = data.request?.recipe ?? null;
-  const [catalogDoc, deliverProfiles] = await Promise.all([
-    recipe ? getCatalog(db, defaultRecipeRef(c.env)) : Promise.resolve(null),
-    recipe ? listDeliverProfiles(db, recipe) : Promise.resolve([]),
-  ]);
-  const doc = recipe && catalogDoc ? catalogDoc.doc : null;
-  const producing = generation.request_id ? await requestOfGeneration(db, generation).catch(() => null) : null;
-  const delivered = producing ? isDeliveredRequest(producing) : false;
-
   // promote-profile の表示条件: rating good で、かつこの Generation が deliver request の
   // 納品物であること。full page のみで引く追加クエリなので card / json には出さない。
   const canPromoteToProfile = data.rating === 'good' && (await isDeliverResult(db, generation));
@@ -171,28 +148,6 @@ images.get('/:shortId', async (c) => {
       family={family}
       imageMeta={imageMeta}
       requests={requests}
-      delivered={delivered}
-      redrawForm={{
-        dials: doc && recipe ? findRedrawDials(doc, recipe) : null,
-        defaults: doc && recipe ? findRedrawDefaults(doc, recipe) : null,
-        light: doc && recipe ? findRedrawLight(doc, recipe) : null,
-        hiresAvailable: producing?.kind === 'generate',
-      }}
-      repairForm={{ dials: doc && recipe ? findRepairDials(doc, recipe) : null }}
-      deliverForm={{
-        dials: doc && recipe ? findDeliverDials(doc, recipe) : null,
-        defaults: doc && recipe ? findDeliverDefaults(doc, recipe) : null,
-        outlines: doc && recipe ? findDeliverOutlines(doc, recipe) : null,
-        light: doc && recipe ? findRedrawLight(doc, recipe) : null,
-        backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
-        profiles: deliverProfiles,
-        // backdrops is a catalog-wide (not per-recipe) key, so it follows the same recipe-gated catalog fetch above.
-        backdrops: doc ? findBackdrops(doc).map(({ name, label }) => ({ name, label })) : [],
-        recipeRef: recipe ? defaultRecipeRef(c.env) : null,
-        catalogVersion: catalogDoc?.row.updated_at ?? null,
-      }}
-      dofForm={{ dof: doc ? findDof(doc) : null }}
-      dofAvailable={producing?.kind === 'deliver'}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
     />,
