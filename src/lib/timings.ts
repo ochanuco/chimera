@@ -56,6 +56,8 @@ function diff(end: number | null | undefined, start: number | null | undefined):
 }
 
 /** (request_id, attempt, version) の行と子行を削除して入れ直す。子の削除は FK の CASCADE に任せず明示する。 */
+const NODE_COLUMNS = 10;
+
 export async function replaceAttemptTimings(
   db: D1Database,
   requestId: string,
@@ -115,25 +117,29 @@ export async function replaceAttemptTimings(
       ),
     );
     const seen = new Set<string>();
+    const rows: unknown[][] = [];
     for (const node of prompt.nodes) {
       if (seen.has(node.node_id)) continue;
       seen.add(node.node_id);
+      rows.push([
+        promptTimingId,
+        node.node_id,
+        node.class_type,
+        node.role ?? null,
+        node.cached ? 1 : 0,
+        node.started_at ?? null,
+        node.ended_at ?? null,
+        diff(node.ended_at, node.started_at),
+        node.steps_total ?? null,
+        node.step_ms ? JSON.stringify(node.step_ms) : null,
+      ]);
+    }
+    for (const group of chunk(rows, Math.floor(D1_MAX_BOUND_PARAMS / NODE_COLUMNS))) {
       statements.push(
         db.prepare(
           `INSERT INTO node_timings (prompt_timing_id, node_id, class_type, role, cached, started_at, ended_at, duration_ms, steps_total, step_ms_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).bind(
-          promptTimingId,
-          node.node_id,
-          node.class_type,
-          node.role ?? null,
-          node.cached ? 1 : 0,
-          node.started_at ?? null,
-          node.ended_at ?? null,
-          diff(node.ended_at, node.started_at),
-          node.steps_total ?? null,
-          node.step_ms ? JSON.stringify(node.step_ms) : null,
-        ),
+           VALUES ${group.map(() => `(${Array(NODE_COLUMNS).fill('?').join(', ')})`).join(', ')}`,
+        ).bind(...group.flat()),
       );
     }
   }

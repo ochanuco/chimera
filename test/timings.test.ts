@@ -80,6 +80,15 @@ describe('PUT /api/v1/requests/:id/timings', () => {
     expect(nodes[1]).toMatchObject({ node_id: '3', role: 'base_sampler', cached: 0, duration_ms: 4800, steps_total: 3, step_ms_json: '[400,300,300]' });
   });
 
+  it('stores every node of large multi-prompt graphs', async () => {
+    const { body: request } = await createRequest();
+    const nodes = Array.from({ length: 45 }, (_, i) => ({ node_id: String(i), class_type: 'KSampler', role: `r${i}`, cached: false, started_at: i, ended_at: i + 2 }));
+    const prompts = Array.from({ length: 6 }, (_, i) => ({ ...body().prompts[0], prompt_id: `p${i}`, nodes }));
+    const res = await postJson(`/api/v1/requests/${request.id}/timings`, body({ prompts }), 'PUT');
+    expect(res.status).toBe(200);
+    expect(await counts()).toEqual({ attempts: 1, prompts: 6, nodes: 270 });
+  });
+
   it('leaves comfy_job_id null when no Job carries the prompt id', async () => {
     const { body: request } = await createRequest();
     await postJson(`/api/v1/requests/${request.id}/timings`, body(), 'PUT');
