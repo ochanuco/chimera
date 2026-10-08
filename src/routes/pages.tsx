@@ -486,10 +486,19 @@ pages.get('/work', async (c) => {
   const recipe = c.req.query('recipe') || undefined;
   const page = Math.max(Number(c.req.query('page')) || 1, 1);
   const sources = await listWorkSources(c.env.DB, { state, recipe, offset: (page - 1) * WORK_SOURCES_PAGE_SIZE });
+  const recipes = await currentRecipes(c.env.DB, sources.recipes, recipe);
   return c.html(
-    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={sources.recipes} filters={{ state, recipe, page }} hasMore={sources.hasMore} />,
+    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={recipes} filters={{ state, recipe, page }} hasMore={sources.hasMore} />,
   );
 });
+
+/** The worked-on recipes the production catalog still carries; retired request recipes stay reachable under 全 recipe and by `?recipe=`. */
+async function currentRecipes(db: D1Database, workedOn: string[], selected: string | undefined): Promise<string[]> {
+  const catalog = await getCatalog(db, 'production');
+  if (!catalog) return workedOn;
+  const names = new Set(catalog.doc.recipes.map((r: unknown) => (r as { name?: unknown }).name));
+  return workedOn.filter((r) => names.has(r) || r === selected);
+}
 
 /** The parts of the pose that drew `generationId`, with each part's text when the pose record carries it. */
 function workbenchParts(doc: RecipeCatalogDoc, recipe: string, pose: string | null): WorkbenchPart[] {

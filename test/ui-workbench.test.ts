@@ -57,6 +57,25 @@ describe('GET /work', () => {
     expect(bust).toContain('href="/work?recipe=yukari-anima"');
   });
 
+  it('offers recipe filters only for recipes the production catalog carries', async () => {
+    const catalog = { schema_version: 1, recipes: [{ name: 'yukari', poses: [] }], patches: {} };
+    expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
+    const { generation: current } = await createGeneration({ requestOverrides: { recipe: 'yukari' } });
+    const { generation: retired } = await createGeneration({ requestOverrides: { recipe: 'yukari-il' } });
+    await derive(current, 'redraw');
+    await derive(retired, 'redraw');
+
+    const all = await (await req('/work')).text();
+    expect(all).toContain('href="/work?recipe=yukari"');
+    expect(all).not.toContain('href="/work?recipe=yukari-il"');
+    expect(all).toContain(`/work/${retired.short_id}"`);
+
+    const old = await (await req('/work?recipe=yukari-il')).text();
+    expect(old).toContain(`/work/${retired.short_id}"`);
+    expect(old).not.toContain(`/work/${current.short_id}"`);
+    expect(old).toContain('href="/work?recipe=yukari-il"');
+  });
+
   it('counts a saved workbench as worked on and shows the empty state otherwise', async () => {
     expect(await (await req('/work')).text()).toContain('作業中の絵がありません');
     const { generation: root } = await createGeneration();
