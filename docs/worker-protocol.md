@@ -135,7 +135,7 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
 Token）を区別せず、いずれも全 `kind` を積めます（finalize を除く）。「GUI が積んでよいのは redraw / deliver /
-repair と、pin の再描画（絵柄チェック）だけ」は GUI のコードがそれらの form / ボタンしか
+repair と、リロール、pin の再描画（絵柄チェック）だけ」は GUI のコードがそれらの form / ボタンしか
 持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
@@ -718,7 +718,7 @@ inpaint/masked-img2img adapter に渡す narrow boundary です。worker は sou
 
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
-  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
+  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵ごとの `reroll:{元絵の id}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
 
@@ -857,6 +857,13 @@ worker は requests だけを見ます。
   pose は skip され、応答にその旨が残る。idempotency key は描画内容のハッシュ
   `style-check:<recipe>:<pose>:<sha256>`（git commit は含めない）なので、描画内容が同じ間の
   連打は積み直さず既存行を返す。既定 recipe_ref のカタログ PUT 後にも同じ処理が自動で走る。
+
+- リロール (`/reroll/{short_id}`, [ui.md](ui.md#リロール)): 元絵（raw Generation）の generate payload から
+  `request.seeds` と `experiment` を外し、`request.count = 4` にして `kind = generate` を積む（`created_by = gui`、
+  `recipe_ref` は元の Request と同じ）。recipe・parameters・patches・presets・references・semantic は元のまま
+  なので、worker から見れば seed だけ違う通常の generate である。`requests.reroll_of_generation_id` に元絵の id を
+  持ち、元絵 1 枚につき 1 件（unique index）。idempotency key は `reroll:<元絵の id>` で、`POST
+  /api/v1/generations/{id}/reroll`（[api.md](api.md#reroll)）が既存行を返すので連打しても積み直さない。
 
 GUI が積んでよい操作の範囲は [architecture.md](architecture.md#web-gui) の Web GUI
 Responsibilities を参照してください。Compare が比較表示のみである点は変わりません。
