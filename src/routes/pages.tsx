@@ -16,6 +16,8 @@ import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
 import { WorkbenchPage, type WorkbenchData, type WorkbenchPart } from '../ui/pages/Workbench';
 import { buildWorkbenchTree, findRootGeneration, getWorkbench } from '../lib/workbench';
+import { RerollPage } from '../ui/pages/Reroll';
+import { getRerollState } from '../lib/reroll';
 import { StyleCheckPage, type StyleCheckNode, type StyleCheckPoseView } from '../ui/pages/StyleCheck';
 import { decodeCursor, queryTimeline } from '../lib/generations';
 import { slotEndIso, slotStartIso } from '../lib/timeline';
@@ -538,4 +540,15 @@ pages.get('/work/:shortId', async (c) => {
     parts: doc && recipe ? workbenchParts(doc, recipe, detail.request?.drawn_pose?.pose ?? null) : [],
   };
   return c.html(<WorkbenchPage path={c.req.path} data={data} />);
+});
+
+pages.get('/reroll/:shortId', async (c) => {
+  const db = c.env.DB;
+  const generation = await getGenerationByIdOrShortId(db, c.req.param('shortId'));
+  if (!generation) return c.html(<NotFoundPage what="Generation" />, 404);
+  if (generation.refines_generation_id) {
+    const root = await findRootGeneration(db, generation);
+    return c.redirect(`/reroll/${root.short_id}`);
+  }
+  return c.html(<RerollPage path={c.req.path} state={await getRerollState(db, generation)} />);
 });

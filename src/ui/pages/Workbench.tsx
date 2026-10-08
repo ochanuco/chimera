@@ -7,6 +7,7 @@ import { dialWordsFor } from '../option-forms';
 import { Compass, OutlineEditor } from '../components/OutlineEditor';
 import { DofFields, FALLBACK_DOF } from '../components/DofFields';
 import { LIGHT_SCENE_LABELS } from '../components/OptionControls';
+import { CapActions } from '../components/CapActions';
 
 export interface BackdropOption {
   name: string;
@@ -238,27 +239,6 @@ function PartForm({ data }: { data: WorkbenchData }) {
           </div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function CapActions({ side }: { side: 'input' | 'cmp' }) {
-  return (
-    <div class="wb-cap-actions" data-wb-cap-actions={side} hidden>
-      <span class="copy-id-btn copy-id-text" data-wb-cap-id role="button" tabindex={0} title="ID をコピー"></span>
-      <a class="wb-cap-link" data-wb-cap-link title="詳細を開く">
-        /g/
-      </a>
-      <div class="rating-group wb-rating" role="group" aria-label="評価">
-        {(['bad', 'neutral', 'good'] as const).map((r) => (
-          <button type="button" class="rate-btn" data-rating={r}>
-            {r}
-          </button>
-        ))}
-      </div>
-      <button type="button" class="bookmark-btn" data-wb-bookmark data-kind="generations" data-bookmarked="false" aria-label="ブックマーク">
-        🔖
-      </button>
     </div>
   );
 }

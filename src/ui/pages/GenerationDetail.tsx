@@ -174,6 +174,8 @@ export function GenerationDetailPage({
   /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
 }) {
+  // A refined Generation rerolls its raw source; a raw one needs a recipe-driven generate request.
+  const rerollable = data.refines_generation !== null || (data.request?.kind === 'generate' && Boolean(data.request.recipe));
   const parentCards = family.parents;
   const childCards = family.children;
   const siblingCards = family.siblings;
@@ -200,6 +202,11 @@ export function GenerationDetailPage({
             <a class="workbench-open-link" href={`/work/${data.short_id}`}>
               ワークベンチで開く
             </a>
+            {rerollable ? (
+              <a class="reroll-open-link" href={`/reroll/${data.short_id}`}>
+                リロール
+              </a>
+            ) : null}
           </p>
         </div>
         <div class="detail-right">

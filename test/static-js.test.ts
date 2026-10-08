@@ -71,4 +71,12 @@ describe('served app.js', () => {
     expect(appJs).toContain("'/api/v1/style-check/' + encodeURIComponent(recipe)");
     expect(appJs).not.toContain('data-style-check-compare-add');
   });
+
+  it('drives the reroll screen from the workbench viewer and the shared caption actions, polling its own endpoint', () => {
+    expect(appJs).toContain('function initReroll()');
+    expect(appJs).toContain('var viewer = wbViewer(root, rr);');
+    expect(appJs).toContain("wbRenderCapActions(root, 'input', input);");
+    expect(appJs).toContain("wbRenderCapActions(root, side, node);");
+    expect(appJs).toContain("'/api/v1/generations/' + encodeURIComponent(rootId) + '/reroll'");
+  });
 });

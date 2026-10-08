@@ -210,6 +210,8 @@ export interface RequestRow {
   preset_versions_json: string | null;
   git_commit: string | null;
   git_dirty: number | null;
+  /** リロールの元絵 (raw Generation) の id。リロールで作られた generate Request だけが持つ。 */
+  reroll_of_generation_id: string | null;
 }
 
 export interface RecipeCatalogRow {

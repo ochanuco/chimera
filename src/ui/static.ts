@@ -490,6 +490,9 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .copy-id-text.copied { color: var(--good); }
 .copy-id-text.copied::after { content: ' ✓'; }
 .card-id { font-size: 0.78rem; }
+.card-id-actions { display: flex; align-items: center; gap: 0.3rem; }
+.card-reroll-link { color: var(--text-dim); font-size: 0.95rem; line-height: 1; text-decoration: none; }
+.card-reroll-link:hover { color: var(--accent); text-decoration: none; }
 
 .rating-group { display: flex; gap: 0.25rem; }
 .rate-btn {
@@ -980,6 +983,7 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
   :root { --card-id-h: 2.75rem; --card-rate-h: 2.75rem; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
   .card-row .card-id { min-height: 2.75rem; }
+  .card-reroll-link { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
 }
 
 details.section {
@@ -1499,6 +1503,16 @@ details.section .section-body { margin-top: 0.6rem; }
   font-weight: 600;
 }
 .workbench-open-link:hover { filter: brightness(1.12); text-decoration: none; }
+.detail-workbench { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.reroll-open-link {
+  display: inline-block;
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.reroll-open-link:hover { background: rgba(124, 156, 245, 0.15); text-decoration: none; }
 
 .work-lead { margin: 0 0 1rem; color: var(--text-dim); max-width: 40rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
@@ -1650,6 +1664,21 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 @media (max-width: 600px) {
   .wb-pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* リロール: 左に元絵、右に候補 2x2。デスクトップでは盤全体の高さを JS (fitBoard) がビューポート下端に合わせる。 */
+.reroll-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 0.5rem; height: calc(100vh - 12rem); min-height: 20rem; }
+.reroll-original { grid-row: 1 / span 2; }
+.reroll .wb-compare { flex: none; }
+.reroll-board .wb-fig { min-height: 0; }
+.reroll-board .wb-cap { min-height: 2.25rem; }
+.reroll-board .wb-cap-actions { flex-wrap: wrap; }
+.reroll-board .wb-pane { flex: 1 1 0; height: auto; min-height: 0; }
+.reroll-board .wb-rating .rate-btn { padding: 0 0.35rem; }
+@media (max-width: 900px) {
+  .reroll-board { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; height: auto; min-height: 0; }
+  .reroll-original { grid-column: 1 / -1; grid-row: auto; }
+  .reroll-board .wb-pane { flex: none; height: auto; aspect-ratio: 4 / 5; }
 }
 
 `;
@@ -4623,7 +4652,26 @@ export const appJs = `
     return meta ? label + ' · ' + meta : label;
   }
 
-  // The image panes, crosshair and loupe the workbench and the style check share. wb is the caller's state: it supplies
+  // Fills (or hides, for a null node) the CapActions box (src/ui/components/CapActions.tsx) of one pane.
+  function wbRenderCapActions(root, side, node) {
+    var box = qs('[data-wb-cap-actions="' + side + '"]', root);
+    box.hidden = !node;
+    if (!node) return;
+    box.setAttribute('data-wb-cap-for', node.id);
+    var id = qs('[data-wb-cap-id]', box);
+    id.textContent = node.short_id;
+    id.setAttribute('data-copy-id', node.short_id);
+    qs('[data-wb-cap-link]', box).setAttribute('href', '/g/' + node.short_id);
+    var work = qs('[data-wb-cap-work]', box);
+    if (work) work.setAttribute('href', '/work/' + node.short_id);
+    qs('.rating-group', box).setAttribute('data-generation-id', node.id);
+    applyRatingToGroups(node.id, node.rating);
+    var bookmark = qs('[data-wb-bookmark]', box);
+    bookmark.setAttribute('data-id', node.id);
+    bookmark.setAttribute('data-bookmarked', node.bookmark ? 'true' : 'false');
+  }
+
+  // The image panes, crosshair and loupe the workbench, the style check and the reroll screen share. wb is the caller's state: it supplies
   // cursor ({x, y} on the image, or null) and loupe ({on, zoom}), which the viewer reads and the caller may also set.
   function wbViewer(root, wb) {
     var resizeObserver = window.ResizeObserver ? new ResizeObserver(function (entries) {
@@ -5078,21 +5126,6 @@ export const appJs = `
       });
     }
 
-    function renderCapActions(side, node) {
-      var box = qs('[data-wb-cap-actions="' + side + '"]', root);
-      box.hidden = !node;
-      if (!node) return;
-      var id = qs('[data-wb-cap-id]', box);
-      id.textContent = node.short_id;
-      id.setAttribute('data-copy-id', node.short_id);
-      qs('[data-wb-cap-link]', box).setAttribute('href', '/g/' + node.short_id);
-      qs('.rating-group', box).setAttribute('data-generation-id', node.id);
-      applyRatingToGroups(node.id, node.rating);
-      var bookmark = qs('[data-wb-bookmark]', box);
-      bookmark.setAttribute('data-id', node.id);
-      bookmark.setAttribute('data-bookmarked', node.bookmark ? 'true' : 'false');
-    }
-
     function renderPanes(list, input) {
       var inputPane = qs('[data-wb-input-pane]', root);
       var cmpPane = qs('[data-wb-cmp-pane]', root);
@@ -5128,8 +5161,8 @@ export const appJs = `
         qs('[data-wb-cmp-badge]', root).textContent = '';
         qs('[data-wb-cmp-meta]', root).textContent = '';
       }
-      renderCapActions('input', input);
-      renderCapActions('cmp', cmp && cmp.node);
+      wbRenderCapActions(root, 'input', input);
+      wbRenderCapActions(root, 'cmp', cmp && cmp.node);
     }
 
     function renderControls(list) {
@@ -5677,6 +5710,138 @@ export const appJs = `
     if (wb.pending.length > 0) startPolling();
   }
 
+  // リロール (/reroll/{short_id}): 左 = 元絵、右 = seed だけ変えた generate の 4 枚。比較ペイン・ルーペ・キャプションの操作はワークベンチと共有する。
+  function initReroll() {
+    var root = qs('[data-reroll]');
+    if (!root) return;
+    var state = {};
+    try { state = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { state = {}; }
+    var rootId = root.getAttribute('data-root-id');
+    var rr = { cursor: null, loupe: { on: true, zoom: 3 } };
+    var progress = '';
+    var timer = null;
+    var viewer = wbViewer(root, rr);
+    viewer.trackCursor();
+    var board = qs('[data-rr-board]', root);
+
+    function inFlight() {
+      return !!state.request && (state.request.status === 'queued' || state.request.status === 'running');
+    }
+
+    function setNote(pane, text) {
+      if (pane.getAttribute('data-wb-key') !== 'note') {
+        pane.setAttribute('data-wb-key', 'note');
+        pane.removeAttribute('data-wb-imgpane');
+        pane.textContent = '';
+        pane.appendChild(wbEl('div', 'wb-empty', text));
+      } else {
+        qs('.wb-empty', pane).textContent = text;
+      }
+    }
+
+    function noteFor() {
+      var r = state.request;
+      if (!r) return '未実行';
+      if (r.status === 'queued') return '待機中…' + (progress ? ' ' + progress : '');
+      if (r.status === 'running') return '処理中…' + (progress ? ' ' + progress : '');
+      if (r.status === 'failed') return '失敗' + (r.error ? ': ' + r.error : '');
+      if (r.status === 'cancelled') return 'キャンセル';
+      return '画像なし';
+    }
+
+    function renderCap(side, node) {
+      var box = qs('[data-wb-cap-actions="' + side + '"]', root);
+      if (!node) return wbRenderCapActions(root, side, null);
+      if (box.getAttribute('data-wb-cap-for') !== node.id) wbRenderCapActions(root, side, node);
+    }
+
+    function render() {
+      viewer.fillPane(qs('[data-wb-input-pane]', root), state.root.id, 'input', state.root, null);
+      qs('[data-rr-meta="input"]', root).textContent = imageMetaText(state.root);
+      renderCap('input', state.root);
+      for (var i = 0; i < 4; i++) {
+        var node = (state.generations || [])[i] || null;
+        var pane = qs('[data-rr-pane="' + i + '"]', root);
+        if (node) viewer.fillPane(pane, node.id, 'cmp', node, null);
+        else setNote(pane, noteFor());
+        qs('[data-rr-meta="' + i + '"]', root).textContent = imageMetaText(node);
+        renderCap('r' + i, node);
+      }
+      qs('[data-rr-run]', root).hidden = !!state.request || !state.recipe;
+      viewer.updateCrosshair();
+    }
+
+    async function sync() {
+      try {
+        state = await api('/api/v1/generations/' + encodeURIComponent(rootId) + '/reroll');
+        render();
+        if (!inFlight()) stopPolling();
+      } catch (e) {
+        trackError('reroll.sync', e, {});
+      }
+    }
+
+    function startPolling() {
+      if (!timer) timer = setInterval(sync, 3000);
+    }
+
+    function stopPolling() {
+      if (timer) clearInterval(timer);
+      timer = null;
+    }
+
+    function showError(message) {
+      var el = qs('[data-rr-error]', root);
+      el.textContent = message;
+      el.hidden = !message;
+    }
+
+    qs('[data-rr-run]', root).addEventListener('click', async function (ev) {
+      var btn = ev.currentTarget;
+      btn.disabled = true;
+      showError('');
+      try {
+        state = await api('/api/v1/generations/' + encodeURIComponent(rootId) + '/reroll', 'POST');
+        render();
+        if (inFlight()) startPolling();
+        track('reroll.run', { generation_id: rootId });
+      } catch (e) {
+        trackError('reroll.run', e, { generation_id: rootId });
+        showError('リロールを積めませんでした: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.addEventListener('chimera:rating', function (ev) {
+      var all = [state.root].concat(state.generations || []);
+      all.forEach(function (n) { if (n.id === ev.detail.id) n.rating = ev.detail.rating; });
+    });
+    viewerSocketOn('status', function (m) {
+      if (state.request && m.request_id === state.request.id) sync();
+    });
+    viewerSocketOn('progress', function (m) {
+      if (!state.request || m.request_id !== state.request.id) return;
+      progress = (m.phase || '') + (typeof m.step === 'number' && typeof m.total === 'number' ? ' ' + m.step + '/' + m.total : '');
+      qsa('[data-rr-pane] .wb-empty', root).forEach(function (el) { el.textContent = noteFor(); });
+    });
+    viewerSocketConnect();
+
+    // The board is as tall as what fits between its top and the controls row below it, so the page needs no scroll.
+    function fitBoard() {
+      board.style.removeProperty('height');
+      if (window.matchMedia('(max-width: 900px)').matches) return;
+      var top = board.getBoundingClientRect().top + window.scrollY;
+      var below = document.documentElement.scrollHeight - (top + board.offsetHeight);
+      board.style.height = Math.max(window.innerHeight - top - below, 320) + 'px';
+    }
+
+    window.addEventListener('resize', function () { fitBoard(); viewer.imagePanes().forEach(viewer.layoutPane); });
+    render();
+    fitBoard();
+    if (inFlight()) startPolling();
+  }
+
   function wbNodeByShort(nodes, shortId) {
     for (var i = 0; i < nodes.length; i++) if (nodes[i].short_id === shortId) return nodes[i];
     return null;
@@ -5704,6 +5869,7 @@ export const appJs = `
     initGalleryPending();
     initRequestLive();
     initWorkbench();
+    initReroll();
     initNavQueue();
     initPopoverClose();
     initCompareBar();
