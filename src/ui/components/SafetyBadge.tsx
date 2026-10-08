@@ -61,8 +61,8 @@ export const fmtPct = (value: number) => `${value < 0.001 ? '0' : (Math.round(va
 const ratingText = (rating: SafetyRatingView) =>
   RATING_LABELS.map(([key, label]) => `${label} ${fmtPct(rating[key])}`).join('、');
 
-/** 4 区分の積み上げ帯。サムネイル下の細帯 (`strip`)、詳細の太帯 (`stack`)、比較の小帯 (`mini`) が共有する。 */
-export function RatingBar({ rating, variant }: { rating: SafetyRatingView; variant: 'strip' | 'stack' | 'mini' }) {
+/** 4 区分の積み上げ帯。サムネイル下の細帯 (`strip`) と比較の小帯 (`mini`) が共有する。 */
+export function RatingBar({ rating, variant }: { rating: SafetyRatingView; variant: 'strip' | 'mini' }) {
   return (
     <div class={`rating-bar rating-bar-${variant}`} role="img" aria-label={ratingText(rating)}>
       {RATING_LABELS.map(([key]) => (
