@@ -48,16 +48,6 @@ const PHASES = [
   { no: 5, label: 'ボケ' },
 ] as const;
 
-const SCENE_NOTES: Record<string, string> = {
-  sunset: '橙の光と紫の影。(sunset:1.1), (orange light:1.1), evening を足します。',
-  moon: '青白い光。(moonlight:1.15), night, (blue lighting:1.0) を足します。',
-};
-
-const METHOD_NOTES = {
-  hires: '寸法を上げて細部を足します。形はほぼ保ちます。',
-  canvas: '全体を大きいキャンバスで描き直します。線の密度が変わります。',
-} as const;
-
 function numberDefault(fields: Record<string, unknown> | undefined, key: string): number | null {
   const value = fields?.[key];
   return typeof value === 'number' ? value : null;
@@ -97,16 +87,13 @@ function RedrawForm({ data }: { data: WorkbenchData }) {
   return (
     <div class="wb-form" data-wb-form="1" hidden>
       <div class="wb-pills" role="group" aria-label="方法">
-        <button type="button" class="wb-pill wb-pill-on" data-wb-method="hires" data-note={METHOD_NOTES.hires}>
+        <button type="button" class="wb-pill wb-pill-on" data-wb-method="hires">
           hires
         </button>
-        <button type="button" class="wb-pill" data-wb-method="canvas" data-note={METHOD_NOTES.canvas}>
+        <button type="button" class="wb-pill" data-wb-method="canvas">
           canvas
         </button>
       </div>
-      <p class="wb-note" data-wb-method-note>
-        {METHOD_NOTES.hires}
-      </p>
       <div data-wb-method-panel="hires">
         <label class="wb-field">
           長辺（px）
@@ -161,19 +148,11 @@ function LightForm({ data }: { data: WorkbenchData }) {
           scene
           <div class="wb-pills" role="group" aria-label="scene">
             {scenes.map((scene, i) => (
-              <button
-                type="button"
-                class={`wb-pill${i === 0 ? ' wb-pill-on' : ''}`}
-                data-wb-scene={scene}
-                data-note={SCENE_NOTES[scene] ?? ''}
-              >
+              <button type="button" class={`wb-pill${i === 0 ? ' wb-pill-on' : ''}`} data-wb-scene={scene}>
                 {LIGHT_SCENE_LABELS[scene] ?? scene} <span class="mono">{scene}</span>
               </button>
             ))}
           </div>
-          <span class="wb-note" data-wb-scene-note>
-            {SCENE_NOTES[scenes[0] ?? ''] ?? ''}
-          </span>
         </div>
         <div class="wb-field">
           光の向き <span class="mono" data-wb-light-readout>from: {from}</span>
@@ -203,7 +182,6 @@ function PartForm({ data }: { data: WorkbenchData }) {
         </div>
       </div>
       <div data-wb-part-panel="auto">
-        <p class="wb-note">手足を DWPose で探して、その周りだけ描き直します。</p>
         <label class="wb-field">
           対象
           <select name="wb_repair_parts">
@@ -214,7 +192,6 @@ function PartForm({ data }: { data: WorkbenchData }) {
         </label>
       </div>
       <div data-wb-part-panel="rect" hidden>
-        <p class="wb-note">左の入力をドラッグして矩形を引きます。何か所でも引けます。</p>
         <div class="wb-rect-row">
           <span data-wb-rect-count>矩形 0 か所</span>
           <button type="button" class="wb-pill" data-wb-rect-clear>
@@ -318,23 +295,23 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           <summary>詳細</summary>
           <div class="wb-acc-body">
             <label>
-              <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する（repin）
+              <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する
             </label>
             <label>
-              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える（recolor）
+              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える
             </label>
             <label>
-              <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える（skin）
+              <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える
             </label>
             <label>
-              <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す（keep legwear）
+              <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す
             </label>
             <label>
-              <input type="checkbox" name="keep_scene" checked={defaults?.keep_scene === true} /> 元の場面を残す（keep scene）
+              <input type="checkbox" name="keep_scene" checked={defaults?.keep_scene === true} /> 元の場面を残す
             </label>
           </div>
         </details>
-        <p class="wb-note">切り抜きは初回に作って保存し、2 回目以降は使い回します。</p>
+        <p class="wb-note">切り抜きは 2 回目から使い回します</p>
       </div>
     </div>
   );
@@ -345,7 +322,7 @@ function DofForm({ data }: { data: WorkbenchData }) {
     <div class="wb-form" data-wb-form="5" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
-        <DofFields dof={data.dof ?? FALLBACK_DOF} focusHint="ピント: 左の絵をクリック" />
+        <DofFields dof={data.dof ?? FALLBACK_DOF} />
       </div>
     </div>
   );
@@ -440,7 +417,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               <button type="button" class="wb-adopt" data-wb-adopt></button>
             </div>
             <p class="wb-done" data-wb-done hidden>
-              完成しました。前のフェーズに戻って別の候補を採用すれば、続きを作り直せます。
+              完成しました。
             </p>
           </section>
 
@@ -453,7 +430,6 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                 <h2 class="wb-panel-title">
                   <span data-wb-phase-title>描き直し</span>の候補を作る
                 </h2>
-                <p class="wb-note">入力は前のフェーズで採用（またはスキップ）した絵。実行するたびに候補が 1 枚増えます。</p>
               </div>
               <RedrawForm data={data} />
               <LightForm data={data} />

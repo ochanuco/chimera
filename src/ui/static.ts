@@ -1489,7 +1489,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .outline-actions .wb-pill { flex: 1 1 0; }
 .outline-stroke { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text-dim); }
 .outline-stroke-compass { flex-basis: 100%; }
-.outline-note { margin: 0; font-size: 0.78rem; color: var(--text-dim); }
 .dof-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; margin: 0.3rem 0; padding: 0; border: 0; font-size: 0.85rem; }
 .dof-scope legend { float: left; padding: 0; margin-right: 0.5rem; color: var(--text-dim); }
 .dof-viewfinder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
@@ -1514,7 +1513,6 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .reroll-open-link:hover { background: rgba(124, 156, 245, 0.15); text-decoration: none; }
 
-.work-lead { margin: 0 0 1rem; color: var(--text-dim); max-width: 40rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .work-filter-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .work-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.9rem; }
@@ -2012,7 +2010,7 @@ export const appJs = `
         track('tag.add', { kind: kind, id: id, tag: tag.name });
       } catch (e) {
         trackError('tag.add', e, { kind: kind, id: id });
-        alert('failed to add tag: ' + e.message);
+        alert('タグを追加できません: ' + e.message);
       }
     });
   }
@@ -2030,7 +2028,7 @@ export const appJs = `
         track('tag.remove', { kind: kind, id: id, tag_id: tagId });
       } catch (e) {
         trackError('tag.remove', e, { kind: kind, id: id, tag_id: tagId });
-        alert('failed to remove tag: ' + e.message);
+        alert('タグを外せません: ' + e.message);
       }
     });
   }
@@ -2181,7 +2179,7 @@ export const appJs = `
         track('publication.add', { generation_id: generationId, has_url: Boolean(url) });
       } catch (e) {
         trackError('publication.add', e, { generation_id: generationId });
-        alert('failed to record publication: ' + e.message);
+        alert('公開を記録できません: ' + e.message);
       }
     });
   }
@@ -2211,7 +2209,7 @@ export const appJs = `
         track('publication.url', { generation_id: generationId, has_url: true });
       } catch (e) {
         trackError('publication.url', e, { generation_id: generationId });
-        alert('failed to save publication url: ' + e.message);
+        alert('URL を保存できません: ' + e.message);
       }
     });
   }
@@ -2232,7 +2230,7 @@ export const appJs = `
         track('publication.remove', { generation_id: generationId, has_url: Boolean(row.querySelector('a')) });
       } catch (e) {
         trackError('publication.remove', e, { generation_id: generationId });
-        alert('failed to remove publication: ' + e.message);
+        alert('公開記録を削除できません: ' + e.message);
       }
     });
   }
@@ -2240,7 +2238,7 @@ export const appJs = `
   function poseReferencePill(recipe, pose) {
     var span = document.createElement('span');
     span.className = 'card-reference-pill';
-    span.title = recipe + ' の ' + pose + ' の基準 render';
+    span.title = recipe + ' の ' + pose;
     span.textContent = '基準 ' + pose;
     return span;
   }
@@ -2259,7 +2257,7 @@ export const appJs = `
         track('pose_reference.set', { generation_id: generationId });
       } catch (e) {
         trackError('pose_reference.set', e, { generation_id: generationId });
-        alert('failed to set pose reference: ' + e.message);
+        alert('基準にできません: ' + e.message);
       }
     });
   }
@@ -2511,7 +2509,7 @@ export const appJs = `
     if (backdropMode === 'color') {
       backdrop = qs('input[name="backdrop_color"]', form).value.trim();
       if (!/^#[0-9a-fA-F]{6}$/.test(backdrop)) {
-        if (!quiet) alert('backdrop color must be #RRGGBB');
+        if (!quiet) alert('背景色は #RRGGBB で指定してください');
         return null;
       }
     }
@@ -2613,7 +2611,7 @@ export const appJs = `
         track('promote_profile.submit', { generation_id: generationId, name: result.name, version: result.version });
       } catch (e) {
         trackError('promote_profile.submit', e, { generation_id: generationId });
-        alert('promote failed: ' + e.message);
+        alert('昇格できません: ' + e.message);
       }
     });
   }
@@ -2674,7 +2672,7 @@ export const appJs = `
         rating.setAttribute('data-generation-id', p.result.id);
         applyRatingToGroups(p.result.id, p.result.rating);
       } else {
-        var message = !p.pin ? '' : !p.request ? '未描画。「今の既定で描く」で積みます。'
+        var message = !p.pin ? '' : !p.request ? '未描画'
           : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
           : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
         setEmpty(rightPane, message);
@@ -2743,7 +2741,7 @@ export const appJs = `
       if (renderBtn) {
         var label = renderBtn.textContent;
         renderBtn.disabled = true;
-        renderBtn.textContent = 'Queueing…';
+        renderBtn.textContent = '送信中…';
         try {
           var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
           (result.results || []).forEach(function (item) {
@@ -2757,7 +2755,7 @@ export const appJs = `
           track('style_check.render', { recipe: recipe });
         } catch (e) {
           trackError('style_check.render', e, { recipe: recipe });
-          alert('style check render failed: ' + e.message);
+          alert('描画できません: ' + e.message);
         } finally {
           renderBtn.disabled = false;
           renderBtn.textContent = label;
@@ -2776,7 +2774,7 @@ export const appJs = `
           track('pose_reference.set', { generation_id: q.result.id, from: 'style_check' });
         } catch (e) {
           trackError('pose_reference.set', e, { generation_id: q.result.id });
-          alert('failed to set pose reference: ' + e.message);
+          alert('基準にできません: ' + e.message);
         }
       }
     });
@@ -3496,7 +3494,7 @@ export const appJs = `
     if (bar) {
       bar.classList.toggle('hidden', entries.length === 0);
       var link = qs('#compare-link', bar);
-      link.textContent = 'Compare (' + Math.min(entries.length, COMPARE_MAX) + ')';
+      link.textContent = '比較 (' + Math.min(entries.length, COMPARE_MAX) + ')';
       link.setAttribute('href', '/compare?ids=' + entries.slice(0, COMPARE_MAX).map(compareRef).join(','));
       renderCompareChips(qs('#compare-chips', bar), entries);
     }
@@ -3624,7 +3622,7 @@ export const appJs = `
           }
         });
       } else {
-        line += ' · no fact difference';
+        line += ' · 事実の差なし';
       }
       return line;
     }
@@ -3666,7 +3664,7 @@ export const appJs = `
           return;
         }
         trackError('judge.pick', e, { experiment_id: experimentId, verdict: verdict, seed: pair.seed, index: index });
-        alert('judgment failed: ' + e.message);
+        alert('判定できません: ' + e.message);
         setButtonsDisabled(false);
       } finally {
         inFlight = false;
@@ -5063,10 +5061,10 @@ export const appJs = `
       var input = activeInputNode();
       if (!input) return '';
       if (wb.active === 2 && input.kind === 'redraw' && input.method === 'canvas') {
-        return '入力が redraw · canvas の出力なので light は使えません（canvas は IL で描くため、Anima の graph がありません）。スキップしてください。';
+        return 'canvas の出力には light を使えません';
       }
-      if (wb.active === 4 && input.delivered) return '納品済みの絵は、もう一度納品できません。前のフェーズに戻ってください。';
-      if (wb.active === 5 && !input.delivered) return '納品していない絵にはボケをかけられません。納品のフェーズで納品してください。';
+      if (wb.active === 4 && input.delivered) return '納品済み';
+      if (wb.active === 5 && !input.delivered) return '先に納品してください';
       return '';
     }
 
@@ -5172,7 +5170,7 @@ export const appJs = `
         cmpPane.removeAttribute('data-wb-imgpane');
         cmpPane.textContent = '';
         cmpPane.classList.remove('wb-checker');
-        cmpPane.appendChild(wbEl('div', 'wb-empty', '候補はまだありません。右の欄から作ります。'));
+        cmpPane.appendChild(wbEl('div', 'wb-empty', '候補がありません'));
         qs('[data-wb-cmp-kind]', root).textContent = '';
         qs('[data-wb-cmp-status]', root).textContent = '';
         qs('[data-wb-cmp-badge]', root).textContent = '';
@@ -5187,17 +5185,16 @@ export const appJs = `
       qsa('[data-wb-compare-mode]', root).forEach(function (b) {
         b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-compare-mode') === wb.mode);
       });
-      qs('[data-wb-skip]', root).textContent = wb.active === 5 ? 'ボケなしで完成にする' : 'このフェーズをスキップ（入力をそのまま次へ）';
+      qs('[data-wb-skip]', root).textContent = 'スキップ';
       var adopt = qs('[data-wb-adopt]', root);
-      var next = WB_PHASES[wb.active] ? WB_PHASES[wb.active].label : '';
       if (!cmp) {
         adopt.textContent = '候補を選んでください';
         adopt.disabled = true;
       } else if (cmp.pending) {
-        adopt.textContent = '処理中です';
+        adopt.textContent = '処理中';
         adopt.disabled = true;
       } else {
-        adopt.textContent = wb.active === 5 ? 'この候補で完成にする' : 'この候補を採用して「' + next + '」へ';
+        adopt.textContent = wb.active === 5 ? '完成' : '次へ';
         adopt.disabled = false;
       }
       qs('[data-wb-done]', root).hidden = !pick(5);
@@ -5207,10 +5204,10 @@ export const appJs = `
       if (!activeInputNode()) return '入力がありません';
       if (unavailableText()) return '';
       if (wb.active === 3 && wb.partMode === 'rect') {
-        if (wb.rects.length === 0) return '矩形を 1 か所以上引いてください';
+        if (wb.rects.length === 0) return '矩形を引いてください';
         if (qs('input[name="wb_patch"]', root).value.trim() === '') return '足す語を入力してください';
       }
-      if (wb.active === 5 && !wb.focus) return 'ピントを置いてください（左の絵をクリック）';
+      if (wb.active === 5 && !wb.focus) return 'ピントを置いてください';
       return null;
     }
 
@@ -5234,7 +5231,7 @@ export const appJs = `
       var run = qs('[data-wb-run]', root);
       run.hidden = unavailable !== '' || !activeInputNode();
       run.disabled = blocker !== null;
-      run.textContent = blocker ? blocker : phase.label + 'を実行';
+      run.textContent = blocker ? blocker : '実行';
       qsa('[data-wb-part-panel]', root).forEach(function (panel) {
         panel.hidden = panel.getAttribute('data-wb-part-panel') !== wb.partMode;
       });
@@ -5312,7 +5309,7 @@ export const appJs = `
         track('workbench.adopt', { phase: k, generation_id: cmp.node.id });
       } catch (e) {
         trackError('workbench.adopt', e, { phase: k });
-        alert('adopt failed: ' + e.message);
+        alert('採用できません: ' + e.message);
         return;
       }
       if (k < 5) goStep(k + 1);
@@ -5330,7 +5327,7 @@ export const appJs = `
         track('workbench.skip', { phase: k });
       } catch (e) {
         trackError('workbench.skip', e, { phase: k });
-        alert('skip failed: ' + e.message);
+        alert('スキップできません: ' + e.message);
         return;
       }
       if (k < 5) goStep(k + 1);
@@ -5369,7 +5366,7 @@ export const appJs = `
         for (var i = 0; i < wb.rects.length; i++) {
           for (var j = i + 1; j < wb.rects.length; j++) {
             if (wbRectsOverlap(wb.rects[i], wb.rects[j])) {
-              wb.error = '矩形が重なっています。重ならないように引き直してください。';
+              wb.error = '矩形が重なっています';
               renderPanel();
               return null;
             }
@@ -5383,7 +5380,7 @@ export const appJs = `
       }
       var scope = dofScopeFrom(form);
       if (!scope.figure && !scope.outline && !scope.backdrop) {
-        wb.error = 'ボカす範囲を 1 つ以上選んでください。';
+        wb.error = 'ボカす範囲を選んでください';
         renderPanel();
         return null;
       }
@@ -5523,7 +5520,6 @@ export const appJs = `
         var m = method.getAttribute('data-wb-method');
         qsa('[data-wb-method]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === method); });
         qsa('[data-wb-method-panel]', root).forEach(function (p) { p.hidden = p.getAttribute('data-wb-method-panel') !== m; });
-        qs('[data-wb-method-note]', root).textContent = method.getAttribute('data-note') || '';
         return;
       }
       var word = t.closest('[data-wb-denoise-word]');
@@ -5536,7 +5532,6 @@ export const appJs = `
       var scene = t.closest('[data-wb-scene]');
       if (scene) {
         qsa('[data-wb-scene]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === scene); });
-        qs('[data-wb-scene-note]', root).textContent = scene.getAttribute('data-note') || '';
         return;
       }
       var dir = t.closest('[data-compass="light"] [data-compass-dir]');
@@ -5871,7 +5866,7 @@ export const appJs = `
         track('reroll.run', { generation_id: rootId });
       } catch (e) {
         trackError('reroll.run', e, { generation_id: rootId });
-        showError('リロールを積めませんでした: ' + e.message);
+        showError('リロールできません: ' + e.message);
       } finally {
         btn.disabled = inFlight();
       }

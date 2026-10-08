@@ -80,7 +80,7 @@ export function PublicationSection({
           ))}
         </ul>
         <form class="publication-add-form">
-          <input type="text" name="url" placeholder="投稿 URL（空でも記録できる）" />
+          <input type="text" name="url" placeholder="投稿 URL" />
           <button type="submit" class="publication-add-btn">
             公開を記録
           </button>

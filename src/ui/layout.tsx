@@ -34,18 +34,18 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
             Chimera
           </a>
           <a href="/gallery" aria-current={galleryActive ? 'page' : undefined}>
-            Gallery
+            ギャラリー
           </a>
           <a href="/bookmarks" aria-current={bookmarksActive ? 'page' : undefined}>
-            Bookmarks
+            ブックマーク
           </a>
           <a href="/work" aria-current={workbenchActive ? 'page' : undefined}>
             ワークベンチ
           </a>
           <details class="nav-more">
-            <summary aria-current={moreActive ? 'page' : undefined}>More</summary>
+            <summary aria-current={moreActive ? 'page' : undefined}>その他</summary>
             <div class="nav-more-panel">
-              <a href="/experiments">Experiments</a>
+              <a href="/experiments">実験</a>
               <a href="/check">絵柄チェック</a>
               <a href="/stats">統計</a>
             </div>
@@ -65,7 +65,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
             すべて解除
           </button>
           <a id="compare-link" class="compare-go" href="#">
-            Compare (0)
+            比較 (0)
           </a>
         </div>
         <script src={`/assets/app.js?v=${assetVersion}`}></script>

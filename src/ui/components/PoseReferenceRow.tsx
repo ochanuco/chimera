@@ -9,7 +9,7 @@ export function PoseReferenceRow({ generationId, poseReference }: { generationId
   return (
     <div class="pose-reference-row" data-generation-id={generationId}>
       {poseReference ? (
-        <span class="card-reference-pill" title={`${poseReference.recipe} の ${poseReference.pose} の基準 render`}>
+        <span class="card-reference-pill" title={`${poseReference.recipe} の ${poseReference.pose}`}>
           基準 {poseReference.pose}
         </span>
       ) : (
@@ -17,7 +17,7 @@ export function PoseReferenceRow({ generationId, poseReference }: { generationId
           type="button"
           class="pose-reference-btn"
           data-generation-id={generationId}
-          title="この render を pose の基準に pin する（rating good が必要）"
+          title="rating good が必要"
         >
           基準にする
         </button>
