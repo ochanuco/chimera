@@ -17,7 +17,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
   const galleryActive = path === '/gallery' || path === '/compare';
   const bookmarksActive = path === '/bookmarks';
   const workbenchActive = isActiveSection(path, '/work');
-  const moreActive = isActiveSection(path, '/experiments') || path === '/check';
+  const moreActive = isActiveSection(path, '/experiments') || path === '/check' || path === '/stats';
 
   return (
     <html lang="ja">
@@ -47,6 +47,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
             <div class="nav-more-panel">
               <a href="/experiments">Experiments</a>
               <a href="/check">絵柄チェック</a>
+              <a href="/stats">統計</a>
             </div>
           </details>
           <details class="nav-queue" id="nav-queue">

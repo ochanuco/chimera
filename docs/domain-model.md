@@ -552,6 +552,23 @@ options は明示的な矩形 `regions` と非空の `prompt_patch` を必須と
     もあれば、この自動起票 payload には `references: [{ generation_id,
     purpose: "rebuild" }]` が付きます（未設定なら `references` キー自体を省きます）。
 
+### Timings
+
+生成時間の計測は 3 表に持ちます。時刻は worker 機の epoch ミリ秒（INTEGER）で、所要時間は保存せず導出します
+（`node_timings.duration_ms` だけ挿入時に `ended_at - started_at` を計算して持つ）。
+
+-   `request_attempt_timings`: 1 試行 1 行。`UNIQUE (request_id, attempt, version)`。`version` は計測方式（v1 / v2）、
+    `source` は出所（worker / comfy_history / requests）、`status` は done / failed / cancelled / released。
+    `env_json`（ComfyUI バージョン・argv・attention・GPU など）、`cold_load`（0 / 1 / NULL）、`worker_id` を持つ。
+-   `prompt_timings`: 試行の ComfyUI prompt ごと。`attempt_timing_id` は `ON DELETE CASCADE`、`comfy_job_id` は
+    `comfy_prompt_id` から引いた Job（無ければ NULL）。`purpose` / `resumed` と、submitted / execution_start / execution_end /
+    outputs_ready / ingested の各時刻、`status`（success / error / interrupted / unknown）。
+-   `node_timings`: prompt ごとのノード。`PRIMARY KEY (prompt_timing_id, node_id)`、`role` に index。`cached = 1` のノードは時刻を持たない。
+    `step_ms_json` はサンプラーの step ごとの ms。
+
+同じ (request_id, attempt, version) の再送は、子行ごと削除して入れ直します。計測行が無い Request は集計時に v1（source `requests`）として
+`finished_at - claimed_at` を所要時間とみなします。受け口は [worker-protocol.md](worker-protocol.md#timings)、集計は [ui.md](ui.md#統計stats) です。
+
 ## PairwiseJudgment
 
 同じ seed の baseline run / arm run の生成結果を人間が盲検で対比較した記録です。Web GUI の

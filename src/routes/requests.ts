@@ -10,6 +10,8 @@ import {
   summarizeRequests,
   type RequestSummaryWorker,
 } from '../lib/requests';
+import { putTimingsSchema } from '../schemas/timings';
+import { putRequestTimings } from '../lib/timings';
 import { createJobSchema } from '../schemas/jobs';
 import { buildRequestJobs, createRequestJob, putResolution } from '../lib/request-resolution';
 import { notifyHub, runInBackground } from '../lib/hub-notify';
@@ -114,6 +116,12 @@ requests.put('/:id/resolution', async (c) => {
   await putResolution(db, row, input, worker_id);
   const current = await getRequestOr404(db, row.id);
   return c.json({ id: current.id, short_id: current.short_id, status: current.status, jobs: await buildRequestJobs(db, current.id) });
+});
+
+requests.put('/:id/timings', async (c) => {
+  const body = putTimingsSchema.parse(await c.req.json());
+  await putRequestTimings(c.env.DB, c.req.param('id'), body);
+  return c.json({ ok: true });
 });
 
 requests.post('/:id/jobs', async (c) => {
