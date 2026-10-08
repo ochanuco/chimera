@@ -22,8 +22,14 @@ async function rawSource() {
 interface RerollBody {
   root: { id: string; short_id: string };
   recipe: string | null;
-  request: { id: string; status: string } | null;
-  generations: { id: string; short_id: string; rating: string | null; bookmark: boolean }[];
+  rounds: {
+    request: { id: string; status: string };
+    generations: { id: string; short_id: string; rating: string | null; bookmark: boolean }[];
+  }[];
+}
+
+async function finish(requestId: string) {
+  await env.DB.prepare("UPDATE requests SET status = 'done' WHERE id = ?").bind(requestId).run();
 }
 
 async function rerollRows() {
@@ -45,7 +51,8 @@ describe('POST /api/v1/generations/{id}/reroll', () => {
     const res = await postJson<RerollBody>(`/api/v1/generations/${source.short_id}/reroll`, {});
     expect(res.status).toBe(201);
     expect(res.body.root.id).toBe(source.id);
-    expect(res.body.request?.status).toBe('queued');
+    expect(res.body.rounds).toHaveLength(1);
+    expect(res.body.rounds[0]!.request.status).toBe('queued');
 
     const rows = await rerollRows();
     expect(rows).toHaveLength(1);
@@ -53,7 +60,7 @@ describe('POST /api/v1/generations/{id}/reroll', () => {
     expect(row.kind).toBe('generate');
     expect(row.created_by).toBe('gui');
     expect(row.reroll_of_generation_id).toBe(source.id);
-    expect(row.idempotency_key).toBe(`reroll:${source.id}`);
+    expect(row.idempotency_key).toBe(`reroll:${source.id}:1`);
     expect(JSON.parse(row.payload_json)).toEqual({
       schema_version: 1,
       request: { instruction: 'a look', count: 4 },
@@ -62,13 +69,25 @@ describe('POST /api/v1/generations/{id}/reroll', () => {
     });
   });
 
-  it('returns the existing reroll on a second call instead of queueing another', async () => {
+  it('returns the in-flight round on a second call instead of queueing another', async () => {
     const source = await rawSource();
     const first = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
     const second = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
     expect(second.status).toBe(200);
-    expect(second.body.request?.id).toBe(first.body.request?.id);
+    expect(second.body.rounds.map((r) => r.request.id)).toEqual([first.body.rounds[0]!.request.id]);
     expect(await rerollRows()).toHaveLength(1);
+  });
+
+  it('queues a new round under its own idempotency key once the latest one has finished', async () => {
+    const source = await rawSource();
+    const first = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
+    await finish(first.body.rounds[0]!.request.id);
+    const second = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
+    expect(second.status).toBe(201);
+    expect(second.body.rounds).toHaveLength(2);
+    const rows = await rerollRows();
+    expect(rows.map((r) => r.idempotency_key).sort()).toEqual([`reroll:${source.id}:1`, `reroll:${source.id}:2`]);
+    expect(new Set(rows.map((r) => r.reroll_of_generation_id))).toEqual(new Set([source.id]));
   });
 
   it('resolves a refined Generation to its raw source', async () => {
@@ -92,21 +111,25 @@ describe('POST /api/v1/generations/{id}/reroll', () => {
 });
 
 describe('GET /api/v1/generations/{id}/reroll', () => {
-  it('reports no request before a reroll and the resulting Generations after', async () => {
+  it('reports no rounds before a reroll and the rounds oldest first after', async () => {
     const source = await rawSource();
     const before = await getJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`);
-    expect(before.body.request).toBeNull();
+    expect(before.body.rounds).toEqual([]);
     expect(before.body.recipe).toBe('yukari-anima');
-    expect(before.body.generations).toEqual([]);
 
     const created = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
-    const requestId = created.body.request!.id;
-    await env.DB.prepare("UPDATE requests SET status = 'done' WHERE id = ?").bind(requestId).run();
-    const { generation } = await createGeneration({ requestId });
+    const firstId = created.body.rounds[0]!.request.id;
+    await finish(firstId);
+    const { generation } = await createGeneration({ requestId: firstId });
+    const next = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
+    const secondId = next.body.rounds[1]!.request.id;
 
     const after = await getJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`);
-    expect(after.body.request?.status).toBe('done');
-    expect(after.body.generations.map((g) => g.id)).toEqual([generation.id]);
+    expect(after.body.rounds.map((r) => r.request.id)).toEqual([firstId, secondId]);
+    expect(after.body.rounds[0]!.request.status).toBe('done');
+    expect(after.body.rounds[0]!.generations.map((g) => g.id)).toEqual([generation.id]);
+    expect(after.body.rounds[1]!.request.status).toBe('queued');
+    expect(after.body.rounds[1]!.generations).toEqual([]);
   });
 });
 
@@ -126,16 +149,29 @@ describe('GET /reroll/{short_id}', () => {
     expect(html).toContain('data-wb-bookmark');
     expect(html).toContain('data-wb-loupe-toggle');
     expect(html).toContain('4 枚振る');
+    expect(html).not.toContain('もう 4 枚振る');
     expect(html).not.toMatch(/data-rr-run[^>]*hidden/);
     expect(html).toContain(`href="/g/${source.short_id}"`);
     expect(html).toContain('yukari-anima');
   });
 
-  it('hides the run button once a reroll exists', async () => {
+  it('shows a tab per round and a disabled busy button while the latest round is in flight', async () => {
     const source = await rawSource();
+    const first = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
+    const busy = await (await req(`/reroll/${source.short_id}`)).text();
+    expect(busy).toContain('data-rr-round="0"');
+    expect(busy).toContain('1 回目');
+    expect(busy).toMatch(/data-rr-run[^>]*disabled/);
+    expect(busy).toContain('処理中…');
+
+    await finish(first.body.rounds[0]!.request.id);
     await postJson(`/api/v1/generations/${source.id}/reroll`, {});
+    await env.DB.prepare("UPDATE requests SET status = 'done' WHERE reroll_of_generation_id = ?").bind(source.id).run();
     const html = await (await req(`/reroll/${source.short_id}`)).text();
-    expect(html).toMatch(/data-rr-run[^>]*hidden/);
+    expect(html).toContain('data-rr-round="1"');
+    expect(html).toContain('2 回目');
+    expect(html).toContain('もう 4 枚振る');
+    expect(html).not.toMatch(/data-rr-run[^>]*(hidden|disabled)/);
   });
 
   it('redirects a refined Generation to its raw source and 404s an unknown id', async () => {
