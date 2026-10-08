@@ -526,7 +526,7 @@ pose_fingerprint
 preset_versions_json
 git_commit
 git_dirty
-reroll_of_generation_id   リロールの元絵（raw Generation）の id。リロールで積んだ generate だけが持ち、元絵 1 枚につき 1 件
+reroll_of_generation_id   リロールの元絵（raw Generation）の id。リロールで積んだ generate だけが持ち、元絵 1 枚につき回ごとに 1 件（0040 以降。複数可）
 ```
 
 `recipe` 以降の列は生成前に worker が報告する解決済みの値です

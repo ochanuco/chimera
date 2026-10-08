@@ -1670,6 +1670,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .reroll-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 0.5rem; height: calc(100vh - 12rem); min-height: 20rem; }
 .reroll-original { grid-row: 1 / span 2; }
 .reroll .wb-compare { flex: none; }
+.reroll-tabs { margin-bottom: 0.5rem; }
 .reroll-board .wb-fig { min-height: 0; }
 .reroll-board .wb-cap { min-height: 2.25rem; }
 .reroll-board .wb-cap-actions { flex-wrap: wrap; }
@@ -5719,14 +5720,35 @@ export const appJs = `
     var rootId = root.getAttribute('data-root-id');
     var rr = { cursor: null, loupe: { on: true, zoom: 3 } };
     var progress = '';
+    var HINTS = { queued: '待機中', running: '処理中', failed: '失敗', cancelled: '中止' };
+    var sel = -1;
     var timer = null;
     var viewer = wbViewer(root, rr);
     viewer.trackCursor();
     var board = qs('[data-rr-board]', root);
 
+    function rounds() { return state.rounds || []; }
+
+    function latestRound() { var rs = rounds(); return rs.length ? rs[rs.length - 1] : null; }
+
+    function current() { var rs = rounds(); return rs[sel] || null; }
+
     function inFlight() {
-      return !!state.request && (state.request.status === 'queued' || state.request.status === 'running');
+      var r = latestRound();
+      return !!r && (r.request.status === 'queued' || r.request.status === 'running');
     }
+
+    function selectRound(i) {
+      sel = i;
+      try {
+        var url = new URL(window.location.href);
+        url.searchParams.set('round', String(i + 1));
+        history.replaceState(null, '', url.toString());
+      } catch (e) { /* the URL is a convenience */ }
+    }
+
+    var wanted = Number(new URLSearchParams(window.location.search).get('round'));
+    sel = wanted >= 1 && wanted <= rounds().length ? wanted - 1 : rounds().length - 1;
 
     function setNote(pane, text) {
       if (pane.getAttribute('data-wb-key') !== 'note') {
@@ -5740,7 +5762,8 @@ export const appJs = `
     }
 
     function noteFor() {
-      var r = state.request;
+      var cur = current();
+      var r = cur && cur.request;
       if (!r) return '未実行';
       if (r.status === 'queued') return '待機中…' + (progress ? ' ' + progress : '');
       if (r.status === 'running') return '処理中…' + (progress ? ' ' + progress : '');
@@ -5755,26 +5778,49 @@ export const appJs = `
       if (box.getAttribute('data-wb-cap-for') !== node.id) wbRenderCapActions(root, side, node);
     }
 
+    function renderTabs() {
+      var tabs = qs('[data-rr-tabs]', root);
+      tabs.hidden = rounds().length === 0;
+      tabs.textContent = '';
+      rounds().forEach(function (round, i) {
+        var b = wbEl('button', 'wb-pill' + (i === sel ? ' wb-pill-on' : ''), (i + 1) + ' 回目');
+        b.type = 'button';
+        b.setAttribute('data-rr-round', String(i));
+        var hint = HINTS[round.request.status];
+        if (hint) b.appendChild(wbEl('span', 'wb-meta', ' ' + hint));
+        b.addEventListener('click', function () { selectRound(i); render(); });
+        tabs.appendChild(b);
+      });
+    }
+
     function render() {
+      var cur = current();
+      var gens = cur ? cur.generations : [];
+      renderTabs();
       viewer.fillPane(qs('[data-wb-input-pane]', root), state.root.id, 'input', state.root, null);
       qs('[data-rr-meta="input"]', root).textContent = imageMetaText(state.root);
       renderCap('input', state.root);
       for (var i = 0; i < 4; i++) {
-        var node = (state.generations || [])[i] || null;
+        var node = gens[i] || null;
         var pane = qs('[data-rr-pane="' + i + '"]', root);
         if (node) viewer.fillPane(pane, node.id, 'cmp', node, null);
         else setNote(pane, noteFor());
         qs('[data-rr-meta="' + i + '"]', root).textContent = imageMetaText(node);
         renderCap('r' + i, node);
       }
-      qs('[data-rr-run]', root).hidden = !!state.request || !state.recipe;
+      var run = qs('[data-rr-run]', root);
+      run.hidden = !state.recipe;
+      run.disabled = inFlight();
+      run.textContent = inFlight() ? '処理中…' : rounds().length ? 'もう 4 枚振る' : '4 枚振る';
       viewer.updateCrosshair();
     }
 
     async function sync() {
       try {
         state = await api('/api/v1/generations/' + encodeURIComponent(rootId) + '/reroll');
+        if (sel >= rounds().length) sel = rounds().length - 1;
         render();
+        fitBoard();
         if (!inFlight()) stopPolling();
       } catch (e) {
         trackError('reroll.sync', e, {});
@@ -5802,26 +5848,31 @@ export const appJs = `
       showError('');
       try {
         state = await api('/api/v1/generations/' + encodeURIComponent(rootId) + '/reroll', 'POST');
+        selectRound(rounds().length - 1);
         render();
+        fitBoard();
         if (inFlight()) startPolling();
         track('reroll.run', { generation_id: rootId });
       } catch (e) {
         trackError('reroll.run', e, { generation_id: rootId });
         showError('リロールを積めませんでした: ' + e.message);
       } finally {
-        btn.disabled = false;
+        btn.disabled = inFlight();
       }
     });
 
     document.addEventListener('chimera:rating', function (ev) {
-      var all = [state.root].concat(state.generations || []);
+      var all = [state.root];
+      rounds().forEach(function (round) { all = all.concat(round.generations); });
       all.forEach(function (n) { if (n.id === ev.detail.id) n.rating = ev.detail.rating; });
     });
     viewerSocketOn('status', function (m) {
-      if (state.request && m.request_id === state.request.id) sync();
+      var r = latestRound();
+      if (r && m.request_id === r.request.id) sync();
     });
     viewerSocketOn('progress', function (m) {
-      if (!state.request || m.request_id !== state.request.id) return;
+      var r = latestRound();
+      if (!r || m.request_id !== r.request.id || current() !== r) return;
       progress = (m.phase || '') + (typeof m.step === 'number' && typeof m.total === 'number' ? ' ' + m.step + '/' + m.total : '');
       qsa('[data-rr-pane] .wb-empty', root).forEach(function (el) { el.textContent = noteFor(); });
     });

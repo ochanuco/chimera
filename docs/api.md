@@ -1407,8 +1407,9 @@ POST /api/v1/generations/{id}/reroll
 さかのぼった元絵を対象にします。不明な `{id}` は404です。
 
 `POST` は body を取りません。元絵の Request の `payload` から `request.seeds` と `experiment` を外し、`request.count = 4`、
-`created_by = gui`、`idempotency_key = reroll:<元絵の id>`、`recipe_ref` は元の Request と同じで積み、`requests.reroll_of_generation_id` に
-元絵の id を持たせます。元絵1枚につき1件で、既にあれば何も積まずその状態を200で返します（新規は201）。元絵の Request が
+`created_by = gui`、`idempotency_key = reroll:<元絵の id>:<回番号>`、`recipe_ref` は元の Request と同じで積み、`requests.reroll_of_generation_id` に
+元絵の id を持たせます。同じ元絵を何度でも振り直せて、1回ぶんが1回目、2回目…の「回」です。直近の回がまだ `queued` / `running` なら何も積まず
+その状態を200で返し（回番号が key に入るので、同じ回への同時 POST も1件に畳まれます）、そうでなければ次の回を積んで201で返します。元絵の Request が
 `kind = generate` でない、または `payload.generation.recipe` が無い（graph-mode など）ときは409です。
 
 どちらも同じ形を返します。
@@ -1420,15 +1421,20 @@ POST /api/v1/generations/{id}/reroll
     "image_width": 1024, "image_height": 1280, "image_size": 2097152, "created_at": "..."
   },
   "recipe": "yukari-anima",
-  "request": { "id": "...", "status": "running", "error": null, "created_at": "..." },
-  "generations": [ { "id": "...", "short_id": "def456", "rating": null, "bookmark": false, "delivered": false,
-                     "image_width": 1024, "image_height": 1280, "image_size": 2097152, "created_at": "..." } ]
+  "rounds": [
+    {
+      "request": { "id": "...", "status": "running", "error": null, "created_at": "..." },
+      "generations": [ { "id": "...", "short_id": "def456", "rating": null, "bookmark": false, "delivered": false,
+                         "image_width": 1024, "image_height": 1280, "image_size": 2097152, "created_at": "..." } ]
+    }
+  ]
 }
 ```
 
 -   `recipe`: 元絵の `payload.generation.recipe`。振り直せない元絵は `null`
--   `request`: リロールの Request。まだ無ければ `null`。進み具合の細かい `progress` は `/api/v1/requests/ws` で流れる
--   `generations`: リロールの Request が産んだ Generation を `created_at` の古い順に。まだ無ければ空
+-   `rounds`: リロールの回を古い順に。まだ振っていなければ空。進み具合の細かい `progress` は `/api/v1/requests/ws` で流れる
+-   `rounds[].request`: その回の Request
+-   `rounds[].generations`: その回の Request が産んだ Generation を `created_at` の古い順に。まだ無ければ空
 
 ### Workbench
 
