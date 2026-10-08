@@ -226,7 +226,7 @@ export interface GenerationListItem {
 
 export interface GenerationRefinementRequestBadge {
   id: string;
-  kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver';
+  kind: 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof';
   status: RequestStatus;
   /** result_json.generation_ids[0] を解決したshort_id。done以外、または未解決ならnull。 */
   result_short_id: string | null;
@@ -256,7 +256,7 @@ export async function getLatestRefinementRequestsForGenerations(
   const { results } = await db
     .prepare(
       `SELECT id, kind, status, payload_json, result_json FROM requests
-       WHERE kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver')
+       WHERE kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof')
          AND json_extract(payload_json, '$.generation_id') IN (SELECT value FROM json_each(?))
        ORDER BY created_at DESC`,
     )

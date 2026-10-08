@@ -15,6 +15,7 @@ import { setBookmark } from '../lib/bookmark';
 import { badRequest, notFound } from '../lib/errors';
 import { serializeGenerationAsset } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
+import { buildWorkbenchTree, findRootGeneration } from '../lib/workbench';
 import { buildContext, getGenerationDetail, queryGenerations, queryTimeline } from '../lib/generations';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 
@@ -39,6 +40,12 @@ generations.get('/:id/context', async (c) => {
   const generation = await getGenerationOr404(db, c.req.param('id'));
   const context = await buildContext(db, origin(c), generation);
   return c.json(context);
+});
+
+generations.get('/:id/tree', async (c) => {
+  const db = c.env.DB;
+  const generation = await getGenerationOr404(db, c.req.param('id'));
+  return c.json(await buildWorkbenchTree(db, await findRootGeneration(db, generation)));
 });
 
 generations.get('/:id', async (c) => {

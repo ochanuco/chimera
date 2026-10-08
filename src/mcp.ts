@@ -20,6 +20,7 @@ import {
   payloadEnvelopeIssues,
   redrawOptionsSchema,
   deliverOptionsSchema,
+  dofOptionsSchema,
   deliverProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
@@ -211,6 +212,16 @@ const deliverGenerationInputSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
+/** `dof_generation` の入力。options は dofPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+const dofGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  focus: dofOptionsSchema.shape.focus,
+  f_number: dofOptionsSchema.shape.f_number,
+  scope: dofOptionsSchema.shape.scope,
+  viewfinder: dofOptionsSchema.shape.viewfinder,
+  idempotency_key: z.string().min(1),
+});
+
 /** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
 const repairGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
@@ -363,7 +374,7 @@ const MCP_INSTRUCTIONS =
   '5. A redrawn / delivered / repaired / masked_redraw Generation exposes the Generation it was made from as ' +
   '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
-  'purple stroke).\n' +
+  'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field).\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
@@ -677,10 +688,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
-        'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "repair" ' +
+        'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
+        '(payload {generation_id, options: {focus, ...}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
-        'be created. redraw_generation / deliver_generation are the same requests with a typed input. created_by is ' +
+        'be created. redraw_generation / deliver_generation / dof_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
@@ -744,14 +756,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a deliver request (docs/worker-protocol.md "deliver"): cuts the figure out of the source picture and ' +
-        'finishes it — backdrop, purple stroke, optional depth-of-field and relight — without redrawing it. Its output ' +
+        'finishes it — backdrop, outlines and relight — without redrawing it. Its output ' +
         'Generations record the source Generation as the one they refine (refines_generation). generation_id accepts a ' +
         'short_id and takes a raw or redrawn picture, not an already delivered one; a LayerDiffuse-derived picture cannot be ' +
         'delivered. The cut assets (alpha, depth, cut) are made by the first deliver of a picture and reused by later ' +
-        'delivers of it, so re-delivering with another backdrop, stroke or F-number is cheap. ' +
+        'delivers of it, so re-delivering with another backdrop or outlines is cheap. The delivered Generation carries ' +
+        'layer assets (figure, outline, backdrop) that dof_generation blurs. ' +
         'options is optional; an omitted field resolves to the recipe\'s published deliver default — ' +
         'list_catalog\'s recipes[].deliver.defaults is where these are published, the same values the WebUI form presets ' +
-        'from, so look them up per-recipe rather than hardcoding (stroke_light "n", backdrop "dots" and repin true across ' +
+        'from, so look them up per-recipe rather than hardcoding (stroke_light "n", backdrop "dots", outlines and repin true across ' +
         'recipes). An explicit null keeps its own meaning rather than falling back to a default. Fields: ' +
         'repin (accent-compression recolor pass), recolor (palette recolor), skin (skin pass), ' +
         'keep_legwear (keep tights/legwear: true for the worker default weight 0.62, a number, or a word from ' +
@@ -760,21 +773,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'or a #RRGGBB color; null delivers transparent unless transparent is false), ' +
         'transparent (true is the explicit form of an alpha-cut delivery with no backdrop; false keeps a backdrop even ' +
         'when backdrop is null), ' +
-        'stroke_light (purple-stroke style: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; ' +
-        '"even" (null is accepted as the same) is a uniform-width stroke; "none" is no purple stroke at all), ' +
+        'outlines (array of up to 6 {color: "#rrggbb", width: percent of the long side, 0 < width <= 5}, innermost first; ' +
+        'omitted or null = the catalog default, [] = no outline), ' +
+        'stroke_light (shading of the outermost outline: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; ' +
+        '"even" (null is accepted as the same) is a uniform-width stroke), ' +
         'deliver_size (delivered file\'s longest side), ' +
-        'dof ({focus: [x, y], f_number}: depth-of-field blur. focus is fractions 0-1 of the source image width/height, ' +
-        'f_number is 1.4-22 and required, smaller = more blur. The worker blurs only inside the figure, the further from ' +
-        'the focus point\'s depth the stronger; the cutout is taken from the pre-blur picture. Optional scope: "figure" ' +
-        'blurs inside the figure only; "all" also blurs the white edge, purple stroke, shadow and backdrop, and fails ' +
-        'with a transparent delivery or with backdrop: null unless keep_scene is set. Omitted scope means "all", or ' +
-        '"figure" for a transparent delivery. Optional viewfinder: "off" (default), "on" draws a mirrorless viewfinder ' +
-        'overlay (rule-of-thirds grid, a focus frame at focus, a shutter/F-number/ISO bar) on the delivered image, "both" ' +
-        'delivers the plain image and the overlaid one as two Generations. Unknown keys fail. null/omitted = off), ' +
         'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: the scene and light direction ' +
         'the delivery follows; from is the direction the light comes from, default "nw"). When light is omitted it is inherited from the ' +
         'nearest redraw with method "light" among the source\'s ancestors, and stroke_light follows that direction; a ' +
-        'stroke_light direction different from the light\'s from fails, "none", "even" or null combine with it. ' +
+        'stroke_light direction different from the light\'s from fails, "even" or null combine with it. ' +
         'Every dial-able option (keep_legwear) also accepts a word string instead of a number/true — the word ' +
         'vocabulary for this recipe is list_catalog\'s recipes[].dials.deliver (chimera only checks the type; the worker ' +
         'resolves the word). ' +
@@ -796,6 +803,40 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.deliver_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'dof_generation',
+    {
+      outputSchema: mcpOutputSchemas.dof_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a dof request (docs/worker-protocol.md "dof"): depth-of-field blur of a delivered picture, made from its ' +
+        'layer assets (figure, outline, backdrop). generation_id accepts a short_id and takes only a Generation produced ' +
+        'by deliver that has layer assets; a picture delivered before layers existed must be delivered again, and a dof ' +
+        'output cannot be blurred again. focus is [x, y], fractions 0-1 of the picture width/height (required). ' +
+        'f_number is 1.4-22 (default 2.8), smaller = more blur. scope is {figure?, outline?, backdrop?} booleans naming ' +
+        'the layers to blur (default all true, not all false). viewfinder: "off" (default), "on" draws a mirrorless ' +
+        'viewfinder overlay (rule-of-thirds grid, a focus frame at focus, a shutter/F-number/ISO bar), "both" outputs the ' +
+        'plain image and the overlaid one as two Generations. The output is a delivered picture that refines the source. ' +
+        "list_catalog's top-level dof section publishes the F-number range and defaults. Follow status with get_request.",
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: dofGenerationInputSchema,
+    },
+    async ({ generation_id, focus, f_number, scope, viewfinder, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const options: Record<string, unknown> = { focus };
+      if (f_number !== undefined) options.f_number = f_number;
+      if (scope !== undefined) options.scope = scope;
+      if (viewfinder !== undefined) options.viewfinder = viewfinder;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'dof', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.dof_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -1101,8 +1142,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
         'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
-        'in place of a number), `deliver` (defaults, dof, stroke_light, backdrop_color: what deliver_generation resolves ' +
-        'omitted options to) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
+        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',

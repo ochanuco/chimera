@@ -2,6 +2,7 @@
 
 import { nowIso } from './db';
 import type { RecipeCatalogDoc } from '../schemas/catalogs';
+import { MAX_OUTLINES } from '../schemas/requests';
 import type { RecipeCatalogRow } from '../types';
 
 function extractNames(value: unknown): string[] {
@@ -106,6 +107,7 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
   return {
     recipes,
     patches: doc.patches,
+    ...('dof' in doc ? { dof: (doc as { dof?: unknown }).dof } : {}),
     git_commit: doc.git_commit ?? null,
     git_branch: doc.git_branch ?? null,
     generated_at: doc.generated_at ?? null,
@@ -207,22 +209,24 @@ export function findDeliverBackdropColor(doc: RecipeCatalogDoc, recipeName: stri
   return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
 }
 
-export interface DeliverDof {
+export interface DofChoice {
+  values: string[];
+  default: string;
+}
+
+export interface DofCatalog {
   min: number;
   max: number;
   default: number;
   stops: number[];
-  /** `deliver.dof.scope`; null when the catalog predates it or it is malformed (no "all" among values, or a default outside values). */
-  scope: DofChoice | null;
-  /** `deliver.dof.viewfinder`; null when the catalog predates it or it is malformed (no "off" among values, or a default outside values). */
+  /** `dof.scope`: which layers are blurred by default. Layers the catalog leaves out default to true. */
+  scope: { figure: boolean; outline: boolean; backdrop: boolean };
+  /** `dof.viewfinder`; null when absent or malformed (no "off" among values, or a default outside values). */
   viewfinder: DofChoice | null;
-  /** `deliver.dof.guide_radius_per_f`: radius of the in-focus guide circle as a fraction of the long side, per unit of F. null when absent or not a positive number. */
+  /** `dof.focus`: the help text for choosing the focus point. null when absent. */
+  focus: string | null;
+  /** `dof.guide_radius_per_f`: radius of the in-focus guide circle as a fraction of the long side, per unit of F. null when absent or not a positive number. */
   guideRadiusPerF: number | null;
-}
-
-export interface DofChoice {
-  values: string[];
-  default: string;
 }
 
 function parseDofChoice(raw: unknown, required: string): DofChoice | null {
@@ -234,19 +238,56 @@ function parseDofChoice(raw: unknown, required: string): DofChoice | null {
   return { values: values as string[], default: choice.default };
 }
 
-/** `recipes[].deliver.dof` for one recipe name — the F-number range and stops DeliverFields renders as a slider, plus the optional scope and viewfinder choices. null when f_number is absent or malformed. */
-export function findDeliverDof(doc: RecipeCatalogDoc, recipeName: string): DeliverDof | null {
-  const dof = plainObject(plainObject(findRecipe(doc, recipeName)?.deliver)?.dof);
+/** Top-level `dof` section (schema_version 3) — the F-number range and stops, scope defaults, viewfinder choices and focus text of the `dof` request kind. null when the section or its f_number is absent or malformed. */
+export function findDof(doc: RecipeCatalogDoc): DofCatalog | null {
+  const dof = plainObject((doc as { dof?: unknown }).dof);
   const f = dof?.f_number as { min?: unknown; max?: unknown; default?: unknown; stops?: unknown } | null | undefined;
-  if (!f || typeof f !== 'object') return null;
+  if (!dof || !f || typeof f !== 'object') return null;
   const { min, max, stops } = f;
   if (typeof min !== 'number' || typeof max !== 'number' || typeof f.default !== 'number') return null;
   if (!Array.isArray(stops) || stops.length === 0 || !stops.every((s) => typeof s === 'number')) return null;
-  const scope = parseDofChoice(dof?.scope, 'all');
-  const viewfinder = parseDofChoice(dof?.viewfinder, 'off');
-  const guide = dof?.guide_radius_per_f;
-  const guideRadiusPerF = typeof guide === 'number' && Number.isFinite(guide) && guide > 0 ? guide : null;
-  return { min, max, default: f.default, stops: stops as number[], scope, viewfinder, guideRadiusPerF };
+  const scope = plainObject(dof.scope);
+  const layer = (name: string): boolean => (typeof scope?.[name] === 'boolean' ? (scope[name] as boolean) : true);
+  const guide = dof.guide_radius_per_f;
+  return {
+    min,
+    max,
+    default: f.default,
+    stops: stops as number[],
+    scope: { figure: layer('figure'), outline: layer('outline'), backdrop: layer('backdrop') },
+    viewfinder: parseDofChoice(dof.viewfinder, 'off'),
+    focus: typeof dof.focus === 'string' ? dof.focus : null,
+    guideRadiusPerF: typeof guide === 'number' && Number.isFinite(guide) && guide > 0 ? guide : null,
+  };
+}
+
+export interface DeliverOutline {
+  color: string;
+  width: number;
+}
+
+export interface DeliverOutlines {
+  /** `deliver.outlines.default`: innermost first. */
+  default: DeliverOutline[];
+  /** `deliver.outlines.max_count`: most outlines a delivery takes. */
+  maxCount: number;
+  /** `deliver.outlines.max_width`: largest width, in percent of the long side. */
+  maxWidth: number;
+}
+
+/** `recipes[].deliver.outlines` for one recipe name — the default outline list plus its limits. null when absent or any default entry is not `{color: #rrggbb, width: number}`. */
+export function findDeliverOutlines(doc: RecipeCatalogDoc, recipeName: string): DeliverOutlines | null {
+  const outlines = plainObject(plainObject(findRecipe(doc, recipeName)?.deliver)?.outlines);
+  if (!outlines || !Array.isArray(outlines.default)) return null;
+  const list: DeliverOutline[] = [];
+  for (const item of outlines.default) {
+    const entry = plainObject(item);
+    if (!entry || typeof entry.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(entry.color) || typeof entry.width !== 'number') return null;
+    list.push({ color: entry.color, width: entry.width });
+  }
+  const maxCount = typeof outlines.max_count === 'number' ? outlines.max_count : MAX_OUTLINES;
+  const maxWidth = typeof outlines.max_width === 'number' ? outlines.max_width : 5;
+  return { default: list, maxCount, maxWidth };
 }
 
 export interface RedrawLight {

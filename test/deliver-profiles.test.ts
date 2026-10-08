@@ -6,7 +6,8 @@ import {
   getCatalog,
   findDeliverDials,
   findDeliverDefaults,
-  findDeliverDof,
+  findDeliverOutlines,
+  findDof,
   findDeliverBackdropColor,
   findRedrawDials,
   findRepairDials,
@@ -173,33 +174,31 @@ describe('redrawOptionsSchema', () => {
 });
 
 describe('deliverOptionsSchema', () => {
-  it('accepts dof with focus and f_number, null included', () => {
-    expect(deliverOptionsSchema.safeParse({ dof: { focus: [0.82, 0.55], f_number: 2.8 } }).success).toBe(true);
-    expect(deliverOptionsSchema.safeParse({ dof: { focus: [0, 1], f_number: 2.8 } }).success).toBe(true);
-    expect(deliverOptionsSchema.safeParse({ dof: null }).success).toBe(true);
+  it('accepts outlines as up to 6 {color, width} entries, empty and null included', () => {
+    expect(deliverOptionsSchema.safeParse({ outlines: [{ color: '#ffffff', width: 0.4 }, { color: '#885B80', width: 5 }] }).success).toBe(true);
+    expect(deliverOptionsSchema.safeParse({ outlines: [] }).success).toBe(true);
+    expect(deliverOptionsSchema.safeParse({ outlines: null }).success).toBe(true);
+    const six = Array.from({ length: 6 }, () => ({ color: '#000000', width: 1 }));
+    expect(deliverOptionsSchema.safeParse({ outlines: six }).success).toBe(true);
   });
 
-  it.each(['figure', 'all'])('accepts dof scope %s', (scope) => {
-    expect(deliverOptionsSchema.safeParse({ dof: { focus: [0.5, 0.5], f_number: 2.8, scope } }).success).toBe(true);
-  });
-
-  it.each(['off', 'on', 'both'])('accepts dof viewfinder %s', (viewfinder) => {
-    expect(deliverOptionsSchema.safeParse({ dof: { focus: [0.5, 0.5], f_number: 2.8, viewfinder } }).success).toBe(true);
+  it('accepts every stroke_light direction and even', () => {
+    for (const v of ['even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw', null]) {
+      expect(deliverOptionsSchema.safeParse({ stroke_light: v }).success).toBe(true);
+    }
   });
 
   it.each([
-    ['dof without f_number', { dof: { focus: [0.5, 0.5] } }],
-    ['dof without focus', { dof: { f_number: 2.8 } }],
-    ['f_number below 1.4', { dof: { focus: [0.5, 0.5], f_number: 1.3 } }],
-    ['f_number above 22', { dof: { focus: [0.5, 0.5], f_number: 23 } }],
-    ['focus outside 0..1', { dof: { focus: [1.2, 0.5], f_number: 2.8 } }],
-    ['negative focus', { dof: { focus: [0.5, -0.1], f_number: 2.8 } }],
-    ['focus with 3 elements', { dof: { focus: [0.5, 0.5, 0.5], f_number: 2.8 } }],
-    ['an unknown dof scope', { dof: { focus: [0.5, 0.5], f_number: 2.8, scope: 'background' } }],
-    ['a null dof scope', { dof: { focus: [0.5, 0.5], f_number: 2.8, scope: null } }],
-    ['an unknown dof viewfinder', { dof: { focus: [0.5, 0.5], f_number: 2.8, viewfinder: 'grid' } }],
-    ['a boolean dof viewfinder', { dof: { focus: [0.5, 0.5], f_number: 2.8, viewfinder: true } }],
-    ['an unknown dof key', { dof: { focus: [0.5, 0.5], f_number: 2.8, strength: 1 } }],
+    ['stroke_light none', { stroke_light: 'none' }],
+    ['dof in deliver options', { dof: { focus: [0.5, 0.5], f_number: 2.8 } }],
+    ['null dof in deliver options', { dof: null }],
+    ['7 outlines', { outlines: Array.from({ length: 7 }, () => ({ color: '#000000', width: 1 })) }],
+    ['a zero width', { outlines: [{ color: '#000000', width: 0 }] }],
+    ['a width above 5', { outlines: [{ color: '#000000', width: 5.1 }] }],
+    ['a short color', { outlines: [{ color: '#fff', width: 1 }] }],
+    ['a color without #', { outlines: [{ color: 'ffffff', width: 1 }] }],
+    ['an unknown outline key', { outlines: [{ color: '#ffffff', width: 1, blur: 1 }] }],
+    ['an outline without width', { outlines: [{ color: '#ffffff' }] }],
   ])('rejects %s', (_label, options) => {
     expect(deliverOptionsSchema.safeParse(options).success).toBe(false);
   });
@@ -639,7 +638,6 @@ describe('redraw and deliver catalog sections', () => {
     const doc = (await getCatalog(env.DB, ref))!.doc;
     expect(findDeliverDefaults(doc, recipe)).toBeNull();
     expect(findDeliverBackdropColor(doc, recipe)).toBeNull();
-    expect(findDeliverDof(doc, recipe)).toBeNull();
     expect(findRedrawLight(doc, recipe)).toBeNull();
     expect(findRedrawDials(doc, recipe)).toBeNull();
     expect(findDeliverDials(doc, recipe)).toBeNull();
@@ -670,73 +668,80 @@ describe('redraw and deliver catalog sections', () => {
   });
 });
 
-describe('findDeliverDof', () => {
-  function catalogWithDof(recipe: string, dof: unknown) {
-    return {
-      schema_version: 1,
-      recipes: [{ name: recipe, poses: [], deliver: { dof } }],
-      patches: {},
-    };
+describe('findDof', () => {
+  const fNumber = { min: 1.4, max: 22, default: 2.8, stops: [1.4, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0] };
+
+  function catalogWithDof(dof: unknown) {
+    return { schema_version: 3, recipes: [{ name: uniqueRecipe(), poses: [] }], patches: {}, dof };
   }
 
-  it('extracts recipes[].deliver.dof.f_number; null when absent or malformed', async () => {
-    const recipeRef = uniqueRecipeRef();
-    const recipe = uniqueRecipe();
-    const fNumber = { min: 2.8, max: 22, default: 2.8, stops: [2.8, 4.0, 5.6, 8.0, 11.0, 16.0, 22.0] };
-    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDof(recipe, { f_number: fNumber, focus: 'fractions [x, y] of the source image' }), 'PUT');
-    const found = await getCatalog(env.DB, recipeRef);
-    expect(findDeliverDof(found!.doc, recipe)).toEqual({ ...fNumber, scope: null, viewfinder: null, guideRadiusPerF: null });
-    expect(findDeliverDof(found!.doc, 'nonexistent-recipe')).toBeNull();
+  async function read(dof: unknown) {
+    const ref = uniqueRecipeRef();
+    const put = await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(dof), 'PUT');
+    expect(put.status).toBe(200);
+    return findDof((await getCatalog(env.DB, ref))!.doc);
+  }
 
-    const scope = { values: ['figure', 'all'], default: 'figure' };
-    const scopedRef = uniqueRecipeRef();
-    const scopedRecipe = uniqueRecipe();
-    await postJson(`/api/v1/catalogs/${scopedRef}`, catalogWithDof(scopedRecipe, { f_number: fNumber, scope }), 'PUT');
-    expect(findDeliverDof((await getCatalog(env.DB, scopedRef))!.doc, scopedRecipe)).toEqual({ ...fNumber, scope, viewfinder: null, guideRadiusPerF: null });
-
+  it('reads the top-level dof section, defaulting scope layers to true', async () => {
     const viewfinder = { values: ['off', 'on', 'both'], default: 'off' };
-    const viewfinderRef = uniqueRecipeRef();
-    const viewfinderRecipe = uniqueRecipe();
-    await postJson(`/api/v1/catalogs/${viewfinderRef}`, catalogWithDof(viewfinderRecipe, { f_number: fNumber, scope, viewfinder }), 'PUT');
-    expect(findDeliverDof((await getCatalog(env.DB, viewfinderRef))!.doc, viewfinderRecipe)).toEqual({ ...fNumber, scope, viewfinder, guideRadiusPerF: null });
+    expect(await read({ f_number: fNumber, scope: { figure: true, outline: true, backdrop: false }, viewfinder, focus: 'x, y', guide_radius_per_f: 0.0417 })).toEqual({
+      ...fNumber,
+      scope: { figure: true, outline: true, backdrop: false },
+      viewfinder,
+      focus: 'x, y',
+      guideRadiusPerF: 0.0417,
+    });
+    expect(await read({ f_number: fNumber })).toEqual({
+      ...fNumber,
+      scope: { figure: true, outline: true, backdrop: true },
+      viewfinder: null,
+      focus: null,
+      guideRadiusPerF: null,
+    });
+  });
 
-    for (const badViewfinder of [{ values: ['on', 'both'], default: 'on' }, { values: ['off', 'on'], default: 'both' }, { values: ['off'] }, 'on']) {
-      const ref = uniqueRecipeRef();
-      const name = uniqueRecipe();
-      await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, viewfinder: badViewfinder }), 'PUT');
-      expect(findDeliverDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null, viewfinder: null, guideRadiusPerF: null });
+  it('drops a malformed viewfinder and a non-positive guide radius, and is null without a usable f_number', async () => {
+    for (const bad of [{ values: ['on', 'both'], default: 'on' }, { values: ['off', 'on'], default: 'both' }, 'on']) {
+      expect((await read({ f_number: fNumber, viewfinder: bad }))?.viewfinder).toBeNull();
     }
-
-    for (const badScope of [{ values: ['figure'], default: 'figure' }, { values: 'all', default: 'all' }, { values: ['all'] }, 'all']) {
-      const ref = uniqueRecipeRef();
-      const name = uniqueRecipe();
-      await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, scope: badScope }), 'PUT');
-      expect(findDeliverDof((await getCatalog(env.DB, ref))!.doc, name)).toEqual({ ...fNumber, scope: null, viewfinder: null, guideRadiusPerF: null });
+    for (const [raw, expected] of [[0, null], [-1, null], ['0.04', null]] as const) {
+      expect((await read({ f_number: fNumber, guide_radius_per_f: raw }))?.guideRadiusPerF).toBe(expected);
     }
-
-    for (const [raw, expected] of [[0.0417, 0.0417], [0, null], [-1, null], ['0.04', null]] as const) {
-      const ref = uniqueRecipeRef();
-      const name = uniqueRecipe();
-      await postJson(`/api/v1/catalogs/${ref}`, catalogWithDof(name, { f_number: fNumber, guide_radius_per_f: raw }), 'PUT');
-      expect(findDeliverDof((await getCatalog(env.DB, ref))!.doc, name)?.guideRadiusPerF).toBe(expected);
+    for (const bad of [{ f_number: 'x' }, { f_number: { ...fNumber, stops: [] } }, { f_number: { ...fNumber, default: '2.8' } }, {}]) {
+      expect(await read(bad)).toBeNull();
     }
+    const ref = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${ref}`, { schema_version: 3, recipes: [], patches: {} }, 'PUT');
+    expect(findDof((await getCatalog(env.DB, ref))!.doc)).toBeNull();
+  });
 
-    const noDofRef = uniqueRecipeRef();
-    const noDofRecipe = uniqueRecipe();
-    await postJson(`/api/v1/catalogs/${noDofRef}`, catalogWithDeliverDefaults(noDofRecipe, { repin: false }), 'PUT');
-    expect(findDeliverDof((await getCatalog(env.DB, noDofRef))!.doc, noDofRecipe)).toBeNull();
+  it('is published in the catalog summary', async () => {
+    const ref = uniqueRecipeRef();
+    const put = await postJson<{ dof: unknown }>(`/api/v1/catalogs/${ref}`, catalogWithDof({ f_number: fNumber }), 'PUT');
+    expect(put.body.dof).toEqual({ f_number: fNumber });
+  });
+});
 
-    for (const bad of [
-      { f_number: 'x' },
-      { f_number: { ...fNumber, stops: [] } },
-      { f_number: { ...fNumber, stops: ['a'] } },
-      { f_number: { ...fNumber, default: '2.8' } },
-    ]) {
-      const badRef = uniqueRecipeRef();
-      const badRecipe = uniqueRecipe();
-      await postJson(`/api/v1/catalogs/${badRef}`, catalogWithDof(badRecipe, bad), 'PUT');
-      expect(findDeliverDof((await getCatalog(env.DB, badRef))!.doc, badRecipe)).toBeNull();
-    }
+describe('findDeliverOutlines', () => {
+  async function read(outlines: unknown) {
+    const ref = uniqueRecipeRef();
+    const recipe = uniqueRecipe();
+    await postJson(`/api/v1/catalogs/${ref}`, { schema_version: 3, recipes: [{ name: recipe, poses: [], deliver: { outlines } }], patches: {} }, 'PUT');
+    return findDeliverOutlines((await getCatalog(env.DB, ref))!.doc, recipe);
+  }
+
+  it('reads the default list and limits, falling back to 6 / 5', async () => {
+    const list = [{ color: '#ffffff', width: 0.4 }, { color: '#885b80', width: 1.04 }];
+    expect(await read({ default: list, max_count: 4, max_width: 3 })).toEqual({ default: list, maxCount: 4, maxWidth: 3 });
+    expect(await read({ default: list })).toEqual({ default: list, maxCount: 6, maxWidth: 5 });
+    expect(await read({ default: [] })).toEqual({ default: [], maxCount: 6, maxWidth: 5 });
+  });
+
+  it('is null when absent or any default entry is malformed', async () => {
+    expect(await read(undefined)).toBeNull();
+    expect(await read({ default: 'x' })).toBeNull();
+    expect(await read({ default: [{ color: 'white', width: 1 }] })).toBeNull();
+    expect(await read({ default: [{ color: '#ffffff', width: '1' }] })).toBeNull();
   });
 });
 

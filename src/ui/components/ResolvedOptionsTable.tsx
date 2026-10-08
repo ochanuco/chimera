@@ -21,6 +21,7 @@ const OPTION_LABELS: Record<string, string> = {
   backdrop: '背景',
   light: '光源',
   stroke_light: '紫縁',
+  outlines: 'フチ',
   repair: '部分描き直し',
   repair_regions: '描き直す範囲',
   repair_pad: 'repair pad',
@@ -59,6 +60,19 @@ function optionRows(key: string, value: unknown): Row[] {
       rows.push(['ファインダー', DOF_VIEWFINDER_LABELS[value.viewfinder] ?? value.viewfinder]);
     }
     return rows;
+  }
+  if (key === 'focus' && Array.isArray(value) && value.length === 2) {
+    return [['ピント位置', `x ${formatScalar(value[0])} · y ${formatScalar(value[1])}`]];
+  }
+  if (key === 'f_number') return [['F値', `F${formatScalar(value)}`]];
+  if (key === 'viewfinder' && typeof value === 'string') return [['ファインダー', DOF_VIEWFINDER_LABELS[value] ?? value]];
+  if (key === 'scope' && isRecord(value)) {
+    const layers = ([['figure', '人物'], ['outline', 'フチ'], ['backdrop', '背景']] as const).filter(([layer]) => value[layer] !== false);
+    return [['ボカす範囲', layers.map(([, name]) => name).join(' + ')]];
+  }
+  if (key === 'outlines' && Array.isArray(value)) {
+    if (value.length === 0) return [[label, 'なし']];
+    return [[label, value.map((o) => (isRecord(o) ? `${formatScalar(o.color)} ${formatScalar(o.width)}%` : formatScalar(o))).join(' → ')]];
   }
   if (key === 'light' && isRecord(value)) {
     const scene = typeof value.scene === 'string' ? (LIGHT_SCENE_LABELS[value.scene] ?? value.scene) : formatScalar(value.scene);

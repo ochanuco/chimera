@@ -6,6 +6,7 @@ import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { RedrawSection, type RedrawFormData } from '../components/RedrawSection';
 import { RepairSection, type RepairFormData } from '../components/RepairSection';
 import { DeliverSection, type DeliverFormData } from '../components/DeliverSection';
+import { DofSection, type DofFormData } from '../components/DofSection';
 import { RequestSection, type RequestStatusLine } from '../components/RequestSection';
 import { NoteSection } from '../components/NoteSection';
 import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
@@ -166,6 +167,8 @@ export function GenerationDetailPage({
   redrawForm,
   repairForm,
   deliverForm,
+  dofForm,
+  dofAvailable,
   canPromoteToProfile,
   producedByOptions,
 }: {
@@ -182,6 +185,9 @@ export function GenerationDetailPage({
   redrawForm: RedrawFormData;
   repairForm: RepairFormData;
   deliverForm: DeliverFormData;
+  dofForm: DofFormData;
+  /** deliver が産んだ絵 (dof の入力にできる絵)。dof の出力や納品でない絵には欄を出さない。 */
+  dofAvailable: boolean;
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
@@ -234,8 +240,17 @@ export function GenerationDetailPage({
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />
 
+          <p class="image-meta">
+            <a class="workbench-open-link" href={`/work/${data.short_id}`}>
+              ワークベンチで開く
+            </a>
+          </p>
+
           {delivered ? (
-            <p class="image-meta">納品済みの絵なので、描き直し・repair・納品は元の絵から行います。</p>
+            <>
+              <p class="image-meta">納品済みの絵なので、描き直し・repair・納品は元の絵から行います。</p>
+              {dofAvailable ? <DofSection shortId={data.short_id} form={dofForm} /> : null}
+            </>
           ) : data.original_purged_at ? (
             <p class="image-meta">原寸は破棄済みのため描き直し・repair・納品は積めません。</p>
           ) : (
