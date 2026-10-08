@@ -502,6 +502,9 @@ export async function clearGenerationData(): Promise<void> {
     env.DB.prepare('DELETE FROM preset_references'),
     env.DB.prepare('DELETE FROM presets'),
     env.DB.prepare('DELETE FROM request_references'),
+    env.DB.prepare('DELETE FROM node_timings'),
+    env.DB.prepare('DELETE FROM prompt_timings'),
+    env.DB.prepare('DELETE FROM request_attempt_timings'),
     env.DB.prepare('DELETE FROM generation_tags'),
     env.DB.prepare('DELETE FROM generations'),
     env.DB.prepare('DELETE FROM comfy_jobs'),
@@ -513,6 +516,9 @@ export async function clearGenerationData(): Promise<void> {
 /** Deletes every Request nothing depends on yet (no Job, no Generation), so a test sees only its own queue. */
 export async function clearRequests(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM node_timings WHERE prompt_timing_id IN (SELECT id FROM prompt_timings WHERE request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations))'),
+    env.DB.prepare('DELETE FROM prompt_timings WHERE request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
+    env.DB.prepare('DELETE FROM request_attempt_timings WHERE request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
     env.DB.prepare('DELETE FROM request_references WHERE target_request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
     env.DB.prepare('DELETE FROM requests WHERE id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
   ]);
