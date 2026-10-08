@@ -1658,6 +1658,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
 .work-rating { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--border); color: var(--text); }
+.work-state { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+.work-state-done { border-color: var(--good); color: var(--good); }
 .work-rating-good { background: var(--good); color: #0c1a10; }
 .work-rating-bad { background: var(--bad); color: #200a08; }
 .work-source-recipe { font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }

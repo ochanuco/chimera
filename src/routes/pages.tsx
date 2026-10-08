@@ -473,12 +473,13 @@ pages.get('/compare', async (c) => {
 });
 
 pages.get('/work', async (c) => {
-  const rating = c.req.query('rating') === 'good' ? 'good' : undefined;
+  const stateQuery = c.req.query('state');
+  const state = stateQuery === 'wip' || stateQuery === 'done' ? stateQuery : undefined;
   const recipe = c.req.query('recipe') || undefined;
   const page = Math.max(Number(c.req.query('page')) || 1, 1);
-  const sources = await listWorkSources(c.env.DB, { rating, recipe, offset: (page - 1) * WORK_SOURCES_PAGE_SIZE });
+  const sources = await listWorkSources(c.env.DB, { state, recipe, offset: (page - 1) * WORK_SOURCES_PAGE_SIZE });
   return c.html(
-    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={sources.recipes} filters={{ rating, recipe, page }} hasMore={sources.hasMore} />,
+    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={sources.recipes} filters={{ state, recipe, page }} hasMore={sources.hasMore} />,
   );
 });
 

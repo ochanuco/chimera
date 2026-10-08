@@ -757,8 +757,12 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
 
 ### `/work`
 
-元絵（`origin=raw`、`refines_generation_id`が無い Generation）を新しい順に24枚ずつ並べる選択画面です。評価（`すべて` / `good だけ`）とrecipeの
+手を入れた元絵（`refines_generation_id`が無い Generation のうち、仕上げ先の Generation を持つか、保存済みの`workbenches`行がある物）を
+最終更新の新しい順（子孫の最新`created_at`と`workbenches.updated_at`の遅い方）に24枚ずつ並べる再開画面です。未着手の Generation は出ません。
+各カードに状態を出します。`しかかり`は納品済みの子孫がまだ無いもの、`完成`は子孫に納品済み（`isDeliveredRequest`と同じ判定: deliver / dof / finalize、
+または deliver / hires-chain / deliver_only の repair）があるものです。状態（`すべて` / `しかかり` / `完成`、`?state=wip|done`）とrecipeの
 絞り込みピルがあり、ページは`?page=`の前へ / 次へで送ります。カードをクリックすると`/work/{short_id}`へ進みます。
+新しく始めるときはギャラリーか`/g/{id}`の`ワークベンチで開く`から入る旨を冒頭に書いています。空のときは「作業中の絵がありません」を出します。
 
 ### `/work/{short_id}`
 
