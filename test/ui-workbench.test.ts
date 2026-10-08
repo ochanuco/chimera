@@ -196,13 +196,15 @@ describe('GET /work/:shortId', () => {
     expect(body.nodes.find((n) => n.id === root.id)).toMatchObject({ image_width: 1536, image_height: 1024, image_size: 2048 });
   });
 
-  it('puts the bookmark on each tree node and a bookmark button beside the candidate rating', async () => {
+  it('puts the bookmark on each tree node and the ID, /g/ link, rating and bookmark on both pane captions', async () => {
     const { generation: root } = await createGeneration();
     await req(`/api/v1/generations/${root.id}/bookmark`, { method: 'PUT' });
     const body = (await (await req(`/api/v1/generations/${root.id}/tree`)).json()) as { nodes: { id: string; bookmark: boolean }[] };
     expect(body.nodes.find((n) => n.id === root.id)?.bookmark).toBe(true);
     const html = await (await req(`/work/${root.short_id}`)).text();
-    expect(html).toMatch(/data-wb-rating[\s\S]*?class="bookmark-btn" data-wb-bookmark="true" data-kind="generations"/);
+    for (const side of ['input', 'cmp']) {
+      expect(html).toMatch(new RegExp(`data-wb-cap-actions="${side}"[\\s\\S]*?data-wb-cap-id[\\s\\S]*?data-wb-cap-link[\\s\\S]*?class="rating-group wb-rating"[\\s\\S]*?class="bookmark-btn" data-wb-bookmark="true"`));
+    }
   });
 
   it('summarises the outline list in the フチ summary', () => {

@@ -242,6 +242,27 @@ function PartForm({ data }: { data: WorkbenchData }) {
   );
 }
 
+function CapActions({ side }: { side: 'input' | 'cmp' }) {
+  return (
+    <div class="wb-cap-actions" data-wb-cap-actions={side} hidden>
+      <span class="copy-id-btn copy-id-text" data-wb-cap-id role="button" tabindex={0} title="ID をコピー"></span>
+      <a class="wb-cap-link" data-wb-cap-link title="詳細を開く">
+        /g/
+      </a>
+      <div class="rating-group wb-rating" role="group" aria-label="評価">
+        {(['bad', 'neutral', 'good'] as const).map((r) => (
+          <button type="button" class="rate-btn" data-rating={r}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <button type="button" class="bookmark-btn" data-wb-bookmark data-kind="generations" data-bookmarked="false" aria-label="ブックマーク">
+        🔖
+      </button>
+    </div>
+  );
+}
+
 function DeliverForm({ data }: { data: WorkbenchData }) {
   const defaults = data.deliverDefaults;
   const patterns = data.backdrops.length > 0 ? data.backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
@@ -398,6 +419,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                     入力 <span class="mono" data-wb-input-kind></span> <span class="wb-meta" data-wb-input-meta></span>
                   </span>
                   <span data-wb-pane-hint></span>
+                  <CapActions side="input" />
                 </figcaption>
                 <div class="wb-pane" data-wb-input-pane></div>
               </figure>
@@ -407,18 +429,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                     候補 <span class="mono" data-wb-cmp-kind></span> <span data-wb-cmp-badge></span> <span class="mono" data-wb-cmp-status></span>{' '}
                     <span class="wb-meta" data-wb-cmp-meta></span>
                   </span>
-                  <div class="wb-cap-actions">
-                    <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
-                      {(['bad', 'neutral', 'good'] as const).map((r) => (
-                        <button type="button" class="rate-btn" data-rating={r}>
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                    <button type="button" class="bookmark-btn" data-wb-bookmark data-kind="generations" data-bookmarked="false" aria-label="ブックマーク" hidden>
-                      🔖
-                    </button>
-                  </div>
+                  <CapActions side="cmp" />
                 </figcaption>
                 <div class="wb-pane" data-wb-cmp-pane></div>
               </figure>
