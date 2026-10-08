@@ -1092,6 +1092,13 @@ details.section .section-body { margin-top: 0.6rem; }
 .dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
 .dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
 .dof-f-row { display: flex; align-items: center; gap: 0.4rem; }
+/* The guide circle sits in a clip box so it never draws outside the picture. */
+.dof-guide-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.dof-guide-circle {
+  position: absolute; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
 /* White ring with a dark halo so the marker reads on both light and dark pictures. */
 .dof-focus-marker {
   position: absolute;
@@ -1535,8 +1542,9 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .wb-fig { margin: 0; display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
 .wb-cap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.25rem 0.5rem; min-height: 2.25rem; font-size: 0.78rem; color: var(--text-dim); }
+.wb-cap-actions { display: flex; align-items: center; gap: 0.25rem; }
 .wb-pane {
-  position: relative; width: 100%; height: calc(100vh - 18rem); min-height: 22rem; border-radius: 8px;
+  position: relative; width: 100%; height: var(--wb-pane-h, calc(100vh - 18rem)); min-height: 14rem; border-radius: 8px;
   border: 1px solid var(--border); background: var(--bg-elevated); overflow: hidden; user-select: none;
   display: flex; align-items: center; justify-content: center;
 }
@@ -1589,7 +1597,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
 
 .wb-panel {
-  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow: hidden;
+  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100dvh - var(--wb-panel-top, 6rem) - 1.5rem); overflow: hidden;
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
   display: flex; flex-direction: column;
 }
@@ -4661,6 +4669,9 @@ export const appJs = `
           loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
           overlay.appendChild(loupe);
           overlay.appendChild(wbEl('div', 'wb-rects'));
+          var guideClip = wbEl('div', 'dof-guide-clip');
+          guideClip.appendChild(wbEl('div', 'dof-guide-circle wb-guide'));
+          overlay.appendChild(guideClip);
           overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
           pane.appendChild(overlay);
           if (resizeObserver) resizeObserver.observe(pane);
@@ -4953,6 +4964,21 @@ export const appJs = `
           marker.style.left = wb.focus[0] * 100 + '%';
           marker.style.top = wb.focus[1] * 100 + '%';
         }
+        // Radius = guide_radius_per_f * F * long side; in percent of each side so a pane resize keeps it.
+        var guide = qs('.wb-guide', overlay);
+        var slider = dofSlider(phaseForm(5));
+        var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
+        var f = dofFNumber(phaseForm(5));
+        var w = overlay.offsetWidth;
+        var h = overlay.offsetHeight;
+        guide.hidden = marker.hidden || !(k > 0) || f === undefined || !w || !h;
+        if (!guide.hidden) {
+          var d = 2 * k * f * Math.max(w, h);
+          guide.style.width = (d / w) * 100 + '%';
+          guide.style.height = (d / h) * 100 + '%';
+          guide.style.left = (wb.focus[0] - d / w / 2) * 100 + '%';
+          guide.style.top = (wb.focus[1] - d / h / 2) * 100 + '%';
+        }
       });
       var count = qs('[data-wb-rect-count]', root);
       if (count) count.textContent = '矩形 ' + wb.rects.length + ' か所';
@@ -5086,10 +5112,14 @@ export const appJs = `
         qs('[data-wb-cmp-meta]', root).textContent = '';
       }
       var rating = qs('[data-wb-rating]', root);
+      var bookmark = qs('[data-wb-bookmark]', root);
       rating.hidden = !(cmp && cmp.node);
+      bookmark.hidden = rating.hidden;
       if (cmp && cmp.node) {
         rating.setAttribute('data-generation-id', cmp.node.id);
         applyRatingToGroups(cmp.node.id, cmp.node.rating);
+        bookmark.setAttribute('data-id', cmp.node.id);
+        bookmark.setAttribute('data-bookmarked', cmp.node.bookmark ? 'true' : 'false');
       }
     }
 
@@ -5170,6 +5200,7 @@ export const appJs = `
       renderControls(list);
       renderPanel();
       updateOverlays();
+      fitPanel();
       imagePanes().forEach(layoutPane);
     }
 
@@ -5474,24 +5505,16 @@ export const appJs = `
         field.value = (field.value.trim() ? field.value.trim() + ', ' : '') + text;
         return renderPanel();
       }
+      // initBookmark on document does the request; the node follows so a re-render keeps the new state.
+      var bm = t.closest('[data-wb-bookmark]');
+      if (bm) {
+        var bmNode = nodeById(bm.getAttribute('data-id'));
+        if (bmNode) bmNode.bookmark = bm.getAttribute('data-bookmarked') !== 'true';
+        return;
+      }
       var bg = t.closest('[data-wb-bg]');
       if (bg) {
-        var choice = bg.getAttribute('data-wb-bg');
-        qsa('[data-wb-bg]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === bg); });
-        var radios = qsa('input[name="backdrop"]', phaseForm(4));
-        var patterns = qs('[data-wb-backdrop-patterns]', root);
-        patterns.hidden = choice === 'transparent';
-        if (choice === 'transparent') {
-          radios.forEach(function (r) { r.checked = r.value === 'transparent'; });
-        } else if (!radios.some(function (r) { return r.checked && r.value !== 'transparent'; })) {
-          var wanted = patterns.getAttribute('data-default');
-          radios.forEach(function (r) { r.checked = r.value === wanted; });
-          if (!radios.some(function (r) { return r.checked; })) {
-            var first = qs('[data-wb-backdrop-first]', patterns);
-            if (first) first.checked = true;
-          }
-        }
-        syncBackdropColor(phaseForm(4));
+        setDeliverBg(bg.getAttribute('data-wb-bg'));
         return;
       }
     });
@@ -5509,6 +5532,7 @@ export const appJs = `
       if (!(input instanceof HTMLInputElement)) return;
       if (input.name === 'wb_denoise') qs('[data-wb-denoise-readout]', root).textContent = input.value;
       if (input.name === 'dof_f_stop') qs('[data-dof-f-readout]', root).textContent = 'f/' + dofFNumber(phaseForm(5));
+      if (input.name === 'dof_f_stop') updateOverlays();
       if (input.name === 'wb_patch') renderPanel();
     });
 
@@ -5584,6 +5608,48 @@ export const appJs = `
       updateOverlays();
     });
 
+    // A transparent delivery starts without bands; a backdrop one starts from the catalog's.
+    function setDeliverBg(choice) {
+      var form = phaseForm(4);
+      qsa('[data-wb-bg]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-bg') === choice); });
+      var radios = qsa('input[name="backdrop"]', form);
+      var patterns = qs('[data-wb-backdrop-patterns]', root);
+      patterns.hidden = choice === 'transparent';
+      if (choice === 'transparent') {
+        radios.forEach(function (r) { r.checked = r.value === 'transparent'; });
+      } else if (!radios.some(function (r) { return r.checked && r.value !== 'transparent'; })) {
+        var wanted = patterns.getAttribute('data-default');
+        radios.forEach(function (r) { r.checked = r.value === wanted; });
+        if (!radios.some(function (r) { return r.checked; })) {
+          var first = qs('[data-wb-backdrop-first]', patterns);
+          if (first) first.checked = true;
+        }
+      }
+      var editor = qs('[data-outline-editor]', form);
+      if (editor) {
+        setOutlineList(editor, choice === 'transparent' ? [] : outlineDefaults(editor));
+        setOutlineStroke(editor, editor.getAttribute('data-stroke-default') || 'even');
+      }
+      syncBackdropColor(form);
+    }
+
+    // The header and stepper wrap at varying heights; the panes and the panel measure from
+    // where they start so the page ends at the viewport bottom with the run button in view.
+    function fitPanel() {
+      var panel = qs('.wb-panel', root);
+      var pane = qs('.wb-pane', root);
+      if (!panel || !pane) return;
+      root.style.removeProperty('--wb-pane-h');
+      root.style.setProperty('--wb-panel-top', Math.round(panel.getBoundingClientRect().top + window.scrollY) + 'px');
+      if (window.matchMedia('(max-width: 900px)').matches) return;
+      // A shorter pane can unwrap the controls row, so a second pass settles what the first left.
+      for (var pass = 0; pass < 2; pass++) {
+        var excess = document.documentElement.scrollHeight - window.innerHeight;
+        if (excess <= 0 || pane.offsetHeight === 0) break;
+        root.style.setProperty('--wb-pane-h', Math.floor(pane.getBoundingClientRect().height - excess) + 'px');
+      }
+    }
+
     // ---- start ----
     var at = initial.at ? wbNodeByShort(wb.nodes, initial.at) : null;
     if (at && at.phase) {
@@ -5596,11 +5662,8 @@ export const appJs = `
       wb.active = open;
     }
     var deliverForm = phaseForm(4);
-    if (deliverForm) {
-      syncBackdropColor(deliverForm);
-      var firstEditor = qs('[data-outline-editor]', deliverForm);
-      if (firstEditor) renumberOutlineRows(firstEditor);
-    }
+    if (deliverForm) setDeliverBg('backdrop');
+    window.addEventListener('resize', function () { fitPanel(); imagePanes().forEach(layoutPane); });
     render();
     if (wb.pending.length > 0) startPolling();
   }

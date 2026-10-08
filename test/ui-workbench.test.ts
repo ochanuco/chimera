@@ -148,7 +148,7 @@ describe('GET /work/:shortId', () => {
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
     expect(form).toContain('data-wb-bg="transparent"');
-    expect(form).toContain('data-wb-bg="backdrop"');
+    expect(form).toContain('class="wb-pill wb-pill-on" data-wb-bg="backdrop"');
     expect(form).toContain('name="wb_deliver_size"');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>\s*フチ/);
     expect(form).toContain('data-wb-outline-summary');
@@ -159,7 +159,7 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
-    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns[^>]* hidden=""[^>]*>\s*<summary>\s*背景柄/);
+    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns(?![^>]* hidden="")[^>]*>\s*<summary>\s*背景柄/);
     expect(form).toContain('切り抜きは初回に作って保存し');
   });
 
@@ -194,6 +194,15 @@ describe('GET /work/:shortId', () => {
     await env.DB.prepare('UPDATE generations SET image_width = 1536, image_height = 1024, image_size = 2048 WHERE id = ?').bind(root.id).run();
     const body = (await (await req(`/api/v1/generations/${root.id}/tree`)).json()) as { nodes: { id: string; image_width: number; image_height: number; image_size: number }[] };
     expect(body.nodes.find((n) => n.id === root.id)).toMatchObject({ image_width: 1536, image_height: 1024, image_size: 2048 });
+  });
+
+  it('puts the bookmark on each tree node and a bookmark button beside the candidate rating', async () => {
+    const { generation: root } = await createGeneration();
+    await req(`/api/v1/generations/${root.id}/bookmark`, { method: 'PUT' });
+    const body = (await (await req(`/api/v1/generations/${root.id}/tree`)).json()) as { nodes: { id: string; bookmark: boolean }[] };
+    expect(body.nodes.find((n) => n.id === root.id)?.bookmark).toBe(true);
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    expect(html).toMatch(/data-wb-rating[\s\S]*?class="bookmark-btn" data-wb-bookmark="true" data-kind="generations"/);
   });
 
   it('summarises the outline list in the フチ summary', () => {

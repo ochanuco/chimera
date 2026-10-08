@@ -253,10 +253,10 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
       <div data-wb-form-body>
         <div class="wb-row">
           <div class="wb-pills" role="group" aria-label="背景">
-            <button type="button" class="wb-pill wb-pill-on" data-wb-bg="transparent">
+            <button type="button" class="wb-pill" data-wb-bg="transparent">
               透過
             </button>
-            <button type="button" class="wb-pill" data-wb-bg="backdrop">
+            <button type="button" class="wb-pill wb-pill-on" data-wb-bg="backdrop">
               背景あり
             </button>
           </div>
@@ -278,7 +278,7 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           <OutlineEditor outlines={data.outlines} stroke={data.strokeDefault} />
         </details>
 
-        <details class="wb-acc" data-wb-backdrop-patterns data-default={backdropDefault} hidden>
+        <details class="wb-acc" data-wb-backdrop-patterns data-default={backdropDefault}>
           <summary>
             背景柄 <span class="wb-acc-sub" data-wb-backdrop-summary></span>
           </summary>
@@ -407,12 +407,17 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                     候補 <span class="mono" data-wb-cmp-kind></span> <span data-wb-cmp-badge></span> <span class="mono" data-wb-cmp-status></span>{' '}
                     <span class="wb-meta" data-wb-cmp-meta></span>
                   </span>
-                  <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
-                    {(['bad', 'neutral', 'good'] as const).map((r) => (
-                      <button type="button" class="rate-btn" data-rating={r}>
-                        {r}
-                      </button>
-                    ))}
+                  <div class="wb-cap-actions">
+                    <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
+                      {(['bad', 'neutral', 'good'] as const).map((r) => (
+                        <button type="button" class="rate-btn" data-rating={r}>
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" class="bookmark-btn" data-wb-bookmark data-kind="generations" data-bookmarked="false" aria-label="ブックマーク" hidden>
+                      🔖
+                    </button>
                   </div>
                 </figcaption>
                 <div class="wb-pane" data-wb-cmp-pane></div>
