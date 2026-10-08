@@ -141,14 +141,15 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('data-wb-part-chip="scene"');
   });
 
-  it('phase 4 has background and size, the outline editor open, and a closed 詳細 with the finishing controls', async () => {
+  it('phase 4 shows background and size, with the outline editor, backdrop pattern and finishing controls in closed details', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
     expect(form).toContain('data-wb-bg="transparent"');
     expect(form).toContain('data-wb-bg="backdrop"');
     expect(form).toContain('name="wb_deliver_size"');
-    expect(form).toMatch(/<details class="wb-acc" open="">\s*<summary>\s*フチ/);
+    expect(form).toMatch(/<details class="wb-acc">\s*<summary>\s*フチ/);
+    expect(form).toContain('data-wb-outline-summary');
     expect(form).toContain('data-outline-editor');
     expect(form).toContain('+ 外側に足す');
     expect(form).toContain('白・紫に戻す');
@@ -156,8 +157,25 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
-    expect(form).toContain('data-wb-backdrop-patterns');
+    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns[^>]* hidden=""[^>]*>\s*<summary>\s*背景柄/);
     expect(form).toContain('切り抜きは初回に作って保存し');
+  });
+
+  it('keeps the run button and its error in a footer outside the scrolling panel body', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const body = html.indexOf('class="wb-panel-body"');
+    const foot = html.indexOf('class="wb-panel-foot"');
+    expect(body).toBeGreaterThan(0);
+    expect(foot).toBeGreaterThan(body);
+    expect(html.indexOf('data-wb-run')).toBeGreaterThan(foot);
+    expect(html.indexOf('data-wb-error')).toBeGreaterThan(foot);
+    expect(html.indexOf('data-wb-form="5"')).toBeLessThan(foot);
+  });
+
+  it('summarises the outline list in the フチ summary', () => {
+    expect(appJs).toContain('function outlineSummaryText(editor)');
+    expect(appJs).toContain("OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' }");
   });
 
   it('phase 5 has the F-number slider over the catalog stops, the three scope boxes and the viewfinder choices', async () => {

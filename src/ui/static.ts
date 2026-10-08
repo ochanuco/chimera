@@ -1593,9 +1593,15 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
 
 .wb-panel {
-  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow-y: auto;
-  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem;
-  display: flex; flex-direction: column; gap: 0.8rem;
+  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100vh - 6rem); overflow: hidden;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
+  display: flex; flex-direction: column;
+}
+.wb-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.8rem; }
+/* The run button stays on the panel's bottom edge whichever phase scrolls above it. */
+.wb-panel-foot {
+  flex: none; position: sticky; bottom: 0; padding: 0.6rem 0.8rem; border-top: 1px solid var(--border);
+  background: var(--bg-elevated); border-radius: 0 0 12px 12px; display: flex; flex-direction: column; gap: 0.5rem;
 }
 .wb-panel-title { margin: 0 0 0.15rem; font-size: 1.1rem; }
 .wb-note { margin: 0; font-size: 0.8rem; color: var(--text-dim); }
@@ -1626,7 +1632,8 @@ details.section .section-body { margin-top: 0.6rem; }
 @media (max-width: 900px) {
   .wb-main { flex-direction: column; align-items: stretch; }
   .wb-compare, .wb-panel { flex: none; max-width: none; width: 100%; }
-  .wb-panel { max-height: none; }
+  .wb-panel { max-height: none; overflow: visible; }
+  .wb-panel-body { overflow: visible; }
   .wb-pane { height: auto; aspect-ratio: 4 / 5; min-height: 0; }
 }
 @media (max-width: 600px) {
@@ -2235,7 +2242,20 @@ export const appJs = `
     qs('[data-outline-add]', editor).disabled = rows.length >= max;
     qs('[data-outline-stroke]', editor).hidden = rows.length === 0;
     var summary = editor.closest('details') ? qs('[data-wb-outline-summary]', editor.closest('details')) : null;
-    if (summary) summary.textContent = rows.length === 0 ? 'なし' : rows.length + ' 本 · ' + outlineStrokeValue(editor);
+    if (summary) summary.textContent = outlineSummaryText(editor);
+  }
+
+  var OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' };
+
+  // e.g. 「白 0.8 + 紫 3」; a directional shading is appended, an even one is the unremarkable default.
+  function outlineSummaryText(editor) {
+    var list = outlinesFrom(editor);
+    if (list.length === 0) return 'なし';
+    var text = list.map(function (o) {
+      return (OUTLINE_COLOR_NAMES[o.color.toLowerCase()] || o.color) + ' ' + outlineNumberLabel(o.width);
+    }).join(' + ');
+    var stroke = outlineStrokeValue(editor);
+    return stroke === 'even' ? text : text + ' · 陰影 ' + stroke;
   }
 
   function addOutlineRow(editor, color, width) {
@@ -2329,6 +2349,11 @@ export const appJs = `
       if (!(range instanceof HTMLInputElement) || !range.hasAttribute('data-outline-width')) return;
       var pct = qs('[data-outline-pct]', range.closest('[data-outline-row]'));
       if (pct) pct.textContent = outlineNumberLabel(range.value) + '%';
+      renumberOutlineRows(range.closest('[data-outline-editor]'));
+    });
+    document.addEventListener('input', function (ev) {
+      var color = ev.target;
+      if (color instanceof HTMLInputElement && color.hasAttribute('data-outline-color')) renumberOutlineRows(color.closest('[data-outline-editor]'));
     });
   }
 
@@ -2464,6 +2489,13 @@ export const appJs = `
 
   // The color input stays disabled while hidden so the browser's pattern check
   // cannot block submit on a control it has no way to show.
+  function syncBackdropSummary(form) {
+    var summary = qs('[data-wb-backdrop-summary]', form);
+    var checked = qs('input[name="backdrop"]:checked', form);
+    var label = checked ? qs('.backdrop-option-label', checked.closest('label')) : null;
+    if (summary) summary.textContent = label ? label.textContent : '';
+  }
+
   function syncBackdropColor(form) {
     var checked = qs('input[name="backdrop"]:checked', form);
     var color = qs('input[name="backdrop_color"]', form);
@@ -2471,6 +2503,7 @@ export const appJs = `
     var on = !!checked && checked.value === 'color';
     color.hidden = !on;
     color.disabled = !on;
+    syncBackdropSummary(form);
   }
 
   function postOptionRequest(kind, generationShortId, options, profile, idempotencyKey) {
