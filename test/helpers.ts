@@ -283,7 +283,7 @@ export function itxtChunkData(keyword: string, text: string, compressed = false)
 
 export interface TestRequestOverrides {
   id?: string;
-  kind?: 'generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'import';
+  kind?: 'generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof' | 'import';
   status?: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   idempotency_key?: string;
   run_id?: string | null;
@@ -492,6 +492,7 @@ export async function clearGenerationData(): Promise<void> {
     env.DB.prepare('UPDATE comfy_jobs SET source_generation_id = NULL'),
     env.DB.prepare('UPDATE experiments SET base_generation_id = NULL'),
     env.DB.prepare('UPDATE requests SET run_id = NULL'),
+    env.DB.prepare('DELETE FROM workbenches'),
     env.DB.prepare('DELETE FROM generation_assets'),
     env.DB.prepare('DELETE FROM generation_safety'),
     env.DB.prepare('DELETE FROM pairwise_judgments'),

@@ -26,6 +26,7 @@ Compare は semantic metadata の diff を表示するところまでです（�
 Chimera
 Gallery
 Bookmarks
+ワークベンチ
 More（Experiments / 絵柄チェック）
 ```
 
@@ -35,12 +36,12 @@ More（Experiments / 絵柄チェック）
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
-var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/experiments` 配下
+var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/work` 配下（`/work/{short_id}`含む）ではワークベンチ、`/experiments` 配下
 （`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`では`More`のsummaryが
 アクティブになります。`/compare`はグリッドから入る
 導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
-幅600px以下では、ナビの水平パディングを1rem・項目間隔を1.25remに詰め、各リンクと`More`の
+幅600px以下では、ナビの水平パディングを0.6rem・項目間隔を0.4rem・文字を0.8remに詰め、各リンクと`More`の
 summaryはタップ領域確保のため`min-height: 2.75rem`のフレックスボックスにします。
 
 ### キュー状態
@@ -691,24 +692,39 @@ CSS実装（JS不使用）です。
     サムネイルは`GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png?v=<updated_at>`、`backdrops`が無ければサムネイル無しの`stripes`だけ）。
     既定はcatalogの`deliver.defaults.backdrop`（無ければ先頭のパターン）です。`透過 PNG`は`backdrop: null`を送り、`単色`は
     `#RRGGBB`のテキスト入力（初期値はcatalogの`deliver.backdrop_color`、無ければ`#ffffff`）を出し、形式違いなら送信せずalertします。
-    続けて`光源`のselect（`指定しない（引き継ぎ）` / catalogの`redraw.light.scenes`、`redraw.light`があるときだけ）、`光の向き`のselect、
-    `紫縁`のselect（`既定` / `立体` / `均等` / `無し`）を並べます。`光源`を指定しないと納品の光源は元の絵の系譜でいちばん近い
-    描き直し（light）から引き継がれます。`紫縁`が`既定`なら`stroke_light`を送らず（引き継いだ光源の向き、無ければrecipeの既定になります）、
-    `立体`なら`stroke_light`は`光の向き`の値、`均等`は`even`、`無し`は`none`です。`光源`を指定したときは`light: {scene, from}`も送り、
-    `紫縁`が`立体`なら`stroke_light`は送りません。`光の向き`は`光源`を指定したときか`紫縁`が`立体`のときだけ有効です。
--   `ボケ`（catalogに`deliver.dof`があるときだけ）: `被写界深度ボケ（dof）`のチェックボックス（既定オフ）。オンにすると画像をクリックして
-    ピント位置を置け（マーカーと`ピント: 0.82, 0.55`の表示、チェックを外しても位置は保持）、F値のスライダーは`deliver.dof.f_number.stops`の段に吸着します
-    （既定は`default`に最も近い段）。ピント位置が無いまま送るとalertして積みません。`deliver.dof.scope`があるときは`背景もぼかす`のチェックボックス
-    （`透過 PNG`を選んでいる間と`dof`オフの間は無効、送るのは`scope: all | figure`）、`deliver.dof.viewfinder`があるときは`ファインダー表示`のselect
-    （`OFF` / `ON` / `ON/OFF 2枚`、`OFF`以外のときだけ`dof.viewfinder`に`on` / `both`）。`deliver.dof.guide_radius_per_f`があるときは、
-    ピント位置を中心にくっきり見える範囲の目安の円（半径は係数 × F値 × 表示中の画像の長辺、画像の外は切り取り、クリックは受けない）を
-    画像の上に描き、「円はくっきり見える範囲の目安（奥行きは見ていない）」と注記します。
+    続けて`光源`のselect（`指定しない（引き継ぎ）` / catalogの`redraw.light.scenes`、`redraw.light`があるときだけ）と`光の向き`のselect
+    （`光源`を指定したときだけ有効）を並べます。`光源`を指定しないと納品の光源は元の絵の系譜でいちばん近い描き直し（light）から引き継がれ、
+    指定したときは`light: {scene, from}`を送ります。
+-   `フチ`: [フチのリスト](#フチのリスト)。送るのは`outlines`と、フチが1本以上あるときの`stroke_light`（`even`か向き）です。`stroke_light: "none"`は送りません
+    （フチなしは`outlines: []`）。
+-   `仕上げ`には`repin` / `recolor`に加えて`skin` / `keep scene`のチェックボックスもあり、`skin` / `keep_scene`を送ります。
+-   `dof`はこのフォームにありません（[Dof](#dof)）。
 
 プレビューは`送信内容: profile daily v2 · backdrop=stripes · 紫縁 既定 · repin`のように積まれるoptionsを`·`区切りで出し、
-`backdrop`は`null`でも`backdrop=transparent`と必ず出し、`光源 月明かり（左上から）`・`光の向き 上から`・`紫縁 立体`の形で光と紫縁を言葉で示します。
-プロファイルを指名していれば先頭に`profile <name> v<version>`を置きます。プロファイルを押すと`stroke_light` / `light` / `dof` / `backdrop` /
-各チェックが選び直されます（`stroke_light`が無ければ`紫縁`は`既定`）。ボタンは`納品する`で、`POST /api/v1/requests`（`kind: "deliver"`,
+`backdrop`は`null`でも`backdrop=transparent`と必ず出し、`光源 月明かり（左上から）`・`フチ #ffffff 0.4% → #885b80 1.04% · 陰影 even`の形で光とフチを言葉で示します。
+プロファイルを指名していれば先頭に`profile <name> v<version>`を置きます。プロファイルを押すと`outlines` / `stroke_light` / `light` / `backdrop` /
+各チェックが選び直されます（`outlines`が無ければcatalogの既定のフチ、`stroke_light`が無ければ均一）。ボタンは`納品する`で、`POST /api/v1/requests`（`kind: "deliver"`,
 `idempotency_key`は`gui:deliver:`始まり）を積みます。
+
+#### フチのリスト
+
+納品フォームとワークベンチの納品フェーズが共有する編集欄（`OutlineEditor`）です。内側から外側の順に、1本ごとに色（`input[type=color]`）・幅
+（0.2〜`deliver.outlines.max_width`、刻み0.02、長辺に対する%）・内側へ / 外側へ / 消すのアイコンボタンを持つ行を並べます。`+ 外側に足す`
+（`deliver.outlines.max_count`、無ければ6本まで）と、catalogの`deliver.outlines.default`（無ければ白0.4% + 紫1.04%）に戻す`白・紫に戻す`があります。
+フチが1本以上あるときだけ`一番外の陰影`として`均一`（`even`）と`光の向きで陰影`（8方向のコンパス、向きが`stroke_light`）を出します。初期値は
+catalogの`deliver.defaults.stroke_light`（`even`か向きのときだけ。それ以外は`even`）です。「prompt で描いた白フチは、この内側に残ります。」と注記します。
+
+#### Dof
+
+納品の絵（deliver requestの出力）にだけ出す`ボケ（Dof）`欄です。dofの出力・raw・納品でない絵には出さず、catalogにトップレベルの`dof`が無いときも出しません。
+画像をクリックしてピント位置を置き（マーカーと`ピント: x, y`の表示）、F値のスライダーは`dof.f_number.stops`の段に吸着します（初期値は`default`に最も近い段）。
+`ボカす範囲`は`人物` / `フチ` / `背景`のチェックボックス（初期値は`dof.scope`、無ければすべてオン）、`ファインダー`は`dof.viewfinder`の選択肢
+（`なし` / `あり` / `両方`、初期値は`dof.viewfinder.default`）です。`dof.guide_radius_per_f`があるときは、ピント位置を中心にくっきり見える範囲の目安の円
+（半径は係数 × F値 × 表示中の画像の長辺）を重ねます。ピント位置が無い、またはボカす範囲が全部オフのときはalertして積みません。
+ボタンは`ボケをかける`で、`POST /api/v1/requests`（`kind: "dof"`, `payload: {generation_id, options: {focus, f_number, scope, viewfinder}}`,
+`idempotency_key`は`gui:dof:`始まり）を積みます。
+
+どのGeneration Detailにも、`ワークベンチで開く`のリンク（`/work/{short_id}`）があります。
 
 どちらのフォームも、積んだ直後にページを再読み込みせず、`queued`行をRequestsの一覧の先頭へ挿入します。送信中のボタンは`disabled`で
 `Queueing…`、積めたら1.5秒だけ`--good`色の`Queued ✓`を表示して元のラベルに戻り、失敗時はすぐ戻ります。
@@ -716,7 +732,7 @@ CSS実装（JS不使用）です。
 #### Requests
 
 このGenerationを対象にした最新のrequest（すべての種類）を最大5件、新しい順に`<kind> status · created_at`の行として出します。
-kindは`描き直し` / `納品` / `repair` / `masked redraw`（古い行は`finalize`）で、`done`なら結果Generationへのリンク、
+kindは`描き直し` / `納品` / `ボケ` / `repair` / `masked redraw`（古い行は`finalize`）で、`done`なら結果Generationへのリンク、
 `failed`ならその`error`、worker が書いた`resolved_options`があればその要約を添えます。
 
 各行は`data-request-id` / `data-request-status`を持ち、`/api/v1/requests/ws`
@@ -733,6 +749,45 @@ kindは`描き直し` / `納品` / `repair` / `masked redraw`（古い行は`fin
 `profile に登録`フォーム（名前入力＋ボタン）を表示します。送信すると
 `POST /api/v1/presets/promote-profile`を呼び、その場に`registered: <name>
 v<version>`を表示します（リロードなし）。それ以外のGenerationにはこのフォームは出ません。
+
+## Workbench
+
+元絵（raw Generation）から、描き直し・光・部分・納品・ボケの5フェーズを1つずつ積み、各フェーズで候補を作って比べ、採用かスキップをする画面です。
+選んだ結果は`/api/v1/workbenches/{rootId}`に保存されます（[api.md](api.md#workbench)）。
+
+### `/work`
+
+元絵（`origin=raw`、`refines_generation_id`が無い Generation）を新しい順に24枚ずつ並べる選択画面です。評価（`すべて` / `good だけ`）とrecipeの
+絞り込みピルがあり、ページは`?page=`の前へ / 次へで送ります。カードをクリックすると`/work/{short_id}`へ進みます。
+
+### `/work/{short_id}`
+
+元絵でない Generation を渡すと、元絵の`/work/<root short_id>?at=<渡したshort_id>`へ302で転送します。`?at=`はその Generation のフェーズと候補を
+開いた時点で選んだ状態にします（保存済みの採用とつながらない系譜なら、その Generation の入力を一時的な入力にします）。
+
+-   ヘッダー: `元絵を選び直す`（`/work`へ）と、`元絵 › 1. 描き直し › 2. 光 › 3. 部分 › 4. 納品 › 5. ボケ`のステッパー。各段に採用した kind
+    （redraw は`redraw · hires`の形）・`スキップ`・`いま`（到達済みで未採用）・`—`（未到達）を出し、到達済みの段だけ押せます。
+-   主領域: `入力`（前フェーズの採用、スキップなら更に前の入力。1 では元絵）と`候補`（選択中の候補）を大きく2枚並べるか、`同じフェーズを全部並べる`で入力と
+    このフェーズの全候補を格子に並べます。画像は`/g/{short_id}/image`（原寸が破棄済みなら`/preview`）を`object-fit: contain`で出し、
+    十字線・矩形・ピントのマーカーは描画された画像の箱（余白を除く）に対する正規化座標で、見えているすべての画像に同期して出ます。
+    候補のサムネイル帯（評価の色の帯・採用の点・処理中の`…`）、比べ方の切り替え、`スキップ`（5では`ボケなしで完成にする`）、`採用`、
+    採用が5まで済んだときの`完成しました。…`の文言。候補欄の見出しに`bad` / `neutral` / `good`があり、現在の評価を押すと外します
+    （`PUT /api/v1/generations/{id}/rating`）。
+-   候補: フェーズ k の候補は、フェーズが k で`refines_generation_id`がフェーズ k の入力であるツリーのノード（`GET /api/v1/generations/{root}/tree`）と、
+    入力を指す処理中の request（`pending`）です。採用・スキップは`PUT /api/v1/workbenches/{root}`に`picks`全体を送り、候補の系譜から決まる
+    それ以前の採用（間は`skip`）に置き換えるので、前の採用を変えると後ろの採用は消えます。
+-   右の欄（最大380px、独立スクロール）は現在のフェーズのフォームだけを出します。
+    1 描き直し: `hires`（先頭）/ `canvas`。hires は長辺と denoise、canvas は denoise（catalogの`dials.redraw.denoise`の語があれば値を入れるボタン付き）と寸法。
+    2 光: catalogの`redraw.light.scenes`と8方向のコンパス。入力が`canvas`の出力なら「使えない」の説明だけで実行ボタンを出しません。
+    3 部分: `手足を自動で探す`（`repair`、対象は手と足 / 手だけ / 足だけ）か`矩形を引く`（`masked_redraw`。入力の絵をドラッグして矩形を何か所でも引き、`全部消す`）。
+    矩形では`足す語`が必須で、catalogの`parts`のチップはその part の本文（描いたposeの`parts`にあれば）か名前を末尾に足します。
+    4 納品: `透過` / `背景あり`とサイズ、[フチのリスト](#フチのリスト)（開いた状態）、閉じた`詳細`（`repin` `recolor` `skin` `keep legwear` `keep scene` `backdrop`）、切り抜きの注記。
+    入力が納品済みなら実行できません。
+    5 ボケ: [Dof](#dof)と同じ操作（ピントは入力の絵のクリック）。入力が納品の絵でなければ実行できません。
+-   実行すると`POST /api/v1/requests`（`created_by: "gui"`、`idempotency_key`は`gui:workbench:<kind>:<入力のshort_id>:<uuid>`）を積み、
+    候補が処理中としてすぐ増えます。進み具合は`/api/v1/requests/ws`の`status` / `progress`で受け、終わったらツリーを取り直して新しい候補を選びます
+    （処理中がある間は4秒ごとにも取り直します）。
+-   幅900px以下では右の欄が主領域の下に積まれ、600px以下では`入力`と`候補`の2枚も縦に並びます。
 
 ## 絵柄チェック
 

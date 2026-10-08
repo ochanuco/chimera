@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -203,7 +203,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
@@ -480,7 +480,13 @@ chimera の WebUI フォームのプリセットもここから取っていま�
   "payload": {
     "generation_id": "abc123",
     "profile": { "name": "daily", "version": 3 },
-    "options": { "repin": true, "stroke_light": "n", "backdrop": "dots", "deliver_size": 1536 }
+    "options": {
+      "repin": true,
+      "stroke_light": "n",
+      "backdrop": "dots",
+      "outlines": [{ "color": "#ffffff", "width": 0.4 }, { "color": "#885b80", "width": 1.04 }],
+      "deliver_size": 1536
+    }
   }
 }
 ```
@@ -498,34 +504,32 @@ chimera の WebUI フォームのプリセットもここから取っていま�
   keep_scene     bool（背景・景色を残す）
   transparent    null \| bool（`true` は背景なしで切り抜いた透過納品の明示形。`false` は `backdrop` が null でも背景を敷く）
   backdrop       null \| string（catalog `backdrops` の模様名か `#RRGGBB`。`null` は透過納品、ただし `transparent: false` なら除く。既定 `"dots"`）
-  stroke_light   null \| "none" \| "even" \| "n".."nw"（`"none"` は紫縁なし、`"even"`（`null` も同じ）は一定の太さの紫縁、8 方位は紫縁を光源側で細く影側で太くし落ち影も付ける。既定 `"n"`）
+  outlines       null \| [{color: "#rrggbb", width}]（フチのリスト、内側から外側へ 0〜6 本。`width` は長辺に対する %で 0 < width <= 5。省略または `null` は catalog の `recipes[].deliver.outlines.default`、`[]` はフチなし）
+  stroke_light   null \| "even" \| "n".."nw"（一番外のフチの陰影。`"even"`（`null` も同じ）は一定の太さ、8 方位はフチを光源側で細く影側で太くし落ち影も付ける。陰影と押し出しは一番外のフチにかかり、落ち影も一番外のフチの外形に沿う。既定 `"n"`。`"none"` は 400 で、フチなしは `outlines: []`）
   deliver_size   null \| integer（納品ファイルの長辺）
-  dof            null \| {focus: [x, y], f_number, scope?, viewfinder?}（下記）
   light          null \| {scene, from?}（下記）
-
-`dof` は被写界深度ボケです。`focus` は入力画像の幅・高さに対する 0〜1 の割合、`f_number` は 1.4〜22 で
-必須（小さいほど強くぼける）、未知のキーは `failed` です。worker が深度推定で人物の中だけを、ピント位置の
-深度から離れるほど強くぼかし、切り抜きはぼかす前の絵で取ります。`scope` は `"figure"`（人物の中だけ）か
-`"all"`（白フチ・紫フチ・影・背景もぼかす）で、省略は `"all"`（透過納品なら `"figure"`）です。`"all"` と
-透過納品の併用は `failed` で、`keep_scene` と `"all"` の併用は通ります。`viewfinder` は `"off"`（省略時） /
-`"on"`（三分割グリッド、`focus` の位置のピント枠、下部のシャッター速度と F 値のバーを納品画像に重ねる） /
-`"both"`（重ねない納品画像と重ねた画像の 2 枚を出し、Generation が 1 つ増える）です。
-catalog は `recipes[].deliver.dof` に `f_number` の `min` / `max` / `default` / `stops`、`scope`
-（`{"values": ["figure", "all"], "default": "figure"}`）、`viewfinder`
-（`{"values": ["off", "on", "both"], "default": "off"}`）、`guide_radius_per_f` を公開します。
 
 `light` は光源です。`scene` は `"sunset"`（夕日）か `"moon"`（月明かり）で必須、`from` は光が来る向き
 （8 方位、省略は `"nw"`）です。`light` を省略すると、入力の絵の系譜（`refines_generation_id`）でいちばん近い
 method `light` の redraw の `scene` と `from` を引き継ぎ、`stroke_light` を省略した紫縁もその向きに揃います。
 `stroke_light` に `light` の `from`（引き継いだものを含む）と違う方位を明示すると `failed` で、
-`"none"` / `"even"` / `null` は併用できます。紫縁の陰影を、下地を描き直したときの光の向きに合わせるための規則です。
+`"even"` / `null` は併用できます。紫縁の陰影を、下地を描き直したときの光の向きに合わせるための規則です。
 
 切り抜きの asset（`alpha`: 8 bit グレー PNG、`depth`、作ったときの条件を書いた `cut`: json）は、入力の
 Generation（納品の Generation ではない）に付きます。最初の deliver が作り、次の deliver は `cut` と現在の
 条件の一致を確かめて使い回し、違うときは作り直して同じ `(role, region)` を置換します。背景・紫縁・F 値だけを
 変えた deliver は切り抜きをやり直しません。worker は asset を `GET /g/{generation uuid}/assets/{role}` で読みます。
 
-出力は納品の Generation 1 枚（`dof.viewfinder` が `both` のときだけ 2 枚）で、入力の Generation を
+deliver は出力の Generation に層の asset を付けます。いずれも出力と同じ寸法（`deliver_size` で縮めた後）の PNG で、
+dof が読みます。
+
+  role            内容
+  --------------- --------------------------------------------------------------------
+  layer-figure    人物（repin・前景色の推定後）。RGBA、alpha は切り抜き
+  layer-outline   フチと落ち影。RGBA。フチなしで影も無ければ全透明
+  layer-backdrop  背景。RGB。透過納品では付けない。`keep_scene` では元の場面
+
+出力は納品の Generation 1 枚で、入力の Generation を
 `refines_generation_id` で指します。入力にできるのは raw か描き直した絵で、納品済みの絵と LayerDiffuse 由来の
 絵は受けません。chimera が検証するのは型だけで、組み合わせの妥当性（recipe が route を持つか等）は worker が
 判定して `failed` にします。
@@ -533,16 +537,16 @@ Generation（納品の Generation ではない）に付きます。最初の del
 `keep_legwear` の word は `^[a-z][a-z0-9-]*$` にマッチする文字列で、word の語彙は recipe ごとに catalog が
 `recipes[].dials.deliver` として公開します。chimera はそれを表示にだけ使い、word が実在するかの検証と
 number への解決は worker が行います（未知の word は `failed`）。catalog は既定を
-`recipes[].deliver.defaults`、`stroke_light` の選択肢を `recipes[].deliver.stroke_light`、単色の初期値を
+`recipes[].deliver.defaults`、フチの既定と上限を `recipes[].deliver.outlines`（`{default: [{color, width}], max_count, max_width}`）、
+`stroke_light` の選択肢を `recipes[].deliver.stroke_light`、単色の初期値を
 `recipes[].deliver.backdrop_color`（`#RRGGBB`）として公開し、WebUI のフォームのプリセットもここから取っています。
-catalog の envelope の `schema_version` は 1 と 2 を受けます。
+catalog の envelope の `schema_version` は 1・2・3 を受けます（3 は `deliver.dof` を持たず、最上位の `dof` 節を持つ）。
 
-GUI が積む deliver は `repin` / `recolor` / `keep_legwear` / `backdrop` に加えて、`紫縁` が `既定` なら
+GUI が積む deliver は `repin` / `recolor` / `keep_legwear` / `backdrop` / `outlines` に加えて、`紫縁` が `既定` なら
 `stroke_light` と `light` を省略し（worker が引き継ぎ・既定から解決）、`立体` なら `光の向き` の方位、`均等` なら
-`even`、`無し` なら `none` を `stroke_light` に積みます。`光源` を選んだときだけ `light: {scene, from}` を積みます
+`even` を `stroke_light` に積みます。`光源` を選んだときだけ `light: {scene, from}` を積みます
 （`from` は `光の向き` の値）。`backdrop` は選んだカードの模様名 → その文字列、`透過 PNG` → `null`、`単色` → 入力した
-`#RRGGBB` です。`dof` はピント位置を画像上に置いたときだけ `{focus: [x, y], f_number}` を積み、置かずにチェックすると
-積まずに止めます。`scope: "all"` と透過納品の併用も止めます。
+`#RRGGBB` です。
 
 #### deliver profile
 
@@ -567,6 +571,44 @@ body の形は次の通りです。pose/costume/expression の Preset と違い�
 `generation_id` は `rating = good` かつ deliver request が産んだ Generation でなければならず、それ以外は 409 です。
 body は、その deliver request が queued した時点の `payload.options`（profile 展開後、word はそのまま）を
 そのまま複製します。`name` が既存ならその次の版、新しい名前なら version 1 です。既存の版は書き換えません。
+
+### dof
+
+納品の Generation の層（`layer-figure` / `layer-outline` / `layer-backdrop`）から、被写界深度ボケの絵を作る worker 実行です。
+
+``` json
+{
+  "kind": "dof",
+  "payload": {
+    "generation_id": "abc123",
+    "options": { "focus": [0.82, 0.55], "f_number": 2.8, "scope": { "backdrop": true }, "viewfinder": "off" }
+  }
+}
+```
+
+`generation_id` は UUID / short_id のどちらでもよく、`options` は必須です。受けるキーは次のとおりで、それ以外は 400 です。
+
+  options        型
+  -------------- --------------------------------------------------------------------------
+  focus          [x, y]、各 0〜1（入力画像の幅・高さに対する割合）。必須
+  f_number       1.4〜22、省略は 2.8（小さいほど強くぼける）
+  scope          {figure?, outline?, backdrop?}（ぼかす層。省略したキーは true。すべて false は 400）
+  viewfinder     "off"（省略時） \| "on" \| "both"
+
+奥行きは入力の元絵（`refines_generation_id` を deliver の入力へたどった絵）の `depth` asset を使います。無いか古ければ
+worker が作って元絵に付けます（`cut` asset と同じ仕組み）。ボケは ComfyUI の graph で流し、背景 → フチ → 人物の順に、
+オンの層だけぼかして重ねます。人物は人物の奥行き、フチは隣の人物の奥行き、背景は最も遠い面として扱います。
+`viewfinder` の `"on"` は三分割グリッド・`focus` の位置のピント枠・下部のシャッター速度と F 値のバーを重ねた画像で、
+`"both"` は重ねない画像と重ねた画像の 2 枚（`-dof` と `-viewfinder`）を出します。
+
+入力にできるのは deliver の出力のうち層 asset を持つ絵だけです。層の無い古い納品の絵、dof の出力、それ以外は
+worker が `failed` にします（納品し直す）。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation
+（`is_delivered`）で、入力を `refines_generation_id` で指し、redraw・repair・masked_redraw・deliver・dof の入力にはなりません。
+chimera が検証するのは型だけです。
+
+catalog は最上位の `dof` 節に `f_number`（`min` / `max` / `default` / `stops`）、`scope` の既定（`figure` / `outline` /
+`backdrop` の bool）、`viewfinder`（`{"values": ["off", "on", "both"], "default": "off"}`）、`focus` の説明、
+`guide_radius_per_f` を公開します。
 
 ### repair
 
@@ -805,7 +847,7 @@ worker は requests だけを見ます。
 
 - Generation Detail: `描き直し（Redraw）` と `納品（Deliver）` の 2 つの form。Redraw は method（canvas / hires / light）を
   1 つ選んでその method の欄だけを持ち、Deliver は `repin` / `recolor` / `keep legwear` のチェックボックス、背景、
-  光源・光の向き・紫縁、ボケ、profile を持ちます。どれも `POST /api/v1/requests`（`kind = redraw` / `deliver`、
+  光源・光の向き・紫縁の陰影、フチのリスト、profile を持ちます。納品の絵には `ボケ（dof）` の form も出ます。どれも `POST /api/v1/requests`（`kind = redraw` / `deliver` / `dof`、
   `created_by = gui`）を積み、積んだ後は最新 request の status（queued / running / done / failed）と、
   done なら出力 Generation へのリンクを出す。表示中の Generation が納品済みの絵なら、どちらの form も出さない。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
@@ -825,7 +867,7 @@ Responsibilities を参照してください。Compare が比較表示のみで�
 ## MCP
 
 `/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
-`plain_render`、`redraw_generation` / `deliver_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
+`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
 規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
 tool ごとの契約と `created_by` は
 [experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。

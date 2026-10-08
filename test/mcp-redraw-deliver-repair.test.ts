@@ -119,12 +119,12 @@ describe('MCP deliver_generation', () => {
     expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id });
   });
 
-  it('stores dof, light and a null backdrop in the payload', async () => {
+  it('stores outlines, light and a null backdrop in the payload', async () => {
     const { generation } = await createGeneration();
     const options = {
       backdrop: null,
       transparent: true,
-      dof: { focus: [0.5, 0.3], f_number: 2.8, scope: 'figure', viewfinder: 'both' },
+      outlines: [{ color: '#ffffff', width: 0.4 }],
       light: { scene: 'sunset', from: 'nw' },
     };
     const call = await mcpToolCall<CreateRequestResult>('deliver_generation', {
@@ -138,7 +138,7 @@ describe('MCP deliver_generation', () => {
 
   it('rejects options that only finalize or redraw knew, as a tool error that creates no row', async () => {
     const { generation } = await createGeneration();
-    for (const options of [{ deliver_only: true }, { repair: ['feet'] }, { denoise: 0.5 }, { hires: 2048 }, { route: 'foo' }]) {
+    for (const options of [{ deliver_only: true }, { repair: ['feet'] }, { denoise: 0.5 }, { hires: 2048 }, { route: 'foo' }, { stroke_light: 'none' }, { dof: { focus: [0.5, 0.5], f_number: 2.8 } }, { outlines: [{ color: 'red', width: 1 }] }]) {
       const call = await mcpToolCall('deliver_generation', {
         generation_id: generation.id,
         options,
@@ -273,5 +273,52 @@ describe('MCP repair_generation', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(true);
+  });
+});
+
+describe('MCP dof_generation', () => {
+  it('queues a dof row with created_by mcp, a short_id payload and only the given options', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('dof_generation', {
+      generation_id: generation.id,
+      focus: [0.4, 0.6],
+      f_number: 2,
+      scope: { figure: true, outline: false, backdrop: true },
+      viewfinder: 'on',
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.created).toBe(true);
+    expect(call.data?.request.kind).toBe('dof');
+    expect(call.data?.request.created_by).toBe('mcp');
+    expect(call.data?.request.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { focus: [0.4, 0.6], f_number: 2, scope: { figure: true, outline: false, backdrop: true }, viewfinder: 'on' },
+    });
+
+    const minimal = await mcpToolCall<CreateRequestResult>('dof_generation', {
+      generation_id: generation.id,
+      focus: [0.5, 0.5],
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(minimal.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { focus: [0.5, 0.5] } });
+  });
+
+  it('rejects invalid input as a tool error that creates no row, and 404s an unknown generation', async () => {
+    const { generation } = await createGeneration();
+    for (const bad of [
+      { focus: [1.5, 0.5] },
+      { focus: [0.5, 0.5], f_number: 30 },
+      { focus: [0.5, 0.5], scope: { figure: false, outline: false, backdrop: false } },
+      { focus: [0.5, 0.5], viewfinder: 'grid' },
+      {},
+    ]) {
+      const call = await mcpToolCall('dof_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+      expect(call.isError).toBe(true);
+    }
+    const list = await getJson<{ items: RequestListItem[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=dof`);
+    expect(list.body.items).toEqual([]);
+    const missing = await mcpToolCall('dof_generation', { generation_id: 'does-not-exist', focus: [0.5, 0.5], idempotency_key: crypto.randomUUID() });
+    expect(missing.isError).toBe(true);
   });
 });

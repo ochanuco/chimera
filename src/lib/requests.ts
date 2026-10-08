@@ -66,7 +66,7 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
 /** `resolveDerivationSource` が遡れる仕上げ連鎖の上限。循環データに対する安全弁。 */
 const MAX_DERIVATION_HOPS = 10;
 
-const REFINING_KINDS: readonly RequestKind[] = ['finalize', 'redraw', 'repair', 'masked_redraw', 'deliver'];
+const REFINING_KINDS: readonly RequestKind[] = ['finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof'];
 
 export interface DerivationSource {
   generation: GenerationRow;
@@ -195,10 +195,10 @@ export async function getRequestOr404(db: D1Database, id: string): Promise<Reque
   return row;
 }
 
-/** 納品された絵を産んだ Request か。deliver と古い finalize、および deliver_only の repair や hires-chain の出力。
+/** 納品された絵を産んだ Request か。deliver・dof と古い finalize、および deliver_only の repair や hires-chain の出力。
  * worker (comfyui-recipes の picture_source.is_delivered) と同じ判定で、redraw / repair / deliver の入力にできない。 */
 export function isDeliveredRequest(request: Pick<RequestRow, 'kind' | 'parameters_json'>): boolean {
-  if (request.kind === 'deliver' || request.kind === 'finalize') return true;
+  if (request.kind === 'deliver' || request.kind === 'dof' || request.kind === 'finalize') return true;
   const parameters = parseJsonObject(request.parameters_json);
   return parameters.kind === 'deliver' || parameters.kind === 'hires-chain' || (parameters.kind === 'repair' && parameters.deliver_only === true);
 }
@@ -208,7 +208,7 @@ export async function findProducingRequest(db: D1Database, generationId: string)
   return db
     .prepare(
       `SELECT * FROM requests
-       WHERE kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver') AND result_json IS NOT NULL
+       WHERE kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof') AND result_json IS NOT NULL
        AND EXISTS (SELECT 1 FROM json_each(result_json, '$.generation_ids') WHERE value = ?)
        ORDER BY created_at DESC LIMIT 1`,
     )
@@ -470,7 +470,7 @@ export async function listRequests(
   if (filters.generation_id) {
     const generation = await getGenerationByIdOrShortId(db, filters.generation_id);
     if (!generation) return [];
-    conditions.push("kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
+    conditions.push("kind IN ('finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof') AND json_extract(payload_json, '$.generation_id') IN (?, ?)");
     binds.push(generation.id, generation.short_id);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -523,7 +523,7 @@ export async function claimRequest(
   const requeued = await requeueStaleRunning(db, nowIso());
 
   // 2) queued の最古の1件を1文で running にする。複数 worker が同時に呼んでも同じ行を2度渡さない (worker-protocol.md「Claim」)。
-  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'redraw', 'repair', 'masked_redraw', 'deliver'] as RequestKind[]);
+  const kindsList = kinds && kinds.length > 0 ? kinds : (['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof'] as RequestKind[]);
   const placeholders = kindsList.map(() => '?').join(', ');
   const claimedAt = nowIso();
   const row = await db

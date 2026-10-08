@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { internalApiRequest } from '../lib/internal-api';
 import { getGenerationByIdOrShortId, resolveGenerationShortIds, resolveRequestThumbnails, resolveRunRequests } from '../lib/db';
 import { generationImageUrl, generationPreviewUrl } from '../lib/serialize';
-import { listBookmarkedExperiments } from '../lib/ui-queries';
+import { listBookmarkedExperiments, listWorkSources, WORK_SOURCES_PAGE_SIZE } from '../lib/ui-queries';
 import { GalleryPage, GalleryCards, GallerySlotCards, type GalleryFilters, type GalleryItem } from '../ui/pages/Gallery';
 import type { GalleryView } from '../ui/components/ViewSwitch';
 import { ExperimentsPage, type ExperimentListItem } from '../ui/pages/Experiments';
@@ -13,13 +13,28 @@ import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
 import { NotFoundPage } from '../ui/pages/NotFound';
+import { WorkSourcesPage } from '../ui/pages/WorkSources';
+import { WorkbenchPage, type WorkbenchData, type WorkbenchPart } from '../ui/pages/Workbench';
+import { buildWorkbenchTree, findRootGeneration, getWorkbench } from '../lib/workbench';
 import { StyleCheckPage, type StyleCheckRowView } from '../ui/pages/StyleCheck';
 import { decodeCursor, queryGenerations, queryTimeline } from '../lib/generations';
 import { slotEndIso, slotStartIso } from '../lib/timeline';
 import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
-import { getCatalog } from '../lib/catalogs';
+import {
+  findBackdrops,
+  findCatalogPose,
+  findDeliverBackdropColor,
+  findDeliverDefaults,
+  findDeliverOutlines,
+  findDof,
+  findRedrawDefaults,
+  findRedrawDials,
+  findRedrawLight,
+  getCatalog,
+} from '../lib/catalogs';
+import type { RecipeCatalogDoc } from '../schemas/catalogs';
 import type { AppEnv, ExperimentRunRow, GenerationRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 
@@ -455,4 +470,74 @@ pages.get('/compare', async (c) => {
   const items = await buildCompareItems(c.env.DB, rows, origin);
 
   return c.html(<ComparePage path={c.req.path} items={items} missingIds={missingIds} warning={warning} />);
+});
+
+pages.get('/work', async (c) => {
+  const rating = c.req.query('rating') === 'good' ? 'good' : undefined;
+  const recipe = c.req.query('recipe') || undefined;
+  const page = Math.max(Number(c.req.query('page')) || 1, 1);
+  const sources = await listWorkSources(c.env.DB, { rating, recipe, offset: (page - 1) * WORK_SOURCES_PAGE_SIZE });
+  return c.html(
+    <WorkSourcesPage path={c.req.path} items={sources.items} recipes={sources.recipes} filters={{ rating, recipe, page }} hasMore={sources.hasMore} />,
+  );
+});
+
+/** The parts of the pose that drew `generationId`, with each part's text when the pose record carries it. */
+function workbenchParts(doc: RecipeCatalogDoc, recipe: string, pose: string | null): WorkbenchPart[] {
+  const recipeDoc = doc.recipes.find((r: unknown) => (r as { name?: unknown }).name === recipe) as { parts?: unknown } | undefined;
+  const names = Array.isArray(recipeDoc?.parts) ? recipeDoc.parts.filter((p): p is string => typeof p === 'string') : [];
+  const poseRecord = pose ? (findCatalogPose(doc, recipe, pose) as { parts?: unknown } | null) : null;
+  const texts = new Map<string, string>();
+  if (poseRecord && Array.isArray(poseRecord.parts)) {
+    for (const part of poseRecord.parts as { name?: unknown; text?: unknown }[]) {
+      if (part && typeof part.name === 'string' && typeof part.text === 'string') texts.set(part.name, part.text.replace(/[\s,]+$/, '').trim());
+    }
+  }
+  return names.map((name) => ({ name, text: texts.get(name) || null }));
+}
+
+pages.get('/work/:shortId', async (c) => {
+  const db = c.env.DB;
+  const shortId = c.req.param('shortId');
+  const generation = await getGenerationByIdOrShortId(db, shortId);
+  if (!generation) return c.html(<NotFoundPage what="Generation" />, 404);
+  if (generation.refines_generation_id) {
+    const root = await findRootGeneration(db, generation);
+    return c.redirect(`/work/${root.short_id}?at=${generation.short_id}`);
+  }
+
+  const [tree, workbench, detailRes] = await Promise.all([
+    buildWorkbenchTree(db, generation),
+    getWorkbench(db, generation.id),
+    internalApiRequest(c, `/api/v1/generations/${generation.id}`),
+  ]);
+  const detail = (await detailRes.json()) as { request: { recipe: string | null; drawn_pose: { pose: string } | null } | null };
+  const recipe = detail.request?.recipe ?? null;
+  const recipeRef = recipe ? defaultRecipeRef(c.env) : null;
+  const catalog = recipeRef ? await getCatalog(db, recipeRef) : null;
+  const doc = catalog && recipe ? catalog.doc : null;
+  const deliverDefaults = doc && recipe ? findDeliverDefaults(doc, recipe) : null;
+  const catalogStroke = typeof deliverDefaults?.stroke_light === 'string' ? deliverDefaults.stroke_light : 'even';
+  const lightFrom = doc && recipe ? findRedrawLight(doc, recipe) : null;
+  const strokeDefault = catalogStroke === 'even' || ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].includes(catalogStroke) ? catalogStroke : 'even';
+
+  const data: WorkbenchData = {
+    root: { id: generation.id, short_id: generation.short_id },
+    tree,
+    picks: workbench.picks,
+    at: c.req.query('at') || null,
+    redrawDefaults: doc && recipe ? findRedrawDefaults(doc, recipe) : null,
+    redrawDials: doc && recipe ? findRedrawDials(doc, recipe) : null,
+    light: lightFrom,
+    deliverDefaults,
+    outlines: doc && recipe ? findDeliverOutlines(doc, recipe) : null,
+    strokeDefault,
+    backdrops: doc ? findBackdrops(doc).map(({ name, label }) => ({ name, label })) : [],
+    recipeRef,
+    catalogVersion: catalog?.row.updated_at ?? null,
+    backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
+    dof: doc ? findDof(doc) : null,
+    parts: doc && recipe ? workbenchParts(doc, recipe, detail.request?.drawn_pose?.pose ?? null) : [],
+  };
+  return c.html(<WorkbenchPage path={c.req.path} data={data} />);
 });

@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { isDeliveredRequest } from '../src/lib/requests';
 import { clearRequests, createGeneration, createRequest, getJson, mcpToolCall, postJson, req, TINY_PNG } from './helpers';
 
 beforeEach(async () => {
@@ -66,8 +67,8 @@ describe('deliver request', () => {
       transparent: true,
       backdrop: 'dots',
       stroke_light: 'n',
+      outlines: [{ color: '#ffffff', width: 0.4 }, { color: '#885b80', width: 1.04 }],
       deliver_size: 1536,
-      dof: { focus: [0.5, 0.3], f_number: 2.8, scope: 'figure', viewfinder: 'both' },
       light: { scene: 'moon', from: 'w' },
     };
     const full = await create('deliver', { generation_id: generation.id, options });
@@ -82,6 +83,57 @@ describe('deliver request', () => {
     for (const options of [{ bogus: true }, { denoise: 0.5 }, { method: 'canvas' }, { deliver_only: true }, { repair: ['hands'] }, { hires: 3072 }]) {
       expect((await create('deliver', { generation_id: generation.id, options })).status).toBe(400);
     }
+  });
+});
+
+describe('dof request', () => {
+  it('accepts focus alone and every option, and queues it', async () => {
+    const { generation } = await createGeneration();
+    const minimal = await create('dof', { generation_id: generation.short_id, options: { focus: [0.5, 0.3] } });
+    expect(minimal.status).toBe(201);
+    expect(minimal.body.kind).toBe('dof');
+    expect(minimal.body.status).toBe('queued');
+    const options = { focus: [0, 1], f_number: 1.4, scope: { figure: true, backdrop: false }, viewfinder: 'both' };
+    const full = await create('dof', { generation_id: generation.id, options });
+    expect(full.status).toBe(201);
+    expect(full.body.payload).toEqual({ generation_id: generation.id, options });
+  });
+
+  it.each([
+    ['no options', {}],
+    ['no focus', { options: { f_number: 2.8 } }],
+    ['focus outside 0..1', { options: { focus: [1.2, 0.5] } }],
+    ['focus with 3 elements', { options: { focus: [0.5, 0.5, 0.5] } }],
+    ['f_number below 1.4', { options: { focus: [0.5, 0.5], f_number: 1.3 } }],
+    ['f_number above 22', { options: { focus: [0.5, 0.5], f_number: 23 } }],
+    ['a string scope', { options: { focus: [0.5, 0.5], scope: 'figure' } }],
+    ['an all-false scope', { options: { focus: [0.5, 0.5], scope: { figure: false, outline: false, backdrop: false } } }],
+    ['an unknown scope key', { options: { focus: [0.5, 0.5], scope: { sky: true } } }],
+    ['an unknown viewfinder', { options: { focus: [0.5, 0.5], viewfinder: 'grid' } }],
+    ['an unknown option key', { options: { focus: [0.5, 0.5], strength: 1 } }],
+    ['a profile', { options: { focus: [0.5, 0.5] }, profile: { name: 'x' } }],
+  ])('rejects %s', async (_label, rest) => {
+    const { generation } = await createGeneration();
+    expect((await create('dof', { generation_id: generation.id, ...rest })).status).toBe(400);
+  });
+
+  it('is claimed by kinds filter, requires source_generation_id on its job, and counts as delivered', async () => {
+    const source = await createGeneration();
+    const dof = await create('dof', { generation_id: source.generation.id, options: { focus: [0.5, 0.5] } });
+    const claim = await req('/api/v1/requests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worker_id: 'w', kinds: ['dof'] }) });
+    expect(((await claim.json()) as RequestBody).id).toBe(dof.body.id);
+
+    const running = await createRequest({ kind: 'dof', status: 'running' });
+    const missing = await postJson(`/api/v1/requests/${running.body.id}/jobs`, { idempotency_key: crypto.randomUUID(), seed: 1, index: 0 });
+    expect(missing.status).toBe(400);
+    const job = await postJson<{ id: string }>(`/api/v1/requests/${running.body.id}/jobs`, {
+      idempotency_key: crypto.randomUUID(),
+      seed: 1,
+      index: 0,
+      source_generation_id: source.generation.short_id,
+    });
+    expect(job.status).toBe(201);
+    expect(isDeliveredRequest({ kind: 'dof', parameters_json: null })).toBe(true);
   });
 });
 
@@ -230,8 +282,8 @@ describe('requests table rebuild', () => {
     for (const name of ['idx_requests_status_created_at', 'idx_requests_run_id', 'idx_requests_worker_id', 'idx_requests_short_id']) {
       expect(names).toContain(name);
     }
-    for (const kind of ['redraw', 'deliver']) {
-      expect((await createRequest({ kind: kind as 'redraw' | 'deliver' })).status).toBe(201);
+    for (const kind of ['redraw', 'deliver', 'dof']) {
+      expect((await createRequest({ kind: kind as 'redraw' | 'deliver' | 'dof' })).status).toBe(201);
     }
     await expect(env.DB.prepare("UPDATE requests SET kind = 'bogus' WHERE id = (SELECT id FROM requests LIMIT 1)").run()).rejects.toThrow();
   });
