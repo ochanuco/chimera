@@ -27,12 +27,17 @@ export interface RerollRequestView {
   created_at: string;
 }
 
+export interface RerollRound {
+  request: RerollRequestView;
+  generations: RerollNode[];
+}
+
 export interface RerollState {
   root: RerollNode;
   /** null: 元絵が generate の recipe 指定でなく、振り直せない。 */
   recipe: string | null;
-  request: RerollRequestView | null;
-  generations: RerollNode[];
+  /** 古い順。まだ振っていなければ空。 */
+  rounds: RerollRound[];
 }
 
 function nodeOf(row: Pick<GenerationRow, 'id' | 'short_id' | 'rating' | 'bookmark' | 'image_width' | 'image_height' | 'image_size' | 'created_at'>): RerollNode {
@@ -63,28 +68,33 @@ export function rerollPayload(source: JsonObject): JsonObject {
   return { ...rest, request: { ...request, count: REROLL_COUNT } };
 }
 
-export async function findRerollRequest(db: D1Database, rootId: string): Promise<RequestRow | null> {
-  return db.prepare('SELECT * FROM requests WHERE reroll_of_generation_id = ?').bind(rootId).first<RequestRow>();
+async function listRerollRequests(db: D1Database, rootId: string): Promise<RequestRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM requests WHERE reroll_of_generation_id = ? ORDER BY created_at ASC, id ASC')
+    .bind(rootId)
+    .all<RequestRow>();
+  return results ?? [];
 }
 
 export async function getRerollState(db: D1Database, generation: GenerationRow): Promise<RerollState> {
   const root = await findRootGeneration(db, generation);
-  const [sourceRequest, reroll] = await Promise.all([requestOfGeneration(db, root), findRerollRequest(db, root.id)]);
-  const { results } = reroll
-    ? await db
+  const [sourceRequest, rerolls] = await Promise.all([requestOfGeneration(db, root), listRerollRequests(db, root.id)]);
+  const rounds = await Promise.all(
+    rerolls.map(async (reroll): Promise<RerollRound> => {
+      const { results } = await db
         .prepare(
           `SELECT id, short_id, rating, bookmark, image_width, image_height, image_size, created_at
            FROM generations WHERE request_id = ? ORDER BY created_at ASC, id ASC`,
         )
         .bind(reroll.id)
-        .all<GenerationRow>()
-    : { results: [] as GenerationRow[] };
-  return {
-    root: nodeOf(root),
-    recipe: recipeOf(sourceRequest),
-    request: reroll ? { id: reroll.id, status: reroll.status, error: reroll.error, created_at: reroll.created_at } : null,
-    generations: (results ?? []).map(nodeOf),
-  };
+        .all<GenerationRow>();
+      return {
+        request: { id: reroll.id, status: reroll.status, error: reroll.error, created_at: reroll.created_at },
+        generations: (results ?? []).map(nodeOf),
+      };
+    }),
+  );
+  return { root: nodeOf(root), recipe: recipeOf(sourceRequest), rounds };
 }
 
 export interface CreateRerollResult {
@@ -92,22 +102,24 @@ export interface CreateRerollResult {
   created: boolean;
 }
 
-/** 元絵 1 枚につき 1 回だけ。既にあれば何も作らずその Request を返す (created: false)。 */
+/** 直近の回が queued / running ならそれを返し (created: false)、そうでなければ次の回を積む。 */
 export async function createReroll(db: D1Database, generation: GenerationRow, defaultRecipeRef: string): Promise<CreateRerollResult> {
   const root = await findRootGeneration(db, generation);
-  const existing = await findRerollRequest(db, root.id);
-  if (existing) return { row: existing, created: false };
+  const rerolls = await listRerollRequests(db, root.id);
+  const latest = rerolls[rerolls.length - 1];
+  if (latest && (latest.status === 'queued' || latest.status === 'running')) return { row: latest, created: false };
 
   const source = await requestOfGeneration(db, root);
   if (!recipeOf(source)) throw conflict(`generation '${root.short_id}' was not drawn from a generate request with a recipe; it cannot be rerolled`);
 
+  // 回番号を key に入れるので、同じ回への同時 POST は idempotency_key の衝突で 1 件に畳まれる。
   return createRequest(
     db,
     {
       kind: 'generate',
       payload: rerollPayload(parseJsonObject(source.payload_json)),
       recipe_ref: source.recipe_ref,
-      idempotency_key: `reroll:${root.id}`,
+      idempotency_key: `reroll:${root.id}:${rerolls.length + 1}`,
       created_by: 'gui',
       reroll_of_generation_id: root.id,
     },
