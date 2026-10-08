@@ -339,13 +339,10 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
             元絵を選び直す
           </a>
           <nav class="wb-steps-nav" aria-label="フェーズ">
-            <ol class="wb-steps">
+            <ol class="wb-steps wb-steps-fixed">
               <li>
                 <button type="button" class="wb-step" data-wb-step="0" disabled>
                   <span class="wb-step-label">元絵</span>
-                  <span class="wb-step-kind mono" data-wb-step-kind>
-                    {data.root.short_id}
-                  </span>
                 </button>
               </li>
               {PHASES.map((p) => (
@@ -356,9 +353,6 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                   <button type="button" class="wb-step" data-wb-step={String(p.no)} disabled>
                     <span class="wb-step-label">
                       {p.no}. {p.label}
-                    </span>
-                    <span class="wb-step-kind mono" data-wb-step-kind>
-                      —
                     </span>
                   </button>
                 </li>

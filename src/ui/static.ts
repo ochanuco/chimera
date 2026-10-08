@@ -1546,6 +1546,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-step:disabled { cursor: default; opacity: 0.5; }
 .wb-step-label { font-size: 0.78rem; }
 .wb-step-kind { font-size: 0.68rem; opacity: 0.75; }
+.wb-steps-fixed .wb-step { width: 7rem; min-height: 2rem; align-items: center; justify-content: center; }
+.wb-steps-fixed .wb-step-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-step-on { background: var(--accent); border-color: var(--accent); color: #10131c; }
 .wb-step-open:not(.wb-step-on) { border-style: dashed; }
 
@@ -1611,7 +1613,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
 
 .wb-panel {
-  flex: 1 1 18rem; min-width: 0; max-width: 380px; max-height: calc(100dvh - var(--wb-panel-top, 6rem) - 1.5rem); overflow: hidden;
+  flex: 1 1 18rem; min-width: 0; max-width: 380px; height: calc(100dvh - var(--wb-panel-top, 6rem) - 1.5rem); overflow: hidden;
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px;
   display: flex; flex-direction: column;
 }
@@ -1642,7 +1644,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-acc .outline-editor, .wb-acc-body { padding: 0 0.7rem 0.7rem; }
 .wb-acc-body { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.85rem; }
 .wb-run {
-  font: inherit; font-size: 0.95rem; font-weight: 700; width: 100%; min-height: 3rem; border: 0; border-radius: 10px;
+  font: inherit; font-size: 0.95rem; font-weight: 700; align-self: flex-end; min-width: 8rem; max-width: 100%; min-height: 3rem; padding: 0 1.2rem; border: 0; border-radius: 10px;
   background: var(--accent); color: #10131c; cursor: pointer;
 }
 .wb-run:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
@@ -1650,7 +1652,7 @@ details.section .section-body { margin-top: 0.6rem; }
 @media (max-width: 900px) {
   .wb-main { flex-direction: column; align-items: stretch; }
   .wb-compare, .wb-panel { flex: none; max-width: none; width: 100%; }
-  .wb-panel { max-height: none; overflow: visible; }
+  .wb-panel { height: auto; overflow: visible; }
   .wb-panel-body { overflow: visible; padding-bottom: 6rem; }
   /* Stacked under the compare panes, a sticky foot would only appear after scrolling past them. */
   .wb-panel-foot {
@@ -1658,6 +1660,7 @@ details.section .section-body { margin-top: 0.6rem; }
     padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom));
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
   }
+  .wb-run { align-self: stretch; }
   .wb-pane { height: auto; aspect-ratio: 4 / 5; min-height: 0; }
 }
 @media (max-width: 600px) {
@@ -5073,17 +5076,6 @@ export const appJs = `
         var k = Number(btn.getAttribute('data-wb-step'));
         if (k === 0) return;
         var p = pick(k);
-        var kind = qs('[data-wb-step-kind]', btn);
-        var text = '—';
-        if (p && p.skip) {
-          text = 'スキップ';
-        } else if (p) {
-          var n = nodeById(p.generation_id);
-          text = n ? kindLabel(n) : '採用';
-        } else if (reached(k)) {
-          text = 'いま';
-        }
-        kind.textContent = text;
         btn.disabled = !reached(k);
         btn.classList.toggle('wb-step-on', k === wb.active);
         btn.classList.toggle('wb-step-open', !p);

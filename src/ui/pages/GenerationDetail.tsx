@@ -190,7 +190,7 @@ export function GenerationDetailPage({
   );
 
   return (
-    <Layout title={`Generation ${data.short_id}`} fullBleed path={path}>
+    <Layout title={`${data.short_id} · 詳細`} fullBleed path={path}>
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
@@ -233,8 +233,6 @@ export function GenerationDetailPage({
 
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />
-
-          <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
 
           {producedByOptions ? (
             <details class="section" open>
@@ -450,6 +448,8 @@ export function GenerationDetailPage({
           </details>
 
           <NoteSection kind="generations" id={data.id} note={data.note} />
+
+          <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
         </div>
       </div>
     </Layout>
