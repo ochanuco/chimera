@@ -1514,7 +1514,6 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .reroll-open-link:hover { background: rgba(124, 156, 245, 0.15); text-decoration: none; }
 
-.work-lead { margin: 0 0 1rem; color: var(--text-dim); max-width: 40rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .work-filter-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .work-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.9rem; }
@@ -5522,7 +5521,6 @@ export const appJs = `
         var m = method.getAttribute('data-wb-method');
         qsa('[data-wb-method]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === method); });
         qsa('[data-wb-method-panel]', root).forEach(function (p) { p.hidden = p.getAttribute('data-wb-method-panel') !== m; });
-        qs('[data-wb-method-note]', root).textContent = method.getAttribute('data-note') || '';
         return;
       }
       var word = t.closest('[data-wb-denoise-word]');
@@ -5535,7 +5533,6 @@ export const appJs = `
       var scene = t.closest('[data-wb-scene]');
       if (scene) {
         qsa('[data-wb-scene]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === scene); });
-        qs('[data-wb-scene-note]', root).textContent = scene.getAttribute('data-note') || '';
         return;
       }
       var dir = t.closest('[data-compass="light"] [data-compass-dir]');

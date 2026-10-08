@@ -65,7 +65,7 @@ export function ExperimentAbPage({ path, data }: { path: string; data: Experimen
             </script>
 
             <p class="ab-done" hidden={pairs.length > 0}>
-              全 seed 判定済み <a href={`/experiments/${experiment.short_id}`}>実験へ戻る</a>
+              全 seed 判定済み。<a href={`/experiments/${experiment.short_id}`}>実験へ戻る</a>
             </p>
 
             <div class="ab-pair-area" hidden={pairs.length === 0}>
