@@ -7,7 +7,7 @@ export function CapActions({ side, work = false }: { side: string; work?: boolea
     <div class="wb-cap-actions" data-wb-cap-actions={side} hidden>
       <span class="copy-id-btn copy-id-text" data-wb-cap-id role="button" tabindex={0}></span>
       <a class="wb-cap-link" data-wb-cap-link>
-        /g/
+        詳細
       </a>
       {work ? (
         <a class="wb-cap-link" data-wb-cap-work title="ワークベンチで開く">

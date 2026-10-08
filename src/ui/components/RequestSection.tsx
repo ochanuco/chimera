@@ -22,7 +22,7 @@ export function RequestSection({
   shortId: string;
 }) {
   return (
-    <details class="section" open>
+    <details class="section">
       <summary>Requests</summary>
       <div class="section-body">
         {canPromoteToProfile ? (
