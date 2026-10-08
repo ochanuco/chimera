@@ -718,7 +718,7 @@ inpaint/masked-img2img adapter に渡す narrow boundary です。worker は sou
 
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
-  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵ごとの `reroll:{元絵の id}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
+  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
 
@@ -862,8 +862,8 @@ worker は requests だけを見ます。
   `request.seeds` と `experiment` を外し、`request.count = 4` にして `kind = generate` を積む（`created_by = gui`、
   `recipe_ref` は元の Request と同じ）。recipe・parameters・patches・presets・references・semantic は元のまま
   なので、worker から見れば seed だけ違う通常の generate である。`requests.reroll_of_generation_id` に元絵の id を
-  持ち、元絵 1 枚につき 1 件（unique index）。idempotency key は `reroll:<元絵の id>` で、`POST
-  /api/v1/generations/{id}/reroll`（[api.md](api.md#reroll)）が既存行を返すので連打しても積み直さない。
+  持ち、元絵 1 枚につき回ごとに 1 件。idempotency key は `reroll:<元絵の id>:<回番号>` で、`POST
+  /api/v1/generations/{id}/reroll`（[api.md](api.md#reroll)）は直近の回が queued / running の間は既存行を返すので連打しても積み直さない。
 
 GUI が積んでよい操作の範囲は [architecture.md](architecture.md#web-gui) の Web GUI
 Responsibilities を参照してください。Compare が比較表示のみである点は変わりません。

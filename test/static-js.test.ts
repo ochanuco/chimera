@@ -78,5 +78,7 @@ describe('served app.js', () => {
     expect(appJs).toContain("wbRenderCapActions(root, 'input', input);");
     expect(appJs).toContain("wbRenderCapActions(root, side, node);");
     expect(appJs).toContain("'/api/v1/generations/' + encodeURIComponent(rootId) + '/reroll'");
+    expect(appJs).toContain("url.searchParams.set('round', String(i + 1));");
+    expect(appJs).toContain('data-rr-round');
   });
 });
