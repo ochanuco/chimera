@@ -176,7 +176,7 @@ export interface RequestReferenceRow {
   created_at: string;
 }
 
-export type RequestKind = 'generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'import';
+export type RequestKind = 'generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof' | 'import';
 export type RequestStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export type RequestCreatedBy = 'brain' | 'mcp' | 'gui' | 'system';
 

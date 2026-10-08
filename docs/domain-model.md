@@ -8,7 +8,7 @@
 Experiment → ExperimentRun → Request → ComfyJob → Generation
 ```
 
-Request は worker への生成要求 1 件で、generate / redraw / deliver / repair / masked_redraw / import の
+Request は worker への生成要求 1 件で、generate / redraw / deliver / dof / repair / masked_redraw / import の
 どれも、Generation は必ず Request に属します。Run の結果は `requests.run_id` が Run を指す
 Request で、Run が Request を包含するのではなく、Request が Run を参照します。
 
@@ -23,7 +23,7 @@ Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
   関係             意味
   ---------------- ----------------------------------------------
   素材参照         過去Generationの何を生成材料として利用したか
-  仕上げ元         この Generation が、どの Generation を redraw / deliver / repair / masked_redraw したものか
+  仕上げ元         この Generation が、どの Generation を redraw / deliver / dof / repair / masked_redraw したものか
 
 ## Experiment
 
@@ -500,7 +500,7 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 ``` text
 id
 short_id          /b/{short_id} の Request の短縮 ID
-kind              generate | redraw | deliver | repair | masked_redraw | import（finalize は古い行を読むためだけに残る）
+kind              generate | redraw | deliver | dof | repair | masked_redraw | import（finalize は古い行を読むためだけに残る）
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -535,7 +535,7 @@ Job の `graph` / `render_facts` を正とします。素材参照は `request_r
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
-`{ generation_id, options }`（redraw / deliver / repair / masked_redraw、古い finalize）です。masked_redraw の
+`{ generation_id, options }`（redraw / deliver / dof / repair / masked_redraw、古い finalize）です。masked_redraw の
 options は明示的な矩形 `regions` と非空の `prompt_patch` を必須とし、低〜中程度の
 `denoise`、`mask_padding`、`mask_feather` を保持します。契約全体（状態遷移、API、payload
 の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
@@ -624,7 +624,7 @@ created_at
 updated_at
 ```
 
-`source_generation_id` は redraw / deliver / repair / masked_redraw（と古い finalize）の Job で仕上げ元の Generation を指します。
+`source_generation_id` は redraw / deliver / dof / repair / masked_redraw（と古い finalize）の Job で仕上げ元の Generation を指します。
 
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
@@ -784,6 +784,9 @@ shadow
 highlight
 part
 depth
+layer-figure    deliver の出力に付く人物の層（RGBA、alpha は切り抜き）。出力と同じ寸法
+layer-outline   deliver の出力に付くフチと落ち影の層（RGBA。何も無ければ全透明）
+layer-backdrop  deliver の出力に付く背景の層（RGB。透過納品では付けない）
 cut             alpha / depth をどう作ったかの json（モデル名・revision・
                 trimap の幅など）。alpha / depth と一緒に付く
 meta
@@ -880,9 +883,29 @@ other
 
 ## 仕上げ元
 
-redraw / deliver / repair / masked_redraw（と古い finalize）の出力 Generation は、仕上げた元の Generation を
+redraw / deliver / dof / repair / masked_redraw（と古い finalize）の出力 Generation は、仕上げた元の Generation を
 `generations.refines_generation_id` で直接指します。再試行の関係は持ちません。
 素材参照（Generation → Request）とは別の関係で、統合しません。
+
+kind `dof` は deliver の出力（`layer-*` の asset を持つ絵）だけを入力にし、層ごとにぼかして重ねた納品の絵を作ります
+（[worker-protocol.md](worker-protocol.md#dof)）。出力は `is_delivered` で、入力を `refines_generation_id` で指します。
+
+## Workbench
+
+ワークベンチは元絵（`refines_generation_id` が NULL の raw Generation）1 枚につき 1 行の `workbenches` 表で、元絵から下の
+仕上げ連鎖をフェーズごとに選んだ結果を持ちます。
+
+``` text
+id                  TEXT PRIMARY KEY
+root_generation_id  TEXT NOT NULL UNIQUE   元絵の Generation（generations.id）
+picks_json          TEXT NOT NULL          {"1": {"generation_id": "<id>"} | {"skip": true}, ..., "5": ...}
+created_at / updated_at
+```
+
+フェーズは 1 描き直し（redraw の hires / canvas）、2 光（redraw の light）、3 部分（repair / masked_redraw）、4 納品（deliver）、
+5 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
+採用は木のどこかの Generation を指すだけで、Generation 側には何も書きません。木の取得と保存の API は
+[api.md](api.md#generation-tree) です。
 
 ## Tag
 
