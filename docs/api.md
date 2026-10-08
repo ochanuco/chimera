@@ -531,6 +531,7 @@ GET    /api/v1/requests/{id}
 PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe / parameters / patches / pose_fingerprint / preset_versions / git_commit / git_dirty / references）を報告。200（再送・Job 作成前の上書き）/ 409（Job 作成後に別の値）。応答は { id, short_id, status, jobs[] }
 POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・repair・masked_redraw（と古い finalize）は source_generation_id 必須
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
+PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告（best-effort）。200 { ok: true } / 404 / 400。下記「Timings」
 ```
 
 `GET` のクエリパラメータ:
@@ -551,6 +552,43 @@ Generation の original が purge 済み（`original_purged_at` 非 null）な�
 （[worker-protocol.md](worker-protocol.md)）、original が無いと実行できません。既存の
 idempotency_key での再送（新規作成ではない）はこのチェックの対象外です。`generate` /
 derive request は対象外です。
+
+### Timings
+
+``` text
+PUT  /api/v1/requests/{id}/timings
+POST /api/v1/timings/import-comfy-history
+GET  /api/v1/stats?period=7d|14d|30d|90d|all&cold=include|exclude
+```
+
+`PUT .../timings` は 1 試行の計測を (request_id, attempt, version) 単位で置き換えます（子行は削除して入れ直す冪等な upsert）。
+body の形と送るタイミングは [worker-protocol.md](worker-protocol.md#timings)、テーブルは
+[domain-model.md](domain-model.md#timings) です。Request が無ければ 404、スキーマ違反は 400 です。
+`worker_id` や status を requests 行と突き合わせることはしません（計測は最終 PATCH の後に届くため）。
+
+`POST /api/v1/timings/import-comfy-history` は ComfyUI の `/history` の生 JSON（`{ prompt_id: { status: { status_str, messages } } }`）
+を取り込みます。`comfy_jobs.comfy_prompt_id` で Request に対応づけ、Request ごとに version `v1` / source `comfy_history` の
+試行を 1 行 upsert します（`attempt` / `status` / `claimed_at` / `finished_at` は requests 行から）。prompt は
+`execution_start` と `execution_success` / `execution_error` / `execution_interrupted` の時刻を持ち、node 行は
+`execution_cached` に載ったノードだけを `cached = 1` で入れます（`class_type` と role=`_meta.title` は Job の graph から、無ければ
+`unknown` / null）。応答は `{ imported_requests, imported_prompts, skipped_prompt_ids }` で、対応する Job が無い prompt_id は skipped に入ります。
+v2 の行とは version が違うので上書きしません。
+
+`GET /api/v1/stats` は [ui.md](ui.md#統計stats) の `/stats` と同じ集計を JSON で返します。`period`（既定 `30d`、`requests.created_at` の窓）と
+`cold`（既定 `include`、`exclude` は `cold_load = 1` の試行を除く）が不正なら 400 です。
+
+``` text
+{
+  period, cold, window_start,
+  daily:        [{ date, kind, version, n, median_ms }],            // JST の日別。version は v1 / v2
+  segments:     [{ kind, segment, n, median_ms, p90_ms }],          // v2。pre_submit / queue / execute / post / tail
+  roles:        [{ checkpoint, canvas, role, n, median_ms, p90_ms }],
+  steps:        [{ role, n, steps: [{ index, n, median_ms }], first_median_ms, rest_median_ms }],
+  environments: [{ comfyui_version, attention, argv, kind, n, median_execute_ms }],
+  counts: { generations, by_rating, published, by_kind, by_recipe, by_pose, gpu_ms, gpu_approx_ms, wall_ms,
+            mean_ms_per_generation, ms_per_good_generation }
+}
+```
 
 ### Summary
 
