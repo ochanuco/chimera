@@ -94,7 +94,7 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
                 title={`Copy ${g.refines_generation_short_id}`}
                 aria-label={`Copy ${g.refines_generation_short_id}`}
               >
-                from <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
+                元 <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
               </span>
             ) : null}
             {g.refinement_request ? <RequestBadge r={g.refinement_request} /> : null}
@@ -140,7 +140,7 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
               data-kind="generations"
               data-id={g.id}
               data-bookmarked={g.bookmark ? 'true' : 'false'}
-              title="bookmark"
+              title="ブックマーク"
             >
               🔖
             </button>

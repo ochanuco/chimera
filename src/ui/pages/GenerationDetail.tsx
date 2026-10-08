@@ -190,7 +190,7 @@ export function GenerationDetailPage({
   );
 
   return (
-    <Layout title={`Generation ${data.short_id}`} fullBleed path={path}>
+    <Layout title={`${data.short_id} · 詳細`} fullBleed path={path}>
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
@@ -214,7 +214,7 @@ export function GenerationDetailPage({
             {data.short_id} <CopyIdButton value={data.short_id} />{' '}
             {data.refines_generation ? (
               <span class="detail-from">
-                from <a href={`/g/${data.refines_generation.short_id}`}>{data.refines_generation.short_id}</a>{' '}
+                元 <a href={`/g/${data.refines_generation.short_id}`}>{data.refines_generation.short_id}</a>{' '}
                 <CopyIdButton value={data.refines_generation.short_id} />
               </span>
             ) : null}{' '}
@@ -234,8 +234,6 @@ export function GenerationDetailPage({
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />
 
-          <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
-
           {producedByOptions ? (
             <details class="section" open>
               <summary>仕上げの解決値</summary>
@@ -246,8 +244,8 @@ export function GenerationDetailPage({
           ) : null}
 
           <details class="section" open>
-            <summary>Summary</summary>
-            <div class="section-body">{data.summary ?? 'No summary yet.'}</div>
+            <summary>要約</summary>
+            <div class="section-body">{data.summary ?? '要約なし'}</div>
           </details>
 
           <details class="section" open>
@@ -263,15 +261,15 @@ export function GenerationDetailPage({
                       </tr>
                     ))}
                   </table>
-                  <p>Strengths: {data.semantic.strengths.length ? data.semantic.strengths.join(', ') : '-'}</p>
-                  <p>Defects: {data.semantic.defects.length ? data.semantic.defects.join(', ') : '-'}</p>
+                  <p>強み: {data.semantic.strengths.length ? data.semantic.strengths.join(', ') : '-'}</p>
+                  <p>欠点: {data.semantic.defects.length ? data.semantic.defects.join(', ') : '-'}</p>
                   <details class="section-sub">
                     <summary>Raw JSON</summary>
                     <pre>{JSON.stringify(data.semantic.attributes, null, 2)}</pre>
                   </details>
                 </>
               ) : (
-                <p>Not analyzed yet.</p>
+                <p>未解析</p>
               )}
             </div>
           </details>
@@ -450,6 +448,8 @@ export function GenerationDetailPage({
           </details>
 
           <NoteSection kind="generations" id={data.id} note={data.note} />
+
+          <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
         </div>
       </div>
     </Layout>

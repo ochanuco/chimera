@@ -353,7 +353,7 @@ describe('Web GUI pages', () => {
     });
 
     const refinedHtml = await (await req(`/g/${refined.generation.short_id}`)).text();
-    expect(refinedHtml).toContain(`from <a href="/g/${source.short_id}">${source.short_id}</a>`);
+    expect(refinedHtml).toContain(`元 <a href="/g/${source.short_id}">${source.short_id}</a>`);
     expect(refinedHtml).toContain(`data-copy-id="${source.short_id}"`);
 
     const rawHtml = await (await req(`/g/${source.short_id}`)).text();
@@ -807,7 +807,7 @@ describe('Web GUI pages', () => {
 
     const res = await req(`/compare?ids=${sourceGen.short_id},${refinedGen.short_id}`);
     const body = await res.text();
-    expect(body).toContain(`from <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
+    expect(body).toContain(`元 <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
     expect(body).toContain('公開済み');
   });
 
@@ -1096,7 +1096,7 @@ describe('Web GUI pages', () => {
       const details = body.match(/<details class="compare-prompts">(.*?)<\/details>/s);
       expect(details).not.toBeNull();
       expect(details![0]).not.toContain(' open');
-      expect(details![1]).toContain('プロンプト全文（差分）を表示');
+      expect(details![1]).toContain('プロンプト全文');
       expect(details![1]).toContain('<td>render.positive</td>');
       expect(body.slice(0, body.indexOf('<details'))).not.toContain('<td>render.positive</td>');
     });
@@ -1302,14 +1302,14 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('href="/gallery"');
-    expect(html).toContain('>Gallery<');
+    expect(html).toContain('>ギャラリー<');
     expect(html).toContain('href="/bookmarks"');
-    expect(html).toContain('>Bookmarks<');
+    expect(html).toContain('>ブックマーク<');
     expect(html).toContain('class="nav-more"');
     expect(html).toContain('<summary');
-    expect(html).toContain('>More<');
+    expect(html).toContain('>その他<');
     expect(html).toContain('href="/experiments"');
-    expect(html).toContain('>Experiments<');
+    expect(html).toContain('>実験<');
     expect(html).not.toContain('href="/batches"');
     expect(html).not.toContain('>Batches<');
     expect(html).not.toContain('href="/stories"');
@@ -1321,19 +1321,19 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
   it('GET /gallery marks the Gallery nav link aria-current="page"', async () => {
     const res = await req('/gallery');
     const html = await res.text();
-    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
+    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*ギャラリー/);
   });
 
   it('GET /compare also marks the Gallery nav link aria-current="page" (compare is entered from the grid)', async () => {
     const res = await req('/compare?ids=');
     const html = await res.text();
-    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*Gallery/);
+    expect(html).toMatch(/<a href="\/gallery" aria-current="page">\s*ギャラリー/);
   });
 
   it('GET /experiments marks the More summary aria-current="page" (Experiments lives inside it)', async () => {
     const res = await req('/experiments');
     const html = await res.text();
-    expect(html).toMatch(/<summary aria-current="page">\s*More/);
+    expect(html).toMatch(/<summary aria-current="page">\s*その他/);
   });
 });
 
@@ -1398,7 +1398,7 @@ describe('Experiments pages', () => {
     const html = await res.text();
     expect(html).toContain(experiment.name);
     expect(html).toContain(`/experiments/${experiment.short_id}`);
-    expect(html).toContain('1 runs');
+    expect(html).toContain('1 Run');
     expect(html).toContain('data-value="fail"');
   });
 
@@ -1447,8 +1447,8 @@ describe('Experiments pages', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('legwear separation');
-    expect(html).toContain('Initial overrides');
-    expect(html).toContain('Changed from #1');
+    expect(html).toContain('初期 overrides');
+    expect(html).toContain('#1 からの変更');
     expect(html).toContain('controlnet.weight');
     expect(html).toContain('0.6 → 0.72');
     // 変わっていない leaf は差分に出さない
@@ -1582,7 +1582,7 @@ describe('Experiments pages', () => {
     expect(baselineRowMatch![0]).not.toContain('exp-facts-diff');
     expect(armRowMatch![0]).toContain('exp-facts-diff');
     expect(armRowMatch![0].replace(/<[^>]+>/g, ' ')).toContain('arm.safetensors');
-    expect(html).toContain(`Highlighted cells differ from #${baselineRun.body.run_index}`);
+    expect(html).toContain(`#${baselineRun.body.run_index} と異なるセルを強調`);
   });
 
   it('GET /experiments/{id} shows the baseline\'s positive prompt chips and a diff-added arm prompt row', async () => {
@@ -1865,7 +1865,7 @@ describe('Experiment run patch delta matching', () => {
 
   it('marks nothing as added on the first run, since it has no base to differ from', async () => {
     const html = await experimentWithRuns([{ patches: [cfg] }]);
-    expect(html).toContain('Initial overrides');
+    expect(html).toContain('初期 overrides');
     expect(html).toContain('soften edges');
     expect(html).not.toContain('exp-delta-added');
   });

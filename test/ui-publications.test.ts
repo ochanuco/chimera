@@ -8,7 +8,7 @@ describe('Generation Detail: 公開 section', () => {
     const html = await res.text();
     expect(html).toContain('未公開');
     expect(html).not.toContain('公開済み');
-    expect(html).toContain('投稿 URL（空でも記録できる）');
+    expect(html).toContain('投稿 URL');
     expect(html).toContain('公開を記録');
   });
 

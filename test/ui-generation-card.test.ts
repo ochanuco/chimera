@@ -86,7 +86,7 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
     const html = await res.text();
     const card = cardHtml(html, refined.generation.short_id);
 
-    expect(card).toContain(`from <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
+    expect(card).toContain(`元 <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
     expect(card).toContain('公開済み');
   });
 
@@ -112,7 +112,7 @@ describe('GenerationCard: simplified card contents (docs/ui.md「Gallery」)', (
     const html = await res.text();
     const card = cardHtml(html, refined.generation.short_id);
 
-    expect(card).toContain(`from <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
+    expect(card).toContain(`元 <span class="card-from-badge-id">${sourceGen.short_id}</span>`);
     expect(card).toContain('公開済み');
     expect(card).not.toContain('tag-add-form');
     expect(card).not.toContain('compare-check');

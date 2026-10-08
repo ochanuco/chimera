@@ -36,9 +36,6 @@ export function WorkSourcesPage({
   return (
     <Layout title="ワークベンチ" path={path}>
       <h1>ワークベンチ</h1>
-      <p class="work-lead">
-        手を入れた元絵の続きを開きます。新しく始めるときは、ギャラリーか <code>/g/&lt;id&gt;</code> の「ワークベンチで開く」から元絵を選びます。
-      </p>
       <div class="work-filters">
         <div class="work-filter-group" aria-label="状態">
           <a class={`wb-pill${filters.state ? '' : ' wb-pill-on'}`} href={href(filters, { state: undefined })}>
@@ -65,7 +62,7 @@ export function WorkSourcesPage({
         ) : null}
       </div>
       {items.length === 0 ? (
-        <p class="empty-state">作業中の絵がありません。ギャラリーで絵を開き、「ワークベンチで開く」から始めてください。</p>
+        <p class="empty-state">作業中の絵がありません</p>
       ) : (
         <div class="work-grid">
           {items.map((g) => (

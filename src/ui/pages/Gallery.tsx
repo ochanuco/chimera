@@ -80,13 +80,13 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
             </textarea>
           </label>
           <label>
-            Tag
-            <input type="text" name="tag" value={filters.tag ?? ''} placeholder="tag name" />
+            tag
+            <input type="text" name="tag" value={filters.tag ?? ''} placeholder="tag" />
           </label>
           <label>
-            Rating
+            rating
             <select name="rating">
-              <option value="">All</option>
+              <option value="">すべて</option>
               {(['good', 'neutral', 'bad'] as const).map((r) => (
                 <option value={r} selected={filters.rating === r}>
                   {r}
@@ -96,7 +96,7 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
           </label>
           <label class="checkbox-field">
             <input type="checkbox" name="bookmark" value="true" checked={filters.bookmark === 'true'} />
-            Bookmarked only
+            ブックマークのみ
           </label>
           <label class="checkbox-field">
             <input type="checkbox" name="published" value="true" checked={filters.published === 'true'} />
@@ -106,7 +106,7 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
             <input type="checkbox" name="reference" value="true" checked={filters.reference === 'true'} />
             基準のみ
           </label>
-          <button type="submit">Search</button>
+          <button type="submit">検索</button>
         </form>
       </details>
     </div>
@@ -229,14 +229,14 @@ export function GalleryPage({
   at?: string;
 }) {
   return (
-    <Layout title="Gallery" path={path}>
-      <h1>Gallery</h1>
+    <Layout title="ギャラリー" path={path}>
+      <h1>ギャラリー</h1>
       <GalleryToolbar filters={filters} />
 
       <datalist id="tag-suggestions"></datalist>
 
       {items.length === 0 ? (
-        <p class="empty-state">No generations match this filter.</p>
+        <p class="empty-state">該当する Generation がありません</p>
       ) : (
         <>
           {timeline ? (

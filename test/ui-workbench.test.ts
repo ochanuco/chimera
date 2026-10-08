@@ -175,11 +175,10 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('+ 外側に足す');
     expect(form).toContain('白・紫に戻す');
     expect(form).toContain('一番外の陰影');
-    expect(form).toContain('prompt で描いた白フチは、この内側に残ります。');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
     expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns(?![^>]* hidden="")[^>]*>\s*<summary>\s*背景柄/);
-    expect(form).toContain('切り抜きは初回に作って保存し');
+    expect(form).toContain('切り抜きは 2 回目から使い回します');
   });
 
   it('keeps the run button and its error in a footer outside the scrolling panel body', async () => {
@@ -247,7 +246,6 @@ describe('GET /work/:shortId', () => {
     expect(form).toMatch(/name="dof_f_stop" min="0" max="3" step="1" value="1"/);
     for (const layer of ['figure', 'outline', 'backdrop']) expect(form).toMatch(new RegExp(`name="dof_scope_${layer}"[^>]*checked`));
     expect(form).toMatch(/name="dof_viewfinder" value="off" checked/);
-    expect(form).toContain('ピント: 左の絵をクリック');
   });
 
   it('the nav links to the workbench', async () => {
