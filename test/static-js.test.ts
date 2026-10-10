@@ -46,6 +46,12 @@ describe('served app.js', () => {
     expect(appJs).toContain('function setOutlineStroke(editor, value)');
   });
 
+  it('resolves the random backdrop to one of the pattern radios before sending', () => {
+    const start = appJs.indexOf("if (backdropMode === 'random') {");
+    expect(start).toBeGreaterThan(0);
+    expect(appJs.slice(start, start + 300)).toContain('input[name="backdrop"][data-backdrop-pattern]');
+  });
+
   it('sends backdrop null for the transparent choice and checks the colour format', () => {
     expect(appJs).toContain("var backdrop = backdropMode === 'transparent' ? null : backdropMode;");
     expect(appJs).toContain("alert('背景色は #RRGGBB で指定してください')");

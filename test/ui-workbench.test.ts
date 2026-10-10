@@ -178,6 +178,8 @@ describe('GET /work/:shortId', () => {
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
     for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
     expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns(?![^>]* hidden="")[^>]*>\s*<summary>\s*背景柄/);
+    expect(form).toContain('data-wb-backdrop-patterns="true" data-default="random"');
+    expect(form).toMatch(/<input type="radio" name="backdrop" value="random"[^>]*>\s*<span class="backdrop-option-label">ランダム/);
     expect(form).toContain('切り抜きは 2 回目から使い回します');
   });
 
