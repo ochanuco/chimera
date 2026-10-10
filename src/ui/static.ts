@@ -2505,6 +2505,11 @@ export const appJs = `
     var backdropChecked = qs('input[name="backdrop"]:checked', form);
     var backdropMode = backdropChecked ? backdropChecked.value : 'stripes';
     var backdrop = backdropMode === 'transparent' ? null : backdropMode;
+    // ランダムは送る時点で柄を 1 つに決める。Request には実際に使った柄が残る。
+    if (backdropMode === 'random') {
+      var patternNames = qsa('input[name="backdrop"][data-backdrop-pattern]', form).map(function (r) { return r.value; });
+      backdrop = patternNames[Math.floor(Math.random() * patternNames.length)];
+    }
     if (backdropMode === 'color') {
       backdrop = qs('input[name="backdrop_color"]', form).value.trim();
       if (!/^#[0-9a-fA-F]{6}$/.test(backdrop)) {
