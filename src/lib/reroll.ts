@@ -61,11 +61,17 @@ function recipeOf(request: Pick<RequestRow, 'kind' | 'payload_json'>): string | 
   return typeof recipe === 'string' && recipe !== '' ? recipe : null;
 }
 
-/** 元の payload から seeds を外し、件数を 4 にする。ExperimentRun への紐付け (`experiment`) は引き継がない。 */
+/**
+ * 元の payload から seeds を外し、件数を 4 にする。ExperimentRun への紐付け (`experiment`) は引き継がないが、
+ * その arm の patches は `generation.patches` に移す。worker も experiment の patches を同じ場所へ読み替えて描く。
+ */
 export function rerollPayload(source: JsonObject): JsonObject {
-  const { experiment: _experiment, ...rest } = source;
+  const { experiment, ...rest } = source;
   const { seeds: _seeds, ...request } = (source.request ?? {}) as JsonObject;
-  return { ...rest, request: { ...request, count: REROLL_COUNT } };
+  const patches = ((experiment as JsonObject | undefined)?.overrides as JsonObject | undefined)?.patches;
+  const generation = (source.generation ?? {}) as JsonObject;
+  const carried = patches != null && generation.patches == null ? { generation: { ...generation, patches } } : {};
+  return { ...rest, ...carried, request: { ...request, count: REROLL_COUNT } };
 }
 
 async function listRerollRequests(db: D1Database, rootId: string): Promise<RequestRow[]> {
