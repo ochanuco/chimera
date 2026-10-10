@@ -1026,21 +1026,32 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
 ## GPU 機の起床
 
 GPU 機はジョブも入力も無い状態が 10 分続くと自分でスリープし、寝ている間は claim にも
-WorkerHub への接続にも来られません。どの経路のジョブも requests 行として chimera に積まれるので、
-起こす役は chimera が担います。
+WorkerHub への接続にも来られません。どの経路のジョブも requests 行として chimera に積まれ、
+WorkerHub に `queued` として通知されるので、起こす役は WorkerHub が担います。wol API
+（docker01、`https://wol.chanu.co`）の `POST /wake` を叩くのは WorkerHub だけです。
+状態機械は `src/lib/gpu-wake.ts`、配線は `src/worker-hub.ts` にあります。
 
-- 新しく作った requests 行が `status = queued` なら、WorkerHub への `queued` 通知と一緒に
-  wol API（docker01、`https://wol.chanu.co`）の `POST /wake` を `waitUntil` で投げます
-  （`src/lib/gpu-wake.ts`）。REST・MCP・GUI のどの経路で積んだ行も同じ `notifyEnqueued` を通ります。
-  `done` で作る `kind = import` は worker が claim しないので起こしません。claim 時の stale 戻しも、
-  claim した worker が起きているので起こしません。
-- `/wake` は冪等（online なら 200、それ以外は 202 で wol 側が online になるまで再送）なので、
-  事前に状態を確かめません。スリープからは約 10 秒で戻り、worker は再接続後の claim で追いつきます。
-- タイムアウト 5 秒・非 2xx・secret 未設定はログに残すだけで、行の作成は失敗させません。
-- 認証は Cloudflare Access の service token `wol_client` で、Worker の secret
-  `WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` に持たせます（1Password `chabatake-services/wol`）。
-- MCP `get_gpu_status` は wol API の `GET /status`（state は online / going_to_sleep /
-  sleeping / offline / waking）をそのまま返します。
+起床手順は DO の storage に 1 本だけ持ちます。
+
+- 始まり: `status = queued` の `queued` 通知が届いたとき。`done` で作る `kind = import` は対象外です。
+  手順が進行中なら何もしないので、一斉投入でも `/wake` は 1 回です。直近 30 秒以内に worker を見ていれば始めません。
+- 送信: alarm が送ります（タイムアウト 5 秒）。200（online）も 202（起動を開始）も成功です。
+  成功後の 30 秒は送りません。30 秒経ってもまだ worker が来ていなければ、もう一度送ります。
+- 再送: 非 2xx（429・5xx を含む）とタイムアウトは、5 秒 → 10 秒 → 20 秒 …と倍にし、60 秒を上限に alarm で再送します。
+  429 に `Retry-After` があればそれに従います。
+- 終わり: worker の claim（`POST /requests/claim`。返す行が無い 204 も含む）か、WebSocket の接続・`hello` を観測した時点です。
+  claim で stale 行を戻すときは `worker_seen` を先に届け、claim した worker のために起こさないようにします。
+- 諦め: 手順を始めてから 5 分を超えても worker が来なければ、ログに残して手順を捨てます。wol 側も offline を Discord に通知します。
+- 自己修復: alarm のたびに、手順が無く、queued 行が 2 分以上残り、running 行が無く、
+  直近 2 分に worker を見ていなければ、手順を始め直します。諦めてから 30 分は自己修復では始めません（新しい投入では始めます）。
+
+DO の alarm は 1 つしか持てないので、stale running の回収（60 秒ごと）と起床の送信時刻のうち、早い方に合わせて設定します。
+投入する側は起床の成否を待たず、失敗しても行の作成は成功します。
+
+認証は Cloudflare Access の service token `wol_client` で、Worker の secret
+`WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` に持たせます（1Password `chabatake-services/wol`）。
+未設定なら起床手順を始めません。MCP `get_gpu_status` は wol API の `GET /status`（state は online /
+going_to_sleep / sleeping / offline / waking）をそのまま返します。
 
 ## preset の移行
 

@@ -14,7 +14,7 @@ import { putTimingsSchema } from '../schemas/timings';
 import { putRequestTimings } from '../lib/timings';
 import { createJobSchema } from '../schemas/jobs';
 import { buildRequestJobs, createRequestJob, putResolution } from '../lib/request-resolution';
-import { notifyEnqueued, notifyHub, runInBackground } from '../lib/hub-notify';
+import { notifyHub, notifyHubWorkerSeen, runInBackground } from '../lib/hub-notify';
 import { viewerWs } from './worker-hub';
 import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
@@ -37,7 +37,7 @@ requests.post('/', async (c) => {
     { kind, payload, recipe_ref, idempotency_key, created_by, resolution, run_id },
     { defaultRecipeRef: defaultRecipeRef(c.env) },
   );
-  if (created) runInBackground(c, notifyEnqueued(c.env, row));
+  if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json(serializeRequest(row), created ? 201 : 200);
 });
 
@@ -76,9 +76,14 @@ requests.post('/claim', async (c) => {
   const body = claimRequestSchema.parse(await c.req.json());
   const db = c.env.DB;
   const { row, requeued } = await claimRequest(db, body.worker_id, body.kinds);
-  for (const r of requeued) {
-    runInBackground(c, notifyHub(c.env, r.status === 'failed' ? 'status' : 'queued', r));
-  }
+  // 戻した行の queued より先に worker_seen を届け、claim した worker のために GPU 機を起こさない。
+  const env = c.env;
+  runInBackground(
+    c,
+    notifyHubWorkerSeen(env).then(() =>
+      Promise.all(requeued.map((r) => notifyHub(env, r.status === 'failed' ? 'status' : 'queued', r))),
+    ),
+  );
   if (row) runInBackground(c, notifyHub(c.env, 'status', row));
   if (!row) return c.body(null, 204);
   return c.json(serializeRequest(row), 200);

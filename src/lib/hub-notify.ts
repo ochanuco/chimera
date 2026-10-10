@@ -3,7 +3,6 @@
 // env を必要とするため routes / mcp からだけ呼ぶ（lib/requests.ts・lib/experiments.ts からは呼ばない）。
 
 import { getWorkerHubStub } from '../worker-hub';
-import { wakeGpu } from './gpu-wake';
 import type { Bindings, RequestKind, RequestStatus } from '../types';
 
 export type HubNotifyType = 'queued' | 'status';
@@ -36,12 +35,18 @@ export async function notifyHub(env: Bindings, type: HubNotifyType, request: Hub
   }
 }
 
-/**
- * 新しく作った requests 行の通知。hub への 'queued' に加え、worker が claim する行（status queued）なら
- * スリープ中の GPU 機を起こす。claim 時の stale 戻しは claim した worker が起きているので notifyHub を直に使う。
- */
-export async function notifyEnqueued(env: Bindings, request: HubNotifyRequest): Promise<void> {
-  await Promise.all([notifyHub(env, 'queued', request), request.status === 'queued' ? wakeGpu(env) : undefined]);
+/** worker が claim に来たことを知らせる。hub はこれで GPU 機の起床手順を止める (src/lib/gpu-wake.ts)。 */
+export async function notifyHubWorkerSeen(env: Bindings): Promise<void> {
+  try {
+    const stub = getWorkerHubStub(env);
+    await stub.fetch('https://hub/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'worker_seen' }),
+    });
+  } catch (err) {
+    console.error('notifyHubWorkerSeen failed', err);
+  }
 }
 
 export interface HubNotifyGeneration {

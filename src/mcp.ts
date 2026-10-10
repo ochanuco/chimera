@@ -62,7 +62,7 @@ import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
 import { publishWarningFor } from './lib/safety';
 import { getGpuStatus } from './lib/gpu-wake';
-import { notifyEnqueued, type Waitable } from './lib/hub-notify';
+import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
@@ -384,9 +384,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   const bucket = env.IMAGES;
   const server = new McpServer({ name: 'chimera', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
 
-  /** hub 通知と GPU 起床はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
-  function enqueuedInBackground(...args: Parameters<typeof notifyEnqueued>): void {
-    const promise = notifyEnqueued(...args);
+  /** hub 通知はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
+  function notifyHubInBackground(...args: Parameters<typeof notifyHub>): void {
+    const promise = notifyHub(...args);
     if (executionCtx) executionCtx.waitUntil(promise);
   }
 
@@ -482,7 +482,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         if (run.request_id) {
           const requestRow = await getRequestOr404(db, run.request_id);
           requestShortId = requestRow.short_id;
-          if (run.created) enqueuedInBackground(env, requestRow);
+          if (run.created) notifyHubInBackground(env, 'queued', requestRow);
         }
         outRuns.push({ id: run.row.id, arm: run.arm, request_id: run.request_id, request_short_id: requestShortId });
       }
@@ -525,7 +525,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created && request_id) {
         const requestRow = await getRequestOr404(db, request_id);
-        enqueuedInBackground(env, requestRow);
+        notifyHubInBackground(env, 'queued', requestRow);
       }
       return jsonResult(mcpOutputSchemas.create_run, { created, run: { ...serializeExperimentRun(row), request_id } });
     },
@@ -707,7 +707,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.create_request, { created, request: serializeRequest(row) });
     },
   );
@@ -745,7 +745,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'redraw', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.redraw_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -802,7 +802,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'deliver', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.deliver_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -836,7 +836,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'dof', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.dof_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -871,7 +871,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'repair', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.repair_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -902,7 +902,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'masked_redraw', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.masked_redraw_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -1120,7 +1120,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'generate', payload, recipe_ref, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.derive_request, {
         created,
         request: serializeRequest(row),
@@ -1343,7 +1343,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'generate', payload: built.payload, recipe_ref: resolvedRecipeRef, idempotency_key: built.idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) enqueuedInBackground(env, row);
+      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.plain_render, {
         created,
         request: serializeRequest(row),

@@ -3,7 +3,7 @@ import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPo
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
 import { putSafetySchema } from '../schemas/safety';
-import { notifyEnqueued, notifyHubSafety, runInBackground } from '../lib/hub-notify';
+import { notifyHub, notifyHubSafety, runInBackground } from '../lib/hub-notify';
 import { defaultRecipeRef } from '../lib/requests';
 import { createReroll, getRerollState } from '../lib/reroll';
 import { putSafety, publishWarningFor, serializeSafety } from '../lib/safety';
@@ -60,7 +60,7 @@ generations.post('/:id/reroll', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
   const { row, created } = await createReroll(db, generation, defaultRecipeRef(c.env));
-  if (created) runInBackground(c, notifyEnqueued(c.env, row));
+  if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json(await getRerollState(db, generation), created ? 201 : 200);
 });
 
