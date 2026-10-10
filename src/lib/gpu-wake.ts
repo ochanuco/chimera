@@ -5,7 +5,6 @@
 
 import type { Bindings } from '../types';
 
-const DEFAULT_WOL_BASE_URL = 'https://wol.chanu.co';
 const WOL_TIMEOUT_MS = 5000;
 
 /** 2xx の後、次に /wake を送るまでの間隔。この間の新しい起床要求は送らない。 */
@@ -85,14 +84,15 @@ export function shouldHealWake(input: HealInput): boolean {
   return true;
 }
 
+const WOL_NOT_SET = 'WOL_BASE_URL / WOL_CLIENT_ID / WOL_CLIENT_SECRET not set';
+
 export function wolConfigured(env: Bindings): boolean {
-  return Boolean(env.WOL_CLIENT_ID && env.WOL_CLIENT_SECRET);
+  return Boolean(env.WOL_BASE_URL && env.WOL_CLIENT_ID && env.WOL_CLIENT_SECRET);
 }
 
 function wolRequest(env: Bindings, method: 'GET' | 'POST', path: string): Promise<Response> | null {
-  if (!env.WOL_CLIENT_ID || !env.WOL_CLIENT_SECRET) return null;
-  const base = env.WOL_BASE_URL ?? DEFAULT_WOL_BASE_URL;
-  return fetch(`${base}${path}`, {
+  if (!env.WOL_BASE_URL || !env.WOL_CLIENT_ID || !env.WOL_CLIENT_SECRET) return null;
+  return fetch(`${env.WOL_BASE_URL.replace(/\/+$/, '')}${path}`, {
     method,
     headers: {
       'CF-Access-Client-Id': env.WOL_CLIENT_ID,
@@ -115,7 +115,7 @@ export function parseRetryAfter(value: string | null, now: number): number | nul
 export async function postWake(env: Bindings): Promise<WakeResult> {
   try {
     const pending = wolRequest(env, 'POST', '/wake');
-    if (!pending) return { ok: false, status: null, retry_after_ms: null, error: 'WOL_CLIENT_ID / WOL_CLIENT_SECRET not set' };
+    if (!pending) return { ok: false, status: null, retry_after_ms: null, error: WOL_NOT_SET };
     const res = await pending;
     if (res.ok) return { ok: true, status: res.status };
     const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get('Retry-After'), Date.now()) : null;
@@ -138,7 +138,7 @@ export interface GpuStatus {
 export async function getGpuStatus(env: Bindings): Promise<{ ok: true; status: GpuStatus } | { ok: false; error: string }> {
   try {
     const pending = wolRequest(env, 'GET', '/status');
-    if (!pending) return { ok: false, error: 'WOL_CLIENT_ID / WOL_CLIENT_SECRET not set' };
+    if (!pending) return { ok: false, error: WOL_NOT_SET };
     const res = await pending;
     if (!res.ok) return { ok: false, error: `wol status returned HTTP ${res.status}` };
     const body = (await res.json()) as Partial<Record<keyof GpuStatus, unknown>>;

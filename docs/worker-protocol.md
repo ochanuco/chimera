@@ -1028,7 +1028,7 @@ heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側
 GPU 機はジョブも入力も無い状態が 10 分続くと自分でスリープし、寝ている間は claim にも
 WorkerHub への接続にも来られません。どの経路のジョブも requests 行として chimera に積まれ、
 WorkerHub に `queued` として通知されるので、起こす役は WorkerHub が担います。wol API
-（docker01、`https://wol.chanu.co`）の `POST /wake` を叩くのは WorkerHub だけです。
+（docker01）の `POST /wake` を叩くのは WorkerHub だけです。
 状態機械は `src/lib/gpu-wake.ts`、配線は `src/worker-hub.ts` にあります。
 
 起床手順は DO の storage に 1 本だけ持ちます。
@@ -1048,9 +1048,9 @@ WorkerHub に `queued` として通知されるので、起こす役は WorkerHu
 DO の alarm は 1 つしか持てないので、stale running の回収（60 秒ごと）と起床の送信時刻のうち、早い方に合わせて設定します。
 投入する側は起床の成否を待たず、失敗しても行の作成は成功します。
 
-認証は Cloudflare Access の service token `wol_client` で、Worker の secret
-`WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` に持たせます（1Password `chabatake-services/wol`）。
-未設定なら起床手順を始めません。MCP `get_gpu_status` は wol API の `GET /status`（state は online /
+wol API の origin は Worker の secret `WOL_BASE_URL` に持たせます。認証は Cloudflare Access の
+service token `wol_client` で、secret `WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` に持たせます
+（1Password `chabatake-services/wol`）。3 つのどれかが欠ければ起床手順を始めません。MCP `get_gpu_status` は wol API の `GET /status`（state は online /
 going_to_sleep / sleeping / offline / waking）をそのまま返します。
 
 ## preset の移行

@@ -25,7 +25,7 @@ type FetchSpy = ReturnType<typeof vi.spyOn<typeof globalThis, 'fetch'>>;
 function wolCalls(spy: FetchSpy): { url: string; init: RequestInit | undefined }[] {
   return spy.mock.calls
     .map(([input, init]) => ({ url: String(input instanceof Request ? input.url : input), init }))
-    .filter((c) => c.url.startsWith('https://wol.chanu.co/'));
+    .filter((c) => c.url.startsWith('https://wol.test/'));
 }
 
 describe('wake state machine', () => {
@@ -105,6 +105,7 @@ describe('wol API calls', () => {
   let fetchSpy: FetchSpy;
 
   beforeEach(() => {
+    bindings.WOL_BASE_URL = 'https://wol.test/';
     bindings.WOL_CLIENT_ID = 'test-id';
     bindings.WOL_CLIENT_SECRET = 'test-secret';
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -118,6 +119,7 @@ describe('wol API calls', () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+    delete bindings.WOL_BASE_URL;
     delete bindings.WOL_CLIENT_ID;
     delete bindings.WOL_CLIENT_SECRET;
   });
@@ -125,7 +127,7 @@ describe('wol API calls', () => {
   it('posts /wake with the Access service token and reads the outcome', async () => {
     expect(await postWake(bindings)).toEqual({ ok: true, status: 202 });
     const [call] = wolCalls(fetchSpy);
-    expect(call?.url).toBe('https://wol.chanu.co/wake');
+    expect(call?.url).toBe('https://wol.test/wake');
     expect(call?.init?.method).toBe('POST');
     expect(call?.init?.headers).toMatchObject({ 'CF-Access-Client-Id': 'test-id', 'CF-Access-Client-Secret': 'test-secret' });
     expect(call?.init?.signal).toBeInstanceOf(AbortSignal);
@@ -150,7 +152,7 @@ describe('wol API calls', () => {
     expect(await getGpuStatus(bindings)).toEqual({ ok: false, error: 'wol status returned HTTP 403' });
 
     delete bindings.WOL_CLIENT_ID;
-    expect(await getGpuStatus(bindings)).toEqual({ ok: false, error: 'WOL_CLIENT_ID / WOL_CLIENT_SECRET not set' });
+    expect(await getGpuStatus(bindings)).toEqual({ ok: false, error: 'WOL_BASE_URL / WOL_CLIENT_ID / WOL_CLIENT_SECRET not set' });
   });
 
   it('exposes the status through MCP get_gpu_status', async () => {
@@ -166,7 +168,7 @@ describe('wol API calls', () => {
 
     delete bindings.WOL_CLIENT_ID;
     const unset = await mcpToolCall<Record<string, unknown>>('get_gpu_status', {});
-    expect(unset.data).toMatchObject({ state: null, error: 'WOL_CLIENT_ID / WOL_CLIENT_SECRET not set' });
+    expect(unset.data).toMatchObject({ state: null, error: 'WOL_BASE_URL / WOL_CLIENT_ID / WOL_CLIENT_SECRET not set' });
   });
 });
 
@@ -214,6 +216,7 @@ describe('WorkerHub wakes the GPU machine', () => {
   beforeEach(async () => {
     await clearRequests();
     await clearWake();
+    bindings.WOL_BASE_URL = 'https://wol.test/';
     bindings.WOL_CLIENT_ID = 'test-id';
     bindings.WOL_CLIENT_SECRET = 'test-secret';
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
@@ -223,6 +226,7 @@ describe('WorkerHub wakes the GPU machine', () => {
   afterEach(async () => {
     await clearWake();
     fetchSpy.mockRestore();
+    delete bindings.WOL_BASE_URL;
     delete bindings.WOL_CLIENT_ID;
     delete bindings.WOL_CLIENT_SECRET;
   });
@@ -233,7 +237,7 @@ describe('WorkerHub wakes the GPU machine', () => {
     // alarm はこのハーネスでも実時間で発火するので、手で回すのと競合しても送信は1回になる。
     await runAlarm();
     const wake = await waitForWake((w) => w?.succeeded_at != null);
-    expect(wolCalls(fetchSpy).map((c) => c.url)).toEqual(['https://wol.chanu.co/wake']);
+    expect(wolCalls(fetchSpy).map((c) => c.url)).toEqual(['https://wol.test/wake']);
     expect(wake?.next_at).toBe(wake!.succeeded_at! + 30_000);
     expect((await readWake()).alarm).toBe(wake?.next_at);
 
