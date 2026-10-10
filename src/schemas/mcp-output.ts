@@ -346,6 +346,15 @@ export const mcpOutputSchemas = {
     backdrops: z.array(z.looseObject({ name: z.string(), label: z.string() })).optional(),
   }),
 
+  // state 以下は wol API の GET /status の値。取れなかったときは state が null で error に理由が入る。
+  get_gpu_status: z.looseObject({
+    state: z.string().nullable(),
+    since: z.string().nullable(),
+    reason: z.string().nullable(),
+    last_seen: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+
   // catalog の pose record は comfyui-recipes 側の形。chimera は中身を定義しない。
   get_catalog_pose: z.looseObject({ name: z.string().optional(), reference: presetReferenceSchema.nullable().optional() }),
 

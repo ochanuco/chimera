@@ -517,6 +517,17 @@ export async function requeueStaleRunning(db: D1Database, now: string): Promise<
   return results ?? [];
 }
 
+/** GPU 機の起床の自己修復 (src/lib/gpu-wake.ts の shouldHealWake) が見る、最古の queued 行と running 行の数。 */
+export async function queuedAgeForWake(db: D1Database): Promise<{ oldest_queued_at: string | null; running: number }> {
+  const row = await db
+    .prepare(
+      `SELECT (SELECT MIN(created_at) FROM requests WHERE status = 'queued') AS oldest_queued_at,
+              (SELECT COUNT(*) FROM requests WHERE status = 'running') AS running`,
+    )
+    .first<{ oldest_queued_at: string | null; running: number }>();
+  return { oldest_queued_at: row?.oldest_queued_at ?? null, running: row?.running ?? 0 };
+}
+
 export async function claimRequest(
   db: D1Database,
   workerId: string,
