@@ -485,8 +485,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .copy-id-text.copied::after { content: ' ✓'; }
 .card-id { font-size: 0.78rem; }
 .card-id-actions { display: flex; align-items: center; gap: 0.3rem; }
-.card-reroll-link { color: var(--text-dim); font-size: 0.95rem; line-height: 1; text-decoration: none; }
-.card-reroll-link:hover { color: var(--accent); text-decoration: none; }
+.card-id-link { color: var(--text-dim); font-size: 0.95rem; line-height: 1; text-decoration: none; }
+.card-id-link:hover { color: var(--accent); text-decoration: none; }
 
 .rating-group { display: flex; gap: 0.25rem; }
 .rate-btn {
@@ -977,7 +977,7 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
   :root { --card-id-h: 2.75rem; --card-rate-h: 2.75rem; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
   .card-row .card-id { min-height: 2.75rem; }
-  .card-reroll-link { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+  .card-id-link { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
 }
 
 details.section {
