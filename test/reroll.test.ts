@@ -69,6 +69,18 @@ describe('POST /api/v1/generations/{id}/reroll', () => {
     });
   });
 
+  it("carries the experiment arm's patches into generation.patches", async () => {
+    const patches = [{ target: 'prompt.positive.mouth', op: 'append', value: '(frown:1.2), ', reason: 'r' }];
+    const payload = { ...SOURCE_PAYLOAD, experiment: { experiment_id: 'e', run_id: 'r', overrides: { patches } } };
+    const { generation: source } = await createGeneration({ requestOverrides: { recipe: 'yukari-anima', payload } });
+    await postJson<RerollBody>(`/api/v1/generations/${source.short_id}/reroll`, {});
+
+    const [row] = await rerollRows();
+    const rerolled = JSON.parse(row!.payload_json);
+    expect(rerolled.generation).toEqual({ ...SOURCE_PAYLOAD.generation, patches });
+    expect(rerolled.experiment).toBeUndefined();
+  });
+
   it('returns the in-flight round on a second call instead of queueing another', async () => {
     const source = await rawSource();
     const first = await postJson<RerollBody>(`/api/v1/generations/${source.id}/reroll`, {});
