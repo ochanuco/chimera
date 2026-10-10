@@ -1023,6 +1023,36 @@ worker / GUI とも close イベントで 1秒 → 2秒 → 4秒 …と倍々に
 アップグレード時の 403 は Service Token の期限切れです。worker は既存の claim /
 heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側は何もしません。
 
+## GPU 機の起床
+
+GPU 機はジョブも入力も無い状態が 10 分続くと自分でスリープし、寝ている間は claim にも
+WorkerHub への接続にも来られません。どの経路のジョブも requests 行として chimera に積まれ、
+WorkerHub に `queued` として通知されるので、起こす役は WorkerHub が担います。wol API
+（docker01）の `POST /wake` を叩くのは WorkerHub だけです。
+状態機械は `src/lib/gpu-wake.ts`、配線は `src/worker-hub.ts` にあります。
+
+起床手順は DO の storage に 1 本だけ持ちます。
+
+- 始まり: `status = queued` の `queued` 通知が届いたとき。`done` で作る `kind = import` は対象外です。
+  手順が進行中なら何もしないので、一斉投入でも `/wake` は 1 回です。直近 30 秒以内に worker を見ていれば始めません。
+- 送信: alarm が送ります（タイムアウト 5 秒）。200（online）も 202（起動を開始）も成功です。
+  成功後の 30 秒は送りません。30 秒経ってもまだ worker が来ていなければ、もう一度送ります。
+- 再送: 非 2xx（429・5xx を含む）とタイムアウトは、5 秒 → 10 秒 → 20 秒 …と倍にし、60 秒を上限に alarm で再送します。
+  429 に `Retry-After` があればそれに従います。
+- 終わり: worker の claim（`POST /requests/claim`。返す行が無い 204 も含む）か、WebSocket の接続・`hello` を観測した時点です。
+  claim で stale 行を戻すときは `worker_seen` を先に届け、claim した worker のために起こさないようにします。
+- 諦め: 手順を始めてから 5 分を超えても worker が来なければ、ログに残して手順を捨てます。wol 側も offline を Discord に通知します。
+- 自己修復: alarm のたびに、手順が無く、queued 行が 2 分以上残り、running 行が無く、
+  直近 2 分に worker を見ていなければ、手順を始め直します。諦めてから 30 分は自己修復では始めません（新しい投入では始めます）。
+
+DO の alarm は 1 つしか持てないので、stale running の回収（60 秒ごと）と起床の送信時刻のうち、早い方に合わせて設定します。
+投入する側は起床の成否を待たず、失敗しても行の作成は成功します。
+
+wol API の origin は Worker の secret `WOL_BASE_URL` に持たせます。認証は Cloudflare Access の
+service token `wol_client` で、secret `WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` に持たせます
+（1Password `chabatake-services/wol`）。3 つのどれかが欠ければ起床手順を始めません。MCP `get_gpu_status` は wol API の `GET /status`（state は online /
+going_to_sleep / sleeping / offline / waking）をそのまま返します。
+
 ## preset の移行
 
 昇格（承認済み Generation → 名前と版の付いた patches）を comfyui-recipes の PR 無しで
