@@ -486,6 +486,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-id { font-size: 0.78rem; }
 .card-id-actions { display: flex; align-items: center; gap: 0.3rem; }
 .card-id-link { color: var(--text-dim); font-size: 0.95rem; line-height: 1; text-decoration: none; }
+/* ボタンの UA 既定 padding に任せず、リンクとブックマークで同じ当たり判定と間隔にする。 */
+.card-id-link, .card-bookmark-btn { padding: 0.1rem 0.4rem; }
 .card-id-link:hover { color: var(--accent); text-decoration: none; }
 
 .rating-group { display: flex; gap: 0.25rem; }
