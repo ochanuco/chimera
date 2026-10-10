@@ -223,8 +223,6 @@ function PartForm({ data }: { data: WorkbenchData }) {
 function DeliverForm({ data }: { data: WorkbenchData }) {
   const defaults = data.deliverDefaults;
   const patterns = data.backdrops.length > 0 ? data.backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
-  const catalogBackdrop = typeof defaults?.backdrop === 'string' ? defaults.backdrop : null;
-  const backdropDefault = patterns.some((b) => b.name === catalogBackdrop) ? catalogBackdrop : patterns[0]!.name;
   return (
     <div class="wb-form" data-wb-form="4" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
@@ -256,16 +254,20 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           <OutlineEditor outlines={data.outlines} stroke={data.strokeDefault} />
         </details>
 
-        <details class="wb-acc" data-wb-backdrop-patterns data-default={backdropDefault}>
+        <details class="wb-acc" data-wb-backdrop-patterns data-default="random">
           <summary>
             背景柄 <span class="wb-acc-sub" data-wb-backdrop-summary></span>
           </summary>
           <div class="wb-acc-body">
             <div class="backdrop-picker wb-backdrops" data-backdrop-group>
               <span class="dial-label">背景（backdrop）</span>
+              <label class="backdrop-option backdrop-option-plain" data-backdrop-value="random">
+                <input type="radio" name="backdrop" value="random" checked={false} />
+                <span class="backdrop-option-label">ランダム</span>
+              </label>
               {patterns.map((bd, i) => (
                 <label class="backdrop-option" data-backdrop-value={bd.name}>
-                  <input type="radio" name="backdrop" value={bd.name} checked={false} data-wb-backdrop-first={i === 0 ? '1' : undefined} />
+                  <input type="radio" name="backdrop" value={bd.name} checked={false} data-backdrop-pattern data-wb-backdrop-first={i === 0 ? '1' : undefined} />
                   {data.backdrops.length > 0 && data.recipeRef ? (
                     <img
                       class="backdrop-thumb"
