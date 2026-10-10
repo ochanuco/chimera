@@ -219,4 +219,15 @@ describe('reroll entry points', () => {
     expect(html).toContain(`href="/reroll/${source.short_id}"`);
     expect(html).not.toContain(`href="/reroll/${refined.short_id}"`);
   });
+
+  it('puts a workbench link on every gallery card', async () => {
+    const source = await rawSource();
+    const { generation: refined } = await createGeneration({
+      requestOverrides: { kind: 'redraw', status: 'done', payload: { generation_id: source.short_id } },
+      jobOverrides: { source_generation_id: source.id },
+    });
+    const html = await (await req('/gallery')).text();
+    expect(html).toContain(`href="/work/${source.short_id}"`);
+    expect(html).toContain(`href="/work/${refined.short_id}"`);
+  });
 });

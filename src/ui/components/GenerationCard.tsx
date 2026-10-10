@@ -129,8 +129,11 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
             {g.short_id}
           </button>
           <span class="card-id-actions">
+            <a class="card-id-link" href={`/work/${g.short_id}`} title="ワークベンチで開く" aria-label={`Open ${g.short_id} in workbench`}>
+              ⧉
+            </a>
             {g.refines_generation_short_id ? null : (
-              <a class="card-reroll-link" href={`/reroll/${g.short_id}`} title="リロール" aria-label={`Reroll ${g.short_id}`}>
+              <a class="card-id-link" href={`/reroll/${g.short_id}`} title="リロール" aria-label={`Reroll ${g.short_id}`}>
                 ↻
               </a>
             )}
