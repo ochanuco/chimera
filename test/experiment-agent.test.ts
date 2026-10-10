@@ -252,6 +252,7 @@ describe('MCP server at /mcp', () => {
         'derive_request',
         'list_catalog',
         'get_catalog_pose',
+        'get_gpu_status',
         'list_presets',
         'get_preset',
         'promote_to_pose',

@@ -4,7 +4,17 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import { nowIso } from './lib/db';
-import { requeueStaleRunning } from './lib/requests';
+import {
+  applyWakeResult,
+  beginWakeSend,
+  postWake,
+  requestWake,
+  shouldHealWake,
+  WAKE_SUCCESS_INTERVAL_MS,
+  wolConfigured,
+  type WakeState,
+} from './lib/gpu-wake';
+import { queuedAgeForWake, requeueStaleRunning } from './lib/requests';
 import type { Bindings, RequestKind } from './types';
 
 type Role = 'worker' | 'viewer';
@@ -35,7 +45,7 @@ interface ProgressEntry {
 }
 
 interface NotifyBody {
-  type: 'queued' | 'status' | 'generation' | 'safety';
+  type: 'queued' | 'status' | 'generation' | 'safety' | 'worker_seen';
   generation_id?: string;
   short_id?: string;
   request?: { id: string; kind: RequestKind; recipe_ref: string; status: string };
@@ -51,6 +61,9 @@ interface NotifyBody {
 const ALARM_INTERVAL_MS = 60_000;
 const PROGRESS_PREFIX = 'progress:';
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled']);
+const WAKE_KEY = 'wake';
+const WORKER_SEEN_KEY = 'wake:worker_seen_at';
+const WAKE_GAVE_UP_KEY = 'wake:gave_up_at';
 
 export function getWorkerHubStub(env: Bindings) {
   return env.WORKER_HUB.get(env.WORKER_HUB.idFromName('global'));
@@ -103,12 +116,13 @@ export class WorkerHub extends DurableObject<Bindings> {
     if (role === 'worker') {
       const attachment: WorkerAttachment = { role: 'worker', worker_id: null, kinds: null, connected_at: now };
       server.serializeAttachment(attachment);
+      void this.workerSeen();
     } else {
       const attachment: ViewerAttachment = { role: 'viewer', connected_at: now };
       server.serializeAttachment(attachment);
       void this.sendSnapshot(server);
     }
-    void this.ensureAlarmScheduled();
+    void this.scheduleAlarm();
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -195,7 +209,8 @@ export class WorkerHub extends DurableObject<Bindings> {
       connected_at: prev?.connected_at ?? nowIso(),
     };
     ws.serializeAttachment(attachment);
-    await this.ensureAlarmScheduled();
+    await this.workerSeen();
+    await this.scheduleAlarm();
     this.sendTo(ws, { type: 'hello_ack', server_time: nowIso() });
   }
 
@@ -251,7 +266,12 @@ export class WorkerHub extends DurableObject<Bindings> {
           created_at: g.created_at,
         });
       }
-      await this.ensureAlarmScheduled();
+      await this.scheduleAlarm();
+      return Response.json({ workers: workersSent, viewers: viewersSent });
+    }
+
+    if (body.type === 'worker_seen') {
+      await this.workerSeen();
       return Response.json({ workers: workersSent, viewers: viewersSent });
     }
 
@@ -278,6 +298,8 @@ export class WorkerHub extends DurableObject<Bindings> {
         status: 'queued',
         kind: req.kind,
       });
+      // kind=import は done で作られ、hub には queued として届くが worker は claim しない。
+      if (req.status === 'queued') await this.requestWake();
     } else {
       viewersSent = this.broadcast(this.ctx.getWebSockets('viewer'), {
         type: 'status',
@@ -290,7 +312,7 @@ export class WorkerHub extends DurableObject<Bindings> {
       }
     }
 
-    await this.ensureAlarmScheduled();
+    await this.scheduleAlarm();
     return Response.json({ workers: workersSent, viewers: viewersSent });
   }
 
@@ -302,14 +324,90 @@ export class WorkerHub extends DurableObject<Bindings> {
     });
   }
 
-  private async ensureAlarmScheduled(): Promise<void> {
+  /**
+   * alarm は1つしか持てないので、stale running の回収（ALARM_INTERVAL_MS ごと）と GPU 機の起床の再送
+   * （WakeState.next_at）のうち早い方に合わせる。既に早い alarm があれば動かさない。
+   */
+  private async scheduleAlarm(): Promise<void> {
+    const wake = await this.ctx.storage.get<WakeState>(WAKE_KEY);
+    const target = Math.min(Date.now() + ALARM_INTERVAL_MS, wake?.next_at ?? Number.POSITIVE_INFINITY);
     const existing = await this.ctx.storage.getAlarm();
-    if (existing === null) {
-      await this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+    if (existing === null || existing > target) {
+      await this.ctx.storage.setAlarm(target);
     }
   }
 
-  /** stale running を回収する (claimRequest と同じ規則)。 */
+  /** 起床要求。送信そのものは alarm が行うので、ここは手順を始めて alarm を早めるだけ。 */
+  private async requestWake(): Promise<void> {
+    if (!wolConfigured(this.env)) return;
+    const now = Date.now();
+    const current = (await this.ctx.storage.get<WakeState>(WAKE_KEY)) ?? null;
+    if (!current) {
+      // claim した直後の worker は起きている。GPU 機のスリープはアイドル 10 分からなので 30 秒なら確実。
+      const seenAt = await this.ctx.storage.get<number>(WORKER_SEEN_KEY);
+      if (seenAt !== undefined && now - seenAt < WAKE_SUCCESS_INTERVAL_MS) return;
+    }
+    const next = requestWake(current, now);
+    if (next === current) return;
+    if (!current) console.log('wake started');
+    await this.ctx.storage.put(WAKE_KEY, next);
+    await this.scheduleAlarm();
+  }
+
+  private async workerSeen(): Promise<void> {
+    const wake = await this.ctx.storage.get<WakeState>(WAKE_KEY);
+    if (wake) console.log(`wake done: worker seen after ${Date.now() - wake.started_at}ms`);
+    await this.ctx.storage.delete([WAKE_KEY, WAKE_GAVE_UP_KEY]);
+    await this.ctx.storage.put(WORKER_SEEN_KEY, Date.now());
+  }
+
+  private async runWake(): Promise<void> {
+    const stored = await this.ctx.storage.get<WakeState>(WAKE_KEY);
+    if (!stored) return;
+    // 送信中に DO が落ちて送信中の印だけ残った手順も、ここで送り直しに戻す。
+    const now = Date.now();
+    const sending = beginWakeSend(requestWake(stored, now), now);
+    if (!sending) return;
+    await this.ctx.storage.put(WAKE_KEY, sending);
+    const result = await postWake(this.env);
+    // 送信中に worker_seen が届いて手順が消えていれば結果は捨てる。
+    const current = await this.ctx.storage.get<WakeState>(WAKE_KEY);
+    if (!current || current.sending_since !== sending.sending_since) return;
+    const doneAt = Date.now();
+    if (!result.ok) console.error(`wake send failed (attempt ${current.failures + 1}): ${result.error}`);
+    const applied = applyWakeResult(current, result, doneAt);
+    if (applied.gaveUp) {
+      console.error(`wake gave up: no worker within ${doneAt - current.started_at}ms`);
+      await this.ctx.storage.delete(WAKE_KEY);
+      await this.ctx.storage.put(WAKE_GAVE_UP_KEY, doneAt);
+    } else if (applied.state) {
+      await this.ctx.storage.put(WAKE_KEY, applied.state);
+    }
+  }
+
+  private async healWake(): Promise<void> {
+    if (!wolConfigured(this.env)) return;
+    const [state, seenAt, gaveUpAt] = await Promise.all([
+      this.ctx.storage.get<WakeState>(WAKE_KEY),
+      this.ctx.storage.get<number>(WORKER_SEEN_KEY),
+      this.ctx.storage.get<number>(WAKE_GAVE_UP_KEY),
+    ]);
+    if (state) return;
+    const queue = await queuedAgeForWake(this.env.DB);
+    const heal = shouldHealWake({
+      state: state ?? null,
+      now: Date.now(),
+      last_worker_seen_at: seenAt ?? null,
+      gave_up_at: gaveUpAt ?? null,
+      oldest_queued_at: queue.oldest_queued_at ? Date.parse(queue.oldest_queued_at) : null,
+      running: queue.running,
+    });
+    if (!heal) return;
+    console.log(`wake heal: queued since ${queue.oldest_queued_at} without a worker`);
+    await this.ctx.storage.put(WAKE_KEY, requestWake(null, Date.now()));
+  }
+
+  /** stale running を回収し (claimRequest と同じ規則)、GPU 機の起床を進める。 */
   async alarm(): Promise<void> {
     const rows = await requeueStaleRunning(this.env.DB, nowIso());
     for (const row of rows) {
@@ -322,6 +420,9 @@ export class WorkerHub extends DurableObject<Bindings> {
         await this.ctx.storage.delete(PROGRESS_PREFIX + row.id);
       }
     }
-    await this.ctx.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+    await this.healWake();
+    await this.runWake();
+    await this.ctx.storage.deleteAlarm();
+    await this.scheduleAlarm();
   }
 }

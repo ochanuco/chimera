@@ -35,6 +35,20 @@ export async function notifyHub(env: Bindings, type: HubNotifyType, request: Hub
   }
 }
 
+/** worker が claim に来たことを知らせる。hub はこれで GPU 機の起床手順を止める (src/lib/gpu-wake.ts)。 */
+export async function notifyHubWorkerSeen(env: Bindings): Promise<void> {
+  try {
+    const stub = getWorkerHubStub(env);
+    await stub.fetch('https://hub/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'worker_seen' }),
+    });
+  } catch (err) {
+    console.error('notifyHubWorkerSeen failed', err);
+  }
+}
+
 export interface HubNotifyGeneration {
   generation_id: string;
   short_id: string;

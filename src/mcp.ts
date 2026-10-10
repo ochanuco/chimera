@@ -61,6 +61,7 @@ import { createObservation, getObservation, listObservations } from './lib/obser
 import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
 import { publishWarningFor } from './lib/safety';
+import { getGpuStatus } from './lib/gpu-wake';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
@@ -1159,6 +1160,30 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         updated_at: found.row.updated_at,
         ...summarizeCatalog(found.doc),
       });
+    },
+  );
+
+  server.registerTool(
+    'get_gpu_status',
+    {
+      outputSchema: mcpOutputSchemas.get_gpu_status,
+      description:
+        'Report the power state of the GPU machine whose worker claims queued requests: ' +
+        'online / going_to_sleep / sleeping / offline / waking, with since, reason and last_seen. ' +
+        'The machine sleeps after 10 idle minutes and every tool that queues a request wakes it (about 10 s from sleep), ' +
+        'so a sleeping or waking state only means queued requests start a little later. ' +
+        'state is null and error says why when the status could not be read.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async () => {
+      const result = await getGpuStatus(env);
+      return jsonResult(
+        mcpOutputSchemas.get_gpu_status,
+        result.ok
+          ? { ...result.status, error: null }
+          : { state: null, since: null, reason: null, last_seen: null, error: result.error },
+      );
     },
   );
 
