@@ -14,7 +14,7 @@ import { putTimingsSchema } from '../schemas/timings';
 import { putRequestTimings } from '../lib/timings';
 import { createJobSchema } from '../schemas/jobs';
 import { buildRequestJobs, createRequestJob, putResolution } from '../lib/request-resolution';
-import { notifyHub, runInBackground } from '../lib/hub-notify';
+import { notifyEnqueued, notifyHub, runInBackground } from '../lib/hub-notify';
 import { viewerWs } from './worker-hub';
 import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
@@ -37,7 +37,7 @@ requests.post('/', async (c) => {
     { kind, payload, recipe_ref, idempotency_key, created_by, resolution, run_id },
     { defaultRecipeRef: defaultRecipeRef(c.env) },
   );
-  if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
+  if (created) runInBackground(c, notifyEnqueued(c.env, row));
   return c.json(serializeRequest(row), created ? 201 : 200);
 });
 

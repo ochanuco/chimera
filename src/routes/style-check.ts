@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { renderStyleCheck } from '../lib/style-check';
-import { notifyHub, runInBackground } from '../lib/hub-notify';
+import { notifyEnqueued, runInBackground } from '../lib/hub-notify';
 import type { AppEnv } from '../types';
 
 export const styleCheck = new Hono<AppEnv>();
@@ -10,7 +10,7 @@ export const styleCheck = new Hono<AppEnv>();
 styleCheck.post('/:recipe', async (c) => {
   const recipe = c.req.param('recipe');
   const { results, createdRequests } = await renderStyleCheck(c.env.DB, c.env, recipe);
-  for (const row of createdRequests) runInBackground(c, notifyHub(c.env, 'queued', row));
+  for (const row of createdRequests) runInBackground(c, notifyEnqueued(c.env, row));
   return c.json({
     results: results.map((r) => ({
       framing: r.framing,

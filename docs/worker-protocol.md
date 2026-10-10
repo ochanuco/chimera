@@ -1023,6 +1023,25 @@ worker / GUI とも close イベントで 1秒 → 2秒 → 4秒 …と倍々に
 アップグレード時の 403 は Service Token の期限切れです。worker は既存の claim /
 heartbeat の 403 と同様にログへ出して再接続を続け、chimera 側は何もしません。
 
+## GPU 機の起床
+
+GPU 機はジョブも入力も無い状態が 10 分続くと自分でスリープし、寝ている間は claim にも
+WorkerHub への接続にも来られません。どの経路のジョブも requests 行として chimera に積まれるので、
+起こす役は chimera が担います。
+
+- 新しく作った requests 行が `status = queued` なら、WorkerHub への `queued` 通知と一緒に
+  wol API（docker01、`https://wol.chanu.co`）の `POST /wake` を `waitUntil` で投げます
+  （`src/lib/gpu-wake.ts`）。REST・MCP・GUI のどの経路で積んだ行も同じ `notifyEnqueued` を通ります。
+  `done` で作る `kind = import` は worker が claim しないので起こしません。claim 時の stale 戻しも、
+  claim した worker が起きているので起こしません。
+- `/wake` は冪等（online なら 200、それ以外は 202 で wol 側が online になるまで再送）なので、
+  事前に状態を確かめません。スリープからは約 10 秒で戻り、worker は再接続後の claim で追いつきます。
+- タイムアウト 5 秒・非 2xx・secret 未設定はログに残すだけで、行の作成は失敗させません。
+- 認証は Cloudflare Access の service token `wol_client` で、Worker の secret
+  `WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` に持たせます（1Password `chabatake-services/wol`）。
+- MCP `get_gpu_status` は wol API の `GET /status`（state は online / going_to_sleep /
+  sleeping / offline / waking）をそのまま返します。
+
 ## preset の移行
 
 昇格（承認済み Generation → 名前と版の付いた patches）を comfyui-recipes の PR 無しで

@@ -16,6 +16,11 @@ export interface Bindings {
   ORIGINAL_RECOMPRESS_BATCH_SIZE?: string;
   /** 'on' で original 再圧縮ジョブ (src/lib/original-recompress.ts) を有効化。wrangler.jsonc には無く、省略時は無効。 */
   ORIGINAL_RECOMPRESS?: string;
+  /** wol API の Access service token `wol_client`（`wrangler secret put`、1Password `chabatake-services/wol`）。未設定なら GPU 機の起床と状態取得は無効 (src/lib/gpu-wake.ts)。 */
+  WOL_CLIENT_ID?: string;
+  WOL_CLIENT_SECRET?: string;
+  /** wol API の origin。省略時 https://wol.chanu.co */
+  WOL_BASE_URL?: string;
 }
 
 export type AppEnv = { Bindings: Bindings };

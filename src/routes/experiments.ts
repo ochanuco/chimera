@@ -38,7 +38,7 @@ import {
 } from '../lib/experiments';
 import { createJudgment, judgmentSummary, listJudgments } from '../lib/judgments';
 import { defaultRecipeRef, getRequestOr404 } from '../lib/requests';
-import { notifyHub, runInBackground } from '../lib/hub-notify';
+import { notifyEnqueued, runInBackground } from '../lib/hub-notify';
 import {
   serializeExperiment,
   serializeExperimentPromotion,
@@ -182,7 +182,7 @@ experiments.post('/:id/runs', async (c) => {
   });
   if (created && request_id) {
     const requestRow = await getRequestOr404(db, request_id);
-    runInBackground(c, notifyHub(c.env, 'queued', requestRow));
+    runInBackground(c, notifyEnqueued(c.env, requestRow));
   }
   return c.json({ ...serializeExperimentRun(row), request_id }, created ? 201 : 200);
 });

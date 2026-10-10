@@ -3,7 +3,7 @@ import { recipeCatalogEnvelopeSchema } from '../schemas/catalogs';
 import { RECIPE_REF_RE } from '../schemas/requests';
 import { decodeBackdropThumbnail, getCatalog, listCatalogs, putCatalog, summarizeCatalog } from '../lib/catalogs';
 import { badRequest, notFound } from '../lib/errors';
-import { notifyHub, runInBackground } from '../lib/hub-notify';
+import { notifyEnqueued, runInBackground } from '../lib/hub-notify';
 import { defaultRecipeRef } from '../lib/requests';
 import { renderStyleCheck, STYLE_CHECK_RECIPE } from '../lib/style-check';
 import type { AppEnv } from '../types';
@@ -29,7 +29,7 @@ catalogs.put('/:recipe_ref', async (c) => {
     runInBackground(
       c,
       renderStyleCheck(env.DB, env, STYLE_CHECK_RECIPE)
-        .then(({ createdRequests }) => Promise.all(createdRequests.map((r) => notifyHub(env, 'queued', r))))
+        .then(({ createdRequests }) => Promise.all(createdRequests.map((r) => notifyEnqueued(env, r))))
         .catch(() => undefined),
     );
   }

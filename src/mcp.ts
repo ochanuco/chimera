@@ -61,7 +61,8 @@ import { createObservation, getObservation, listObservations } from './lib/obser
 import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
 import { publishWarningFor } from './lib/safety';
-import { notifyHub, type Waitable } from './lib/hub-notify';
+import { getGpuStatus } from './lib/gpu-wake';
+import { notifyEnqueued, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
@@ -383,9 +384,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   const bucket = env.IMAGES;
   const server = new McpServer({ name: 'chimera', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
 
-  /** hub 通知はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
-  function notifyHubInBackground(...args: Parameters<typeof notifyHub>): void {
-    const promise = notifyHub(...args);
+  /** hub 通知と GPU 起床はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
+  function enqueuedInBackground(...args: Parameters<typeof notifyEnqueued>): void {
+    const promise = notifyEnqueued(...args);
     if (executionCtx) executionCtx.waitUntil(promise);
   }
 
@@ -481,7 +482,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         if (run.request_id) {
           const requestRow = await getRequestOr404(db, run.request_id);
           requestShortId = requestRow.short_id;
-          if (run.created) notifyHubInBackground(env, 'queued', requestRow);
+          if (run.created) enqueuedInBackground(env, requestRow);
         }
         outRuns.push({ id: run.row.id, arm: run.arm, request_id: run.request_id, request_short_id: requestShortId });
       }
@@ -524,7 +525,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created && request_id) {
         const requestRow = await getRequestOr404(db, request_id);
-        notifyHubInBackground(env, 'queued', requestRow);
+        enqueuedInBackground(env, requestRow);
       }
       return jsonResult(mcpOutputSchemas.create_run, { created, run: { ...serializeExperimentRun(row), request_id } });
     },
@@ -706,7 +707,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.create_request, { created, request: serializeRequest(row) });
     },
   );
@@ -744,7 +745,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'redraw', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.redraw_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -801,7 +802,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'deliver', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.deliver_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -835,7 +836,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'dof', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.dof_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -870,7 +871,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'repair', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.repair_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -901,7 +902,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'masked_redraw', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.masked_redraw_generation, { created, request: serializeRequest(row) });
     },
   );
@@ -1119,7 +1120,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'generate', payload, recipe_ref, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.derive_request, {
         created,
         request: serializeRequest(row),
@@ -1159,6 +1160,30 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         updated_at: found.row.updated_at,
         ...summarizeCatalog(found.doc),
       });
+    },
+  );
+
+  server.registerTool(
+    'get_gpu_status',
+    {
+      outputSchema: mcpOutputSchemas.get_gpu_status,
+      description:
+        'Report the power state of the GPU machine whose worker claims queued requests: ' +
+        'online / going_to_sleep / sleeping / offline / waking, with since, reason and last_seen. ' +
+        'The machine sleeps after 10 idle minutes and every tool that queues a request wakes it (about 10 s from sleep), ' +
+        'so a sleeping or waking state only means queued requests start a little later. ' +
+        'state is null and error says why when the status could not be read.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async () => {
+      const result = await getGpuStatus(env);
+      return jsonResult(
+        mcpOutputSchemas.get_gpu_status,
+        result.ok
+          ? { ...result.status, error: null }
+          : { state: null, since: null, reason: null, last_seen: null, error: result.error },
+      );
     },
   );
 
@@ -1318,7 +1343,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'generate', payload: built.payload, recipe_ref: resolvedRecipeRef, idempotency_key: built.idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
+      if (created) enqueuedInBackground(env, row);
       return jsonResult(mcpOutputSchemas.plain_render, {
         created,
         request: serializeRequest(row),

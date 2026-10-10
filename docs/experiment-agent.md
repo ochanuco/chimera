@@ -104,7 +104,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 
 ## tool 一覧
 
-読み取り tool は D1 / R2 を読むだけです。
+読み取り tool は D1 / R2（`get_gpu_status` だけは wol API）を読むだけです。
 追記 tool は行を1つ足すか Run の欄を埋めるだけで、既存の行を削除も上書きもしません（[生やさない操作](#生やさない操作)）。
 
 | tool | 引数 | 種別 | 返すもの |
@@ -132,6 +132,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `get_generation_image` | `short_id, width?` | 読み取り | 縮小した JPEG 画像。載らなければ canonical URL |
 | `list_catalog` | `recipe_ref?` | 読み取り | 公開済み recipe catalog の要約（既定 `"production"`） |
 | `get_catalog_pose` | `recipe, pose, recipe_ref?` | 読み取り | 単一 pose のフルレコードと現行の pin |
+| `get_gpu_status` | なし | 読み取り | GPU 機の電源状態（wol API の `GET /status`）。取れなければ `state: null` と `error` |
 | `list_presets` | `recipe?, kind?, include_deprecated?` | 読み取り | Preset の名前ごとの最新版（record 本文なし） |
 | `get_preset` | `recipe, kind, name, version?` | 読み取り | 解決済みの本文。既定は最新の active 版 |
 | `set_pose_reference` | `recipe, pose, generation_id, idempotency_key` | 追記 | 基準 render を `(recipe, pose)` に pin する |
@@ -372,6 +373,7 @@ requests 行を積む tool と、その行の `created_by` は次の通りです
 Run 作成の自動起票も同じ規則で pin してから hash を取るので、同じ内容の request はどの経路でも同じ hash になります。
 worker から見える requests 行の形と claim / 状態遷移は、REST で積んだ行と変わりません。
 新しく積んだ行は WorkerHub に `queued` として通知します（[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）。
+スリープ中の GPU 機もこのとき起こすので、積んだ直後に `get_gpu_status` が `sleeping` / `waking` でも、行は起床後に claim されます（[worker-protocol.md](worker-protocol.md#gpu-機の起床)）。
 
 `create_request` は kind ごとの payload 封筒（generate なら `schema_version` / `request` / `generation`）を REST と同じ規則で検証し、`created_by` は受け取りません。
 同じ `idempotency_key` に同じ kind / payload を渡すと元の行を返し（`created: false`）、別の kind / payload を渡すと 409 です。
