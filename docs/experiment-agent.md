@@ -124,7 +124,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `redraw_generation` | `generation_id, options, idempotency_key` | 追記 | redraw request を積む。`options.method`（canvas / hires / light）が必須で、1 request に 1 操作 |
 | `deliver_generation` | `generation_id, options?, profile?, idempotency_key` | 追記 | deliver request を積む。切り抜いて背景・フチのリスト（`outlines`）などを付ける（絵は変えない） |
 | `dof_generation` | `generation_id, focus, f_number?, scope?, viewfinder?, idempotency_key` | 追記 | dof request を積む。納品の絵の層をぼかす |
-| `photo_generation` | `generation_id, photo, place?, height?, stand_at?, nearer?, focus?, f_number?, idempotency_key` | 追記 | photo request を積む。納品の絵を写真にアクスタとして立て、奥行きでぼかす |
+| `photo_generation` | `generation_id, photo, place?, height?, stand_at?, nearer?, tilt?, focus?, f_number?, idempotency_key` | 追記 | photo request を積む。納品の絵を写真にアクスタとして立て、奥行きでぼかす |
 | `lens_generation` | `generation_id, center?, strength?, shape?, radius?, idempotency_key` | 追記 | lens request を積む。納品の絵を魚眼 / 逆魚眼で歪めるか、球面フィルターで円の内側を膨らませる |
 | `repair_generation` | `generation_id, options?, idempotency_key` | 追記 | hands / feet の repair request を積む |
 | `masked_redraw_generation` | `generation_id, options, idempotency_key` | 追記 | 任意矩形の garment / local inpaint request を積む。source は不変 |
@@ -295,7 +295,7 @@ canvas と light は Anima の絵（repair / masked_redraw / redraw の出力を
 `backdrop: null` は透過納品（`transparent: false` なら除く）で、`transparent: true` はその明示形です。
 `dof_generation` は deliver の出力のうち層 asset を持つ絵だけを受け、`focus`（0〜1 の `[x, y]`）が必須です。`f_number`（1.4〜22）・`scope`（`figure` / `outline` / `backdrop` の bool）・`viewfinder`（off / on / both）の既定は `list_catalog` の最上位 `dof` 節です（[worker-protocol.md](worker-protocol.md#dof)）。
 `lens_generation` は納品の絵（deliver・dof・lens の出力、ビューファインダーを重ねた絵は除く）を受け、`strength`（-1〜1、0 不可。正は魚眼、負は逆魚眼）と `center`（0〜1 の `[x, y]`）、`shape`（`fisheye` 画面全体 / `sphere` 球面フィルター）、`radius`（sphere の円の半径、短辺比 0.05〜1）の既定は `list_catalog` の最上位 `lens` 節です。ぼかしてから曲げる順で、lens の出力に dof はかけられません（[worker-protocol.md](worker-protocol.md#lens)）。
-`photo_generation` は層 asset を持つ deliver の出力と、写真ページで登録した写真の short_id（`photo`）を受けます。看板にもピントを合わせたいなら `stand_at` と `focus` に看板の座標、キャラだけ映えさせるなら `focus: "subject"` のまま板を手前に置く（`place` を手前、または `nearer`）。既定は `list_catalog` の最上位 `photo` 節です（[worker-protocol.md](worker-protocol.md#photo)）。
+`photo_generation` は層 asset を持つ deliver の出力と、写真ページで登録した写真の short_id（`photo`）を受けます。看板にもピントを合わせたいなら `stand_at` と `focus` に看板の座標、キャラだけ映えさせるなら `focus: "subject"` のまま板を手前に置く（`place` を手前、または `nearer`）。顔にピントを合わせて体をぼかすなら `tilt`（0.3〜0.6 くらい）を付けて `focus` に顔の座標。既定は `list_catalog` の最上位 `photo` 節です（[worker-protocol.md](worker-protocol.md#photo)）。
 省略した option の既定は `list_catalog` の `recipes[].deliver.defaults`、dial の語（`keep_legwear`）は `recipes[].dials.deliver` です。
 
 `deliver_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `deliver` の Preset を解決して options の土台にします。
