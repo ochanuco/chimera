@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -203,7 +203,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
@@ -690,10 +690,47 @@ dof → lens に固定します（lens は何回でも重ねられます）。
 入力にできるのは納品の絵（deliver・dof・lens の出力）です。納品していない絵と、`viewfinder` を重ねた dof の絵
 （`"on"` の出力と `"both"` の 2 枚目）は worker が `failed` にします。lens の出力に dof はかけられません（奥行きと層が
 ずれるので、ぼかしてから曲げる）。透過納品の絵の出力も透過のままです。出力は納品の Generation（`is_delivered`）で、
-入力を `refines_generation_id` で指し、lens の入力にだけなります。chimera が検証するのは型だけです。
+入力を `refines_generation_id` で指し、lens の入力にだけなります。photo の出力も lens の入力になります。chimera が検証するのは型だけです。
 
 catalog は最上位の `lens` 節に `strength`（`min` / `max` / `default`）、`center`（`default` と説明）、`shape`
 （`values` / `default`）、`radius`（`min` / `max` / `default` と説明）を公開します。
+
+### photo
+
+納品の絵のキャラとフチを 1 枚の平らな板（アクリルスタンド）として写真の中に立て、写真の奥行きで被写界深度ボケをかける
+worker 実行です。写真は [写真ページ](ui.md#写真photos) で登録した Generation を使います。
+
+``` json
+{
+  "kind": "photo",
+  "payload": {
+    "generation_id": "abc123",
+    "options": { "photo": "ph0t0s", "place": [0.3, 0.92], "height": 0.6, "stand_at": [0.78, 0.4], "focus": [0.78, 0.38], "f_number": 2.0 }
+  }
+}
+```
+
+`generation_id` は UUID / short_id のどちらでもよく、`options` は必須です。受けるキーは次のとおりで、それ以外は 400 です。
+座標はすべて写真の幅・高さに対する割合（0〜1）で、出力は写真と同じ大きさです。
+
+  options        型
+  -------------- --------------------------------------------------------------------------
+  photo          背景にする写真の Generation（UUID / short_id）。必須
+  place          [x, y]。板の下辺の中央（スタンドの台座）を置く位置。省略は [0.5, 0.95]
+  height         0.05〜1.5。板の高さ（写真の高さに対する割合）。省略は 0.7
+  stand_at       [x, y] \| null。この点の写真の奥行きに板を立てる（例: 看板と同じ距離）。null / 省略は板自身の台座の位置
+  nearer         0〜1。板をカメラ側へ寄せる量（正規化した奥行き）。省略は 0
+  focus          "subject"（省略時、板）\| [x, y]（その点。板の上なら板）
+  f_number       1.4〜22、省略は 2.8
+
+入力にできるのは層 asset（`layer-figure` / `layer-outline`）を持つ deliver の出力だけで、その背景（`layer-backdrop`）は写真に
+置き換わります。写真の奥行きは写真の Generation の `depth` asset を使い、無いか古ければ worker が作って写真に付けます
+（`cut` asset と同じ仕組み）。写真はピクセルごとの奥行きで、板は 1 つの奥行きで、dof と同じレンズ形のボケをかけるので、
+看板と同じ奥行きに立てた板は看板と一緒にピントが合います。板は写真の上に重ね、写真の手前の物で隠しません。
+出力は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、lens の入力になります。
+chimera が検証するのは型と、MCP では写真の Generation が在ることだけです。
+
+catalog は最上位の `photo` 節に各 option の既定と説明（`height` / `nearer` は `min` / `max` も）、`f_number` を公開します。
 
 ### repair
 
@@ -956,7 +993,7 @@ Responsibilities を参照してください。Compare が比較表示のみで�
 ## MCP
 
 `/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
-`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
+`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
 規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
 tool ごとの契約と `created_by` は
 [experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。
