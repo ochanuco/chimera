@@ -674,19 +674,26 @@ dof → lens に固定します（lens は何回でも重ねられます）。
   options        型
   -------------- --------------------------------------------------------------------------
   center         [x, y]、各 0〜1（入力画像の幅・高さに対する割合）。省略は [0.5, 0.5]
-  strength       -1〜1、0 は 400。省略は 0.7。正は魚眼、負は逆魚眼
+  strength       -1〜1、0 は 400。省略は 0.7。正は魚眼 / 膨らみ、負は逆魚眼 / すぼまり
+  shape          "fisheye"（省略時） \| "sphere"
+  radius         sphere のときだけ。0.05〜1（短辺に対する割合）、省略は 0.3。fisheye に付けると 400
 
 歪みは ComfyUI の graph（`YukariLens`）で、納品の絵 1 枚をフチ・背景ごと曲げます。正の `strength` は入力を普通の
 （rectilinear な）写真とみなして等距離射影の魚眼へ写し直し、`center` のものが膨らんで周辺が縮みます（`center` から
 いちばん遠い角は動かず、そこでの半画角が `strength` × 75°）。負の `strength` はその逆写像で、中心が縮んで周辺が
 伸び、画面の外を読まない分だけ拡大して切り詰めます。
 
+`shape: "sphere"` は球面フィルターです。`center` を中心とする半径 `radius` の円の内側だけを、正面から見た半球に
+貼ったように歪め、正の `strength` でボールのように膨らみ、負ですぼまります（`|strength|` は歪みなしとの混ぜ具合）。
+円の外は元のピクセルのままです。
+
 入力にできるのは納品の絵（deliver・dof・lens の出力）です。納品していない絵と、`viewfinder` を重ねた dof の絵
 （`"on"` の出力と `"both"` の 2 枚目）は worker が `failed` にします。lens の出力に dof はかけられません（奥行きと層が
 ずれるので、ぼかしてから曲げる）。透過納品の絵の出力も透過のままです。出力は納品の Generation（`is_delivered`）で、
 入力を `refines_generation_id` で指し、lens の入力にだけなります。chimera が検証するのは型だけです。
 
-catalog は最上位の `lens` 節に `strength`（`min` / `max` / `default`）と `center`（`default` と説明）を公開します。
+catalog は最上位の `lens` 節に `strength`（`min` / `max` / `default`）、`center`（`default` と説明）、`shape`
+（`values` / `default`）、`radius`（`min` / `max` / `default` と説明）を公開します。
 
 ### repair
 
