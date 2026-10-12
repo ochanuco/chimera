@@ -21,6 +21,7 @@ import {
   redrawOptionsSchema,
   deliverOptionsSchema,
   dofOptionsSchema,
+  lensOptionsSchema,
   deliverProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
@@ -223,6 +224,14 @@ const dofGenerationInputSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
+/** `lens_generation` の入力。options は lensPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+const lensGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  center: lensOptionsSchema.shape.center,
+  strength: lensOptionsSchema.shape.strength,
+  idempotency_key: z.string().min(1),
+});
+
 /** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
 const repairGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
@@ -375,7 +384,8 @@ const MCP_INSTRUCTIONS =
   '5. A redrawn / delivered / repaired / masked_redraw Generation exposes the Generation it was made from as ' +
   '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
-  'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field).\n' +
+  'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
+  'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture.\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
@@ -690,10 +700,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "repair" ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
-        'be created. redraw_generation / deliver_generation / dof_generation are the same requests with a typed input. created_by is ' +
+        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
@@ -838,6 +848,39 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.dof_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'lens_generation',
+    {
+      outputSchema: mcpOutputSchemas.lens_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a lens request (docs/worker-protocol.md "lens"): bend a delivered picture through a fisheye or its ' +
+        'inverse, outline bands and backdrop with it. generation_id accepts a short_id and takes a delivered picture: a ' +
+        'deliver output, a dof output without the viewfinder overlay, or another lens output (lenses stack). Blur first: ' +
+        'a lens output cannot be given a dof. strength is -1 to 1 (default 0.7, not 0): positive is a fisheye that swells ' +
+        'what sits at center and squeezes the rim (the farthest corner stays put; strength 1 is a 75° half angle there), ' +
+        'negative is the exact inverse that shrinks center and stretches the rim, zoomed in just enough to keep the frame ' +
+        'full. center is [x, y], fractions 0-1 of the picture width/height (default [0.5, 0.5]); put it on the feet to ' +
+        'push the legs toward the viewer. The output is a delivered picture that refines the source. ' +
+        "list_catalog's top-level lens section publishes the range and defaults. Follow status with get_request.",
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: lensGenerationInputSchema,
+    },
+    async ({ generation_id, center, strength, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const options: Record<string, unknown> = {};
+      if (center !== undefined) options.center = center;
+      if (strength !== undefined) options.strength = strength;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'lens', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.lens_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -1144,7 +1187,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
         'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
-        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',

@@ -60,7 +60,7 @@ POST /api/v1/requests/{request_id}/jobs
 }
 ```
 
-redraw / deliver / dof / repair / masked_redraw の Request では、仕上げ元の Generation を
+redraw / deliver / dof / lens / repair / masked_redraw の Request では、仕上げ元の Generation を
 `source_generation_id` に渡します（[Request](#request)）。
 
 201（新規作成）は `{ id, request_id, seed, index, status, comfy_prompt_id: null, source_generation_id, generations: [] }`
@@ -523,13 +523,13 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / repair / masked_redraw / import で、finalize は 400（redraw か deliver を使う）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / lens / repair / masked_redraw / import で、finalize は 400（redraw か deliver を使う）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
 PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe / parameters / patches / pose_fingerprint / preset_versions / git_commit / git_dirty / references）を報告。200（再送・Job 作成前の上書き）/ 409（Job 作成後に別の値）。応答は { id, short_id, status, jobs[] }
-POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・repair・masked_redraw（と古い finalize）は source_generation_id 必須
+POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・lens・repair・masked_redraw（と古い finalize）は source_generation_id 必須
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
 PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告（best-effort）。200 { ok: true } / 404 / 400。下記「Timings」
 ```
@@ -538,7 +538,7 @@ PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告�
 
 -   `status` / `kind`: 完全一致。`kind` には作れなくなった `finalize` と、`import`（worker を通らず登録側が `done` で作る Request）も指定できる
 -   `run_id`: `kind = generate` の行のみ持つ
--   `generation_id`: `kind = redraw` / `deliver` / `dof` / `repair` / `masked_redraw`（と古い `finalize`）の行を対象に、その
+-   `generation_id`: `kind = redraw` / `deliver` / `dof` / `lens` / `repair` / `masked_redraw`（と古い `finalize`）の行を対象に、その
     `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
 -   `worker_id`: claim した worker
 -   `pending=true`: `status=queued` の別名
@@ -546,7 +546,7 @@ PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告�
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。`short_id` は生成前に worker が解決値を報告するまで `null` です。
 
-`kind = redraw` / `deliver` / `dof` / `repair` / `masked_redraw` の作成は、`payload.generation_id` が指す
+`kind = redraw` / `deliver` / `dof` / `lens` / `repair` / `masked_redraw` の作成は、`payload.generation_id` が指す
 Generation の original が purge 済み（`original_purged_at` 非 null）なら 409
 （`code: "original_purged"`）で拒否します（original の purge は止めてあるので、対象は過去に purge された行だけです）。worker はその Generation 自身の画像を読むため
 （[worker-protocol.md](worker-protocol.md)）、original が無いと実行できません。既存の
@@ -593,7 +593,7 @@ v2 の行とは version が違うので上書きしません。
 ### Summary
 
 `GET /api/v1/requests/summary` は queued / running の全件と、直近24hに failed
-になった件のみを対象に、仕上げ元 Generation が属する Request（redraw/deliver/dof/repair/masked_redraw、古い finalize も）または
+になった件のみを対象に、仕上げ元 Generation が属する Request（redraw/deliver/dof/lens/repair/masked_redraw、古い finalize も）または
 Experiment（generate、`run_id` があるとき）単位にまとめて返します。仕上げ元が解決できない行と、`run_id` の無い
 generate は request 単体のグループです。GUI ナビの queue pill 専用で、他のフィルタは
 持ちません。
@@ -883,7 +883,7 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
 MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
 `parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、
-`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（`light` / method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）、git
+`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（`light` / method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明）、git
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
@@ -1241,7 +1241,7 @@ GET /api/v1/generations/{id-or-short-id}/context
 ```
 
 `request` はこの Generation が属する Request で、所属が無ければ `null` です。
-`kind` は `generate` / `redraw` / `deliver` / `dof` / `repair` / `masked_redraw` / `import` のいずれか（古い行は `finalize` もある）、
+`kind` は `generate` / `redraw` / `deliver` / `dof` / `lens` / `repair` / `masked_redraw` / `import` のいずれか（古い行は `finalize` もある）、
 `parameters` / `patches` / `preset_versions` は未報告なら `null` です。
 `prompt` / `negative_prompt` は Request の先頭 Job（`job_index` が最小で graph を持つもの）の
 `render_facts` の先頭 sampler から取ります。Job に graph が無ければ `null` です。
@@ -1355,7 +1355,7 @@ WebP に変換していることがあり、その場合 `image_url` は `Conten
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation
 表現（Generation Search / Context / MCP の対応する出力）に付きます。
 
-`refinement_request`（redraw / deliver / dof / repair /
+`refinement_request`（redraw / deliver / dof / lens / repair /
 masked_redraw と古い finalize のすべてを対象にする）は、この Generation を対象にした最新の
 [Request](#request)（`payload.generation_id` がこの Generation の UUID /
 short_id のどちらかと一致する行のうち、最新の1件）です。無ければ `null`。
@@ -1423,12 +1423,12 @@ GET /api/v1/generations/{id}/tree
 -   `kind`: その Generation を作った Request の kind（元絵は `generate`、import した元絵は `import`）
 -   `method`: kind が `redraw` のときの `options.method`（`canvas` / `hires` / `light`）、それ以外は `null`
 -   `phase`: ワークベンチのフェーズ。redraw の `canvas` / `hires` = 1、`light` = 2、`repair` / `masked_redraw` = 3、
-    `deliver` = 4、`dof` = 5。元絵と対応しない kind は `null`
+    `deliver` = 4、`dof` = 5。元絵と対応しない kind（`lens` を含む）は `null`
 -   `options`: 作った Request の `payload.options`（元絵と options の無い kind は `null`）
--   `delivered`: 納品の絵か（`dof` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
+-   `delivered`: 納品の絵か（`dof` / `lens` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
 -   `image_width` / `image_height` / `image_size`: 画像の寸法（px）とバイト数。未記録の行は `null`
 -   `nodes` は `created_at` の古い順
--   `pending`: `status` が `queued` / `running` の redraw / repair / masked_redraw / deliver / dof で、`payload.generation_id` が
+-   `pending`: `status` が `queued` / `running` の redraw / repair / masked_redraw / deliver / dof / lens で、`payload.generation_id` が
     この木のどれかを指すもの。処理中の候補を画面の再読み込み後に出すために使う。`source_generation_id` は入力の id
 
 不明な `{id}` は404です。

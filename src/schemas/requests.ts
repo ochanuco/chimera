@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 /** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。 */
-export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof']);
-export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens']);
+export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
-export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'import']);
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -147,6 +147,26 @@ export const dofPayloadSchema = z
   })
   .strict();
 
+/** lens の options (docs/worker-protocol.md「lens」)。入力は納品された絵で、worker が判定する。strength は正で魚眼、負で逆魚眼、0 は不可。 */
+export const lensOptionsSchema = z
+  .object({
+    center: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
+    strength: z
+      .number()
+      .min(-1)
+      .max(1)
+      .refine((strength) => strength !== 0, { message: 'strength must not be 0' })
+      .optional(),
+  })
+  .strict();
+
+export const lensPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: lensOptionsSchema.optional(),
+  })
+  .strict();
+
 /** repair の options は masked local redraw (hands/feet) の worker 側引数に写す (docs/worker-protocol.md「repair」)。chimera は型だけ見る。 */
 export const repairOptionsSchema = z
   .object({
@@ -241,7 +261,9 @@ export function payloadEnvelopeIssues(kind: Exclude<z.infer<typeof requestKindSc
         ? deliverPayloadSchema
         : kind === 'dof'
           ? dofPayloadSchema
-          : kind === 'repair'
+          : kind === 'lens'
+            ? lensPayloadSchema
+            : kind === 'repair'
             ? repairPayloadSchema
             : kind === 'masked_redraw'
               ? maskedRedrawPayloadSchema
