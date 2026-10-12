@@ -244,6 +244,8 @@ describe('MCP server at /mcp', () => {
         'dof_generation',
         'lens_generation',
         'photo_generation',
+        'stage_generation',
+        'lighting_generation',
         'repair_generation',
         'masked_redraw_generation',
         'get_request',

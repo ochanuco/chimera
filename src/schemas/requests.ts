@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 /** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。 */
-export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo']);
-export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting']);
+export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
-export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'import']);
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -125,6 +125,9 @@ export const deliverPayloadSchema = z
   .strict();
 
 /** dof の options (docs/worker-protocol.md「dof」)。入力は deliver の出力だけで、worker が判定する。 */
+const unitPoint = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]);
+
+/** dof の options。stand_at / nearer / tilt / bokeh は写真に置いた絵（stage の photo）だけが受け、ほかの絵では worker が拒む。 */
 export const dofOptionsSchema = z
   .object({
     focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
@@ -137,6 +140,10 @@ export const dofOptionsSchema = z
       })
       .optional(),
     viewfinder: z.enum(['off', 'on', 'both']).optional(),
+    stand_at: unitPoint.nullable().optional(),
+    nearer: z.number().min(0).max(1).optional(),
+    tilt: z.number().min(-1).max(1).optional(),
+    bokeh: z.number().min(0).max(1).optional(),
   })
   .strict();
 
@@ -173,8 +180,6 @@ export const lensPayloadSchema = z
     options: lensOptionsSchema.optional(),
   })
   .strict();
-
-const unitPoint = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]);
 
 /** photo の options (docs/worker-protocol.md「photo」)。入力は層 asset を持つ deliver の出力で、photo は背景にする写真の Generation。worker が判定する。 */
 export const photoOptionsSchema = z
@@ -267,6 +272,50 @@ export const maskedRedrawPayloadSchema = z
 
 /** Canonicalizes to one stable vocabulary even when a caller uses aliases. Validation normally happens
  * at the REST/MCP boundary; parsing here also guards direct callers (e.g. request helpers). */
+const COMPASS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
+
+/** stage（背景）の options (docs/worker-protocol.md「stage」)。photo があれば写真に place / height で置き、無ければ backdrop（柄名か #RRGGBB）に
+ * shadow_from の影で置く。二組は混ぜない。入力は層 asset を持つ deliver の出力で、worker が判定する。 */
+export const stageOptionsSchema = z
+  .object({
+    photo: z.string().min(1).optional(),
+    place: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1.5)]).optional(),
+    height: z.number().min(0.05).max(1.5).optional(),
+    backdrop: z.string().min(1).optional(),
+    shadow_from: z.enum(COMPASS).nullable().optional(),
+  })
+  .strict()
+  .refine((o) => o.photo !== undefined || (o.place === undefined && o.height === undefined), {
+    message: 'place / height are only for a photo',
+    path: ['place'],
+  })
+  .refine((o) => o.photo === undefined || (o.backdrop === undefined && o.shadow_from === undefined), {
+    message: 'backdrop / shadow_from are not for a photo',
+    path: ['backdrop'],
+  });
+
+export const stagePayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: stageOptionsSchema.optional(),
+  })
+  .strict();
+
+/** lighting（光）の options (docs/worker-protocol.md「lighting」)。入力は stage の出力か背景ありの納品で、worker が判定する。 */
+export const lightingOptionsSchema = z
+  .object({
+    direction: z.enum(COMPASS).nullable().optional(),
+    strength: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
+export const lightingPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: lightingOptionsSchema.optional(),
+  })
+  .strict();
+
 export function canonicalizeMaskedRedrawPayload(payload: unknown): Record<string, unknown> {
   const parsed = maskedRedrawPayloadSchema.parse(payload);
   const { pad, feather, ...options } = parsed.options;
@@ -297,6 +346,10 @@ export function payloadEnvelopeIssues(kind: Exclude<z.infer<typeof requestKindSc
             ? lensPayloadSchema
             : kind === 'photo'
             ? photoPayloadSchema
+            : kind === 'stage'
+            ? stagePayloadSchema
+            : kind === 'lighting'
+            ? lightingPayloadSchema
             : kind === 'repair'
             ? repairPayloadSchema
             : kind === 'masked_redraw'
