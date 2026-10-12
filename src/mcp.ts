@@ -229,7 +229,12 @@ const lensGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   center: lensOptionsSchema.shape.center,
   strength: lensOptionsSchema.shape.strength,
+  shape: lensOptionsSchema.shape.shape,
+  radius: lensOptionsSchema.shape.radius,
   idempotency_key: z.string().min(1),
+}).refine((input) => input.radius === undefined || input.shape === 'sphere', {
+  message: 'radius is only for shape "sphere"',
+  path: ['radius'],
 });
 
 /** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
@@ -700,7 +705,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?}}), "repair" ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
         'be created. redraw_generation / deliver_generation / dof_generation / lens_generation are the same requests with a typed input. created_by is ' +
@@ -864,16 +869,21 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'what sits at center and squeezes the rim (the farthest corner stays put; strength 1 is a 75° half angle there), ' +
         'negative is the exact inverse that shrinks center and stretches the rim, zoomed in just enough to keep the frame ' +
         'full. center is [x, y], fractions 0-1 of the picture width/height (default [0.5, 0.5]); put it on the feet to ' +
-        'push the legs toward the viewer. The output is a delivered picture that refines the source. ' +
+        'push the legs toward the viewer. shape "fisheye" (default) bends the whole frame as above; shape "sphere" is a ' +
+        'spherize filter that bends only the disc of radius (0.05-1 of the shorter side, default 0.3; only with sphere) ' +
+        'around center, bulging it like a ball (strength > 0) or pinching it (< 0), and leaves the rest untouched. ' +
+        'The output is a delivered picture that refines the source. ' +
         "list_catalog's top-level lens section publishes the range and defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: lensGenerationInputSchema,
     },
-    async ({ generation_id, center, strength, idempotency_key }) => {
+    async ({ generation_id, center, strength, shape, radius, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const options: Record<string, unknown> = {};
       if (center !== undefined) options.center = center;
       if (strength !== undefined) options.strength = strength;
+      if (shape !== undefined) options.shape = shape;
+      if (radius !== undefined) options.radius = radius;
       const { row, created } = await createRequest(
         db,
         { kind: 'lens', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
@@ -1187,7 +1197,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
         'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
-        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',
