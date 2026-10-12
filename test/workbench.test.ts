@@ -5,7 +5,7 @@ beforeEach(async () => {
   await clearGenerationData();
 });
 
-type Kind = 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof';
+type Kind = 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'stage' | 'lighting' | 'dof';
 
 async function derive(source: { id: string; short_id: string }, kind: Kind, options?: Record<string, unknown>) {
   const { generation } = await createGeneration({
@@ -54,7 +54,9 @@ describe('GET /api/v1/generations/:id/tree', () => {
     const repair = await derive(light, 'repair', { parts: ['hands'] });
     const masked = await derive(light, 'masked_redraw', { regions: [[0, 0, 0.5, 0.5]], prompt_patch: 'x' });
     const deliver = await derive(repair, 'deliver', { backdrop: null });
-    const dof = await derive(deliver, 'dof', { focus: [0.5, 0.5] });
+    const stage = await derive(deliver, 'stage', { backdrop: 'dots' });
+    const lighting = await derive(stage, 'lighting', { strength: 0.5 });
+    const dof = await derive(lighting, 'dof', { focus: [0.5, 0.5] });
     const other = await createGeneration();
     await derive(other.generation, 'redraw', { method: 'hires' });
 
@@ -62,18 +64,20 @@ describe('GET /api/v1/generations/:id/tree', () => {
     expect(fromLeaf.status).toBe(200);
     expect(fromLeaf.body.root_id).toBe(root.id);
     const byId = new Map(fromLeaf.body.nodes.map((n) => [n.id, n]));
-    expect(byId.size).toBe(8);
+    expect(byId.size).toBe(10);
     expect(byId.has(other.generation.id)).toBe(false);
 
     const expected: [{ id: string }, string, string | null, number | null, boolean][] = [
       [root, 'generate', null, null, false],
       [hires, 'redraw', 'hires', 1, false],
-      [light, 'redraw', 'light', 2, false],
+      [light, 'redraw', 'light', 1, false],
       [canvas, 'redraw', 'canvas', 1, false],
-      [repair, 'repair', null, 3, false],
-      [masked, 'masked_redraw', null, 3, false],
-      [deliver, 'deliver', null, 4, true],
-      [dof, 'dof', null, 5, true],
+      [repair, 'repair', null, 2, false],
+      [masked, 'masked_redraw', null, 2, false],
+      [deliver, 'deliver', null, 3, true],
+      [stage, 'stage', null, 4, true],
+      [lighting, 'lighting', null, 5, true],
+      [dof, 'dof', null, 6, true],
     ];
     for (const [g, kind, method, phase, delivered] of expected) {
       expect(byId.get(g.id), kind).toMatchObject({ kind, method, phase, delivered });
@@ -108,7 +112,7 @@ describe('GET /api/v1/generations/:id/tree', () => {
     expect(tree.body.pending.map((p) => p.request_id).sort()).toEqual([queued.body.id, running.body.id].sort());
     const byId = new Map(tree.body.pending.map((p) => [p.request_id, p]));
     expect(byId.get(queued.body.id)).toMatchObject({ kind: 'redraw', method: 'canvas', phase: 1, source_generation_id: root.id, status: 'queued' });
-    expect(byId.get(running.body.id)).toMatchObject({ kind: 'deliver', method: null, phase: 4, source_generation_id: child.id, status: 'running' });
+    expect(byId.get(running.body.id)).toMatchObject({ kind: 'deliver', method: null, phase: 3, source_generation_id: child.id, status: 'running' });
   });
 
   it('404s for an unknown generation', async () => {
@@ -147,7 +151,7 @@ describe('/api/v1/workbenches/:rootId', () => {
   });
 
   it.each([
-    ['a phase key outside 1..5', { '6': { skip: true } }],
+    ['a phase key outside 1..6', { '7': { skip: true } }],
     ['phase 0', { '0': { skip: true } }],
     ['skip false', { '1': { skip: false } }],
     ['an empty pick', { '1': {} }],

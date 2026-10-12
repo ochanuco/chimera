@@ -9,12 +9,15 @@ import type { GenerationRow, RequestKind, RequestStatus } from '../types';
 
 const MAX_ROOT_HOPS = 100;
 
-/** redraw の canvas / hires = 1、light = 2、repair / masked_redraw = 3、deliver = 4、dof = 5。それ以外は null。 */
+/** redraw（canvas / hires / light）= 1 描き直し、repair / masked_redraw = 2 部分、deliver = 3 切り抜き・フチ、stage = 4 背景、
+ * lighting = 5 光、dof = 6 ボケ。それ以外は null。 */
 export function workbenchPhase(kind: string, method: string | null): number | null {
-  if (kind === 'redraw') return method === 'light' ? 2 : method === 'canvas' || method === 'hires' ? 1 : null;
-  if (kind === 'repair' || kind === 'masked_redraw') return 3;
-  if (kind === 'deliver') return 4;
-  if (kind === 'dof') return 5;
+  if (kind === 'redraw') return method === 'light' || method === 'canvas' || method === 'hires' ? 1 : null;
+  if (kind === 'repair' || kind === 'masked_redraw') return 2;
+  if (kind === 'deliver') return 3;
+  if (kind === 'stage') return 4;
+  if (kind === 'lighting') return 5;
+  if (kind === 'dof') return 6;
   return null;
 }
 

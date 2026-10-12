@@ -8,6 +8,7 @@ import { Compass, OutlineEditor } from '../components/OutlineEditor';
 import { DofFields, FALLBACK_DOF } from '../components/DofFields';
 import { LIGHT_SCENE_LABELS } from '../components/OptionControls';
 import { CapActions } from '../components/CapActions';
+import { PHOTO_MAX_SIDE, type PhotoItem } from '../../lib/photos';
 
 export interface BackdropOption {
   name: string;
@@ -38,14 +39,17 @@ export interface WorkbenchData {
   backdropColor: string | null;
   dof: DofCatalog | null;
   parts: WorkbenchPart[];
+  /** Photos uploaded on `/photos` (or from the 背景 phase), newest first. */
+  photos: PhotoItem[];
 }
 
 const PHASES = [
   { no: 1, label: '描き直し' },
-  { no: 2, label: '光' },
-  { no: 3, label: '部分' },
-  { no: 4, label: '納品' },
-  { no: 5, label: 'ボケ' },
+  { no: 2, label: '部分' },
+  { no: 3, label: '切り抜き・フチ' },
+  { no: 4, label: '背景' },
+  { no: 5, label: '光' },
+  { no: 6, label: 'ボケ' },
 ] as const;
 
 function numberDefault(fields: Record<string, unknown> | undefined, key: string): number | null {
@@ -93,6 +97,9 @@ function RedrawForm({ data }: { data: WorkbenchData }) {
         <button type="button" class="wb-pill" data-wb-method="canvas">
           canvas
         </button>
+        <button type="button" class="wb-pill" data-wb-method="light">
+          light
+        </button>
       </div>
       <div data-wb-method-panel="hires">
         <label class="wb-field">
@@ -133,31 +140,30 @@ function RedrawForm({ data }: { data: WorkbenchData }) {
           </select>
         </label>
       </div>
+      <LightPanel data={data} />
     </div>
   );
 }
 
-function LightForm({ data }: { data: WorkbenchData }) {
+function LightPanel({ data }: { data: WorkbenchData }) {
   const scenes = data.light ? data.light.scenes : Object.keys(LIGHT_SCENE_LABELS);
   const from = data.light ? data.light.defaultFrom : 'nw';
   return (
-    <div class="wb-form" data-wb-form="2" hidden>
-      <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
-      <div data-wb-form-body>
-        <div class="wb-field">
-          scene
-          <div class="wb-pills" role="group" aria-label="scene">
-            {scenes.map((scene, i) => (
-              <button type="button" class={`wb-pill${i === 0 ? ' wb-pill-on' : ''}`} data-wb-scene={scene}>
-                {LIGHT_SCENE_LABELS[scene] ?? scene} <span class="mono">{scene}</span>
-              </button>
-            ))}
-          </div>
+    <div data-wb-method-panel="light" hidden>
+      <p class="wb-note" data-wb-light-input></p>
+      <div class="wb-field">
+        scene
+        <div class="wb-pills" role="group" aria-label="scene">
+          {scenes.map((scene, i) => (
+            <button type="button" class={`wb-pill${i === 0 ? ' wb-pill-on' : ''}`} data-wb-scene={scene}>
+              {LIGHT_SCENE_LABELS[scene] ?? scene} <span class="mono">{scene}</span>
+            </button>
+          ))}
         </div>
-        <div class="wb-field">
-          光の向き <span class="mono" data-wb-light-readout>from: {from}</span>
-          <Compass name="light" value={from} />
-        </div>
+      </div>
+      <div class="wb-field">
+        光の向き <span class="mono" data-wb-light-readout>from: {from}</span>
+        <Compass name="light" value={from} />
       </div>
     </div>
   );
@@ -170,7 +176,7 @@ const PART_MODES = [
 
 function PartForm({ data }: { data: WorkbenchData }) {
   return (
-    <div class="wb-form" data-wb-form="3" hidden>
+    <div class="wb-form" data-wb-form="2" hidden>
       <div class="wb-field">
         描き直す場所
         <div class="wb-pills" role="group" aria-label="描き直す場所">
@@ -222,20 +228,12 @@ function PartForm({ data }: { data: WorkbenchData }) {
 
 function DeliverForm({ data }: { data: WorkbenchData }) {
   const defaults = data.deliverDefaults;
-  const patterns = data.backdrops.length > 0 ? data.backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
   return (
-    <div class="wb-form" data-wb-form="4" hidden>
+    <div class="wb-form" data-wb-form="3" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <div class="wb-row">
-          <div class="wb-pills" role="group" aria-label="背景">
-            <button type="button" class="wb-pill" data-wb-bg="transparent">
-              透過
-            </button>
-            <button type="button" class="wb-pill wb-pill-on" data-wb-bg="backdrop">
-              背景あり
-            </button>
-          </div>
+          <span class="wb-note">透過で切り抜き、フチを付けます。背景は次のフェーズで付けます。</span>
           <label class="wb-inline-field">
             サイズ
             <select name="wb_deliver_size">
@@ -247,50 +245,11 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           </label>
         </div>
 
-        <details class="wb-acc">
+        <details class="wb-acc" open>
           <summary>
             フチ <span class="wb-acc-sub" data-wb-outline-summary></span>
           </summary>
           <OutlineEditor outlines={data.outlines} stroke={data.strokeDefault} />
-        </details>
-
-        <details class="wb-acc" data-wb-backdrop-patterns data-default="random">
-          <summary>
-            背景柄 <span class="wb-acc-sub" data-wb-backdrop-summary></span>
-          </summary>
-          <div class="wb-acc-body">
-            <div class="backdrop-picker wb-backdrops" data-backdrop-group>
-              <span class="dial-label">背景（backdrop）</span>
-              <label class="backdrop-option backdrop-option-plain" data-backdrop-value="random">
-                <input type="radio" name="backdrop" value="random" checked={false} />
-                <span class="backdrop-option-label">ランダム</span>
-              </label>
-              {patterns.map((bd, i) => (
-                <label class="backdrop-option" data-backdrop-value={bd.name}>
-                  <input type="radio" name="backdrop" value={bd.name} checked={false} data-backdrop-pattern data-wb-backdrop-first={i === 0 ? '1' : undefined} />
-                  {data.backdrops.length > 0 && data.recipeRef ? (
-                    <img
-                      class="backdrop-thumb"
-                      src={backdropThumbnailUrl(data.recipeRef, data.catalogVersion, bd.name)}
-                      alt={bd.label}
-                      width="60"
-                      height="96"
-                      loading="lazy"
-                    />
-                  ) : null}
-                  <span class="backdrop-option-label">{bd.label}</span>
-                </label>
-              ))}
-              <label class="backdrop-option backdrop-option-plain" data-backdrop-value="color">
-                <input type="radio" name="backdrop" value="color" checked={false} />
-                <span class="backdrop-option-label">単色</span>
-              </label>
-            </div>
-            <label class="backdrop-option-plain" hidden>
-              <input type="radio" name="backdrop" value="transparent" checked />
-            </label>
-            <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" value={data.backdropColor ?? '#ffffff'} hidden disabled />
-          </div>
         </details>
 
         <details class="wb-acc">
@@ -308,12 +267,122 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
             <label>
               <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す
             </label>
-            <label>
-              <input type="checkbox" name="keep_scene" checked={defaults?.keep_scene === true} /> 元の場面を残す
-            </label>
           </div>
         </details>
+        <label class="backdrop-option-plain" hidden>
+          <input type="radio" name="backdrop" value="transparent" checked />
+        </label>
         <p class="wb-note">切り抜きは 2 回目から使い回します</p>
+      </div>
+    </div>
+  );
+}
+
+function StageForm({ data }: { data: WorkbenchData }) {
+  const patterns = data.backdrops.length > 0 ? data.backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
+  return (
+    <div class="wb-form" data-wb-form="4" hidden>
+      <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <div data-wb-form-body>
+        <div class="wb-pills" role="group" aria-label="背景の種類">
+          <button type="button" class="wb-pill wb-pill-on" data-wb-stage-mode="pattern">
+            柄・単色
+          </button>
+          <button type="button" class="wb-pill" data-wb-stage-mode="photo">
+            写真
+          </button>
+        </div>
+
+        <div data-wb-stage-panel="pattern">
+          <div class="backdrop-picker wb-backdrops" data-backdrop-group>
+            <label class="backdrop-option backdrop-option-plain" data-backdrop-value="random">
+              <input type="radio" name="backdrop" value="random" checked />
+              <span class="backdrop-option-label">ランダム</span>
+            </label>
+            {patterns.map((bd) => (
+              <label class="backdrop-option" data-backdrop-value={bd.name}>
+                <input type="radio" name="backdrop" value={bd.name} data-backdrop-pattern />
+                {data.backdrops.length > 0 && data.recipeRef ? (
+                  <img
+                    class="backdrop-thumb"
+                    src={backdropThumbnailUrl(data.recipeRef, data.catalogVersion, bd.name)}
+                    alt={bd.label}
+                    width="60"
+                    height="96"
+                    loading="lazy"
+                  />
+                ) : null}
+                <span class="backdrop-option-label">{bd.label}</span>
+              </label>
+            ))}
+            <label class="backdrop-option backdrop-option-plain" data-backdrop-value="color">
+              <input type="radio" name="backdrop" value="color" />
+              <span class="backdrop-option-label">単色</span>
+            </label>
+          </div>
+          <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" value={data.backdropColor ?? '#ffffff'} hidden disabled />
+          <div class="wb-field">
+            影 <span class="mono" data-wb-shadow-readout>なし</span>
+            <div class="wb-pills">
+              <button type="button" class="wb-pill wb-pill-on" data-wb-shadow-none>
+                影なし
+              </button>
+            </div>
+            <Compass name="shadow" value="" centreLabel="光" />
+          </div>
+        </div>
+
+        <div data-wb-stage-panel="photo" hidden>
+          <div class="wb-photo-grid" data-wb-photos>
+            {data.photos.map((photo) => (
+              <button
+                type="button"
+                class="wb-photo"
+                data-wb-photo={photo.short_id}
+                data-photo-id={photo.id}
+                data-width={String(photo.image_width ?? '')}
+                data-height={String(photo.image_height ?? '')}
+                title={photo.original_filename ?? photo.short_id}
+              >
+                <img src={`/g/${photo.short_id}/preview`} alt={photo.original_filename ?? photo.short_id} loading="lazy" />
+              </button>
+            ))}
+          </div>
+          <label class="wb-field wb-photo-upload">
+            写真を足す
+            <input type="file" accept="image/*" data-wb-photo-file data-max-side={String(PHOTO_MAX_SIDE)} />
+          </label>
+          <span class="wb-note" data-wb-photo-status aria-live="polite"></span>
+          <p class="wb-note">左の写真をクリックすると、そこに台座（板の下辺の中央）を置きます。</p>
+          <label class="wb-field">
+            高さ <span class="mono" data-wb-stage-height-readout>0.7</span>
+            <input type="range" name="wb_stage_height" min="0.05" max="1.5" step="0.01" value="0.7" />
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LightingForm() {
+  return (
+    <div class="wb-form" data-wb-form="5" hidden>
+      <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <div data-wb-form-body>
+        <p class="wb-note">背景の明るさと色味にキャラとフチを合わせます。向きを選ぶとその側から陰影も付けます。</p>
+        <label class="wb-field">
+          強さ <span class="mono" data-wb-lighting-readout>0.7</span>
+          <input type="range" name="wb_lighting_strength" min="0" max="1" step="0.05" value="0.7" />
+        </label>
+        <div class="wb-field">
+          光の向き <span class="mono" data-wb-lighting-dir-readout>なし</span>
+          <div class="wb-pills">
+            <button type="button" class="wb-pill wb-pill-on" data-wb-lighting-none>
+              向きなし
+            </button>
+          </div>
+          <Compass name="lighting" value="" />
+        </div>
       </div>
     </div>
   );
@@ -321,16 +390,31 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
 
 function DofForm({ data }: { data: WorkbenchData }) {
   return (
-    <div class="wb-form" data-wb-form="5" hidden>
+    <div class="wb-form" data-wb-form="6" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <DofFields dof={data.dof ?? FALLBACK_DOF} />
+        <div data-wb-dof-photo hidden>
+          <p class="wb-note">写真に置いた絵: 写真の奥行きでボカします（ボカす範囲は使いません）。</p>
+          <label class="wb-field">
+            板を傾ける <span class="mono" data-wb-dof-readout="tilt">0</span>
+            <input type="range" name="wb_dof_tilt" min="-1" max="1" step="0.05" value="0" />
+          </label>
+          <label class="wb-field">
+            手前に寄せる <span class="mono" data-wb-dof-readout="nearer">0</span>
+            <input type="range" name="wb_dof_nearer" min="0" max="1" step="0.05" value="0" />
+          </label>
+          <label class="wb-field">
+            玉ボケ <span class="mono" data-wb-dof-readout="bokeh">0</span>
+            <input type="range" name="wb_dof_bokeh" min="0" max="1" step="0.05" value="0" />
+          </label>
+        </div>
       </div>
     </div>
   );
 }
 
-/** `/work/:shortId`: the five-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
+/** `/work/:shortId`: the six-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
 export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchData }) {
   const initial = { tree: data.tree, picks: data.picks, at: data.at };
   return (
@@ -421,16 +505,17 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
             <div class="wb-panel-body">
               <div>
                 <p class="wb-note">
-                  フェーズ <span data-wb-phase-no>1</span> / 5
+                  フェーズ <span data-wb-phase-no>1</span> / 6
                 </p>
                 <h2 class="wb-panel-title">
                   <span data-wb-phase-title>描き直し</span>の候補を作る
                 </h2>
               </div>
               <RedrawForm data={data} />
-              <LightForm data={data} />
               <PartForm data={data} />
               <DeliverForm data={data} />
+              <StageForm data={data} />
+              <LightingForm />
               <DofForm data={data} />
             </div>
             <div class="wb-panel-foot">
