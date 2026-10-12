@@ -147,7 +147,8 @@ export const dofPayloadSchema = z
   })
   .strict();
 
-/** lens の options (docs/worker-protocol.md「lens」)。入力は納品された絵で、worker が判定する。strength は正で魚眼、負で逆魚眼、0 は不可。 */
+/** lens の options (docs/worker-protocol.md「lens」)。入力は納品された絵で、worker が判定する。strength は正で魚眼 / 膨らみ、負で逆魚眼 / すぼまり、0 は不可。
+ * radius は shape = sphere のときだけ受ける。 */
 export const lensOptionsSchema = z
   .object({
     center: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
@@ -157,8 +158,14 @@ export const lensOptionsSchema = z
       .max(1)
       .refine((strength) => strength !== 0, { message: 'strength must not be 0' })
       .optional(),
+    shape: z.enum(['fisheye', 'sphere']).optional(),
+    radius: z.number().min(0.05).max(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine((options) => options.radius === undefined || options.shape === 'sphere', {
+    message: 'radius is only for shape "sphere"',
+    path: ['radius'],
+  });
 
 export const lensPayloadSchema = z
   .object({

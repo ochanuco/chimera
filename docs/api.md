@@ -883,7 +883,7 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
 MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
 `parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、
-`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（`light` / method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明）、git
+`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（`light` / method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明 / `shape` / sphere の `radius`）、git
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
