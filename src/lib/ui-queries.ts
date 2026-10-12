@@ -29,7 +29,7 @@ export interface WorkSource {
 }
 
 /** Same notion as `isDeliveredRequest` in requests.ts, expressed over a requests alias. */
-const DELIVERED_SQL = `(r.kind IN ('deliver', 'dof', 'finalize')
+const DELIVERED_SQL = `(r.kind IN ('deliver', 'dof', 'lens', 'finalize')
   OR json_extract(r.parameters_json, '$.kind') IN ('deliver', 'hires-chain')
   OR (json_extract(r.parameters_json, '$.kind') = 'repair' AND json_extract(r.parameters_json, '$.deliver_only') = 1))`;
 
