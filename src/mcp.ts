@@ -920,7 +920,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'one flat card like an acrylic stand, inside a photo and blur the scene by depth. generation_id accepts a short_id and ' +
         'takes a deliver output with layer assets (its backdrop is replaced). photo is the Generation (id or short_id) whose ' +
         'image is the scene, usually one uploaded on the /photos page (required). place is [x, y] of the photo where the middle ' +
-        "of the card's bottom edge goes (default [0.5, 0.95]); height is the card's height as a share of the photo's " +
+        "of the card's bottom edge goes (default [0.5, 0.95]; y up to 1.5 puts the base below the frame, cropping the feet so the card can be larger); height is the card's height as a share of the photo's " +
         '(0.05-1.5, default 0.7). The card stands at one depth: the photo\'s depth at stand_at ([x, y], e.g. a signboard to ' +
         "share its focus; null = the card's own base, default), pulled toward the camera by nearer (0-1 of the scene depth, " +
         'default 0). tilt (-1 to 1, default 0) leans the card, its top that much farther than its base, so a focus on the ' +
