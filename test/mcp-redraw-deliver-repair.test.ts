@@ -346,11 +346,19 @@ describe('MCP lens_generation', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(minimal.data?.request.payload).toEqual({ generation_id: generation.short_id, options: {} });
+
+    const sphere = await mcpToolCall<CreateRequestResult>('lens_generation', {
+      generation_id: generation.id,
+      shape: 'sphere',
+      radius: 0.3,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(sphere.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { shape: 'sphere', radius: 0.3 } });
   });
 
   it('rejects invalid input as a tool error that creates no row, and 404s an unknown generation', async () => {
     const { generation } = await createGeneration();
-    for (const bad of [{ center: [1.5, 0.5] }, { strength: 2 }, { strength: 0 }]) {
+    for (const bad of [{ center: [1.5, 0.5] }, { strength: 2 }, { strength: 0 }, { radius: 0.3 }, { shape: 'ball' }]) {
       const call = await mcpToolCall('lens_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(call.isError).toBe(true);
     }

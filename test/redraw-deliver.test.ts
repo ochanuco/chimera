@@ -148,6 +148,8 @@ describe('lens request', () => {
     const full = await create('lens', { generation_id: generation.id, options });
     expect(full.status).toBe(201);
     expect(full.body.payload).toEqual({ generation_id: generation.id, options });
+    const sphere = { center: [0.5, 0.7], strength: 0.8, shape: 'sphere', radius: 0.35 };
+    expect((await create('lens', { generation_id: generation.id, options: sphere })).status).toBe(201);
   });
 
   it.each([
@@ -156,6 +158,9 @@ describe('lens request', () => {
     ['strength above 1', { options: { strength: 1.5 } }],
     ['strength below -1', { options: { strength: -1.1 } }],
     ['strength 0', { options: { strength: 0 } }],
+    ['an unknown shape', { options: { shape: 'ball' } }],
+    ['a radius without sphere', { options: { radius: 0.3 } }],
+    ['a radius below 0.05', { options: { shape: 'sphere', radius: 0.01 } }],
     ['an unknown option key', { options: { focus: [0.5, 0.5] } }],
     ['a profile', { profile: { name: 'x' } }],
   ])('rejects %s', async (_label, rest) => {
