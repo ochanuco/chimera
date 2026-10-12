@@ -1518,6 +1518,11 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .work-source:hover { border-color: var(--accent); text-decoration: none; }
 .work-source img { width: 100%; aspect-ratio: 2 / 3; object-fit: contain; border-radius: 6px; background: #000; }
+.photo-lead { color: var(--text-dim); margin: 0 0 1rem; }
+.photo-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 1.2rem; }
+.photo-upload-status { color: var(--text-dim); font-size: 0.85rem; }
+.photo-grid .work-source img { aspect-ratio: 4 / 3; object-fit: cover; }
+.photo-name { color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
 .work-rating { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--border); color: var(--text); }
@@ -4992,6 +4997,7 @@ export const appJs = `
         return (o.backdrop === null ? '透過' : '背景あり') + ' · ' + bands;
       }
       if (kind === 'dof') return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '');
+      if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント');
       if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
     }
@@ -5717,6 +5723,67 @@ export const appJs = `
   }
 
   // リロール (/reroll/{short_id}): 左 = 元絵、右 = seed だけ変えた generate の 4 枚。比較ペイン・ルーペ・キャプションの操作はワークベンチと共有する。
+  // docs/ui.md「Photos」: shrink to the longest side, store as PNG, and register it as an
+  // import Request (parameters.kind = photo) with one job and one Generation.
+  function initPhotoUpload() {
+    var form = qs('[data-photo-upload]');
+    if (!form) return;
+    var input = qs('[data-photo-files]', form);
+    var status = qs('[data-photo-status]', form);
+    var maxSide = Number(form.getAttribute('data-max-side')) || 3072;
+
+    async function toPng(file) {
+      var bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      var scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return await new Promise(function (resolve, reject) {
+        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('PNG に変換できませんでした')); }, 'image/png');
+      });
+    }
+
+    async function digest(file) {
+      var hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+      return Array.prototype.map.call(new Uint8Array(hash), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    }
+
+    async function upload(file) {
+      var key = 'photo:' + (await digest(file));
+      var name = file.name.replace(/\.[^.]+$/, '') + '.png';
+      var request = await api('/api/v1/requests', 'POST', {
+        kind: 'import', status: 'done', created_by: 'gui', idempotency_key: key,
+        parameters: { kind: 'photo' }, raw_instruction: '写真 ' + file.name,
+      });
+      var job = await api('/api/v1/requests/' + request.id + '/jobs', 'POST', { idempotency_key: key + ':job:0', seed: 0, index: 0 });
+      var body = new FormData();
+      body.append('metadata', JSON.stringify({ seed: 0, comfy_output_index: 0, original_filename: name }));
+      body.append('image', await toPng(file), name);
+      var res = await fetch('/api/v1/jobs/' + job.id + '/generations', { method: 'POST', body: body });
+      if (!res.ok) throw new Error('アップロードに失敗しました (' + res.status + ')');
+    }
+
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) { status.textContent = '写真を選んでください'; return; }
+      var button = qs('button[type="submit"]', form);
+      button.disabled = true;
+      try {
+        for (var i = 0; i < files.length; i++) {
+          status.textContent = (i + 1) + ' / ' + files.length + ' をアップロード中…';
+          await upload(files[i]);
+        }
+        track('photo_upload', { count: files.length });
+        window.location.reload();
+      } catch (e) {
+        status.textContent = e.message || String(e);
+        button.disabled = false;
+      }
+    });
+  }
+
   function initReroll() {
     var root = qs('[data-reroll]');
     if (!root) return;
@@ -5926,6 +5993,7 @@ export const appJs = `
     initRequestLive();
     initWorkbench();
     initReroll();
+    initPhotoUpload();
     initNavQueue();
     initPopoverClose();
     initCompareBar();

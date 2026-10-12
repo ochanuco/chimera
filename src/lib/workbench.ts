@@ -140,7 +140,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
   const pendingRows = await db
     .prepare(
       `SELECT id, kind, status, payload_json, created_at FROM requests
-       WHERE kind IN ('redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens')
+       WHERE kind IN ('redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo')
          AND status IN ('queued', 'running')
          AND json_extract(payload_json, '$.generation_id') IN (SELECT value FROM json_each(?))
        ORDER BY created_at ASC, id ASC`,

@@ -22,6 +22,7 @@ import {
   deliverOptionsSchema,
   dofOptionsSchema,
   lensOptionsSchema,
+  photoOptionsSchema,
   deliverProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
@@ -237,6 +238,19 @@ const lensGenerationInputSchema = z.object({
   path: ['radius'],
 });
 
+/** `photo_generation` の入力。options は photoPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+const photoGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  photo: photoOptionsSchema.shape.photo,
+  place: photoOptionsSchema.shape.place,
+  height: photoOptionsSchema.shape.height,
+  stand_at: photoOptionsSchema.shape.stand_at,
+  nearer: photoOptionsSchema.shape.nearer,
+  focus: photoOptionsSchema.shape.focus,
+  f_number: photoOptionsSchema.shape.f_number,
+  idempotency_key: z.string().min(1),
+});
+
 /** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
 const repairGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
@@ -390,7 +404,8 @@ const MCP_INSTRUCTIONS =
   '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
   'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
-  'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture.\n' +
+  'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture. To shoot a delivered ' +
+  'picture like an acrylic stand on location, stand it in an uploaded photo with photo_generation.\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
@@ -705,10 +720,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "repair" ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
-        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation are the same requests with a typed input. created_by is ' +
+        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
@@ -891,6 +906,46 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.lens_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'photo_generation',
+    {
+      outputSchema: mcpOutputSchemas.photo_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a photo request (docs/worker-protocol.md "photo"): stand a delivered picture\'s figure and outline bands, ' +
+        'one flat card like an acrylic stand, inside a photo and blur the scene by depth. generation_id accepts a short_id and ' +
+        'takes a deliver output with layer assets (its backdrop is replaced). photo is the Generation (id or short_id) whose ' +
+        'image is the scene, usually one uploaded on the /photos page (required). place is [x, y] of the photo where the middle ' +
+        "of the card's bottom edge goes (default [0.5, 0.95]); height is the card's height as a share of the photo's " +
+        '(0.05-1.5, default 0.7). The card stands at one depth: the photo\'s depth at stand_at ([x, y], e.g. a signboard to ' +
+        "share its focus; null = the card's own base, default), pulled toward the camera by nearer (0-1 of the scene depth, " +
+        'default 0). focus is "subject" (the card, default) or [x, y] of the picture; f_number is 1.4-22 (default 2.8). ' +
+        'Coordinates are fractions 0-1 of the photo width/height, and the output has the photo\'s size. The photo\'s depth ' +
+        'is built on first use and kept on the photo. The output is a delivered picture that refines the source; ' +
+        "lens_generation may follow. list_catalog's top-level photo section publishes the defaults. Follow status with get_request.",
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: photoGenerationInputSchema,
+    },
+    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const scene = await resolveGenerationOr404(db, photo);
+      const options: Record<string, unknown> = { photo: scene.short_id };
+      if (place !== undefined) options.place = place;
+      if (height !== undefined) options.height = height;
+      if (stand_at !== undefined) options.stand_at = stand_at;
+      if (nearer !== undefined) options.nearer = nearer;
+      if (focus !== undefined) options.focus = focus;
+      if (f_number !== undefined) options.f_number = f_number;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'photo', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.photo_generation, { created, request: serializeRequest(row) });
     },
   );
 
@@ -1197,7 +1252,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
         'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
-        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus and F-number defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',

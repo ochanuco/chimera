@@ -368,3 +368,36 @@ describe('MCP lens_generation', () => {
     expect(missing.isError).toBe(true);
   });
 });
+
+describe('MCP photo_generation', () => {
+  it('queues a photo row with short_id generation and photo and only the given options', async () => {
+    const { generation } = await createGeneration();
+    const { generation: scene } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('photo_generation', {
+      generation_id: generation.id,
+      photo: scene.id,
+      stand_at: [0.8, 0.4],
+      focus: 'subject',
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.kind).toBe('photo');
+    expect(call.data?.request.created_by).toBe('mcp');
+    expect(call.data?.request.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { photo: scene.short_id, stand_at: [0.8, 0.4], focus: 'subject' },
+    });
+  });
+
+  it('rejects invalid input and 404s an unknown generation or photo', async () => {
+    const { generation } = await createGeneration();
+    for (const bad of [{}, { photo: generation.id, height: 3 }, { photo: generation.id, focus: 'sign' }]) {
+      const call = await mcpToolCall('photo_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+      expect(call.isError).toBe(true);
+    }
+    const missingPhoto = await mcpToolCall('photo_generation', { generation_id: generation.id, photo: 'does-not-exist', idempotency_key: crypto.randomUUID() });
+    expect(missingPhoto.isError).toBe(true);
+    const list = await getJson<{ items: RequestListItem[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=photo`);
+    expect(list.body.items).toEqual([]);
+  });
+});

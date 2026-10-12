@@ -244,6 +244,7 @@ export const mcpOutputSchemas = {
   deliver_generation: createdRequestSchema,
   dof_generation: createdRequestSchema,
   lens_generation: createdRequestSchema,
+  photo_generation: createdRequestSchema,
   repair_generation: createdRequestSchema,
   masked_redraw_generation: createdRequestSchema,
   get_request: requestSchema,

@@ -181,6 +181,42 @@ describe('lens request', () => {
   });
 });
 
+describe('photo request', () => {
+  it('accepts the photo alone and every option, and queues it', async () => {
+    const { generation } = await createGeneration();
+    const minimal = await create('photo', { generation_id: generation.short_id, options: { photo: 'abc123' } });
+    expect(minimal.status).toBe(201);
+    expect(minimal.body.kind).toBe('photo');
+    const options = { photo: 'abc123', place: [0.3, 0.9], height: 0.5, stand_at: [0.8, 0.4], nearer: 0.2, focus: [0.8, 0.35], f_number: 2 };
+    const full = await create('photo', { generation_id: generation.id, options });
+    expect(full.status).toBe(201);
+    expect(full.body.payload).toEqual({ generation_id: generation.id, options });
+    expect((await create('photo', { generation_id: generation.id, options: { photo: 'abc123', focus: 'subject', stand_at: null } })).status).toBe(201);
+  });
+
+  it.each([
+    ['no options', {}],
+    ['no photo', { options: { height: 0.5 } }],
+    ['place outside 0..1', { options: { photo: 'p', place: [1.2, 0.5] } }],
+    ['height above 1.5', { options: { photo: 'p', height: 2 } }],
+    ['nearer below 0', { options: { photo: 'p', nearer: -0.1 } }],
+    ['a word focus other than subject', { options: { photo: 'p', focus: 'sign' } }],
+    ['f_number above 22', { options: { photo: 'p', f_number: 30 } }],
+    ['an unknown option key', { options: { photo: 'p', blur: 1 } }],
+  ])('rejects %s', async (_label, rest) => {
+    const { generation } = await createGeneration();
+    expect((await create('photo', { generation_id: generation.id, ...rest })).status).toBe(400);
+  });
+
+  it('is claimed by kinds filter and counts as delivered', async () => {
+    const source = await createGeneration();
+    const photo = await create('photo', { generation_id: source.generation.id, options: { photo: 'p' } });
+    const claim = await req('/api/v1/requests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worker_id: 'w', kinds: ['photo'] }) });
+    expect(((await claim.json()) as RequestBody).id).toBe(photo.body.id);
+    expect(isDeliveredRequest({ kind: 'photo', parameters_json: null })).toBe(true);
+  });
+});
+
 describe('claim', () => {
   it('claims redraw and deliver by kinds filter and leaves other kinds queued', async () => {
     const { generation } = await createGeneration();
