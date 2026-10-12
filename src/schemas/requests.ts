@@ -180,7 +180,8 @@ const unitPoint = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]);
 export const photoOptionsSchema = z
   .object({
     photo: z.string().min(1),
-    place: unitPoint.optional(),
+    // y may go below the frame (up to 1.5) to crop the card's feet.
+    place: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1.5)]).optional(),
     height: z.number().min(0.05).max(1.5).optional(),
     stand_at: unitPoint.nullable().optional(),
     nearer: z.number().min(0).max(1).optional(),

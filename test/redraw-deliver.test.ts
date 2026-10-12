@@ -192,12 +192,14 @@ describe('photo request', () => {
     expect(full.status).toBe(201);
     expect(full.body.payload).toEqual({ generation_id: generation.id, options });
     expect((await create('photo', { generation_id: generation.id, options: { photo: 'abc123', focus: 'subject', stand_at: null } })).status).toBe(201);
+    expect((await create('photo', { generation_id: generation.id, options: { photo: 'abc123', place: [0.3, 1.4] } })).status).toBe(201);
   });
 
   it.each([
     ['no options', {}],
     ['no photo', { options: { height: 0.5 } }],
-    ['place outside 0..1', { options: { photo: 'p', place: [1.2, 0.5] } }],
+    ['place x outside 0..1', { options: { photo: 'p', place: [1.2, 0.5] } }],
+    ['place y above 1.5', { options: { photo: 'p', place: [0.5, 1.6] } }],
     ['height above 1.5', { options: { photo: 'p', height: 2 } }],
     ['nearer below 0', { options: { photo: 'p', nearer: -0.1 } }],
     ['a word focus other than subject', { options: { photo: 'p', focus: 'sign' } }],
