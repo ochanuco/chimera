@@ -19,6 +19,7 @@ export const REQUEST_KIND_LABELS: Record<string, string> = {
   deliver: '納品',
   dof: 'ボケ',
   lens: 'レンズ',
+  photo: '写真に立てる',
   repair: 'repair',
   masked_redraw: 'masked redraw',
   finalize: 'finalize',

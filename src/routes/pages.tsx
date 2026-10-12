@@ -13,6 +13,8 @@ import { judgedSeedsForPair } from '../lib/judgments';
 import { BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
 import { StatsPage } from '../ui/pages/Stats';
+import { PhotosPage } from '../ui/pages/Photos';
+import { listPhotos } from '../lib/photos';
 import { getStats, STATS_PERIODS, type StatsCold, type StatsPeriod } from '../lib/stats';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
@@ -444,6 +446,10 @@ pages.get('/stats', async (c) => {
   const period: StatsPeriod = STATS_PERIODS.find((p) => p === rawPeriod) ?? '30d';
   const cold: StatsCold = c.req.query('cold') === 'exclude' ? 'exclude' : 'include';
   return c.html(<StatsPage path={c.req.path} stats={await getStats(c.env.DB, period, cold)} />);
+});
+
+pages.get('/photos', async (c) => {
+  return c.html(<PhotosPage path={c.req.path} items={await listPhotos(c.env.DB)} />);
 });
 
 pages.get('/compare', async (c) => {
