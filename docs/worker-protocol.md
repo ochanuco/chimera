@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -203,7 +203,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
@@ -647,12 +647,46 @@ worker が作って元絵に付けます（`cut` asset と同じ仕組み）。�
 
 入力にできるのは deliver の出力のうち層 asset を持つ絵だけです。層の無い古い納品の絵、dof の出力、それ以外は
 worker が `failed` にします（納品し直す）。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation
-（`is_delivered`）で、入力を `refines_generation_id` で指し、redraw・repair・masked_redraw・deliver・dof の入力にはなりません。
-chimera が検証するのは型だけです。
+（`is_delivered`）で、入力を `refines_generation_id` で指し、redraw・repair・masked_redraw・deliver・dof の入力にはなりません
+（`viewfinder` を重ねていない絵は [lens](#lens) の入力になります）。chimera が検証するのは型だけです。
 
 catalog は最上位の `dof` 節に `f_number`（`min` / `max` / `default` / `stops`）、`scope` の既定（`figure` / `outline` /
 `backdrop` の bool）、`viewfinder`（`{"values": ["off", "on", "both"], "default": "off"}`）、`focus` の説明、
 `guide_radius_per_f` を公開します。
+
+### lens
+
+納品の絵を魚眼（または逆魚眼）レンズで歪めた絵を作る worker 実行です。dof と同じく別 request で重ね、順番は
+dof → lens に固定します（lens は何回でも重ねられます）。
+
+``` json
+{
+  "kind": "lens",
+  "payload": {
+    "generation_id": "abc123",
+    "options": { "center": [0.5, 0.85], "strength": 0.7 }
+  }
+}
+```
+
+`generation_id` は UUID / short_id のどちらでもよく、`options` は省略できます。受けるキーは次のとおりで、それ以外は 400 です。
+
+  options        型
+  -------------- --------------------------------------------------------------------------
+  center         [x, y]、各 0〜1（入力画像の幅・高さに対する割合）。省略は [0.5, 0.5]
+  strength       -1〜1、0 は 400。省略は 0.7。正は魚眼、負は逆魚眼
+
+歪みは ComfyUI の graph（`YukariLens`）で、納品の絵 1 枚をフチ・背景ごと曲げます。正の `strength` は入力を普通の
+（rectilinear な）写真とみなして等距離射影の魚眼へ写し直し、`center` のものが膨らんで周辺が縮みます（`center` から
+いちばん遠い角は動かず、そこでの半画角が `strength` × 75°）。負の `strength` はその逆写像で、中心が縮んで周辺が
+伸び、画面の外を読まない分だけ拡大して切り詰めます。
+
+入力にできるのは納品の絵（deliver・dof・lens の出力）です。納品していない絵と、`viewfinder` を重ねた dof の絵
+（`"on"` の出力と `"both"` の 2 枚目）は worker が `failed` にします。lens の出力に dof はかけられません（奥行きと層が
+ずれるので、ぼかしてから曲げる）。透過納品の絵の出力も透過のままです。出力は納品の Generation（`is_delivered`）で、
+入力を `refines_generation_id` で指し、lens の入力にだけなります。chimera が検証するのは型だけです。
+
+catalog は最上位の `lens` 節に `strength`（`min` / `max` / `default`）と `center`（`default` と説明）を公開します。
 
 ### repair
 
@@ -915,7 +949,7 @@ Responsibilities を参照してください。Compare が比較表示のみで�
 ## MCP
 
 `/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
-`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
+`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
 規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
 tool ごとの契約と `created_by` は
 [experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。
