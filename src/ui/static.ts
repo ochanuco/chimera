@@ -1570,6 +1570,13 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-pane-active { cursor: crosshair; touch-action: none; }
 .wb-empty, .wb-pending-note { padding: 1.5rem; text-align: center; font-size: 0.9rem; color: var(--text-dim); }
 .wb-overlay { position: absolute; pointer-events: none; }
+.wb-card-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.wb-card { position: absolute; overflow: hidden; outline: 1px dashed rgba(255, 0, 140, 0.85); }
+.wb-card img { position: absolute; max-width: none; }
+.wb-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 0.35rem; max-height: 14rem; overflow-y: auto; }
+.wb-photo { padding: 0; border: 2px solid transparent; border-radius: 6px; background: none; cursor: pointer; aspect-ratio: 1; overflow: hidden; }
+.wb-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wb-photo-on { border-color: var(--accent, #c084fc); }
 .wb-cross-x { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-cross-y { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-loupe {
@@ -4594,11 +4601,13 @@ export const appJs = `
   // ---- ワークベンチ (/work/:shortId, docs/ui.md「Workbench」) ----
   var WB_PHASES = [
     { no: 1, label: '描き直し' },
-    { no: 2, label: '光' },
-    { no: 3, label: '部分' },
-    { no: 4, label: '納品' },
-    { no: 5, label: 'ボケ' },
+    { no: 2, label: '部分' },
+    { no: 3, label: '切り抜き・フチ' },
+    { no: 4, label: '背景' },
+    { no: 5, label: '光' },
+    { no: 6, label: 'ボケ' },
   ];
+  var WB_LAST = WB_PHASES.length;
   var WB_RATING_COLOR = { bad: 'var(--bad)', neutral: 'var(--neutral)', good: 'var(--good)' };
 
   function wbEl(tag, cls, text) {
@@ -4912,6 +4921,12 @@ export const appJs = `
       focus: null,
       error: '',
       timer: null,
+      stageMode: 'pattern',
+      photo: null,
+      place: null,
+      shadow: '',
+      lightingDir: '',
+      card: null,
     };
     var viewer = wbViewer(root, wb);
     var fillPane = viewer.fillPane;
@@ -4947,17 +4962,52 @@ export const appJs = `
       return k === 1 || !!pick(k - 1) || k === wb.active;
     }
 
+    // Phase 1 stacks: a light redraw may stand on a hires one, so its candidates are every phase-1 node reached from the input through
+    // phase-1 nodes only.
+    function fromInputThroughPhase(id, input, k) {
+      var guard = 0;
+      while (id && id !== input && guard < 50) {
+        guard += 1;
+        var m = nodeById(id);
+        if (!m || m.phase !== k) return false;
+        id = m.refines_generation_id;
+      }
+      return id === input;
+    }
+
     function candidates(k) {
       var input = inputOf(k);
       if (!input) return [];
       var list = [];
+      var stacks = k === 1;
       wb.nodes.forEach(function (n) {
-        if (n.phase === k && n.refines_generation_id === input) list.push({ key: n.id, node: n, pending: null });
+        if (n.phase === k && (n.refines_generation_id === input || (stacks && fromInputThroughPhase(n.refines_generation_id, input, k)))) {
+          list.push({ key: n.id, node: n, pending: null });
+        }
       });
       wb.pending.forEach(function (p) {
-        if (p.phase === k && p.source_generation_id === input) list.push({ key: 'p:' + p.request_id, node: null, pending: p });
+        if (p.phase === k && (p.source_generation_id === input || (stacks && fromInputThroughPhase(p.source_generation_id, input, k)))) {
+          list.push({ key: 'p:' + p.request_id, node: null, pending: p });
+        }
       });
       return list;
+    }
+
+    // The stage options a picture was set with: its own when it is a stage output, its source's for a lighting output.
+    function stageOf(node) {
+      var guard = 0;
+      while (node && guard < 10) {
+        guard += 1;
+        if (node.kind === 'stage') return node.options || {};
+        if (node.kind !== 'lighting') return null;
+        node = nodeById(node.refines_generation_id);
+      }
+      return null;
+    }
+
+    function photoStaged(node) {
+      var stage = stageOf(node);
+      return !!(stage && stage.photo);
     }
 
     function candidateByKey(k, key) {
@@ -4996,7 +5046,14 @@ export const appJs = `
         var bands = o.outlines ? 'フチ ' + o.outlines.length + ' 本' : 'フチ 既定';
         return (o.backdrop === null ? '透過' : '背景あり') + ' · ' + bands;
       }
-      if (kind === 'dof') return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '');
+      if (kind === 'dof') {
+        return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '') + (o.tilt ? ' · 傾き ' + o.tilt : '') + (o.bokeh ? ' · 玉ボケ ' + o.bokeh : '');
+      }
+      if (kind === 'stage') {
+        if (o.photo) return '写真 ' + o.photo + (o.height !== undefined ? ' · 高さ ' + o.height : '');
+        return (o.backdrop || '既定の柄') + (o.shadow_from ? ' · 影 ' + o.shadow_from : '');
+      }
+      if (kind === 'lighting') return '光 ' + (o.strength !== undefined ? o.strength : '') + (o.direction ? ' · from ' + o.direction : '');
       if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント');
       if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
@@ -5015,8 +5072,89 @@ export const appJs = `
       return item.node.delivered ? '納品' : '完了';
     }
 
+    // The card (the delivered picture's visible box) drawn on the photo where the stage will set it, so the base and height can be tried
+    // before running. wb.card holds the input's alpha box once its image has been read.
+    function loadCardBox(node) {
+      if (wb.card && wb.card.id === node.id) return wb.card.box ? wb.card : null;
+      wb.card = { id: node.id, box: null };
+      var img = new Image();
+      img.onload = function () {
+        if (!wb.card || wb.card.id !== node.id) return;
+        var w = img.naturalWidth;
+        var h = img.naturalHeight;
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        var data = ctx.getImageData(0, 0, w, h).data;
+        var x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (var y = 0; y < h; y++) {
+          for (var x = 0; x < w; x++) {
+            if (data[(y * w + x) * 4 + 3] > 5) {
+              if (x < x0) x0 = x;
+              if (x > x1) x1 = x;
+              if (y < y0) y0 = y;
+              if (y > y1) y1 = y;
+            }
+          }
+        }
+        if (x1 < 0) { x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
+        wb.card = { id: node.id, box: [x0 / w, y0 / h, (x1 + 1) / w, (y1 + 1) / h], aspect: (x1 + 1 - x0) / (y1 + 1 - y0), src: img.src };
+        updateOverlays();
+      };
+      img.src = '/g/' + node.short_id + '/preview';
+      return null;
+    }
+
+    function stageHeight() {
+      var range = qs('input[name="wb_stage_height"]', root);
+      return range ? Number(range.value) : 0.7;
+    }
+
+    function updateCard(overlay, show) {
+      var clip = qs('.wb-card-clip', overlay);
+      if (!show) {
+        if (clip) clip.hidden = true;
+        return;
+      }
+      var input = activeInputNode();
+      var card = input ? loadCardBox(input) : null;
+      if (!card || !wb.photo || !overlay.offsetWidth) {
+        if (clip) clip.hidden = true;
+        return;
+      }
+      if (!clip) {
+        clip = wbEl('div', 'wb-card-clip');
+        var frame = wbEl('div', 'wb-card');
+        frame.appendChild(document.createElement('img'));
+        clip.appendChild(frame);
+        overlay.appendChild(clip);
+      }
+      clip.hidden = false;
+      var frameEl = qs('.wb-card', clip);
+      var img = qs('img', frameEl);
+      if (img.getAttribute('src') !== card.src) img.src = card.src;
+      var h = stageHeight();
+      var w = (h * overlay.offsetHeight * card.aspect) / overlay.offsetWidth;
+      frameEl.style.left = (wb.place[0] - w / 2) * 100 + '%';
+      frameEl.style.top = (wb.place[1] - h) * 100 + '%';
+      frameEl.style.width = w * 100 + '%';
+      frameEl.style.height = h * 100 + '%';
+      var bw = card.box[2] - card.box[0];
+      var bh = card.box[3] - card.box[1];
+      img.style.width = (100 / bw) + '%';
+      img.style.height = (100 / bh) + '%';
+      img.style.left = (-card.box[0] / bw) * 100 + '%';
+      img.style.top = (-card.box[1] / bh) * 100 + '%';
+    }
+
+    function stagingPhoto() {
+      return wb.active === 4 && wb.stageMode === 'photo' && !!wb.photo && unavailableText() === '';
+    }
+
     function updateOverlays() {
-      var rectsActive = wb.active === 3 && wb.partMode === 'rect';
+      var rectsActive = wb.active === 2 && wb.partMode === 'rect';
       viewer.updateCrosshair();
       imagePanes().forEach(function (pane) {
         var overlay = qs('.wb-overlay', pane);
@@ -5034,17 +5172,18 @@ export const appJs = `
             rects.appendChild(d);
           });
         }
+        updateCard(overlay, role === 'input' && stagingPhoto() && !!wb.place);
         var marker = qs('.wb-focus', overlay);
-        marker.hidden = !(role === 'input' && wb.active === 5 && wb.focus);
+        marker.hidden = !(role === 'input' && wb.active === WB_LAST && wb.focus);
         if (!marker.hidden) {
           marker.style.left = wb.focus[0] * 100 + '%';
           marker.style.top = wb.focus[1] * 100 + '%';
         }
         // Radius = guide_radius_per_f * F * long side; in percent of each side so a pane resize keeps it.
         var guide = qs('.wb-guide', overlay);
-        var slider = dofSlider(phaseForm(5));
+        var slider = dofSlider(phaseForm(WB_LAST));
         var k = slider ? parseFloat(slider.getAttribute('data-dof-guide-radius') || '') : NaN;
-        var f = dofFNumber(phaseForm(5));
+        var f = dofFNumber(phaseForm(WB_LAST));
         var w = overlay.offsetWidth;
         var h = overlay.offsetHeight;
         guide.hidden = marker.hidden || !(k > 0) || f === undefined || !w || !h;
@@ -5071,12 +5210,23 @@ export const appJs = `
     function unavailableText() {
       var input = activeInputNode();
       if (!input) return '';
-      if (wb.active === 2 && input.kind === 'redraw' && input.method === 'canvas') {
-        return 'canvas の出力には light を使えません';
-      }
-      if (wb.active === 4 && input.delivered) return '納品済み';
-      if (wb.active === 5 && !input.delivered) return '先に納品してください';
+      if (wb.active === 3 && input.delivered) return '納品済み';
+      if (wb.active === 4 && input.kind !== 'deliver') return '先に切り抜いてください';
+      if (wb.active === 5 && input.kind !== 'stage') return '先に背景を付けてください';
+      if (wb.active === 6 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return '先に切り抜いてください';
       return '';
+    }
+
+    // A light redraw stands on the compared hires candidate when there is one, so hires → light stays one phase.
+    function lightInput() {
+      var cmp = candidateByKey(1, wb.compareId);
+      if (cmp && cmp.node && cmp.node.kind === 'redraw' && cmp.node.method === 'hires') return cmp.node;
+      return inputOf(1) ? nodeById(inputOf(1)) : null;
+    }
+
+    function runInput() {
+      if (wb.active === 1 && currentMethod() === 'light') return lightInput();
+      return activeInputNode();
     }
 
     function renderSteps() {
@@ -5148,11 +5298,17 @@ export const appJs = `
       qs('[data-wb-input-kind]', root).textContent = input ? kindLabel(input) : '';
       qs('[data-wb-input-meta]', root).textContent = imageMetaText(input);
       var hint = '';
-      if (wb.active === 5) hint = 'クリックでピント';
-      else if (wb.active === 3 && wb.partMode === 'rect') hint = 'ドラッグで矩形';
+      if (wb.active === WB_LAST) hint = 'クリックでピント';
+      else if (wb.active === 2 && wb.partMode === 'rect') hint = 'ドラッグで矩形';
+      else if (stagingPhoto()) hint = 'クリックで台座';
       qs('[data-wb-pane-hint]', root).textContent = hint;
       inputPane.classList.toggle('wb-pane-active', hint !== '');
-      if (input) {
+      if (input && stagingPhoto()) {
+        var photoNode = { id: wb.photo.id, short_id: wb.photo.short_id, image_width: wb.photo.width, image_height: wb.photo.height, delivered: false };
+        fillPane(inputPane, 'photo:' + wb.photo.id, 'input', photoNode, null);
+        qs('[data-wb-input-kind]', root).textContent = '写真 ' + wb.photo.short_id;
+        qs('[data-wb-input-meta]', root).textContent = imageMetaText(photoNode);
+      } else if (input) {
         fillPane(inputPane, input.id, 'input', input, null);
       } else {
         inputPane.textContent = '';
@@ -5194,20 +5350,24 @@ export const appJs = `
         adopt.textContent = '処理中';
         adopt.disabled = true;
       } else {
-        adopt.textContent = wb.active === 5 ? '完成' : '次へ';
+        adopt.textContent = wb.active === WB_LAST ? '完成' : '次へ';
         adopt.disabled = false;
       }
-      qs('[data-wb-done]', root).hidden = !pick(5);
+      qs('[data-wb-done]', root).hidden = !pick(WB_LAST);
     }
 
     function runBlocker() {
       if (!activeInputNode()) return '入力がありません';
       if (unavailableText()) return '';
-      if (wb.active === 3 && wb.partMode === 'rect') {
+      if (wb.active === 2 && wb.partMode === 'rect') {
         if (wb.rects.length === 0) return '矩形を引いてください';
         if (qs('input[name="wb_patch"]', root).value.trim() === '') return '足す語を入力してください';
       }
-      if (wb.active === 5 && !wb.focus) return 'ピントを置いてください';
+      if (wb.active === 4 && wb.stageMode === 'photo') {
+        if (!wb.photo) return '写真を選んでください';
+        if (!wb.place) return '台座の位置をクリックしてください';
+      }
+      if (wb.active === WB_LAST && !wb.focus) return 'ピントを置いてください';
       return null;
     }
 
@@ -5238,6 +5398,25 @@ export const appJs = `
       qsa('[data-wb-part-mode]', root).forEach(function (b) {
         b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-part-mode') === wb.partMode);
       });
+      qsa('[data-wb-stage-panel]', root).forEach(function (panel) {
+        panel.hidden = panel.getAttribute('data-wb-stage-panel') !== wb.stageMode;
+      });
+      qsa('[data-wb-stage-mode]', root).forEach(function (b) {
+        b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-stage-mode') === wb.stageMode);
+      });
+      qsa('[data-wb-photo]', root).forEach(function (b) {
+        b.classList.toggle('wb-photo-on', !!wb.photo && b.getAttribute('data-wb-photo') === wb.photo.short_id);
+      });
+      var dofPhoto = qs('[data-wb-dof-photo]', root);
+      var stagedInPhoto = wb.active === WB_LAST && photoStaged(activeInputNode());
+      if (dofPhoto) dofPhoto.hidden = !stagedInPhoto;
+      var dofScope = qs('.dof-scope', phaseForm(WB_LAST));
+      if (dofScope) dofScope.hidden = stagedInPhoto;
+      var lightNote = qs('[data-wb-light-input]', root);
+      if (lightNote) {
+        var on = lightInput();
+        lightNote.textContent = on && on.id !== inputOf(1) ? 'hires の候補 ' + on.short_id + ' に光を当てます' : '元絵に光を当てます（hires の候補を選ぶとその上に当てます）';
+      }
       var errorEl = qs('[data-wb-error]', root);
       errorEl.hidden = wb.error === '';
       errorEl.textContent = wb.error;
@@ -5312,7 +5491,7 @@ export const appJs = `
         alert('採用できません: ' + e.message);
         return;
       }
-      if (k < 5) goStep(k + 1);
+      if (k < WB_LAST) goStep(k + 1);
       else render();
     }
 
@@ -5330,7 +5509,7 @@ export const appJs = `
         alert('スキップできません: ' + e.message);
         return;
       }
-      if (k < 5) goStep(k + 1);
+      if (k < WB_LAST) goStep(k + 1);
       else render();
     }
 
@@ -5344,21 +5523,26 @@ export const appJs = `
       return on ? on.getAttribute('data-wb-method') : 'hires';
     }
 
+    function rangeValue(name) {
+      return Number(qs('input[name="' + name + '"]', root).value);
+    }
+
     // Builds { kind, options } for the active phase, or null (after telling the user why).
     function buildRun() {
       var k = wb.active;
       var form = phaseForm(k);
       if (k === 1) {
-        if (currentMethod() === 'canvas') {
+        var method = currentMethod();
+        if (method === 'canvas') {
           return { kind: 'redraw', options: { method: 'canvas', denoise: Number(qs('input[name="wb_denoise"]', form).value), size: Number(qs('select[name="wb_size"]', form).value) } };
+        }
+        if (method === 'light') {
+          var scene = qs('[data-wb-scene].wb-pill-on', form);
+          return { kind: 'redraw', options: { method: 'light', scene: scene.getAttribute('data-wb-scene'), from: qs('[data-compass="light"]', form).getAttribute('data-value') } };
         }
         return { kind: 'redraw', options: { method: 'hires', hires: Number(qs('select[name="wb_hires"]', form).value), denoise: Number(qs('select[name="wb_hires_denoise"]', form).value) } };
       }
       if (k === 2) {
-        var scene = qs('[data-wb-scene].wb-pill-on', form);
-        return { kind: 'redraw', options: { method: 'light', scene: scene.getAttribute('data-wb-scene'), from: qs('[data-compass="light"]', form).getAttribute('data-value') } };
-      }
-      if (k === 3) {
         if (wb.partMode === 'auto') {
           var which = qs('select[name="wb_repair_parts"]', form).value;
           return { kind: 'repair', options: which === 'both' ? {} : { parts: [which] } };
@@ -5374,9 +5558,29 @@ export const appJs = `
         }
         return { kind: 'masked_redraw', options: { regions: wb.rects.map(function (r) { return r.slice(); }), prompt_patch: qs('input[name="wb_patch"]', form).value.trim() } };
       }
-      if (k === 4) {
+      if (k === 3) {
         var options = deliverOptionsFrom(form, false);
-        return options ? { kind: 'deliver', options: options } : null;
+        if (!options) return null;
+        options.transparent = true;
+        return { kind: 'deliver', options: options };
+      }
+      if (k === 4) {
+        if (wb.stageMode === 'photo') {
+          return { kind: 'stage', options: { photo: wb.photo.short_id, place: [wb.place[0], wb.place[1]], height: stageHeight() } };
+        }
+        var backdropOptions = deliverOptionsFrom(form, false);
+        if (!backdropOptions) return null;
+        return { kind: 'stage', options: { backdrop: backdropOptions.backdrop, shadow_from: wb.shadow || null } };
+      }
+      if (k === 5) {
+        return { kind: 'lighting', options: { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null } };
+      }
+      var dof = { focus: [wb.focus[0], wb.focus[1]], f_number: dofFNumber(form), viewfinder: dofViewfinderFrom(form) };
+      if (photoStaged(activeInputNode())) {
+        dof.tilt = rangeValue('wb_dof_tilt');
+        dof.nearer = rangeValue('wb_dof_nearer');
+        dof.bokeh = rangeValue('wb_dof_bokeh');
+        return { kind: 'dof', options: dof };
       }
       var scope = dofScopeFrom(form);
       if (!scope.figure && !scope.outline && !scope.backdrop) {
@@ -5384,11 +5588,12 @@ export const appJs = `
         renderPanel();
         return null;
       }
-      return { kind: 'dof', options: { focus: [wb.focus[0], wb.focus[1]], f_number: dofFNumber(form), scope: scope, viewfinder: dofViewfinderFrom(form) } };
+      dof.scope = scope;
+      return { kind: 'dof', options: dof };
     }
 
     async function run() {
-      var input = activeInputNode();
+      var input = runInput();
       if (!input || runBlocker() !== null) return;
       wb.error = '';
       var built = buildRun();
@@ -5520,6 +5725,52 @@ export const appJs = `
         var m = method.getAttribute('data-wb-method');
         qsa('[data-wb-method]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === method); });
         qsa('[data-wb-method-panel]', root).forEach(function (p) { p.hidden = p.getAttribute('data-wb-method-panel') !== m; });
+        return renderPanel();
+      }
+      var stageMode = t.closest('[data-wb-stage-mode]');
+      if (stageMode) {
+        wb.stageMode = stageMode.getAttribute('data-wb-stage-mode');
+        return render();
+      }
+      var photo = t.closest('[data-wb-photo]');
+      if (photo) {
+        wb.photo = {
+          id: photo.getAttribute('data-photo-id'),
+          short_id: photo.getAttribute('data-wb-photo'),
+          width: Number(photo.getAttribute('data-width')) || null,
+          height: Number(photo.getAttribute('data-height')) || null,
+        };
+        if (!wb.place) wb.place = [0.5, 0.95];
+        return render();
+      }
+      var shadowDir = t.closest('[data-compass="shadow"] [data-compass-dir]');
+      if (shadowDir) {
+        wb.shadow = shadowDir.getAttribute('data-compass-dir');
+        setCompassValue(shadowDir.closest('[data-compass]'), wb.shadow);
+        qs('[data-wb-shadow-none]', root).classList.remove('wb-pill-on');
+        qs('[data-wb-shadow-readout]', root).textContent = 'from: ' + wb.shadow;
+        return;
+      }
+      if (t.closest('[data-wb-shadow-none]')) {
+        wb.shadow = '';
+        setCompassValue(qs('[data-compass="shadow"]', root), '');
+        qs('[data-wb-shadow-none]', root).classList.add('wb-pill-on');
+        qs('[data-wb-shadow-readout]', root).textContent = 'なし';
+        return;
+      }
+      var lightingDir = t.closest('[data-compass="lighting"] [data-compass-dir]');
+      if (lightingDir) {
+        wb.lightingDir = lightingDir.getAttribute('data-compass-dir');
+        setCompassValue(lightingDir.closest('[data-compass]'), wb.lightingDir);
+        qs('[data-wb-lighting-none]', root).classList.remove('wb-pill-on');
+        qs('[data-wb-lighting-dir-readout]', root).textContent = 'from: ' + wb.lightingDir;
+        return;
+      }
+      if (t.closest('[data-wb-lighting-none]')) {
+        wb.lightingDir = '';
+        setCompassValue(qs('[data-compass="lighting"]', root), '');
+        qs('[data-wb-lighting-none]', root).classList.add('wb-pill-on');
+        qs('[data-wb-lighting-dir-readout]', root).textContent = 'なし';
         return;
       }
       var word = t.closest('[data-wb-denoise-word]');
@@ -5566,11 +5817,6 @@ export const appJs = `
         if (bmNode) bmNode.bookmark = bm.getAttribute('data-bookmarked') !== 'true';
         return;
       }
-      var bg = t.closest('[data-wb-bg]');
-      if (bg) {
-        setDeliverBg(bg.getAttribute('data-wb-bg'));
-        return;
-      }
     });
 
     root.addEventListener('change', function (ev) {
@@ -5579,14 +5825,52 @@ export const appJs = `
         syncBackdropColor(phaseForm(4));
         if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(4)).focus();
       }
+      if (radio instanceof HTMLInputElement && radio.hasAttribute('data-wb-photo-file')) uploadStagePhoto(radio);
     });
+
+    // A photo added from the 背景 phase is registered exactly as the /photos page does, then selected.
+    async function uploadStagePhoto(input) {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var status = qs('[data-wb-photo-status]', root);
+      status.textContent = 'アップロード中…';
+      try {
+        var generation = await uploadPhotoFile(file, Number(input.getAttribute('data-max-side')) || 3072);
+        var grid = qs('[data-wb-photos]', root);
+        var btn = wbEl('button', 'wb-photo');
+        btn.type = 'button';
+        btn.setAttribute('data-wb-photo', generation.short_id);
+        btn.setAttribute('data-photo-id', generation.id);
+        btn.setAttribute('data-width', String(generation.image_width || ''));
+        btn.setAttribute('data-height', String(generation.image_height || ''));
+        var img = document.createElement('img');
+        img.src = '/g/' + generation.short_id + '/preview';
+        img.alt = file.name;
+        btn.appendChild(img);
+        grid.insertBefore(btn, grid.firstChild);
+        wb.photo = { id: generation.id, short_id: generation.short_id, width: generation.image_width || null, height: generation.image_height || null };
+        if (!wb.place) wb.place = [0.5, 0.95];
+        status.textContent = '';
+        track('photo_upload', { count: 1, from: 'workbench' });
+      } catch (e) {
+        status.textContent = e.message || String(e);
+      }
+      input.value = '';
+      render();
+    }
 
     root.addEventListener('input', function (ev) {
       var input = ev.target;
       if (!(input instanceof HTMLInputElement)) return;
       if (input.name === 'wb_denoise') qs('[data-wb-denoise-readout]', root).textContent = input.value;
-      if (input.name === 'dof_f_stop') qs('[data-dof-f-readout]', root).textContent = 'f/' + dofFNumber(phaseForm(5));
+      if (input.name === 'dof_f_stop') qs('[data-dof-f-readout]', root).textContent = 'f/' + dofFNumber(phaseForm(WB_LAST));
       if (input.name === 'dof_f_stop') updateOverlays();
+      if (input.name === 'wb_stage_height') {
+        qs('[data-wb-stage-height-readout]', root).textContent = input.value;
+        updateOverlays();
+      }
+      if (input.name === 'wb_lighting_strength') qs('[data-wb-lighting-readout]', root).textContent = input.value;
+      if (/^wb_dof_(tilt|nearer|bokeh)$/.test(input.name)) qs('[data-wb-dof-readout="' + input.name.slice(7) + '"]', root).textContent = input.value;
       if (input.name === 'wb_patch') renderPanel();
     });
 
@@ -5594,10 +5878,12 @@ export const appJs = `
     root.addEventListener('pointerdown', function (ev) {
       var pane = ev.target.closest ? ev.target.closest('[data-wb-input-pane]') : null;
       if (!pane || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
-      var rectMode = wb.active === 3 && wb.partMode === 'rect';
-      if (!rectMode && wb.active !== 5) return;
+      var rectMode = wb.active === 2 && wb.partMode === 'rect';
+      var placing = stagingPhoto();
+      if (!rectMode && !placing && wb.active !== WB_LAST) return;
       var p = pointIn(pane, ev);
-      if (!p || !p.inside) return;
+      // The base may go below the photo (y up to 1.5) to crop the feet.
+      if (!p || !(p.inside || (placing && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1.5))) return;
       ev.preventDefault();
       try { pane.setPointerCapture(ev.pointerId); } catch (e) {}
       drawing = { pane: pane, x: p.x, y: p.y, moved: false, rect: rectMode };
@@ -5637,6 +5923,8 @@ export const appJs = `
         var r = wb.draft;
         wb.draft = null;
         if (r && r[2] - r[0] > 0.02 && r[3] - r[1] > 0.02) wb.rects.push(r);
+      } else if (p && !d.moved && stagingPhoto()) {
+        wb.place = [wbRound(clamp01(p.x)), wbRound(Math.min(1.5, Math.max(0, p.y)))];
       } else if (p && !d.moved) {
         wb.focus = [wbRound(clamp01(p.x)), wbRound(clamp01(p.y))];
       }
@@ -5661,31 +5949,6 @@ export const appJs = `
       wb.cursor = null;
       updateOverlays();
     });
-
-    // A transparent delivery starts without bands; a backdrop one starts from the catalog's.
-    function setDeliverBg(choice) {
-      var form = phaseForm(4);
-      qsa('[data-wb-bg]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-bg') === choice); });
-      var radios = qsa('input[name="backdrop"]', form);
-      var patterns = qs('[data-wb-backdrop-patterns]', root);
-      patterns.hidden = choice === 'transparent';
-      if (choice === 'transparent') {
-        radios.forEach(function (r) { r.checked = r.value === 'transparent'; });
-      } else if (!radios.some(function (r) { return r.checked && r.value !== 'transparent'; })) {
-        var wanted = patterns.getAttribute('data-default');
-        radios.forEach(function (r) { r.checked = r.value === wanted; });
-        if (!radios.some(function (r) { return r.checked; })) {
-          var first = qs('[data-wb-backdrop-first]', patterns);
-          if (first) first.checked = true;
-        }
-      }
-      var editor = qs('[data-outline-editor]', form);
-      if (editor) {
-        setOutlineList(editor, choice === 'transparent' ? [] : outlineDefaults(editor));
-        setOutlineStroke(editor, editor.getAttribute('data-stroke-default') || 'even');
-      }
-      syncBackdropColor(form);
-    }
 
     // The header and stepper wrap at varying heights; the panes and the panel measure from
     // where they start so the page ends at the viewport bottom with the run button in view.
@@ -5712,11 +5975,11 @@ export const appJs = `
       if (at.refines_generation_id !== inputOf(at.phase)) wb.forcedInput = at.refines_generation_id;
     } else {
       var open = 1;
-      while (open < 5 && pick(open)) open += 1;
+      while (open < WB_LAST && pick(open)) open += 1;
       wb.active = open;
     }
-    var deliverForm = phaseForm(4);
-    if (deliverForm) setDeliverBg('backdrop');
+    var stageForm = phaseForm(4);
+    if (stageForm) syncBackdropColor(stageForm);
     window.addEventListener('resize', function () { fitPanel(); imagePanes().forEach(layoutPane); });
     render();
     if (wb.pending.length > 0) startPolling();
@@ -5725,6 +5988,40 @@ export const appJs = `
   // リロール (/reroll/{short_id}): 左 = 元絵、右 = seed だけ変えた generate の 4 枚。比較ペイン・ルーペ・キャプションの操作はワークベンチと共有する。
   // docs/ui.md「Photos」: shrink to the longest side, store as PNG, and register it as an
   // import Request (parameters.kind = photo) with one job and one Generation.
+  async function photoToPng(file, maxSide) {
+    var bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    var scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await new Promise(function (resolve, reject) {
+      canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('PNG に変換できませんでした')); }, 'image/png');
+    });
+  }
+
+  async function photoDigest(file) {
+    var hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return Array.prototype.map.call(new Uint8Array(hash), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  // Registers one photo (the /photos page and the workbench's 背景 phase) and returns its Generation.
+  async function uploadPhotoFile(file, maxSide) {
+    var key = 'photo:' + (await photoDigest(file));
+    var name = file.name.replace(/\.[^.]+$/, '') + '.png';
+    var request = await api('/api/v1/requests', 'POST', {
+      kind: 'import', status: 'done', created_by: 'gui', idempotency_key: key,
+      parameters: { kind: 'photo' }, raw_instruction: '写真 ' + file.name,
+    });
+    var job = await api('/api/v1/requests/' + request.id + '/jobs', 'POST', { idempotency_key: key + ':job:0', seed: 0, index: 0 });
+    var body = new FormData();
+    body.append('metadata', JSON.stringify({ seed: 0, comfy_output_index: 0, original_filename: name }));
+    body.append('image', await photoToPng(file, maxSide), name);
+    var res = await fetch('/api/v1/jobs/' + job.id + '/generations', { method: 'POST', body: body });
+    if (!res.ok) throw new Error('アップロードに失敗しました (' + res.status + ')');
+    return await res.json();
+  }
+
   function initPhotoUpload() {
     var form = qs('[data-photo-upload]');
     if (!form) return;
@@ -5732,36 +6029,8 @@ export const appJs = `
     var status = qs('[data-photo-status]', form);
     var maxSide = Number(form.getAttribute('data-max-side')) || 3072;
 
-    async function toPng(file) {
-      var bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-      var scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-      var canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      return await new Promise(function (resolve, reject) {
-        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error('PNG に変換できませんでした')); }, 'image/png');
-      });
-    }
-
-    async function digest(file) {
-      var hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-      return Array.prototype.map.call(new Uint8Array(hash), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
-    }
-
-    async function upload(file) {
-      var key = 'photo:' + (await digest(file));
-      var name = file.name.replace(/\.[^.]+$/, '') + '.png';
-      var request = await api('/api/v1/requests', 'POST', {
-        kind: 'import', status: 'done', created_by: 'gui', idempotency_key: key,
-        parameters: { kind: 'photo' }, raw_instruction: '写真 ' + file.name,
-      });
-      var job = await api('/api/v1/requests/' + request.id + '/jobs', 'POST', { idempotency_key: key + ':job:0', seed: 0, index: 0 });
-      var body = new FormData();
-      body.append('metadata', JSON.stringify({ seed: 0, comfy_output_index: 0, original_filename: name }));
-      body.append('image', await toPng(file), name);
-      var res = await fetch('/api/v1/jobs/' + job.id + '/generations', { method: 'POST', body: body });
-      if (!res.ok) throw new Error('アップロードに失敗しました (' + res.status + ')');
+    function upload(file) {
+      return uploadPhotoFile(file, maxSide);
     }
 
     form.addEventListener('submit', async function (event) {

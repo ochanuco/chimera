@@ -1422,8 +1422,8 @@ GET /api/v1/generations/{id}/tree
 
 -   `kind`: その Generation を作った Request の kind（元絵は `generate`、import した元絵は `import`）
 -   `method`: kind が `redraw` のときの `options.method`（`canvas` / `hires` / `light`）、それ以外は `null`
--   `phase`: ワークベンチのフェーズ。redraw の `canvas` / `hires` = 1、`light` = 2、`repair` / `masked_redraw` = 3、
-    `deliver` = 4、`dof` = 5。元絵と対応しない kind（`lens` / `photo` を含む）は `null`
+-   `phase`: ワークベンチのフェーズ。redraw（`canvas` / `hires` / `light`）= 1、`repair` / `masked_redraw` = 2、
+    `deliver` = 3、`stage` = 4、`lighting` = 5、`dof` = 6。元絵と対応しない kind（`lens` / `photo` を含む）は `null`
 -   `options`: 作った Request の `payload.options`（元絵と options の無い kind は `null`）
 -   `delivered`: 納品の絵か（`dof` / `lens` / `photo` / `stage` / `lighting` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
 -   `image_width` / `image_height` / `image_size`: 画像の寸法（px）とバイト数。未記録の行は `null`
