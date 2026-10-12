@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 /** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。 */
-export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens']);
-export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo']);
+export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
-export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'import']);
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
@@ -174,6 +174,28 @@ export const lensPayloadSchema = z
   })
   .strict();
 
+const unitPoint = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]);
+
+/** photo の options (docs/worker-protocol.md「photo」)。入力は層 asset を持つ deliver の出力で、photo は背景にする写真の Generation。worker が判定する。 */
+export const photoOptionsSchema = z
+  .object({
+    photo: z.string().min(1),
+    place: unitPoint.optional(),
+    height: z.number().min(0.05).max(1.5).optional(),
+    stand_at: unitPoint.nullable().optional(),
+    nearer: z.number().min(0).max(1).optional(),
+    focus: z.union([z.literal('subject'), unitPoint]).optional(),
+    f_number: z.number().min(1.4).max(22).optional(),
+  })
+  .strict();
+
+export const photoPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: photoOptionsSchema,
+  })
+  .strict();
+
 /** repair の options は masked local redraw (hands/feet) の worker 側引数に写す (docs/worker-protocol.md「repair」)。chimera は型だけ見る。 */
 export const repairOptionsSchema = z
   .object({
@@ -270,6 +292,8 @@ export function payloadEnvelopeIssues(kind: Exclude<z.infer<typeof requestKindSc
           ? dofPayloadSchema
           : kind === 'lens'
             ? lensPayloadSchema
+            : kind === 'photo'
+            ? photoPayloadSchema
             : kind === 'repair'
             ? repairPayloadSchema
             : kind === 'masked_redraw'

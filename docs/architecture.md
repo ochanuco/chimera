@@ -110,7 +110,8 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
 判断を伴わない再実行（redraw / deliver / repair）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が
-触るのは自分の D1 の requests 行のみです。masked_redraw は MCP からのみ積み、worker が
+触るのは自分の D1 の requests 行と、写真ページ（[ui.md](ui.md#写真photos)）がアップロードする写真（`kind = import`
+の Request・Job・Generation と R2 の original）のみです。masked_redraw は MCP からのみ積み、worker が
 source Generation を変更せず、Job の `source_generation_id` で仕上げ元を指す新しい Generation を作ります。
 
 ## Storage

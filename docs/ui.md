@@ -958,6 +958,17 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 -   サンプラーの step 別時間: role ごとの step index 別 median の折れ線と、step 1 と step 2..n の median の比較
 -   環境別の実行時間（v2）: ComfyUI バージョン・attention・argv ごとの kind 別 execute median と n
 
+## 写真（/photos）
+
+納品の絵をアクスタのように立てる背景の写真（[worker-protocol.md](worker-protocol.md#photo)）を登録するページです。ナビの「その他」から入ります。
+
+-   アップロード: ファイルを選ぶと、ブラウザが向き（EXIF）を直し、長辺 3072px まで縮めて PNG にしてから、既存の REST で
+    `kind = import`（`status: done`、`created_by: gui`、`parameters: {kind: "photo"}`）の Request、Job 1 件、Generation 1 枚として登録します。
+    idempotency_key は元ファイルの SHA-256 なので、同じ写真を送り直しても増えません
+-   一覧: `parameters.kind = photo` の import の Generation を新しい順に最大 60 件、サムネイルと short_id（コピーボタン付き）で出します。
+    この short_id を `photo_generation` の `photo` に渡します
+-   GUI は写真を登録するだけで、photo request は積みません（MCP / REST から積む）
+
 ## Bookmarks
 
 ブックマークした対象を素早く呼び出します。

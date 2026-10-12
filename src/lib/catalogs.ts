@@ -109,6 +109,7 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     patches: doc.patches,
     ...('dof' in doc ? { dof: (doc as { dof?: unknown }).dof } : {}),
     ...('lens' in doc ? { lens: (doc as { lens?: unknown }).lens } : {}),
+    ...('photo' in doc ? { photo: (doc as { photo?: unknown }).photo } : {}),
     git_commit: doc.git_commit ?? null,
     git_branch: doc.git_branch ?? null,
     generated_at: doc.generated_at ?? null,
