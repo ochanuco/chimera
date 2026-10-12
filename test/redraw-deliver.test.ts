@@ -187,7 +187,7 @@ describe('photo request', () => {
     const minimal = await create('photo', { generation_id: generation.short_id, options: { photo: 'abc123' } });
     expect(minimal.status).toBe(201);
     expect(minimal.body.kind).toBe('photo');
-    const options = { photo: 'abc123', place: [0.3, 0.9], height: 0.5, stand_at: [0.8, 0.4], nearer: 0.2, focus: [0.8, 0.35], f_number: 2 };
+    const options = { photo: 'abc123', place: [0.3, 0.9], height: 0.5, stand_at: [0.8, 0.4], nearer: 0.2, tilt: 0.4, focus: [0.8, 0.35], f_number: 2 };
     const full = await create('photo', { generation_id: generation.id, options });
     expect(full.status).toBe(201);
     expect(full.body.payload).toEqual({ generation_id: generation.id, options });
@@ -202,6 +202,7 @@ describe('photo request', () => {
     ['nearer below 0', { options: { photo: 'p', nearer: -0.1 } }],
     ['a word focus other than subject', { options: { photo: 'p', focus: 'sign' } }],
     ['f_number above 22', { options: { photo: 'p', f_number: 30 } }],
+    ['tilt above 1', { options: { photo: 'p', tilt: 1.5 } }],
     ['an unknown option key', { options: { photo: 'p', blur: 1 } }],
   ])('rejects %s', async (_label, rest) => {
     const { generation } = await createGeneration();
