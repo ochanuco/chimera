@@ -401,3 +401,73 @@ describe('MCP photo_generation', () => {
     expect(list.body.items).toEqual([]);
   });
 });
+
+describe('MCP stage_generation', () => {
+  it('queues a photo stage with short_ids and a pattern stage with its shadow', async () => {
+    const { generation } = await createGeneration();
+    const { generation: scene } = await createGeneration();
+    const photo = await mcpToolCall<CreateRequestResult>('stage_generation', {
+      generation_id: generation.id,
+      photo: scene.id,
+      place: [0.6, 1.2],
+      height: 1.1,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(photo.isError).toBe(false);
+    expect(photo.data?.request.kind).toBe('stage');
+    expect(photo.data?.request.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { photo: scene.short_id, place: [0.6, 1.2], height: 1.1 },
+    });
+    const pattern = await mcpToolCall<CreateRequestResult>('stage_generation', {
+      generation_id: generation.id,
+      backdrop: 'dots',
+      shadow_from: null,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(pattern.isError).toBe(false);
+    expect(pattern.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { backdrop: 'dots', shadow_from: null } });
+  });
+
+  it('rejects mixed or out-of-range input', async () => {
+    const { generation } = await createGeneration();
+    for (const bad of [{ photo: generation.id, backdrop: 'dots' }, { place: [0.5, 0.5] }, { shadow_from: 'up' }, { photo: generation.id, height: 3 }]) {
+      const call = await mcpToolCall('stage_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+      expect(call.isError).toBe(true);
+    }
+    const list = await getJson<{ items: RequestListItem[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=stage`);
+    expect(list.body.items).toEqual([]);
+  });
+});
+
+describe('MCP lighting_generation', () => {
+  it('queues a lighting row and rejects bad input', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('lighting_generation', {
+      generation_id: generation.id,
+      direction: 'ne',
+      strength: 0.5,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.kind).toBe('lighting');
+    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { direction: 'ne', strength: 0.5 } });
+    for (const bad of [{ direction: 'up' }, { strength: 2 }]) {
+      const rejected = await mcpToolCall('lighting_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+      expect(rejected.isError).toBe(true);
+    }
+  });
+
+  it('passes the photo dof keys through dof_generation', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('dof_generation', {
+      generation_id: generation.id,
+      focus: [0.5, 0.3],
+      tilt: 0.5,
+      bokeh: 1,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { focus: [0.5, 0.3], tilt: 0.5, bokeh: 1 } });
+  });
+});

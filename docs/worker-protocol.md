@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -203,7 +203,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。masked redraw 対応の
@@ -638,6 +638,10 @@ body は、その deliver request が queued した時点の `payload.options`�
   f_number       1.4〜22、省略は 2.8（小さいほど強くぼける）
   scope          {figure?, outline?, backdrop?}（ぼかす層。省略したキーは true。すべて false は 400）
   viewfinder     "off"（省略時） \| "on" \| "both"
+  stand_at       写真に置いた絵だけ。[x, y] \| null（photo と同じ）
+  nearer         写真に置いた絵だけ。0〜1（photo と同じ）
+  tilt           写真に置いた絵だけ。-1〜1（photo と同じ）
+  bokeh          写真に置いた絵だけ。0〜1（photo と同じ）
 
 奥行きは入力の元絵（`refines_generation_id` を deliver の入力へたどった絵）の `depth` asset を使います。無いか古ければ
 worker が作って元絵に付けます（`cut` asset と同じ仕組み）。ボケは ComfyUI の graph で流し、背景 → フチ → 人物の順に、
@@ -645,8 +649,11 @@ worker が作って元絵に付けます（`cut` asset と同じ仕組み）。�
 `viewfinder` の `"on"` は三分割グリッド・`focus` の位置のピント枠・下部のシャッター速度と F 値のバーを重ねた画像で、
 `"both"` は重ねない画像と重ねた画像の 2 枚（`-dof` と `-viewfinder`）を出します。
 
-入力にできるのは deliver の出力のうち層 asset を持つ絵だけです。層の無い古い納品の絵、dof の出力、それ以外は
-worker が `failed` にします（納品し直す）。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation
+入力にできるのは層 asset を持つ deliver の出力と、[stage](#stage)・[lighting](#lighting) の出力です。層の無い古い納品の絵、
+dof の出力、それ以外は worker が `failed` にします（納品し直す）。stage で写真に置いた絵（lighting を挟んでも）は
+[photo](#photo) と同じく写真の奥行きでぼかし、板の位置と高さは stage の `place` / `height` を使います。そのときだけ
+`stand_at` / `nearer` / `tilt` / `bokeh`（意味と既定は photo と同じ）を受け、`scope` は使いません。それ以外の絵にこの 4 つを
+付けると worker が `failed` にします。柄の stage は納品の元絵の奥行きを使います。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation
 （`is_delivered`）で、入力を `refines_generation_id` で指し、redraw・repair・masked_redraw・deliver・dof の入力にはなりません
 （`viewfinder` を重ねていない絵は [lens](#lens) の入力になります）。chimera が検証するのは型だけです。
 
@@ -734,6 +741,68 @@ worker 実行です。写真は [写真ページ](ui.md#写真photos) で登録�
 chimera が検証するのは型と、MCP では写真の Generation が在ることだけです。
 
 catalog は最上位の `photo` 節に各 option の既定と説明（`height` / `nearer` は `min` / `max` も）、`f_number` を公開します。
+
+### stage
+
+納品の絵のキャラとフチの層を、ぼかさずに新しい背景へ置く worker 実行です（ワークベンチの「4 背景」）。写真に置くか、
+背景の柄（または単色）に影付きで置くかのどちらかで、出力は層 asset を持ち続けるので、続けて [lighting](#lighting) と
+[dof](#dof) をかけられます。
+
+``` json
+{
+  "kind": "stage",
+  "payload": {
+    "generation_id": "abc123",
+    "options": { "photo": "ph0t0s", "place": [0.6, 1.15], "height": 1.05 }
+  }
+}
+```
+
+`generation_id` は UUID / short_id のどちらでもよく、`options` は省略できます（既定の柄に置く）。受けるキーは次のとおりで、
+それ以外と、二組を混ぜたものは 400 です。
+
+  options        型
+  -------------- --------------------------------------------------------------------------
+  photo          写真の Generation（UUID / short_id）。あれば写真に置く
+  place          photo のときだけ。[x, y]（photo kind と同じ）。省略は [0.5, 0.95]
+  height         photo のときだけ。0.05〜1.5（photo kind と同じ）。省略は 0.7
+  backdrop       photo が無いときだけ。背景の柄の名前（catalog の `backdrops`）か "#RRGGBB"。省略は deliver の既定
+  shadow_from    photo が無いときだけ。"n" … "nw" \| null。影を落とす光の向き。null は影なし、省略は透過納品の光の向き
+
+写真に置くときは photo kind と同じ置き方（キャラとフチを 1 枚の板として拡大縮小）で、出力は写真と同じ大きさです。
+柄に置くときは納品の大きさのままで、影はフチの層に半透明の黒として混ぜます（背景ありの納品はもう影を持っているので、
+省略時は足しません）。入力にできるのは層 asset を持つ deliver の出力だけで（ふつうは透過納品）、それ以外は worker が
+`failed` にします。出力（`-set`）は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、
+キャンバス大の `layer-figure` / `layer-outline` / `layer-backdrop` を asset に持ちます。写真に置いたときは写真を
+`background` の参照に持ちます。chimera が検証するのは型と、MCP では写真の Generation が在ることだけです。
+
+catalog は最上位の `stage` 節に各 option の既定と説明を公開します。
+
+### lighting
+
+stage で置いた絵のキャラとフチを、その背景の光に合わせる worker 実行です（ワークベンチの「5 光」）。背景だけ暗い・
+色が違うといった浮きを抑えます。
+
+``` json
+{
+  "kind": "lighting",
+  "payload": { "generation_id": "abc123", "options": { "direction": "ne", "strength": 0.7 } }
+}
+```
+
+  options        型
+  -------------- --------------------------------------------------------------------------
+  direction      "n" … "nw" \| null。その側から陰影を付ける。null / 省略は露出と色味だけ
+  strength       0〜1、省略は 0.7
+
+板のまわり（長辺の 6% の帯）の背景を環境光として読み、キャラとフチの露出と色かぶりをそちらへ寄せます（linear で
+`(環境光の輝度 / 0.35) ^ (0.4 × strength)` 倍、0.35〜1.15 に収める。色かぶりは strength 1 で半分）。`direction` が
+あれば、先に redraw の `light` 下塗りと同じ陰影（平らな奥行き、シルエットからの法線）を付け、明るい側を背景の
+いちばん明るい光の色で染めます。背景は変えません。入力にできるのは stage の出力と背景ありの納品で、lighting の出力
+（stage の出力からかけ直す）と透過納品は worker が `failed` にします。出力（`-lit`）は納品の Generation で、照らした
+`layer-figure` / `layer-outline` と元のままの `layer-backdrop` を asset に持ち、[dof](#dof) の入力になります。
+
+catalog は最上位の `lighting` 節に `direction` と `strength` を公開します。
 
 ### repair
 
@@ -996,7 +1065,7 @@ Responsibilities を参照してください。Compare が比較表示のみで�
 ## MCP
 
 `/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
-`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
+`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `stage_generation` / `lighting_generation` / `repair_generation` / `masked_redraw_generation`）は、REST と同じ
 規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
 tool ごとの契約と `created_by` は
 [experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。
