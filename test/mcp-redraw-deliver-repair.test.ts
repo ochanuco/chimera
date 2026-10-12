@@ -322,3 +322,41 @@ describe('MCP dof_generation', () => {
     expect(missing.isError).toBe(true);
   });
 });
+
+describe('MCP lens_generation', () => {
+  it('queues a lens row with created_by mcp, a short_id payload and only the given options', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('lens_generation', {
+      generation_id: generation.id,
+      center: [0.5, 0.85],
+      strength: -0.4,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.created).toBe(true);
+    expect(call.data?.request.kind).toBe('lens');
+    expect(call.data?.request.created_by).toBe('mcp');
+    expect(call.data?.request.payload).toEqual({
+      generation_id: generation.short_id,
+      options: { center: [0.5, 0.85], strength: -0.4 },
+    });
+
+    const minimal = await mcpToolCall<CreateRequestResult>('lens_generation', {
+      generation_id: generation.id,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(minimal.data?.request.payload).toEqual({ generation_id: generation.short_id, options: {} });
+  });
+
+  it('rejects invalid input as a tool error that creates no row, and 404s an unknown generation', async () => {
+    const { generation } = await createGeneration();
+    for (const bad of [{ center: [1.5, 0.5] }, { strength: 2 }, { strength: 0 }]) {
+      const call = await mcpToolCall('lens_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+      expect(call.isError).toBe(true);
+    }
+    const list = await getJson<{ items: RequestListItem[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=lens`);
+    expect(list.body.items).toEqual([]);
+    const missing = await mcpToolCall('lens_generation', { generation_id: 'does-not-exist', idempotency_key: crypto.randomUUID() });
+    expect(missing.isError).toBe(true);
+  });
+});

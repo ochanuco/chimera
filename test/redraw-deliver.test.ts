@@ -137,6 +137,45 @@ describe('dof request', () => {
   });
 });
 
+describe('lens request', () => {
+  it('accepts no options and every option, and queues it', async () => {
+    const { generation } = await createGeneration();
+    const minimal = await create('lens', { generation_id: generation.short_id });
+    expect(minimal.status).toBe(201);
+    expect(minimal.body.kind).toBe('lens');
+    expect(minimal.body.status).toBe('queued');
+    const options = { center: [0.5, 0.9], strength: -0.6 };
+    const full = await create('lens', { generation_id: generation.id, options });
+    expect(full.status).toBe(201);
+    expect(full.body.payload).toEqual({ generation_id: generation.id, options });
+  });
+
+  it.each([
+    ['center outside 0..1', { options: { center: [1.2, 0.5] } }],
+    ['center with 1 element', { options: { center: [0.5] } }],
+    ['strength above 1', { options: { strength: 1.5 } }],
+    ['strength below -1', { options: { strength: -1.1 } }],
+    ['strength 0', { options: { strength: 0 } }],
+    ['an unknown option key', { options: { focus: [0.5, 0.5] } }],
+    ['a profile', { profile: { name: 'x' } }],
+  ])('rejects %s', async (_label, rest) => {
+    const { generation } = await createGeneration();
+    expect((await create('lens', { generation_id: generation.id, ...rest })).status).toBe(400);
+  });
+
+  it('is claimed by kinds filter, requires source_generation_id on its job, and counts as delivered', async () => {
+    const source = await createGeneration();
+    const lens = await create('lens', { generation_id: source.generation.id, options: { strength: 0.5 } });
+    const claim = await req('/api/v1/requests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worker_id: 'w', kinds: ['lens'] }) });
+    expect(((await claim.json()) as RequestBody).id).toBe(lens.body.id);
+
+    const running = await createRequest({ kind: 'lens', status: 'running' });
+    const missing = await postJson(`/api/v1/requests/${running.body.id}/jobs`, { idempotency_key: crypto.randomUUID(), seed: 1, index: 0 });
+    expect(missing.status).toBe(400);
+    expect(isDeliveredRequest({ kind: 'lens', parameters_json: null })).toBe(true);
+  });
+});
+
 describe('claim', () => {
   it('claims redraw and deliver by kinds filter and leaves other kinds queued', async () => {
     const { generation } = await createGeneration();
@@ -282,8 +321,8 @@ describe('requests table rebuild', () => {
     for (const name of ['idx_requests_status_created_at', 'idx_requests_run_id', 'idx_requests_worker_id', 'idx_requests_short_id']) {
       expect(names).toContain(name);
     }
-    for (const kind of ['redraw', 'deliver', 'dof']) {
-      expect((await createRequest({ kind: kind as 'redraw' | 'deliver' | 'dof' })).status).toBe(201);
+    for (const kind of ['redraw', 'deliver', 'dof', 'lens']) {
+      expect((await createRequest({ kind: kind as 'redraw' | 'deliver' | 'dof' | 'lens' })).status).toBe(201);
     }
     await expect(env.DB.prepare("UPDATE requests SET kind = 'bogus' WHERE id = (SELECT id FROM requests LIMIT 1)").run()).rejects.toThrow();
   });

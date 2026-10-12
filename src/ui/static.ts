@@ -4992,6 +4992,7 @@ export const appJs = `
         return (o.backdrop === null ? '透過' : '背景あり') + ' · ' + bands;
       }
       if (kind === 'dof') return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '');
+      if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
     }
 

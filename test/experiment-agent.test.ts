@@ -242,6 +242,7 @@ describe('MCP server at /mcp', () => {
         'redraw_generation',
         'deliver_generation',
         'dof_generation',
+        'lens_generation',
         'repair_generation',
         'masked_redraw_generation',
         'get_request',
