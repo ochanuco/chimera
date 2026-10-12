@@ -98,15 +98,15 @@ describe('GET /work/:shortId', () => {
     expect((await req('/work/nope00')).status).toBe(404);
   });
 
-  it('renders the five-phase stepper, every phase form, and the tree and picks for the client', async () => {
+  it('renders the six-phase stepper, every phase form, and the tree and picks for the client', async () => {
     const { generation: root } = await createGeneration();
     const hires = await derive(root, 'redraw', { method: 'hires' });
     expect((await postJson(`/api/v1/workbenches/${root.id}`, { picks: { '1': { generation_id: hires.id } } }, 'PUT')).status).toBe(200);
 
     const html = await (await req(`/work/${root.short_id}?at=${hires.short_id}`)).text();
     expect(html).toContain('data-workbench=');
-    for (const label of ['元絵', '1. 描き直し', '2. 光', '3. 部分', '4. 納品', '5. ボケ']) expect(html).toContain(label);
-    for (const phase of [1, 2, 3, 4, 5]) expect(html).toContain(`data-wb-form="${phase}"`);
+    for (const label of ['元絵', '1. 描き直し', '2. 部分', '3. 切り抜き・フチ', '4. 背景', '5. 光', '6. ボケ']) expect(html).toContain(label);
+    for (const phase of [1, 2, 3, 4, 5, 6]) expect(html).toContain(`data-wb-form="${phase}"`);
     expect(html).toContain('href="/work"');
     expect(html).not.toContain('既定');
 
@@ -117,7 +117,7 @@ describe('GET /work/:shortId', () => {
     expect(data.at).toBe(hires.short_id);
   });
 
-  it('phase 1 offers hires first and canvas with their options', async () => {
+  it('phase 1 offers hires first, canvas and light with their options', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="1"'), html.indexOf('data-wb-form="2"'));
@@ -128,16 +128,17 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('name="wb_size"');
   });
 
-  it('phase 2 lists the catalog light scenes with an eight-direction compass', async () => {
+  it('phase 1 light lists the catalog light scenes with an eight-direction compass', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="2"'), html.indexOf('data-wb-form="3"'));
+    const form = html.slice(html.indexOf('data-wb-method-panel="light"'), html.indexOf('data-wb-form="2"'));
+    expect(form).toContain('data-wb-light-input');
     expect(form).toContain('data-wb-scene="sunset"');
     expect(form).toContain('data-wb-scene="moon"');
     for (const dir of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) expect(form).toContain(`data-compass-dir="${dir}"`);
   });
 
-  it('phase 3 offers automatic and rectangle modes, and part chips from the recipe catalog', async () => {
+  it('phase 2 offers automatic and rectangle modes, and part chips from the recipe catalog', async () => {
     const recipe = `wb-parts-${crypto.randomUUID()}`;
     const catalog = {
       schema_version: 1,
@@ -153,7 +154,7 @@ describe('GET /work/:shortId', () => {
     expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
     const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="3"'), html.indexOf('data-wb-form="4"'));
+    const form = html.slice(html.indexOf('data-wb-form="2"'), html.indexOf('data-wb-form="3"'));
     expect(form).toContain('手足を自動で探す');
     expect(form).toContain('矩形を引く');
     expect(form).toContain('data-wb-rect-clear');
@@ -162,25 +163,49 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('data-wb-part-chip="scene"');
   });
 
-  it('phase 4 shows background and size, with the outline editor, backdrop pattern and finishing controls in closed details', async () => {
+  it('phase 3 cuts out transparent with size, the outline editor open and finishing controls in closed details', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const form = html.slice(html.indexOf('data-wb-form="3"'), html.indexOf('data-wb-form="4"'));
+    expect(form).not.toContain('data-wb-bg=');
+    expect(form).toMatch(/<input type="radio" name="backdrop" value="transparent" checked/);
+    expect(form).toContain('name="wb_deliver_size"');
+    expect(form).toMatch(/<details class="wb-acc" open="">\s*<summary>\s*フチ/);
+    expect(form).toContain('data-outline-editor');
+    expect(form).toContain('一番外の陰影');
+    expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
+    for (const name of ['repin', 'recolor', 'skin', 'keep_legwear']) expect(form).toContain(`name="${name}"`);
+    expect(form).toContain('切り抜きは 2 回目から使い回します');
+  });
+
+  it('phase 4 offers patterns with a shadow compass, or a photo with upload, placement and height', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
-    expect(form).toContain('data-wb-bg="transparent"');
-    expect(form).toContain('class="wb-pill wb-pill-on" data-wb-bg="backdrop"');
-    expect(form).toContain('name="wb_deliver_size"');
-    expect(form).toMatch(/<details class="wb-acc">\s*<summary>\s*フチ/);
-    expect(form).toContain('data-wb-outline-summary');
-    expect(form).toContain('data-outline-editor');
-    expect(form).toContain('+ 外側に足す');
-    expect(form).toContain('白・紫に戻す');
-    expect(form).toContain('一番外の陰影');
-    expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
-    for (const name of ['repin', 'recolor', 'skin', 'keep_legwear', 'keep_scene']) expect(form).toContain(`name="${name}"`);
-    expect(form).toMatch(/<details class="wb-acc" data-wb-backdrop-patterns(?![^>]* hidden="")[^>]*>\s*<summary>\s*背景柄/);
-    expect(form).toContain('data-wb-backdrop-patterns="true" data-default="random"');
-    expect(form).toMatch(/<input type="radio" name="backdrop" value="random"[^>]*>\s*<span class="backdrop-option-label">ランダム/);
-    expect(form).toContain('切り抜きは 2 回目から使い回します');
+    expect(form).toContain('data-wb-stage-mode="pattern"');
+    expect(form).toContain('data-wb-stage-mode="photo"');
+    expect(form).toMatch(/<input type="radio" name="backdrop" value="random" checked[^>]*>\s*<span class="backdrop-option-label">ランダム/);
+    expect(form).toContain('data-wb-shadow-none');
+    expect(form).toContain('data-compass="shadow"');
+    expect(form).toContain('data-wb-photos');
+    expect(form).toContain('data-wb-photo-file');
+    expect(form).toContain('name="wb_stage_height"');
+  });
+
+  it('phase 4 lists the uploaded photos to choose from', async () => {
+    const { generation: photo } = await createGeneration({ requestOverrides: { kind: 'import', parameters: { kind: 'photo' } } });
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    expect(html).toContain(`data-wb-photo="${photo.short_id}"`);
+  });
+
+  it('phase 5 lights with a strength slider and an optional direction', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const form = html.slice(html.indexOf('data-wb-form="5"'), html.indexOf('data-wb-form="6"'));
+    expect(form).toContain('name="wb_lighting_strength"');
+    expect(form).toContain('data-wb-lighting-none');
+    expect(form).toContain('data-compass="lighting"');
   });
 
   it('keeps the run button and its error in a footer outside the scrolling panel body', async () => {
@@ -192,7 +217,7 @@ describe('GET /work/:shortId', () => {
     expect(foot).toBeGreaterThan(body);
     expect(html.indexOf('data-wb-run')).toBeGreaterThan(foot);
     expect(html.indexOf('data-wb-error')).toBeGreaterThan(foot);
-    expect(html.indexOf('data-wb-form="5"')).toBeLessThan(foot);
+    expect(html.indexOf('data-wb-form="6"')).toBeLessThan(foot);
   });
 
   it('captions both panes with the same resolution and size text as the Generation page', () => {
@@ -232,7 +257,7 @@ describe('GET /work/:shortId', () => {
     expect(appJs).toContain("OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' }");
   });
 
-  it('phase 5 has the F-number slider over the catalog stops, the three scope boxes and the viewfinder choices', async () => {
+  it('phase 6 has the F-number slider over the catalog stops, the three scope boxes, the viewfinder choices and the photo dials', async () => {
     const recipe = `wb-dof-${crypto.randomUUID()}`;
     const catalog = {
       schema_version: 3,
@@ -243,8 +268,9 @@ describe('GET /work/:shortId', () => {
     expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
     const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="5"'));
+    const form = html.slice(html.indexOf('data-wb-form="6"'));
     expect(form).toContain('data-dof-stops="[2.8,4,5.6,8]"');
+    for (const name of ['wb_dof_tilt', 'wb_dof_nearer', 'wb_dof_bokeh']) expect(form).toContain(`name="${name}"`);
     expect(form).toMatch(/name="dof_f_stop" min="0" max="3" step="1" value="1"/);
     for (const layer of ['figure', 'outline', 'backdrop']) expect(form).toMatch(new RegExp(`name="dof_scope_${layer}"[^>]*checked`));
     expect(form).toMatch(/name="dof_viewfinder" value="off" checked/);
@@ -268,13 +294,15 @@ describe('/g links to the workbench', () => {
 });
 
 describe('workbench client script', () => {
-  it('posts workbench requests with a gui:workbench key and the five phase kinds', () => {
+  it('posts workbench requests with a gui:workbench key and every phase kind', () => {
     expect(appJs).toContain("'gui:workbench:' + built.kind + ':' + input.short_id + ':' + crypto.randomUUID()");
     expect(appJs).toContain("kind: 'masked_redraw'");
     expect(appJs).toContain("kind: 'repair'");
     expect(appJs).toContain("kind: 'dof'");
     expect(appJs).toContain("kind: 'deliver'");
     expect(appJs).toContain("method: 'light'");
+    expect(appJs).toContain("kind: 'stage'");
+    expect(appJs).toContain("kind: 'lighting'");
   });
 
   it('saves picks as the whole map through the workbench endpoint, truncating by lineage', () => {
