@@ -186,6 +186,7 @@ export const photoOptionsSchema = z
     nearer: z.number().min(0).max(1).optional(),
     focus: z.union([z.literal('subject'), unitPoint]).optional(),
     f_number: z.number().min(1.4).max(22).optional(),
+    tilt: z.number().min(-1).max(1).optional(),
   })
   .strict();
 
