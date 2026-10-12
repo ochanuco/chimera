@@ -530,10 +530,11 @@ pages.get('/work/:shortId', async (c) => {
     return c.redirect(`/work/${root.short_id}?at=${generation.short_id}`);
   }
 
-  const [tree, workbench, detailRes] = await Promise.all([
+  const [tree, workbench, detailRes, photos] = await Promise.all([
     buildWorkbenchTree(db, generation),
     getWorkbench(db, generation.id),
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
+    listPhotos(db),
   ]);
   const detail = (await detailRes.json()) as { request: { recipe: string | null; drawn_pose: { pose: string } | null } | null };
   const recipe = detail.request?.recipe ?? null;
@@ -562,6 +563,7 @@ pages.get('/work/:shortId', async (c) => {
     backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
     dof: doc ? findDof(doc) : null,
     parts: doc && recipe ? workbenchParts(doc, recipe, detail.request?.drawn_pose?.pose ?? null) : [],
+    photos,
   };
   return c.html(<WorkbenchPage path={c.req.path} data={data} />);
 });
