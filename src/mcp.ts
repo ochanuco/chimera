@@ -23,6 +23,8 @@ import {
   dofOptionsSchema,
   lensOptionsSchema,
   photoOptionsSchema,
+  stageOptionsSchema,
+  lightingOptionsSchema,
   deliverProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
@@ -222,6 +224,10 @@ const dofGenerationInputSchema = z.object({
   f_number: dofOptionsSchema.shape.f_number,
   scope: dofOptionsSchema.shape.scope,
   viewfinder: dofOptionsSchema.shape.viewfinder,
+  stand_at: dofOptionsSchema.shape.stand_at,
+  nearer: dofOptionsSchema.shape.nearer,
+  tilt: dofOptionsSchema.shape.tilt,
+  bokeh: dofOptionsSchema.shape.bokeh,
   idempotency_key: z.string().min(1),
 });
 
@@ -250,6 +256,34 @@ const photoGenerationInputSchema = z.object({
   f_number: photoOptionsSchema.shape.f_number,
   tilt: photoOptionsSchema.shape.tilt,
   bokeh: photoOptionsSchema.shape.bokeh,
+  idempotency_key: z.string().min(1),
+});
+
+/** `stage_generation` の入力。options は stagePayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+const stageGenerationInputSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    photo: stageOptionsSchema.shape.photo,
+    place: stageOptionsSchema.shape.place,
+    height: stageOptionsSchema.shape.height,
+    backdrop: stageOptionsSchema.shape.backdrop,
+    shadow_from: stageOptionsSchema.shape.shadow_from,
+    idempotency_key: z.string().min(1),
+  })
+  .refine((o) => o.photo !== undefined || (o.place === undefined && o.height === undefined), {
+    message: 'place / height are only for a photo',
+    path: ['place'],
+  })
+  .refine((o) => o.photo === undefined || (o.backdrop === undefined && o.shadow_from === undefined), {
+    message: 'backdrop / shadow_from are not for a photo',
+    path: ['backdrop'],
+  });
+
+/** `lighting_generation` の入力。 */
+const lightingGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  direction: lightingOptionsSchema.shape.direction,
+  strength: lightingOptionsSchema.shape.strength,
   idempotency_key: z.string().min(1),
 });
 
@@ -407,7 +441,9 @@ const MCP_INSTRUCTIONS =
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
   'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
   'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture. To shoot a delivered ' +
-  'picture like an acrylic stand on location, stand it in an uploaded photo with photo_generation.\n' +
+  'picture like an acrylic stand on location, stand it in an uploaded photo with photo_generation, or step by step: ' +
+  'deliver transparent, stage_generation (a backdrop pattern or a photo), lighting_generation (light it by the ' +
+  'backdrop), then dof_generation.\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
@@ -722,10 +758,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "repair" ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?}}), "lighting" (payload {generation_id, options?: {direction?, strength?}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
-        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation are the same requests with a typed input. created_by is ' +
+        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
@@ -853,16 +889,22 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'the layers to blur (default all true, not all false). viewfinder: "off" (default), "on" draws a mirrorless ' +
         'viewfinder overlay (rule-of-thirds grid, a focus frame at focus, a shutter/F-number/ISO bar), "both" outputs the ' +
         'plain image and the overlaid one as two Generations. The output is a delivered picture that refines the source. ' +
+        'A stage or lighting output is blurred too: a picture set in a photo blurs by the photo\'s depth like photo_generation, ' +
+        'taking stand_at / nearer / tilt / bokeh (same meanings and defaults; refused on other pictures) instead of scope. ' +
         "list_catalog's top-level dof section publishes the F-number range and defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: dofGenerationInputSchema,
     },
-    async ({ generation_id, focus, f_number, scope, viewfinder, idempotency_key }) => {
+    async ({ generation_id, focus, f_number, scope, viewfinder, stand_at, nearer, tilt, bokeh, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const options: Record<string, unknown> = { focus };
       if (f_number !== undefined) options.f_number = f_number;
       if (scope !== undefined) options.scope = scope;
       if (viewfinder !== undefined) options.viewfinder = viewfinder;
+      if (stand_at !== undefined) options.stand_at = stand_at;
+      if (nearer !== undefined) options.nearer = nearer;
+      if (tilt !== undefined) options.tilt = tilt;
+      if (bokeh !== undefined) options.bokeh = bokeh;
       const { row, created } = await createRequest(
         db,
         { kind: 'dof', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
@@ -953,6 +995,72 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputSchemas.photo_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'stage_generation',
+    {
+      outputSchema: mcpOutputSchemas.stage_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a stage request (docs/worker-protocol.md "stage"): set a delivered picture\'s figure and outline layers on a ' +
+        'backdrop of their own, unblurred, keeping the layers for lighting_generation and dof_generation after. generation_id ' +
+        'accepts a short_id and takes a deliver output with layer assets, usually a transparent one. With photo (a Generation ' +
+        "id or short_id, usually uploaded on /photos) the card goes into the photo: place is [x, y] where the middle of its " +
+        'bottom edge goes (default [0.5, 0.95], y up to 1.5 crops the feet) and height its share of the photo height ' +
+        '(0.05-1.5, default 0.7); the output has the photo\'s size. Without photo it stays at its canvas on backdrop (a ' +
+        "list_catalog backdrops pattern name or #RRGGBB, default the deliver default) with a drop shadow thrown away from " +
+        'shadow_from (n/ne/e/se/s/sw/w/nw; null for none; omitted takes the delivery\'s own light). The two sets do not mix. ' +
+        'The output is a delivered picture that refines the source. Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: stageGenerationInputSchema,
+    },
+    async ({ generation_id, photo, place, height, backdrop, shadow_from, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const options: Record<string, unknown> = {};
+      if (photo !== undefined) options.photo = (await resolveGenerationOr404(db, photo)).short_id;
+      if (place !== undefined) options.place = place;
+      if (height !== undefined) options.height = height;
+      if (backdrop !== undefined) options.backdrop = backdrop;
+      if (shadow_from !== undefined) options.shadow_from = shadow_from;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'stage', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.stage_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'lighting_generation',
+    {
+      outputSchema: mcpOutputSchemas.lighting_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a lighting request (docs/worker-protocol.md "lighting"): light a staged picture\'s figure and outline by its ' +
+        'backdrop so they stop floating: exposure and colour cast pulled toward the ambient around the card, and with ' +
+        'direction (n/ne/e/se/s/sw/w/nw; null = none, default) shading from that side tinted by the backdrop\'s brightest light. ' +
+        'strength is 0-1 (default 0.7). generation_id accepts a short_id and takes a stage output (or a delivery with its ' +
+        'backdrop); a lighting output is refused (light the stage output again). The backdrop is unchanged. The output is a ' +
+        'delivered picture that refines the source; dof_generation may follow. Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: lightingGenerationInputSchema,
+    },
+    async ({ generation_id, direction, strength, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const options: Record<string, unknown> = {};
+      if (direction !== undefined) options.direction = direction;
+      if (strength !== undefined) options.strength = strength;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'lighting', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputSchemas.lighting_generation, { created, request: serializeRequest(row) });
     },
   );
 
