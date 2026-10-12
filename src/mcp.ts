@@ -249,6 +249,7 @@ const photoGenerationInputSchema = z.object({
   focus: photoOptionsSchema.shape.focus,
   f_number: photoOptionsSchema.shape.f_number,
   tilt: photoOptionsSchema.shape.tilt,
+  bokeh: photoOptionsSchema.shape.bokeh,
   idempotency_key: z.string().min(1),
 });
 
@@ -925,14 +926,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "share its focus; null = the card's own base, default), pulled toward the camera by nearer (0-1 of the scene depth, " +
         'default 0). tilt (-1 to 1, default 0) leans the card, its top that much farther than its base, so a focus on the ' +
         'face ([x, y] on it) blurs the body below. focus is "subject" (the card, its middle when tilted; default) or [x, y] ' +
-        'of the picture; f_number is 1.4-22 (default 2.8). ' +
+        'of the picture; f_number is 1.4-22 (default 2.8). bokeh (0-1, default 0) opens the photo\'s out-of-focus ' +
+        'highlights (street lamps at night) into bright discs. ' +
         'Coordinates are fractions 0-1 of the photo width/height, and the output has the photo\'s size. The photo\'s depth ' +
         'is built on first use and kept on the photo. The output is a delivered picture that refines the source; ' +
         "lens_generation may follow. list_catalog's top-level photo section publishes the defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: photoGenerationInputSchema,
     },
-    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, tilt, idempotency_key }) => {
+    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, tilt, bokeh, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const scene = await resolveGenerationOr404(db, photo);
       const options: Record<string, unknown> = { photo: scene.short_id };
@@ -943,6 +945,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (focus !== undefined) options.focus = focus;
       if (f_number !== undefined) options.f_number = f_number;
       if (tilt !== undefined) options.tilt = tilt;
+      if (bokeh !== undefined) options.bokeh = bokeh;
       const { row, created } = await createRequest(
         db,
         { kind: 'photo', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
