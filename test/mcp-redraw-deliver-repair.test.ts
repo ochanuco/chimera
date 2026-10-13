@@ -465,7 +465,13 @@ describe('MCP lighting_generation', () => {
     expect(call.isError).toBe(false);
     expect(call.data?.request.kind).toBe('lighting');
     expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { direction: 'ne', strength: 0.5 } });
-    for (const bad of [{ direction: 'up' }, { strength: 2 }]) {
+    const moon = await mcpToolCall<CreateRequestResult>('lighting_generation', {
+      generation_id: generation.id,
+      scene: 'moon',
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(moon.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { scene: 'moon' } });
+    for (const bad of [{ direction: 'up' }, { strength: 2 }, { scene: 'noon' }]) {
       const rejected = await mcpToolCall('lighting_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(rejected.isError).toBe(true);
     }

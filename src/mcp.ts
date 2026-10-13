@@ -285,6 +285,7 @@ const lightingGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   direction: lightingOptionsSchema.shape.direction,
   strength: lightingOptionsSchema.shape.strength,
+  scene: lightingOptionsSchema.shape.scene,
   idempotency_key: z.string().min(1),
 });
 
@@ -759,7 +760,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?}}), "repair" ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
         'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation are the same requests with a typed input. created_by is ' +
@@ -1047,17 +1048,19 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a lighting request (docs/worker-protocol.md "lighting"): light a staged picture\'s figure and outline by its ' +
         'backdrop so they stop floating: exposure and colour cast pulled toward the ambient around the card, and with ' +
         'direction (n/ne/e/se/s/sw/w/nw; null = none, default) shading from that side tinted by the backdrop\'s brightest light. ' +
-        'strength is 0-1 (default 0.7). generation_id accepts a short_id and takes a stage output (or a delivery with its ' +
+        'strength is 0-1 (default 0.7). scene ("sunset" | "moon"; null = none, default) lights the figure as that scene\'s light ' +
+        'redraw does (direction default nw) and tints a pattern backdrop to it; a photo backdrop is never changed. generation_id accepts a short_id and takes a stage output (or a delivery with its ' +
         'backdrop); a lighting output is refused (light the stage output again). The backdrop is unchanged. The output is a ' +
         'delivered picture that refines the source; dof_generation may follow. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: lightingGenerationInputSchema,
     },
-    async ({ generation_id, direction, strength, idempotency_key }) => {
+    async ({ generation_id, direction, strength, scene, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const options: Record<string, unknown> = {};
       if (direction !== undefined) options.direction = direction;
       if (strength !== undefined) options.strength = strength;
+      if (scene !== undefined) options.scene = scene;
       const { row, created } = await createRequest(
         db,
         { kind: 'lighting', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
