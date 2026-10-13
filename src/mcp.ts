@@ -849,6 +849,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'stroke_light (shading of the outermost outline: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; ' +
         '"even" (null is accepted as the same) is a uniform-width stroke), ' +
         'deliver_size (delivered file\'s longest side), ' +
+        'see_through (1-5, default 1: scales how much of the backdrop shows through see-through clothing drawn over ' +
+        'the green key — 1 is the cut as solved, 3 lets three times as much through; the stored alpha cut is unchanged), ' +
         'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: the scene and light direction ' +
         'the delivery follows; from is the direction the light comes from, default "nw"). When light is omitted it is inherited from the ' +
         'nearest redraw with method "light" among the source\'s ancestors, and stroke_light follows that direction; a ' +
