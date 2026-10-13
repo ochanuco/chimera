@@ -283,14 +283,20 @@ export const stageOptionsSchema = z
     height: z.number().min(0.05).max(1.5).optional(),
     backdrop: z.string().min(1).optional(),
     shadow_from: z.enum(COMPASS).nullable().optional(),
+    // 背景を染めるシーン。省略は系譜の light redraw を引き継ぎ、null はなし。
+    light: z
+      .object({ scene: z.enum(['sunset', 'moon']), from: z.enum(COMPASS).optional() })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict()
   .refine((o) => o.photo !== undefined || (o.place === undefined && o.height === undefined), {
     message: 'place / height are only for a photo',
     path: ['place'],
   })
-  .refine((o) => o.photo === undefined || (o.backdrop === undefined && o.shadow_from === undefined), {
-    message: 'backdrop / shadow_from are not for a photo',
+  .refine((o) => o.photo === undefined || (o.backdrop === undefined && o.shadow_from === undefined && o.light === undefined), {
+    message: 'backdrop / shadow_from / light are not for a photo',
     path: ['backdrop'],
   });
 
