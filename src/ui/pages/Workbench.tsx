@@ -375,6 +375,21 @@ function LightingForm() {
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <p class="wb-note">背景の明るさと色味にキャラとフチを合わせます。向きを選ぶとその側から陰影も付けます。</p>
+        <div class="wb-field">
+          シーン
+          <div class="wb-pills" role="group" aria-label="シーン">
+            <button type="button" class="wb-pill wb-pill-on" data-wb-lighting-scene="">
+              なし
+            </button>
+            <button type="button" class="wb-pill" data-wb-lighting-scene="sunset">
+              夕日
+            </button>
+            <button type="button" class="wb-pill" data-wb-lighting-scene="moon">
+              月明かり
+            </button>
+          </div>
+          <span class="wb-note">夕日・月明かりはキャラをその光で照らし、柄の背景もその色に染めます（写真の背景はそのまま）。</span>
+        </div>
         <label class="wb-field">
           強さ <span class="mono" data-wb-lighting-readout>0.7</span>
           <input type="range" name="wb_lighting_strength" min="0" max="1" step="0.05" value="0.7" />

@@ -4927,6 +4927,7 @@ export const appJs = `
       shadow: '',
       shadowTouched: false,
       lightingDir: '',
+      lightingScene: '',
       card: null,
     };
     var viewer = wbViewer(root, wb);
@@ -5076,7 +5077,10 @@ export const appJs = `
         if (o.photo) return '写真 ' + o.photo + (o.height !== undefined ? ' · 高さ ' + o.height : '');
         return (o.backdrop || '既定の柄') + (o.shadow_from ? ' · 影 ' + o.shadow_from : '') + (o.light === null ? ' · シーンなし' : '');
       }
-      if (kind === 'lighting') return '光 ' + (o.strength !== undefined ? o.strength : '') + (o.direction ? ' · from ' + o.direction : '');
+      if (kind === 'lighting') {
+        var sceneLabel = o.scene === 'sunset' ? ' · 夕日' : o.scene === 'moon' ? ' · 月明かり' : '';
+        return '光 ' + (o.strength !== undefined ? o.strength : '') + sceneLabel + (o.direction ? ' · from ' + o.direction : '');
+      }
       if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント');
       if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
@@ -5610,7 +5614,9 @@ export const appJs = `
         return { kind: 'stage', options: stageOptions };
       }
       if (k === 5) {
-        return { kind: 'lighting', options: { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null } };
+        var lightingOptions = { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null };
+        if (wb.lightingScene) lightingOptions.scene = wb.lightingScene;
+        return { kind: 'lighting', options: lightingOptions };
       }
       var dof = { focus: [wb.focus[0], wb.focus[1]], f_number: dofFNumber(form), viewfinder: dofViewfinderFrom(form) };
       if (photoStaged(activeInputNode())) {
@@ -5797,11 +5803,19 @@ export const appJs = `
         qs('[data-wb-lighting-dir-readout]', root).textContent = 'from: ' + wb.lightingDir;
         return;
       }
+      var lightingScene = t.closest('[data-wb-lighting-scene]');
+      if (lightingScene) {
+        wb.lightingScene = lightingScene.getAttribute('data-wb-lighting-scene');
+        qsa('[data-wb-lighting-scene]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === lightingScene); });
+        // A scene without a chosen side lights from its default, upper left.
+        if (!wb.lightingDir) qs('[data-wb-lighting-dir-readout]', root).textContent = wb.lightingScene ? 'from: nw（既定）' : 'なし';
+        return;
+      }
       if (t.closest('[data-wb-lighting-none]')) {
         wb.lightingDir = '';
         setCompassValue(qs('[data-compass="lighting"]', root), '');
         qs('[data-wb-lighting-none]', root).classList.add('wb-pill-on');
-        qs('[data-wb-lighting-dir-readout]', root).textContent = 'なし';
+        qs('[data-wb-lighting-dir-readout]', root).textContent = wb.lightingScene ? 'from: nw（既定）' : 'なし';
         return;
       }
       var word = t.closest('[data-wb-denoise-word]');

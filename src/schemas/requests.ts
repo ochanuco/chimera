@@ -312,6 +312,8 @@ export const lightingOptionsSchema = z
   .object({
     direction: z.enum(COMPASS).nullable().optional(),
     strength: z.number().min(0).max(1).optional(),
+    // 夕日・月明かりのシーンで照らす。柄の背景もそのシーンに染め、写真の背景は変えない。
+    scene: z.enum(['sunset', 'moon']).nullable().optional(),
   })
   .strict();
 
