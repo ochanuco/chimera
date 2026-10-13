@@ -98,7 +98,7 @@ function RedrawForm({ data }: { data: WorkbenchData }) {
           canvas
         </button>
         <button type="button" class="wb-pill" data-wb-method="light">
-          light
+          light（夕日・月明かり）
         </button>
       </div>
       <div data-wb-method-panel="hires">
@@ -294,6 +294,11 @@ function StageForm({ data }: { data: WorkbenchData }) {
         </div>
 
         <div data-wb-stage-panel="pattern">
+          <label class="wb-field wb-stage-scene" data-wb-stage-scene hidden>
+            <span>
+              <input type="checkbox" name="wb_stage_scene" checked /> <span data-wb-stage-scene-label></span>
+            </span>
+          </label>
           <div class="backdrop-picker wb-backdrops" data-backdrop-group>
             <label class="backdrop-option backdrop-option-plain" data-backdrop-value="random">
               <input type="radio" name="backdrop" value="random" checked />

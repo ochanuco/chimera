@@ -4925,6 +4925,7 @@ export const appJs = `
       photo: null,
       place: null,
       shadow: '',
+      shadowTouched: false,
       lightingDir: '',
       card: null,
     };
@@ -5005,6 +5006,28 @@ export const appJs = `
       return null;
     }
 
+    var WB_SCENE_LABELS = { sunset: '夕日', moon: '月明かり' };
+
+    // The light scene a picture was drawn or delivered in: the nearest light redraw (or a deliver's own light) up its lineage.
+    function sceneOf(node) {
+      var guard = 0;
+      while (node && guard < 50) {
+        guard += 1;
+        var o = node.options || {};
+        if (node.kind === 'redraw' && node.method === 'light' && o.scene) return { scene: o.scene, from: o.from || 'nw' };
+        if (node.kind === 'deliver' && o.light && o.light.scene) return { scene: o.light.scene, from: o.light.from || 'nw' };
+        node = node.refines_generation_id ? nodeById(node.refines_generation_id) : null;
+      }
+      return null;
+    }
+
+    function setShadow(value) {
+      wb.shadow = value;
+      setCompassValue(qs('[data-compass="shadow"]', root), value);
+      qs('[data-wb-shadow-none]', root).classList.toggle('wb-pill-on', value === '');
+      qs('[data-wb-shadow-readout]', root).textContent = value ? 'from: ' + value : 'なし';
+    }
+
     function photoStaged(node) {
       var stage = stageOf(node);
       return !!(stage && stage.photo);
@@ -5051,7 +5074,7 @@ export const appJs = `
       }
       if (kind === 'stage') {
         if (o.photo) return '写真 ' + o.photo + (o.height !== undefined ? ' · 高さ ' + o.height : '');
-        return (o.backdrop || '既定の柄') + (o.shadow_from ? ' · 影 ' + o.shadow_from : '');
+        return (o.backdrop || '既定の柄') + (o.shadow_from ? ' · 影 ' + o.shadow_from : '') + (o.light === null ? ' · シーンなし' : '');
       }
       if (kind === 'lighting') return '光 ' + (o.strength !== undefined ? o.strength : '') + (o.direction ? ' · from ' + o.direction : '');
       if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント');
@@ -5407,6 +5430,17 @@ export const appJs = `
       qsa('[data-wb-photo]', root).forEach(function (b) {
         b.classList.toggle('wb-photo-on', !!wb.photo && b.getAttribute('data-wb-photo') === wb.photo.short_id);
       });
+      var sceneBox = qs('[data-wb-stage-scene]', root);
+      if (sceneBox) {
+        var scene = wb.active === 4 ? sceneOf(activeInputNode()) : null;
+        sceneBox.hidden = !scene;
+        if (scene) {
+          qs('[data-wb-stage-scene-label]', root).textContent =
+            'シーンの色を背景と影に付ける: ' + (WB_SCENE_LABELS[scene.scene] || scene.scene) + '（from ' + scene.from + '、1 の light から）';
+          // In a scene the shadow falls away from its light unless the user chose otherwise.
+          if (!wb.shadowTouched && wb.shadow === '' && qs('input[name="wb_stage_scene"]', root).checked) setShadow(scene.from);
+        }
+      }
       var dofPhoto = qs('[data-wb-dof-photo]', root);
       var stagedInPhoto = wb.active === WB_LAST && photoStaged(activeInputNode());
       if (dofPhoto) dofPhoto.hidden = !stagedInPhoto;
@@ -5570,7 +5604,10 @@ export const appJs = `
         }
         var backdropOptions = deliverOptionsFrom(form, false);
         if (!backdropOptions) return null;
-        return { kind: 'stage', options: { backdrop: backdropOptions.backdrop, shadow_from: wb.shadow || null } };
+        var stageOptions = { backdrop: backdropOptions.backdrop, shadow_from: wb.shadow || null };
+        // The scene is inherited by the worker; unchecking it asks for none.
+        if (sceneOf(activeInputNode()) && !qs('input[name="wb_stage_scene"]', form).checked) stageOptions.light = null;
+        return { kind: 'stage', options: stageOptions };
       }
       if (k === 5) {
         return { kind: 'lighting', options: { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null } };
@@ -5745,18 +5782,12 @@ export const appJs = `
       }
       var shadowDir = t.closest('[data-compass="shadow"] [data-compass-dir]');
       if (shadowDir) {
-        wb.shadow = shadowDir.getAttribute('data-compass-dir');
-        setCompassValue(shadowDir.closest('[data-compass]'), wb.shadow);
-        qs('[data-wb-shadow-none]', root).classList.remove('wb-pill-on');
-        qs('[data-wb-shadow-readout]', root).textContent = 'from: ' + wb.shadow;
-        return;
+        wb.shadowTouched = true;
+        return setShadow(shadowDir.getAttribute('data-compass-dir'));
       }
       if (t.closest('[data-wb-shadow-none]')) {
-        wb.shadow = '';
-        setCompassValue(qs('[data-compass="shadow"]', root), '');
-        qs('[data-wb-shadow-none]', root).classList.add('wb-pill-on');
-        qs('[data-wb-shadow-readout]', root).textContent = 'なし';
-        return;
+        wb.shadowTouched = true;
+        return setShadow('');
       }
       var lightingDir = t.closest('[data-compass="lighting"] [data-compass-dir]');
       if (lightingDir) {

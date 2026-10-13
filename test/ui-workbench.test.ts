@@ -133,6 +133,7 @@ describe('GET /work/:shortId', () => {
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-method-panel="light"'), html.indexOf('data-wb-form="2"'));
     expect(form).toContain('data-wb-light-input');
+    expect(html).toContain('light（夕日・月明かり）');
     expect(form).toContain('data-wb-scene="sunset"');
     expect(form).toContain('data-wb-scene="moon"');
     for (const dir of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) expect(form).toContain(`data-compass-dir="${dir}"`);
@@ -186,6 +187,8 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('data-wb-stage-mode="photo"');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="random" checked[^>]*>\s*<span class="backdrop-option-label">ランダム/);
     expect(form).toContain('data-wb-shadow-none');
+    expect(form).toMatch(/data-wb-stage-scene[^>]*hidden/);
+    expect(form).toContain('name="wb_stage_scene" checked');
     expect(form).toContain('data-compass="shadow"');
     expect(form).toContain('data-wb-photos');
     expect(form).toContain('data-wb-photo-file');
@@ -303,6 +306,8 @@ describe('workbench client script', () => {
     expect(appJs).toContain("method: 'light'");
     expect(appJs).toContain("kind: 'stage'");
     expect(appJs).toContain("kind: 'lighting'");
+    expect(appJs).toContain('function sceneOf(node)');
+    expect(appJs).toContain('stageOptions.light = null');
   });
 
   it('saves picks as the whole map through the workbench endpoint, truncating by lineage', () => {
