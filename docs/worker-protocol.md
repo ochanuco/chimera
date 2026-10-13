@@ -767,10 +767,12 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
   place          photo のときだけ。[x, y]（photo kind と同じ）。省略は [0.5, 0.95]
   height         photo のときだけ。0.05〜1.5（photo kind と同じ）。省略は 0.7
   backdrop       photo が無いときだけ。背景の柄の名前（catalog の `backdrops`）か "#RRGGBB"。省略は deliver の既定
-  shadow_from    photo が無いときだけ。"n" … "nw" \| null。影を落とす光の向き。null は影なし、省略は透過納品の光の向き
+  shadow_from    photo が無いときだけ。"n" … "nw" \| null。影を落とす光の向き。null は影なし、省略は透過納品の光の向き（無ければシーンの光の向き）
+  light          photo が無いときだけ。{scene: "sunset" \| "moon", from?} \| null。背景を染めるシーン。省略は系譜の最も近い light redraw を引き継ぎ、null はなし
 
 写真に置くときは photo kind と同じ置き方（キャラとフチを 1 枚の板として拡大縮小）で、出力は写真と同じ大きさです。
-柄に置くときは納品の大きさのままで、影はフチの層に半透明の黒として混ぜます（背景ありの納品はもう影を持っているので、
+柄に置くときは納品の大きさのままで、シーンがあれば背景を deliver と同じくそのシーンの色に染め、影もシーンの色で背景に描きます。
+シーンが無ければ影はフチの層に半透明の黒として混ぜます（背景ありの納品はもう影を持っているので、
 省略時は足しません）。入力にできるのは層 asset を持つ deliver の出力だけで（ふつうは透過納品）、それ以外は worker が
 `failed` にします。出力（`-set`）は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、
 キャンバス大の `layer-figure` / `layer-outline` / `layer-backdrop` を asset に持ちます。写真に置いたときは写真を

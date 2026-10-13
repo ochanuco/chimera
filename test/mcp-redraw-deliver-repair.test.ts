@@ -427,11 +427,24 @@ describe('MCP stage_generation', () => {
     });
     expect(pattern.isError).toBe(false);
     expect(pattern.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { backdrop: 'dots', shadow_from: null } });
+    const moon = await mcpToolCall<CreateRequestResult>('stage_generation', {
+      generation_id: generation.id,
+      light: { scene: 'moon', from: 'ne' },
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(moon.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { light: { scene: 'moon', from: 'ne' } } });
   });
 
   it('rejects mixed or out-of-range input', async () => {
     const { generation } = await createGeneration();
-    for (const bad of [{ photo: generation.id, backdrop: 'dots' }, { place: [0.5, 0.5] }, { shadow_from: 'up' }, { photo: generation.id, height: 3 }]) {
+    for (const bad of [
+      { photo: generation.id, backdrop: 'dots' },
+      { place: [0.5, 0.5] },
+      { shadow_from: 'up' },
+      { photo: generation.id, height: 3 },
+      { photo: generation.id, light: null },
+      { light: { scene: 'noon' } },
+    ]) {
       const call = await mcpToolCall('stage_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(call.isError).toBe(true);
     }
