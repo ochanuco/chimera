@@ -70,6 +70,7 @@ describe('deliver request', () => {
       outlines: [{ color: '#ffffff', width: 0.4 }, { color: '#885b80', width: 1.04 }],
       deliver_size: 1536,
       light: { scene: 'moon', from: 'w' },
+      see_through: 3,
     };
     const full = await create('deliver', { generation_id: generation.id, options });
     expect(full.status).toBe(201);
@@ -80,7 +81,7 @@ describe('deliver request', () => {
 
   it('rejects unknown keys, including finalize-only and redraw-only options', async () => {
     const { generation } = await createGeneration();
-    for (const options of [{ bogus: true }, { denoise: 0.5 }, { method: 'canvas' }, { deliver_only: true }, { repair: ['hands'] }, { hires: 3072 }]) {
+    for (const options of [{ bogus: true }, { denoise: 0.5 }, { method: 'canvas' }, { deliver_only: true }, { repair: ['hands'] }, { hires: 3072 }, { see_through: 0.5 }, { see_through: 6 }]) {
       expect((await create('deliver', { generation_id: generation.id, options })).status).toBe(400);
     }
   });

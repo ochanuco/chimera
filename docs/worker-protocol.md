@@ -551,6 +551,7 @@ chimera の WebUI フォームのプリセットもここから取っていま�
   outlines       null \| [{color: "#rrggbb", width}]（フチのリスト、内側から外側へ 0〜6 本。`width` は長辺に対する %で 0 < width <= 5。省略または `null` は catalog の `recipes[].deliver.outlines.default`、`[]` はフチなし）
   stroke_light   null \| "even" \| "n".."nw"（一番外のフチの陰影。`"even"`（`null` も同じ）は一定の太さ、8 方位はフチを光源側で細く影側で太くし落ち影も付ける。陰影と押し出しは一番外のフチにかかり、落ち影も一番外のフチの外形に沿う。既定 `"n"`。`"none"` は 400 で、フチなしは `outlines: []`）
   deliver_size   null \| integer（納品ファイルの長辺）
+  see_through    null \| number（1〜5、既定 1。green key の上に描かれた透け衣装越しに背景が透ける量を何倍にするか。合成にだけ効き、保存する `alpha` は変えない）
   light          null \| {scene, from?}（下記）
 
 `light` は光源です。`scene` は `"sunset"`（夕日）か `"moon"`（月明かり）で必須、`from` は光が来る向き
