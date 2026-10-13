@@ -209,6 +209,7 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('name="wb_lighting_strength"');
     expect(form).toContain('data-wb-lighting-none');
     expect(form).toContain('data-compass="lighting"');
+    for (const scene of ['sunset', 'moon']) expect(form).toContain(`data-wb-lighting-scene="${scene}"`);
   });
 
   it('keeps the run button and its error in a footer outside the scrolling panel body', async () => {
