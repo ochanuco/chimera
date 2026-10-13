@@ -53,6 +53,7 @@ const transparentField = z.boolean().nullable().optional();
 const backdropField = z.string().nullable().optional();
 const strokeLightField = z.enum(['even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional();
 const deliverSizeField = z.number().int().nullable().optional();
+const seeThroughField = z.number().min(1).max(5).nullable().optional();
 const outlineSchema = z
   .object({ color: z.string().regex(/^#[0-9a-f]{6}$/i), width: z.number().gt(0).lte(5) })
   .strict();
@@ -98,6 +99,7 @@ export const deliverOptionsSchema = z
     outlines: outlinesField,
     deliver_size: deliverSizeField,
     light: lightField,
+    see_through: seeThroughField,
   })
   .strict();
 
