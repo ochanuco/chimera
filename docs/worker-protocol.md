@@ -796,13 +796,15 @@ stage で置いた絵のキャラとフチを、その背景の光に合わせ�
   -------------- --------------------------------------------------------------------------
   direction      "n" … "nw" \| null。その側から陰影を付ける。null / 省略は露出と色味だけ
   strength       0〜1、省略は 0.7
+  scene          "sunset" \| "moon" \| null。そのシーンの光で照らす。null / 省略はなし
 
 板のまわり（長辺の 6% の帯）の背景を環境光として読み、キャラとフチの露出と色かぶりをそちらへ寄せます（linear で
 `(環境光の輝度 / 0.35) ^ (0.4 × strength)` 倍、0.35〜1.15 に収める。色かぶりは strength 1 で半分）。`direction` が
 あれば、先に redraw の `light` 下塗りと同じ陰影（平らな奥行き、シルエットからの法線）を付け、明るい側を背景の
-いちばん明るい光の色で染めます。背景は変えません。入力にできるのは stage の出力と背景ありの納品で、lighting の出力
+いちばん明るい光の色で染めます。`scene` があれば代わりにそのシーンの light 下塗りの陰影と色で照らし（`direction` の既定は nw）、
+柄の背景も deliver と同じくそのシーンの色に染めます。写真の背景は変えません。入力にできるのは stage の出力と背景ありの納品で、lighting の出力
 （stage の出力からかけ直す）と透過納品は worker が `failed` にします。出力（`-lit`）は納品の Generation で、照らした
-`layer-figure` / `layer-outline` と元のままの `layer-backdrop` を asset に持ち、[dof](#dof) の入力になります。
+`layer-figure` / `layer-outline` と `layer-backdrop`（シーンで柄を染めたとき以外は元のまま）を asset に持ち、[dof](#dof) の入力になります。
 
 catalog は最上位の `lighting` 節に `direction` と `strength` を公開します。
 
