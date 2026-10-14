@@ -180,7 +180,7 @@ file yk-lineT3_00001_.png
 1周の流れは [experiment-agent.md「1サイクル」](experiment-agent.md#1サイクル)、
 各エンドポイントは [api.md](api.md) を参照してください。
 
-## UC-16: 安定した条件をcomfyui-recipesへ昇格する
+## UC-16: 安定した条件をchagamaへ昇格する
 
 反復の結果、条件が安定したらExperimentを`stabilized`にします。
 
@@ -198,7 +198,7 @@ PATCH /api/v1/experiments/{id}
 POST /api/v1/experiments/{id}/promotions
 ```
 
-comfyui-recipes側への反映後、commit SHA / PR URLを記録し、applied
+chagama側への反映後、commit SHA / PR URLを記録し、applied
 に確定します。
 
 ``` text

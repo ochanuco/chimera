@@ -160,7 +160,7 @@ function renderDeltaLine(entry: ReturnType<typeof diffOverrides>[number]) {
 
 type Patch = Record<string, unknown>;
 
-/** Recognizes the comfyui-recipes patch shape (`overrides.patches`): array of plain objects, opaque to chimera
+/** Recognizes the chagama patch shape (`overrides.patches`): array of plain objects, opaque to chimera
  * (target/op/value not validated) — purely a rendering hint; anything else falls back to the leaf diff. */
 function readPatches(overrides: JsonObject): Patch[] | null {
   const patches = overrides.patches;

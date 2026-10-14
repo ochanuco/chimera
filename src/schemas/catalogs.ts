@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Envelope-only: vocabulary (pose/costume/expression, patches shapes) belongs to comfyui-recipes; chimera stores and republishes without interpreting it (docs/api.md「Recipe Catalog」). */
+/** Envelope-only: vocabulary (pose/costume/expression, patches shapes) belongs to chagama; chimera stores and republishes without interpreting it (docs/api.md「Recipe Catalog」). */
 export const recipeCatalogEnvelopeSchema = z
   .object({
     schema_version: z.union([z.literal(1), z.literal(2), z.literal(3)]),

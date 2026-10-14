@@ -1,4 +1,4 @@
-// GPU 機（comfyui-recipes の worker が動く Windows 機）はジョブも入力も無いまま 10 分経つと自分でスリープし、
+// GPU 機（chagama の worker が動く Windows 機）はジョブも入力も無いまま 10 分経つと自分でスリープし、
 // 寝ている間は claim に来られない。どの経路のジョブも chimera のキューを通るので、起こす役は chimera が担う。
 // /wake を叩くのは WorkerHub (src/worker-hub.ts) だけで、ここはその状態機械（純関数）と wol API の呼び出しを持つ。
 // 一斉投入で /wake がジョブの数だけ飛ばないよう手順は 1 本に集約し、失敗は alarm でバックオフ再送する。

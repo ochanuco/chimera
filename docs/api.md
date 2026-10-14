@@ -32,13 +32,13 @@ GET  /api/v1/generations?character=...    # 検索
 GET  /api/v1/generations/{id}/context     # Claude 向け軽量 context
 PUT  /api/v1/generations/{id}/semantic    # semantic metadata 保存
 POST /api/v1/experiments/{id}/runs        # 検証試行の記録（overrides / evaluation / decision）
-POST /api/v1/experiments/{id}/promotions  # 安定条件を comfyui-recipes へ昇格する記録
+POST /api/v1/experiments/{id}/promotions  # 安定条件を chagama へ昇格する記録
 ```
 
 Request / Job 作成と ingest は冪等で、同一 idempotency_key / 同一 (job, output_index)
 の再送は既存を返します。この Write / ingest を呼ぶのは、chimera の requests
 キューから request を claim した worker（GPU 機の `comfy-recipes watch`）が起動する
-comfyui-recipes の `comfy-recipes generate` CLI（`comfyui_recipes` パッケージ、
+chagama の `comfy-recipes generate` CLI（`chagama` パッケージ、
 `request.json` 契約は [generation-request.md](generation-request.md)、requests
 キューとの関係は [worker-protocol.md](worker-protocol.md) 参照）です。
 
@@ -471,7 +471,7 @@ POST /api/v1/experiments/{id}/promotions
 }
 ```
 
-`target_repository` の既定値は `comfyui-recipes` です。`promoted_overrides`
+`target_repository` の既定値は `chagama` です。`promoted_overrides`
 省略時は `source_run_id` の Run の overrides をそのまま昇格対象とします。`status`
 は常に `proposed` で作成されます。
 
@@ -660,7 +660,7 @@ canonical key と同時には指定できません。
 worker は source Generation を変更せず、source を仕上げ元（`refines_generation_id`）とする
 新しい Generation を作ります。request payload と Request の `parameters` / Job の graph
 には patch、regions、denoise、padding、feather を残し、再現可能性を保ちます。chimera
-自体は ComfyUI graph を実行せず、comfyui-recipes の masked-img2img / inpaint adapter
+自体は ComfyUI graph を実行せず、chagama の masked-img2img / inpaint adapter
 境界を worker protocol として公開します（詳細は
 [worker-protocol.md](worker-protocol.md#masked_redraw)）。既存の `repair_generation`
 （hands / feet 専用）は別 kind のままです。
@@ -668,7 +668,7 @@ worker は source Generation を変更せず、source を仕上げ元（`refines
 ## Preset
 
 承認済みの Generation から作られる、名前の付いた派生の正本です
-（[domain-model.md](domain-model.md#preset)）。base となる pose の本文は comfyui-recipes
+（[domain-model.md](domain-model.md#preset)）。base となる pose の本文は chagama
 側に残り、Preset が持つのはその pose への参照と patches の列です。版を持ち、履歴が残り、
 `recipe_ref` では分けません。
 
@@ -786,7 +786,7 @@ deliver request の payload に `profile: { name, version? }` を渡すと、chi
 
 ## Observation
 
-comfyui-recipes の `experiments/` を写した索引です（[domain-model.md](domain-model.md#observation)）。
+chagama の `experiments/` を写した索引です（[domain-model.md](domain-model.md#observation)）。
 正本は JSONL 側で、chimera は引くための索引に徹します。
 
 ``` text
@@ -853,7 +853,7 @@ key だけです。同じ key の再送は既にある行をそのまま 200 で
 
 ## Recipe Catalog
 
-comfyui-recipes 側の recipe（pose / costume / expression の一覧、patches の語彙、
+chagama 側の recipe（pose / costume / expression の一覧、patches の語彙、
 git 情報）を worker が起動のたびに公開するスナップショットです。recipe_ref
 単位で最新の1件だけを持ち（履歴は持ちません）、chimera は語彙を検証も解釈もせず
 そのまま保存・返却します。pose 名に加えて recipe ごとの `parameters` の可否、`patches` の

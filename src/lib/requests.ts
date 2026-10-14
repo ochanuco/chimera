@@ -196,7 +196,7 @@ export async function getRequestOr404(db: D1Database, id: string): Promise<Reque
 }
 
 /** 納品された絵を産んだ Request か。deliver・dof・lens・photo と古い finalize、および deliver_only の repair や hires-chain の出力。
- * worker (comfyui-recipes の picture_source.is_delivered) と同じ判定で、redraw / repair / deliver の入力にできない。 */
+ * worker (chagama の picture_source.is_delivered) と同じ判定で、redraw / repair / deliver の入力にできない。 */
 export function isDeliveredRequest(request: Pick<RequestRow, 'kind' | 'parameters_json'>): boolean {
   if (request.kind === 'deliver' || request.kind === 'dof' || request.kind === 'lens' || request.kind === 'photo' || request.kind === 'stage' || request.kind === 'lighting' || request.kind === 'finalize') return true;
   const parameters = parseJsonObject(request.parameters_json);

@@ -430,7 +430,7 @@ const recordObservationInputSchema = createObservationObjectSchema.omit({ observ
  * of operations, so a client seeing only a rating=good Generation re-invents a pose that already exists in the catalog.
  */
 const MCP_INSTRUCTIONS =
-  'chimera manages ComfyUI generations for comfyui-recipes. Order of operations:\n' +
+  'chimera manages ComfyUI generations for chagama. Order of operations:\n' +
   '1. Start from list_catalog: it names every pose (and costume / expression) each recipe already has. Check it before ' +
   'writing a prompt patch for a look — the pose you want may already exist by name.\n' +
   '2. A named look is reproduced with plain_render(recipe, pose): it renders the recipe defaults at the seed of the ' +
@@ -576,7 +576,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no request result yet). ' +
         'overrides is a diff against the Experiment\'s base recipe, shaped {"patches": [...]}. Each patch is ' +
         '{target, op, reason, plus value and/or old depending on op} — reason is required on every patch. ' +
-        "chimera does not define the target/op vocabulary; it's the recipe's, on the comfyui-recipes side — read " +
+        "chimera does not define the target/op vocabulary; it's the recipe's, on the chagama side — read " +
         'existing Runs\' overrides (list_experiments / get_experiment / get_run) to learn what is in use. ' +
         'Generation parameters such as pose or costume are NOT overrides — they live in the Experiment\'s ' +
         'base_parameters and are fixed for the whole Experiment. ' +
@@ -1455,7 +1455,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputSchemas.list_presets,
       description:
         'List Presets (pose/costume/expression/deliver), one row per name at its latest version — no record body. ' +
-        "Unlike list_catalog/get_catalog_pose, which read the comfyui-recipes catalog snapshot, Presets are " +
+        "Unlike list_catalog/get_catalog_pose, which read the chagama catalog snapshot, Presets are " +
         "chimera's own versioned source of truth for prompt bodies (docs/domain-model.md#preset). Defaults to " +
         'status=active only; include_deprecated also surfaces names whose latest version has been deprecated.',
       inputSchema: listPresetsInputSchema,
@@ -1478,7 +1478,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get a Preset resolved to its full body: record plus, for a promoted version, the patches accumulated ' +
         "from its base chain (oldest first). version defaults to the name's latest active version; an explicit " +
         'version can still be read once deprecated. Presets are chimera\'s own versioned source of truth for ' +
-        'prompt bodies (docs/domain-model.md#preset) — unlike get_catalog_pose, which reads a comfyui-recipes snapshot. ' +
+        'prompt bodies (docs/domain-model.md#preset) — unlike get_catalog_pose, which reads a chagama snapshot. ' +
         'kind "deliver" is a different shape: record is {options} (a deliver_generation options object, words ' +
         'preserved) and patches is always [] — it has no base chain.',
       inputSchema: getPresetInputSchema,
@@ -1621,7 +1621,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputSchemas.list_observations,
       description:
-        "List Observations, chimera's index of comfyui-recipes' experiments/ records (docs/domain-model.md#observation). " +
+        "List Observations, chimera's index of chagama' experiments/ records (docs/domain-model.md#observation). " +
         'The index is not the source of truth — it can lag the JSONL files. Observation is history, not the current rule; ' +
         "the current rule lives in the pose recipe's own comments. Every reason is scoped to the pose/seed/tag block/canvas " +
         "it was observed under, not a general claim about the tag — treat a hit as one past data point, not a rule. " +
