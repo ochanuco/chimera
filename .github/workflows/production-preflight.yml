@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   preflight:
-    uses: ochanuco/.github/.github/workflows/pnpm.yml@bf1aa3417b62cabf15c21aeb20c6dacdc43a8fdd # main
+    uses: ochanuco/.github/.github/workflows/pnpm.yml@f41400013689c51685e10ba1523bfbb576f687dd # v1.0.0
     with:
       run: pnpm run preflight
       timeout-minutes: 10
