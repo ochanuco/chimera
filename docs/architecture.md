@@ -225,19 +225,16 @@ GUI/API を単一 Worker
 
 ``` text
 PR → main（ruleset: PR 必須、merge commit のみ、削除 / force push 禁止）
-  ↓ push ごとに production release PR workflow
-release/production := main の tree の snapshot
-  ↓ 昇格 PR（ruleset: approval 1 + code owner + thread 解決 + required check "production deploy preflight"）
-production
-  ↓ Cloudflare Workers Builds（migrations apply → wrangler deploy）
+  ↓ GitHub Actions の deploy workflow を手動実行（ref: main または main 上の SHA）
+Environment production の承認
+  ↓ scripts/deploy.sh production（wrangler deploy）
 chimera.chanu.co
 ```
 
-昇格 PR の作成者は GitHub App（`APP_ID` / `APP_PRIVATE_KEY`）で、CODEOWNER が自分自身でも
-self-approve の制限に当たらないようにします。`production` は昇格 PR の merge でしか
-動かず、`release/production` は毎回作り直されるので release commit が main に戻ることは
-ありません。rollback は Cloudflare の Workers versions から前バージョンを選ぶか、main を
-戻して再昇格します。
+PR ごとの preview は Cloudflare Workers Builds の Preview Builds が作ります。Workers Builds の
+production build は `wrangler versions upload` でバージョンを上げるだけで、本番へは反映しません。
+D1 migration はデプロイでは適用せず、migration を含む PR ごとに手で適用します。
+rollback は Cloudflare の Workers versions から前バージョンを選ぶか、main を戻して再デプロイします。
 
 `recipe_ref` の既定（wrangler var `REQUESTS_DEFAULT_RECIPE_REF`）は `production` です。
 chagama 側の box は `production` を checkout して動きます

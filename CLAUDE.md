@@ -30,8 +30,9 @@ pnpm run typecheck && pnpm test
 ## 本番
 
 - https://chimera.chanu.co （D1 `chimera` / R2 `chimera-images`）
-- デプロイは `production` ブランチへの merge で Cloudflare Workers Builds が行う（deploy command は `pnpm run deploy:production` = migrations apply → wrangler deploy）。`pnpm exec wrangler deploy` の手打ちはしない
-- main に merge すると `production release PR` workflow が `release/production` を main の snapshot で作り直し、`production` への昇格 PR を作る。その PR の merge = リリース。required check は `production deploy preflight`（dry-run と migration 番号の検査）
+- デプロイは GitHub Actions の `deploy` workflow を手動実行する（入力 `ref` は main か main 上の SHA、Environment `production` の承認が要る。実行は `scripts/deploy.sh production` = `wrangler deploy`）。`pnpm exec wrangler deploy` の手打ちはしない
+- D1 migration はデプロイでは適用しない。migration を含む PR ごとに手で `wrangler d1 migrations apply chimera --remote` を実行する
+- Workers Builds は PR ごとの Preview Builds だけが使う。production build の deploy command は `pnpm exec wrangler versions upload`（Cloudflare ダッシュボードで設定。リポジトリには無い）で、反映はしない
 - API 疎通確認用の Service Token は 1Password `chimera-claude-agent`（`op` で取得、コミット禁止）
 - 本番でテストデータを作ったら削除まで行う（`wrangler d1 execute --remote` + `wrangler r2 object delete --remote`）
 - GPU 機の起床（`docs/worker-protocol.md`「GPU 機の起床」）は `WOL_BASE_URL` / `WOL_CLIENT_ID` / `WOL_CLIENT_SECRET` secret（1Password `chabatake-services/wol`）。未設定なら起床しないだけでキュー投入は動く
