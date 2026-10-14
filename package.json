@@ -10,7 +10,8 @@
     "deploy:production": "wrangler d1 migrations apply chimera --remote && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "preflight": "bash scripts/preflight.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
