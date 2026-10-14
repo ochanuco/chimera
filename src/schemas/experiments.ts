@@ -36,7 +36,7 @@ function checkPatches(patches: unknown, ctx: z.RefinementCtx, basePath: PatchPat
 /** `overrides.patches` 単体の検証。Run を作る側 (create_experiment の arm) が overrides を組む前に同じ規則で弾く。 */
 export const patchesSchema = z.array(jsonObject).superRefine((patches, ctx) => checkPatches(patches, ctx, []));
 
-/** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は comfyui-recipes 側の
+/** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は chagama 側の
  * 実装に属するため検証しない — 保証するのは「diff の形をしているか」だけ (docs/experiment-agent.md)。
  * evaluation/decision はここを通さない（自由記述のまま）。 */
 export const overridesSchema = jsonObject.superRefine((value, ctx) => {
@@ -171,7 +171,7 @@ export const createJudgmentSchema = z.object({
 export const createPromotionSchema = z.object({
   source_run_id: z.string().min(1).optional(),
   promoted_overrides: overridesSchema.optional(),
-  target_repository: z.string().min(1).default('comfyui-recipes'),
+  target_repository: z.string().min(1).default('chagama'),
   target_path: z.string().optional(),
   commit_sha: z.string().optional(),
   pull_request_url: httpUrl.optional(),

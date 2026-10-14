@@ -808,7 +808,7 @@ describe('Promotion', () => {
     const promo = await postJson<Promotion>(`/api/v1/experiments/${exp.body.id}/promotions`, {});
     expect(promo.status).toBe(201);
     expect(promo.body.status).toBe('proposed');
-    expect(promo.body.target_repository).toBe('comfyui-recipes');
+    expect(promo.body.target_repository).toBe('chagama');
     expect(promo.body.commit_sha).toBeNull();
     expect(promo.body.completed_at).toBeNull();
   });

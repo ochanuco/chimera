@@ -38,12 +38,12 @@ MCP は同じドメインへの別インターフェースで、tool のハン�
 | 主体 | 持つもの | 持たないもの |
 | --- | --- | --- |
 | chimera | Experiment / Run / evaluation / decision / promotion、requests 行、Preset と pin の正本。MCP は既存ドメインの別インターフェース | ComfyUI workflow の詳細 |
-| comfyui-recipes | recipe、workflow 構築、override 適用、ComfyUI 実行 | Experiment の意味論、評価履歴 |
+| chagama | recipe、workflow 構築、override 適用、ComfyUI 実行 | Experiment の意味論、評価履歴 |
 | worker | requests 行を claim し、overrides と parameters の通りに実行して結果を返すこと | evaluation / decision / promotion / ライフサイクル |
 | Agent | override の決定、評価、次の一手 | Git 書き込み、recipe の変更、履歴の破壊 |
 
 worker が Run について知るのは機械的な範囲に留めます。
-ここを越えると comfyui-recipes 側に Experiment の意味論が漏れます。
+ここを越えると chagama 側に Experiment の意味論が漏れます。
 
 ## Experiment と Run の Agent 向けの欄
 
@@ -62,7 +62,7 @@ Run の `overrides.patches` が変える差分、Experiment の `base_parameters
 `overrides` に混ぜると差分という概念が濁るため分けています。
 
 chimera は中身を検証しません。
-`base_recipe` と同じく、語彙は comfyui-recipes のものです。
+`base_recipe` と同じく、語彙は chagama のものです。
 例外は `seeds` だけです。
 
 ### base_parameters.seeds
@@ -157,7 +157,7 @@ Generation を取る tool は、`generation_id` に UUID と short_id のどち�
 
 ### catalog と Preset の読み取り
 
-`list_catalog` / `get_catalog_pose` は、comfyui-recipes が publish した recipe catalog のスナップショット（[api.md「Recipe Catalog」](api.md#recipe-catalog)）を読みます。
+`list_catalog` / `get_catalog_pose` は、chagama が publish した recipe catalog のスナップショット（[api.md「Recipe Catalog」](api.md#recipe-catalog)）を読みます。
 どちらも `recipe_ref` を省略すると `"production"` を見ます。
 
 `list_catalog` は prompt 本文を含みません。
@@ -167,7 +167,7 @@ Generation を取る tool は、`generation_id` に UUID と short_id のどち�
 `reference` はその pose の現行の pin で、無ければ `null` です。
 
 `list_presets` / `get_preset` は Preset（[domain-model.md](domain-model.md#preset)）の読み取り側です。
-catalog が comfyui-recipes のスナップショットであるのに対し、Preset は chimera 側の正本で版を持ちます。
+catalog が chagama のスナップショットであるのに対し、Preset は chimera 側の正本で版を持ちます。
 `list_presets` は名前ごとに最新版を1行返し、既定は active のみ、`include_deprecated` で最新版が deprecated の名前も含めます。
 `get_preset` は record と、昇格で作られた版なら base の連鎖を根から順に畳んだ patches を返します。
 `version` を明示すれば deprecated の版も引けます。
@@ -389,7 +389,7 @@ worker から見える requests 行の形と claim / 状態遷移は、REST で�
 ### Observation と Publication
 
 `list_observations` / `get_observation` / `record_observation` は Observation（[domain-model.md](domain-model.md#observation)、[api.md](api.md#observation)）の窓口です。
-Observation は comfyui-recipes の `experiments/` JSONL を写した索引で、正本ではなく、JSONL より遅れることがあります。
+Observation は chagama の `experiments/` JSONL を写した索引で、正本ではなく、JSONL より遅れることがあります。
 記録は履歴であって現行の規則ではなく、現行の規則は pose recipe 自身のコメントにあります。
 各 reason は観測した pose / seed / タグブロック / canvas に限った話で、タグ一般についての主張ではありません。
 
@@ -462,7 +462,7 @@ MCP には次の操作を tool として置きません。
 Experiment / Run / Promotion の削除
 attach 済みの Generation の付け替え
 attach 後の overrides 変更
-recipe への書き込み、comfyui-recipes のファイル編集
+recipe への書き込み、chagama のファイル編集
 ```
 
 API 側も同じ操作を 409 / 404 で拒みます。
@@ -494,5 +494,5 @@ Agent     get_run で生成物を見る
 
 ``` text
 MCP からの Promotion の作成（REST の POST /api/v1/experiments/{id}/promotions だけ）
-comfyui-recipes への自動 commit / PR 作成
+chagama への自動 commit / PR 作成
 ```

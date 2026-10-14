@@ -4,7 +4,7 @@
 
 chimera は Generation Experiment Orchestrator です。semantic
 な判断主体は Claude Code / Agent / Human のいずれでもよく、ComfyUI
-workflow の構築・実行責務は comfyui-recipes に残します。chimera
+workflow の構築・実行責務は chagama に残します。chimera
 は Experiment / provenance / evaluation / decision / promotion
 を管理します。
 
@@ -58,8 +58,8 @@ semantic な判断を担当します。
 -   evaluation・decision を記録する。
 -   Promotion を提案する。
 
-recipe のコードは直接書き換えません。comfyui-recipes への反映は
-Promotion として提案し、実際のコード変更は別途 comfyui-recipes
+recipe のコードは直接書き換えません。chagama への反映は
+Promotion として提案し、実際のコード変更は別途 chagama
 側のPRとして行われます。
 
 ### worker（comfy-recipes）
@@ -87,7 +87,7 @@ Promotion として提案し、実際のコード変更は別途 comfyui-recipes
 -   Experiment / ExperimentRun / Promotion を永続化し、提供する。
 -   requests キュー（claim / heartbeat / 状態遷移）を提供する。判断はしない。
 -   Preset（承認済み Generation から昇格した派生）の正本を持ち、版を管理する。base の
-    pose 本文は comfyui-recipes 側に残り、chimera は参照と patches だけを持つ。
+    pose 本文は chagama 側に残り、chimera は参照と patches だけを持つ。
 -   canonical URL と Claude 向け semantic context を提供する。
 -   Web GUI の Read / Mutation API を提供する。
 -   LLM 固有処理は持たない。
@@ -240,5 +240,5 @@ self-approve の制限に当たらないようにします。`production` は昇
 戻して再昇格します。
 
 `recipe_ref` の既定（wrangler var `REQUESTS_DEFAULT_RECIPE_REF`）は `production` です。
-comfyui-recipes 側の box は `production` を checkout して動きます
+chagama 側の box は `production` を checkout して動きます
 （[worker-protocol.md](worker-protocol.md)）。
