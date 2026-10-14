@@ -408,6 +408,23 @@ function LightingForm() {
   );
 }
 
+/** The full-frame lens a photo-set picture is shot through; the catalog lists them, so a new lens shows up here unchanged. */
+function FocalLengthField({ dof }: { dof: DofCatalog }) {
+  const lenses = dof.focalLength ?? FALLBACK_DOF.focalLength!;
+  return (
+    <label class="wb-field">
+      レンズ（フルサイズ換算）
+      <select name="wb_dof_focal_length">
+        {lenses.values.map((value) => (
+          <option value={value} selected={value === lenses.default}>
+            {value}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function DofForm({ data }: { data: WorkbenchData }) {
   return (
     <div class="wb-form" data-wb-form="6" hidden>
@@ -428,6 +445,7 @@ function DofForm({ data }: { data: WorkbenchData }) {
             玉ボケ <span class="mono" data-wb-dof-readout="bokeh">0</span>
             <input type="range" name="wb_dof_bokeh" min="0" max="1" step="0.05" value="0" />
           </label>
+          <FocalLengthField dof={data.dof ?? FALLBACK_DOF} />
         </div>
       </div>
     </div>

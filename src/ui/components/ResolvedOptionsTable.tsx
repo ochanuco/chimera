@@ -28,6 +28,7 @@ const OPTION_LABELS: Record<string, string> = {
   repair_lora: 'repair lora',
   repair_seeds: 'repair seeds',
   repair_denoise: 'repair denoise',
+  focal_length: 'レンズ',
 };
 
 type Row = [label: string, value: string];

@@ -274,7 +274,8 @@ describe('GET /work/:shortId', () => {
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="6"'));
     expect(form).toContain('data-dof-stops="[2.8,4,5.6,8]"');
-    for (const name of ['wb_dof_tilt', 'wb_dof_nearer', 'wb_dof_bokeh']) expect(form).toContain(`name="${name}"`);
+    for (const name of ['wb_dof_tilt', 'wb_dof_nearer', 'wb_dof_bokeh', 'wb_dof_focal_length']) expect(form).toContain(`name="${name}"`);
+    expect(form).toMatch(/<option value="85mm" selected/);
     expect(form).toMatch(/name="dof_f_stop" min="0" max="3" step="1" value="1"/);
     for (const layer of ['figure', 'outline', 'backdrop']) expect(form).toMatch(new RegExp(`name="dof_scope_${layer}"[^>]*checked`));
     expect(form).toMatch(/name="dof_viewfinder" value="off" checked/);

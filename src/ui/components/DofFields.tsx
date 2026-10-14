@@ -10,6 +10,7 @@ export const FALLBACK_DOF: DofCatalog = {
   viewfinder: { values: ['off', 'on', 'both'], default: 'off' },
   focus: null,
   guideRadiusPerF: null,
+  focalLength: { values: ['85mm'], default: '85mm' },
 };
 
 const SCOPE_LAYERS = [
