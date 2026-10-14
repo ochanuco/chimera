@@ -229,6 +229,8 @@ export interface DofCatalog {
   focus: string | null;
   /** `dof.guide_radius_per_f`: radius of the in-focus guide circle as a fraction of the long side, per unit of F. null when absent or not a positive number. */
   guideRadiusPerF: number | null;
+  /** `dof.photo.focal_length`: the lenses a photo-set picture can be shot through. null when absent or malformed. */
+  focalLength: DofChoice | null;
 }
 
 function parseDofChoice(raw: unknown, required: string): DofChoice | null {
@@ -238,6 +240,14 @@ function parseDofChoice(raw: unknown, required: string): DofChoice | null {
   if (!Array.isArray(values) || !values.every((v) => typeof v === 'string') || !values.includes(required)) return null;
   if (typeof choice.default !== 'string' || !values.includes(choice.default)) return null;
   return { values: values as string[], default: choice.default };
+}
+
+function parseFocalLength(choice: unknown): DofChoice | null {
+  const entry = plainObject(choice);
+  const values = entry?.values;
+  if (!Array.isArray(values) || values.length === 0 || !values.every((v) => typeof v === 'string')) return null;
+  if (typeof entry?.default !== 'string' || !values.includes(entry.default)) return null;
+  return { values: values as string[], default: entry.default };
 }
 
 /** Top-level `dof` section (schema_version 3) — the F-number range and stops, scope defaults, viewfinder choices and focus text of the `dof` request kind. null when the section or its f_number is absent or malformed. */
@@ -260,6 +270,7 @@ export function findDof(doc: RecipeCatalogDoc): DofCatalog | null {
     viewfinder: parseDofChoice(dof.viewfinder, 'off'),
     focus: typeof dof.focus === 'string' ? dof.focus : null,
     guideRadiusPerF: typeof guide === 'number' && Number.isFinite(guide) && guide > 0 ? guide : null,
+    focalLength: parseFocalLength(plainObject(dof.photo)?.focal_length),
   };
 }
 

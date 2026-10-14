@@ -643,6 +643,7 @@ body は、その deliver request が queued した時点の `payload.options`�
   nearer         写真に置いた絵だけ。0〜1（photo と同じ）
   tilt           写真に置いた絵だけ。-1〜1（photo と同じ）
   bokeh          写真に置いた絵だけ。0〜1（photo と同じ）
+  focal_length   写真に置いた絵だけ。レンズ名（photo と同じ）
 
 奥行きは入力の元絵（`refines_generation_id` を deliver の入力へたどった絵）の `depth` asset を使います。無いか古ければ
 worker が作って元絵に付けます（`cut` asset と同じ仕組み）。ボケは ComfyUI の graph で流し、背景 → フチ → 人物の順に、
@@ -653,7 +654,7 @@ worker が作って元絵に付けます（`cut` asset と同じ仕組み）。�
 入力にできるのは層 asset を持つ deliver の出力と、[stage](#stage)・[lighting](#lighting) の出力です。層の無い古い納品の絵、
 dof の出力、それ以外は worker が `failed` にします（納品し直す）。stage で写真に置いた絵（lighting を挟んでも）は
 [photo](#photo) と同じく写真の奥行きでぼかし、板の位置と高さは stage の `place` / `height` を使います。そのときだけ
-`stand_at` / `nearer` / `tilt` / `bokeh`（意味と既定は photo と同じ）を受け、`scope` は使いません。それ以外の絵にこの 4 つを
+`stand_at` / `nearer` / `tilt` / `bokeh` / `focal_length`（意味と既定は photo と同じ）を受け、`scope` は使いません。それ以外の絵にこの 5 つを
 付けると worker が `failed` にします。柄の stage は納品の元絵の奥行きを使います。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation
 （`is_delivered`）で、入力を `refines_generation_id` で指し、redraw・repair・masked_redraw・deliver・dof の入力にはなりません
 （`viewfinder` を重ねていない絵は [lens](#lens) の入力になります）。chimera が検証するのは型だけです。
@@ -732,16 +733,22 @@ worker 実行です。写真は [写真ページ](ui.md#写真photos) で登録�
   tilt           -1〜1。板を傾け、上端を台座よりこれだけ奥へ（負なら手前へ）。省略は 0
   focus          "subject"（省略時、板。傾けたときは板の中ほど）\| [x, y]（その点。板の上ならその高さの板の奥行き）
   f_number       1.4〜22、省略は 2.8
+  focal_length   撮るレンズのフルサイズ換算の焦点距離の名前（catalog の `photo.focal_length.values`）。省略は "85mm"
 
 入力にできるのは層 asset（`layer-figure` / `layer-outline`）を持つ deliver の出力だけで、その背景（`layer-backdrop`）は写真に
 置き換わります。写真の奥行きは写真の Generation の `depth` asset を使い、無いか古ければ worker が作って写真に付けます
 （`cut` asset と同じ仕組み）。写真は奥行きで 24 枚の層に切り、層ごとにその奥行きのレンズ形のボケをかけて奥から重ね（手前のボケた物のボケは奥の景色にかぶさって広がる）、板は行ごとの奥行きで同じボケをかけるので、
 看板と同じ奥行きに立てた板は看板と一緒にピントが合います。`tilt` を付けると板の奥行きが行ごとに変わるので、
-顔の点にピントを合わせると、その下の体がだんだんボケます。板は写真の上に重ね、写真の手前の物で隠しません。
+顔の点にピントを合わせると、その下の体がだんだんボケます。
+ボケの大きさは実際のレンズに合わせます。板を身長 1.5m のキャラとみなして、ピント面の 1mm が何 px かを決め、
+口径（焦点距離 ÷ F 値）をその縮尺で写したものを無限遠のボケの直径とします。奥行きは視差（奥の端 = 無限遠）として読み、
+各点のボケはその |奥行き − ピント| ÷ ピント 倍です。板を大きく（アップに）するほど、またレンズが長いほど同じ景色が大きくボケます。
+選べるレンズは worker の catalog が決めるので、増やしても chimera 側の変更は要りません。板は写真の上に重ね、写真の手前の物で隠しません。
 出力は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、lens の入力になります。
 chimera が検証するのは型と、MCP では写真の Generation が在ることだけです。
 
-catalog は最上位の `photo` 節に各 option の既定と説明（`height` / `nearer` は `min` / `max` も）、`f_number` を公開します。
+catalog は最上位の `photo` 節に各 option の既定と説明（`height` / `nearer` は `min` / `max` も）、`f_number`、
+`focal_length`（`{"values": [...], "default": "85mm"}`）を公開します。`dof.photo` 節にも同じ `focal_length` が載ります。
 
 ### stage
 

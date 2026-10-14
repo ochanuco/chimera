@@ -378,6 +378,7 @@ describe('MCP photo_generation', () => {
       photo: scene.id,
       stand_at: [0.8, 0.4],
       focus: 'subject',
+      focal_length: '85mm',
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(false);
@@ -385,7 +386,7 @@ describe('MCP photo_generation', () => {
     expect(call.data?.request.created_by).toBe('mcp');
     expect(call.data?.request.payload).toEqual({
       generation_id: generation.short_id,
-      options: { photo: scene.short_id, stand_at: [0.8, 0.4], focus: 'subject' },
+      options: { photo: scene.short_id, stand_at: [0.8, 0.4], focus: 'subject', focal_length: '85mm' },
     });
   });
 
@@ -484,9 +485,10 @@ describe('MCP lighting_generation', () => {
       focus: [0.5, 0.3],
       tilt: 0.5,
       bokeh: 1,
+      focal_length: '85mm',
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(false);
-    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { focus: [0.5, 0.3], tilt: 0.5, bokeh: 1 } });
+    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { focus: [0.5, 0.3], tilt: 0.5, bokeh: 1, focal_length: '85mm' } });
   });
 });

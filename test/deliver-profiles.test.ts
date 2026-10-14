@@ -684,12 +684,16 @@ describe('findDof', () => {
 
   it('reads the top-level dof section, defaulting scope layers to true', async () => {
     const viewfinder = { values: ['off', 'on', 'both'], default: 'off' };
-    expect(await read({ f_number: fNumber, scope: { figure: true, outline: true, backdrop: false }, viewfinder, focus: 'x, y', guide_radius_per_f: 0.0417 })).toEqual({
+    const focalLength = { values: ['85mm', '135mm'], default: '85mm' };
+    expect(
+      await read({ f_number: fNumber, scope: { figure: true, outline: true, backdrop: false }, viewfinder, focus: 'x, y', guide_radius_per_f: 0.0417, photo: { focal_length: focalLength } }),
+    ).toEqual({
       ...fNumber,
       scope: { figure: true, outline: true, backdrop: false },
       viewfinder,
       focus: 'x, y',
       guideRadiusPerF: 0.0417,
+      focalLength,
     });
     expect(await read({ f_number: fNumber })).toEqual({
       ...fNumber,
@@ -697,12 +701,16 @@ describe('findDof', () => {
       viewfinder: null,
       focus: null,
       guideRadiusPerF: null,
+      focalLength: null,
     });
   });
 
   it('drops a malformed viewfinder and a non-positive guide radius, and is null without a usable f_number', async () => {
     for (const bad of [{ values: ['on', 'both'], default: 'on' }, { values: ['off', 'on'], default: 'both' }, 'on']) {
       expect((await read({ f_number: fNumber, viewfinder: bad }))?.viewfinder).toBeNull();
+    }
+    for (const bad of [{ values: [], default: '85mm' }, { values: ['85mm'], default: '50mm' }, { values: [85], default: 85 }, '85mm']) {
+      expect((await read({ f_number: fNumber, photo: { focal_length: bad } }))?.focalLength).toBeNull();
     }
     for (const [raw, expected] of [[0, null], [-1, null], ['0.04', null]] as const) {
       expect((await read({ f_number: fNumber, guide_radius_per_f: raw }))?.guideRadiusPerF).toBe(expected);

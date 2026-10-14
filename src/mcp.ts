@@ -228,6 +228,7 @@ const dofGenerationInputSchema = z.object({
   nearer: dofOptionsSchema.shape.nearer,
   tilt: dofOptionsSchema.shape.tilt,
   bokeh: dofOptionsSchema.shape.bokeh,
+  focal_length: dofOptionsSchema.shape.focal_length,
   idempotency_key: z.string().min(1),
 });
 
@@ -256,6 +257,7 @@ const photoGenerationInputSchema = z.object({
   f_number: photoOptionsSchema.shape.f_number,
   tilt: photoOptionsSchema.shape.tilt,
   bokeh: photoOptionsSchema.shape.bokeh,
+  focal_length: photoOptionsSchema.shape.focal_length,
   idempotency_key: z.string().min(1),
 });
 
@@ -894,12 +896,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'viewfinder overlay (rule-of-thirds grid, a focus frame at focus, a shutter/F-number/ISO bar), "both" outputs the ' +
         'plain image and the overlaid one as two Generations. The output is a delivered picture that refines the source. ' +
         'A stage or lighting output is blurred too: a picture set in a photo blurs by the photo\'s depth like photo_generation, ' +
-        'taking stand_at / nearer / tilt / bokeh (same meanings and defaults; refused on other pictures) instead of scope. ' +
+        'taking stand_at / nearer / tilt / bokeh / focal_length (same meanings and defaults; refused on other pictures) instead of scope. ' +
         "list_catalog's top-level dof section publishes the F-number range and defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: dofGenerationInputSchema,
     },
-    async ({ generation_id, focus, f_number, scope, viewfinder, stand_at, nearer, tilt, bokeh, idempotency_key }) => {
+    async ({ generation_id, focus, f_number, scope, viewfinder, stand_at, nearer, tilt, bokeh, focal_length, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const options: Record<string, unknown> = { focus };
       if (f_number !== undefined) options.f_number = f_number;
@@ -909,6 +911,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (nearer !== undefined) options.nearer = nearer;
       if (tilt !== undefined) options.tilt = tilt;
       if (bokeh !== undefined) options.bokeh = bokeh;
+      if (focal_length !== undefined) options.focal_length = focal_length;
       const { row, created } = await createRequest(
         db,
         { kind: 'dof', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
@@ -973,14 +976,16 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'default 0). tilt (-1 to 1, default 0) leans the card, its top that much farther than its base, so a focus on the ' +
         'face ([x, y] on it) blurs the body below. focus is "subject" (the card, its middle when tilted; default) or [x, y] ' +
         'of the picture; f_number is 1.4-22 (default 2.8). bokeh (0-1, default 0) opens the photo\'s out-of-focus ' +
-        'highlights (street lamps at night) into bright discs. ' +
+        'highlights (street lamps at night) into bright discs. focal_length names the full-frame lens the photo is shot ' +
+        'through (list_catalog photo.focal_length values, default "85mm"): the card stands for a 1.5 m figure, so a ' +
+        'closer-up card (larger height) or a longer lens blurs the scene more. ' +
         'Coordinates are fractions 0-1 of the photo width/height, and the output has the photo\'s size. The photo\'s depth ' +
         'is built on first use and kept on the photo. The output is a delivered picture that refines the source; ' +
         "lens_generation may follow. list_catalog's top-level photo section publishes the defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: photoGenerationInputSchema,
     },
-    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, tilt, bokeh, idempotency_key }) => {
+    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, tilt, bokeh, focal_length, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const scene = await resolveGenerationOr404(db, photo);
       const options: Record<string, unknown> = { photo: scene.short_id };
@@ -992,6 +997,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (f_number !== undefined) options.f_number = f_number;
       if (tilt !== undefined) options.tilt = tilt;
       if (bokeh !== undefined) options.bokeh = bokeh;
+      if (focal_length !== undefined) options.focal_length = focal_length;
       const { row, created } = await createRequest(
         db,
         { kind: 'photo', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
@@ -1376,7 +1382,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
         'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
-        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus and F-number defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus, F-number and focal_length defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',

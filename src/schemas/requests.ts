@@ -129,7 +129,7 @@ export const deliverPayloadSchema = z
 /** dof の options (docs/worker-protocol.md「dof」)。入力は deliver の出力だけで、worker が判定する。 */
 const unitPoint = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]);
 
-/** dof の options。stand_at / nearer / tilt / bokeh は写真に置いた絵（stage の photo）だけが受け、ほかの絵では worker が拒む。 */
+/** dof の options。stand_at / nearer / tilt / bokeh / focal_length は写真に置いた絵（stage の photo）だけが受け、ほかの絵では worker が拒む。 */
 export const dofOptionsSchema = z
   .object({
     focus: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
@@ -146,6 +146,8 @@ export const dofOptionsSchema = z
     nearer: z.number().min(0).max(1).optional(),
     tilt: z.number().min(-1).max(1).optional(),
     bokeh: z.number().min(0).max(1).optional(),
+    // A lens name from the catalog's photo.focal_length values; the worker checks it, so a lens added there needs no change here.
+    focal_length: z.string().min(1).optional(),
   })
   .strict();
 
@@ -196,6 +198,8 @@ export const photoOptionsSchema = z
     f_number: z.number().min(1.4).max(22).optional(),
     tilt: z.number().min(-1).max(1).optional(),
     bokeh: z.number().min(0).max(1).optional(),
+    // A lens name from the catalog's photo.focal_length values; the worker checks it, so a lens added there needs no change here.
+    focal_length: z.string().min(1).optional(),
   })
   .strict();
 
