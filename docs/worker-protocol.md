@@ -319,7 +319,7 @@ worker 機の epoch ミリ秒で、所要時間は送らず chimera が導出し
 
 ingest した Generation の id です。redraw / deliver / repair / masked_redraw（と古い finalize）の Generation は、
 Job の `source_generation_id` を `refines_generation_id` として持ちます。masked_redraw は元 Generation を変更せず、明示したマスク領域だけを worker が
-`comfyui-recipes` の masked-img2img / inpaint adapter に渡します。
+`chagama` の masked-img2img / inpaint adapter に渡します。
 
 redraw / deliver / repair / masked_redraw の done はこれに加えて `resolved_options`
 （`payload.options` のうち dial word を worker が実際に解決した数値に置き換えたもの、
@@ -417,7 +417,7 @@ preset だけ base の drift を検出できなくなります。graph モード
 worker は claim した request の preset を解決した直後に lint をかけます。落ちたら ComfyUI へは
 行かず、request を `failed`（error: `preset lint failed: {理由}`）にします。
 
-これは検査の移設ではなく新設です。comfyui-recipes の CI が守っているのは costume block の
+これは検査の移設ではなく新設です。chagama の CI が守っているのは costume block の
 fingerprint（`scripts/costume_check.py`）と pose × costume の prompt / graph の sha256 snapshot
 （`tests/test_yukari_contract.py`）で、どちらも checkout の中身に対する検査です。prompt の
 矛盾検査（`conflicts()`）が実行時に走るのは `generation.prompt` と `negative_prompt` が両方
@@ -596,7 +596,7 @@ GUI が積む deliver は `repin` / `recolor` / `keep_legwear` / `backdrop` / `o
 #### deliver profile
 
 profile は deliver options をまとめて一発で選ぶための、chimera 自身が持つ kind `deliver` の Preset です
-（[domain-model.md](domain-model.md#preset)）。word（上の dial 語彙）が comfyui-recipes 側で定義されるのに対し、
+（[domain-model.md](domain-model.md#preset)）。word（上の dial 語彙）が chagama 側で定義されるのに対し、
 profile は「どの word / 数値をどう組み合わせるか」という、良かった結果から人間が育てる chimera 側の再利用単位です。
 
 `payload.profile` は `{ name, version? }`。chimera は requests 行を作るときに（`src/lib/presets.ts` の
@@ -820,7 +820,7 @@ catalog は最上位の `lighting` 節に `direction` と `strength` を公開�
 
 既存 Generation の手足（hands / feet）だけをマスクして局所的に redraw する
 worker 実行です。redraw / deliver と同じく semantic 判断を伴わない再実行で、GUI が積んで
-よい kind です（comfyui-recipes 側の実装は別リポジトリ）。
+よい kind です（chagama 側の実装は別リポジトリ）。
 
 ``` json
 {
@@ -860,7 +860,7 @@ worker 実行です。redraw / deliver と同じく semantic 判断を伴わな�
 
 ### masked_redraw
 
-既存 Generation の任意の矩形領域を、comfyui-recipes の masked-img2img / inpaint
+既存 Generation の任意の矩形領域を、chagama の masked-img2img / inpaint
 adapter で局所 redraw する worker 実行です。`repair` とは別の request kind であり、
 `repair_generation` の hands / feet 専用 semantics は変わりません。GUI には追加せず、
 semantic 判断主体が MCP `masked_redraw_generation` から積みます。
@@ -912,7 +912,7 @@ worker の永続化は次の形を必須とします。
    `generation_ids` を返す。source の id を result に入れたり、source の画像を差し替えたり
    してはいけない。
 
-これは chimera 内に ComfyUI graph を複製する契約ではなく、comfyui-recipes 側の
+これは chimera 内に ComfyUI graph を複製する契約ではなく、chagama 側の
 inpaint/masked-img2img adapter に渡す narrow boundary です。worker は source Generation
 自身が持つ graph（`comfy_job.graph`、無ければ画像から再構成）をそのまま使って redraw する
 ため、手描き線や背景をどう維持するかは source を描いた recipe の責務です。chimera は新しい
@@ -1217,7 +1217,7 @@ going_to_sleep / sleeping / offline / waking）をそのまま返します。
 
 ## preset の移行
 
-昇格（承認済み Generation → 名前と版の付いた patches）を comfyui-recipes の PR 無しで
+昇格（承認済み Generation → 名前と版の付いた patches）を chagama の PR 無しで
 回せるようにするまでの段です。段は独立して merge でき、上の「段階 2 / 3 / 4」
 （poll / WorkerHub / ref ごとの worktree）とは別軸なので、字で呼び分けます。
 
@@ -1225,7 +1225,7 @@ going_to_sleep / sleeping / offline / waking）をそのまま返します。
     presets へ入れます（`POST /api/v1/presets/import`）。同じ `(recipe, kind, name)` が
     既にあれば飛ばすので、何度呼んでも同じ結果です。ただし最新 active 版の根が別の
     recipe pose なら、自名の `{ recipe_pose }` を根にした版を追記して付け替えます（`rerooted`）。本文は持たないので、この時点で
-    comfyui-recipes 側の動作は何も変わりません。
+    chagama 側の動作は何も変わりません。
 -   段階 B、pin と昇格。chimera が request に版を pin し、worker が pin された preset を
     解決して patches を `generation.patches` の前に畳みます。受領時 lint と
     `promote_to_pose` をここで入れ、worker は resolution の報告時に patches と pose レコードの

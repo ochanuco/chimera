@@ -19,8 +19,8 @@ ComfyUI → chimera へ resolution / Job / Generation を報告・ingest → Dis
 ExperimentRun の作成時には chimera 自身が同じ形の request.json を組み立てて積みます
 （[worker-protocol.md](worker-protocol.md#experimentrun-由来の-generate)）。
 
-語彙の正本は comfyui-recipes の `validate_request`
-（`src/comfyui_recipes/application/generate.py`）です。chimera が検証するのは封筒の形
+語彙の正本は chagama の `validate_request`
+（`src/chagama/application/generate.py`）です。chimera が検証するのは封筒の形
 （`schema_version = 1`、`request` / `generation` がオブジェクトであること）と、下記の
 preset の pin と Run の所属だけで、それ以外のキーは解釈せず素通しします。
 

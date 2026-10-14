@@ -359,7 +359,7 @@ export const mcpOutputSchemas = {
     error: z.string().nullable(),
   }),
 
-  // catalog の pose record は comfyui-recipes 側の形。chimera は中身を定義しない。
+  // catalog の pose record は chagama 側の形。chimera は中身を定義しない。
   get_catalog_pose: z.looseObject({ name: z.string().optional(), reference: presetReferenceSchema.nullable().optional() }),
 
   list_presets: z.looseObject({ items: z.array(presetSummarySchema) }),

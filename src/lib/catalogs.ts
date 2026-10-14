@@ -124,7 +124,7 @@ export interface CatalogBackdrop {
   thumbnail: string;
 }
 
-/** Top-level `backdrops` (comfyui-recipes の斜めストライプ等のパターン一覧、サムネイル付き)。キーが無い旧カタログでは空配列。 */
+/** Top-level `backdrops` (chagama の斜めストライプ等のパターン一覧、サムネイル付き)。キーが無い旧カタログでは空配列。 */
 export function findBackdrops(doc: RecipeCatalogDoc): CatalogBackdrop[] {
   const raw = (doc as { backdrops?: unknown }).backdrops;
   if (!Array.isArray(raw)) return [];

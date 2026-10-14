@@ -29,7 +29,7 @@ Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
 
 1つの検証テーマです。例えば「結月ゆかりの脚部で黒タイツと薄紫ソックスを安定して分離する」のように、base
 recipe に対する override を変えながら反復し、安定した条件を
-comfyui-recipes へ昇格させるまでを1単位として扱います。
+chagama へ昇格させるまでを1単位として扱います。
 
 主な属性:
 
@@ -112,10 +112,10 @@ JSON blob です。評価軸は Experiment や評価者ごとに変わるため�
 カラムに分解しません。将来 typed schema を載せられるよう、API
 境界では任意の JSON オブジェクトを受けます。
 
-`overrides` の実際の語彙は comfyui-recipes の patch 形式
+`overrides` の実際の語彙は chagama の patch 形式
 （`generation.patches` と同じもの）で、chimera はそれを検証も解釈もせず
 そのまま保存・返却します。patch の意味づけとバリデーションは
-comfyui-recipes 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
+chagama 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
 
 ただし封筒の形だけは chimera 側で検証します。`overrides` は `{}` か
 `{"patches": [...]}` のどちらかで、それ以外のトップレベルキーは400で拒否します。
@@ -124,7 +124,7 @@ comfyui-recipes 側の唯一の実装に集約され、chimera 側に翻訳層�
 の有無・型は op に依存するため検証しません。base_parameters
 相当の生成パラメータ（`pose` / `costume` など）が overrides
 に紛れ込む事故を型で防ぐのが目的で、patch の語彙 (target / op
-に何が使えるか) は引き続き comfyui-recipes 側の実装に属します。
+に何が使えるか) は引き続き chagama 側の実装に属します。
 同じ検証を `promoted_overrides`（ExperimentPromotion）にも適用します。
 `evaluation` / `decision` はこの検証を通さず、引き続き完全に自由記述です。
 
@@ -181,7 +181,7 @@ factor を CLI / 人間が書き添えるための、キー文字列 → `string
 
 ## ExperimentPromotion
 
-「この Experiment のこの条件を comfyui-recipes へ昇格させる」という意思決定と結果の記録です。chimera
+「この Experiment のこの条件を chagama へ昇格させる」という意思決定と結果の記録です。chimera
 が recipe を書き換えることを意味しません。
 
 主な属性:
@@ -222,7 +222,7 @@ rejected
 ## Preset
 
 承認済みの Generation から作られる、名前の付いた派生の正本です。base となる pose の
-本文は comfyui-recipes の `poses.py` に残り、Preset が持つのはその pose への参照と、
+本文は chagama の `poses.py` に残り、Preset が持つのはその pose への参照と、
 そこへ積んだ patches の列です（移行の段は
 [worker-protocol.md](worker-protocol.md#preset-の移行)）。
 
@@ -261,7 +261,7 @@ preset 空間を分けるのではなく、試したいものを新しい版と�
 
 ### body の形
 
-`source = import` の行は comfyui-recipes 側の pose への参照だけを持ちます。本文は
+`source = import` の行は chagama 側の pose への参照だけを持ちます。本文は
 持ちません。
 
 ``` json
@@ -270,7 +270,7 @@ preset 空間を分けるのではなく、試したいものを新しい版と�
 
 import するのは pose だけです。catalog の `costumes` / `expressions` は名前の配列でしか
 publish されておらず、参照にしても行が増えるだけで何も足しません。`kind` に
-`costume` / `expression` が残っているのは、将来 comfyui-recipes 側がそれらの base を
+`costume` / `expression` が残っているのは、将来 chagama 側がそれらの base を
 名前で公開したときに同じ形で載せられるようにするためです。
 
 `source = promote` の行は prompt 本文ではなく「どの版に何を足したか」を持ちます。
@@ -298,7 +298,7 @@ publish されておらず、参照にしても行が増えるだけで何も足
     解釈しません。器の形を知るのは、起点 Generation の Request から promote 後の body を
     組み立てるためです。
 -   base の再現性は preset の版ではなく `git_commit` が担います。`recipe_pose` が指す
-    本文は comfyui-recipes の checkout の中にあり、版が固定するのは patches の層だけです。
+    本文は chagama の checkout の中にあり、版が固定するのは patches の層だけです。
     版が不変でも、指す先の pose は commit で動きます。
 -   昇格できるのは、Request が patches を持つ generate 由来の Generation だけです。
     `generation.prompt` で全文上書きしたものと、redraw / deliver / repair / masked_redraw の
@@ -346,7 +346,7 @@ chimera はこの文字列を不透明に保存し、突き合わせにしか使
 
 pose/costume/expression が prompt 本文の派生なのに対し、kind `deliver` は
 deliver request の `options`（docs/worker-protocol.md「deliver」）をまとめて一発で
-選ぶための、まったく別の問題を解いています。`options` の値は comfyui-recipes が公開する
+選ぶための、まったく別の問題を解いています。`options` の値は chagama が公開する
 dial word か、chimera が検証しない数値で、chimera が語彙を持たないのは他の kind と同じ
 ですが、base も patches も持ちません — 版ごと全文上書きの leaf です。
 
@@ -408,13 +408,13 @@ pin がまだ無い pose には `seed` を明示して呼ぶことで、最初�
 
 ## Observation
 
-「あるパラメータについて何を試して何が起きたか」の記録です。comfyui-recipes の
+「あるパラメータについて何を試して何が起きたか」の記録です。chagama の
 `experiments/<character>/<pose>.jsonl` を写した索引で、正本ではありません。
 
 正本を動かさないのは、preset のときと壊れ方の種類が違うためです。preset は worker が
 graph を組むのに要る load-bearing なデータで、正本が二箇所にあると本番が壊れます。
 experiments の記録は誰も実行せず、人と agent が判断のために読むだけです。しかも
-comfyui-recipes の `AGENTS.md` は「pose や tag を変える前に experiments/ を grep しろ」と
+chagama の `AGENTS.md` は「pose や tag を変える前に experiments/ を grep しろ」と
 定めていて、これは編集中にオフラインで即座に効きます。数百行の grep はゼロ秒で、MCP の
 往復はそうではありません。索引を得るために grep を失うのは損です。
 

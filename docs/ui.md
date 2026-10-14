@@ -882,7 +882,7 @@ negative`の行、値がnullなら行ごと省略）。baseline以外のRunは�
 表示します。
 
 各Runで最も重要なのは「前回から何を変えたか」です。`overrides.patches`
-（comfyui-recipesのpatch語彙、[domain-model.md](domain-model.md#experimentrun)参照）は
+（chagamaのpatch語彙、[domain-model.md](domain-model.md#experimentrun)参照）は
 それ自体がbase recipeへの差分なので、leaf diffではなくRunのpatch一覧をそのまま出し、
 `parent_run_id`（未指定なら直前の`run_index`）のRunが基準です。基準Runと同一のpatch
 （JSON同値）はそのまま、基準Runになくこの Run で加わった patch は

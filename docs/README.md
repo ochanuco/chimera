@@ -31,7 +31,7 @@ provenance（来歴）、評価、再利用可能な semantic
     の共通参照とする。
 7.  削除よりラベリングを優先し、生成履歴を破壊しない。
 8.  Experiment / override / evaluation / decision / promotion
-    を管理し、検証の反復と comfyui-recipes への昇格を追跡可能にする。
+    を管理し、検証の反復と chagama への昇格を追跡可能にする。
 
 ## ドキュメント
 

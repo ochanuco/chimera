@@ -1536,7 +1536,7 @@ describe('Experiments pages', () => {
     expect(html).not.toContain('/b/');
     expect(html).toContain('sock cuff is distinct');
     expect(html).toContain('stabilize');
-    expect(html).toContain('comfyui-recipes / recipes/dq3.py');
+    expect(html).toContain('chagama / recipes/dq3.py');
     expect(html).toContain('data-value="proposed"');
     expect(html).not.toContain('http://localhost');
   });
