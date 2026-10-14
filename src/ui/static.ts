@@ -5071,7 +5071,7 @@ export const appJs = `
         return (o.backdrop === null ? '透過' : '背景あり') + ' · ' + bands;
       }
       if (kind === 'dof') {
-        return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '') + (o.tilt ? ' · 傾き ' + o.tilt : '') + (o.bokeh ? ' · 玉ボケ ' + o.bokeh : '');
+        return 'F' + (o.f_number || '') + (o.focus ? ' · [' + o.focus[0] + ', ' + o.focus[1] + ']' : '') + (o.tilt ? ' · 傾き ' + o.tilt : '') + (o.bokeh ? ' · 玉ボケ ' + o.bokeh : '') + (o.focal_length ? ' · ' + o.focal_length : '');
       }
       if (kind === 'stage') {
         if (o.photo) return '写真 ' + o.photo + (o.height !== undefined ? ' · 高さ ' + o.height : '');
@@ -5081,7 +5081,7 @@ export const appJs = `
         var sceneLabel = o.scene === 'sunset' ? ' · 夕日' : o.scene === 'moon' ? ' · 月明かり' : '';
         return '光 ' + (o.strength !== undefined ? o.strength : '') + sceneLabel + (o.direction ? ' · from ' + o.direction : '');
       }
-      if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント');
+      if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント') + (o.focal_length ? ' · ' + o.focal_length : '');
       if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
     }
@@ -5623,6 +5623,8 @@ export const appJs = `
         dof.tilt = rangeValue('wb_dof_tilt');
         dof.nearer = rangeValue('wb_dof_nearer');
         dof.bokeh = rangeValue('wb_dof_bokeh');
+        var lens = qs('select[name="wb_dof_focal_length"]', form);
+        if (lens && lens.value) dof.focal_length = lens.value;
         return { kind: 'dof', options: dof };
       }
       var scope = dofScopeFrom(form);
