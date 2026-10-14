@@ -1,0 +1,21 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: デプロイする ref（main、または main 上のコミット SHA）
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: ochanuco/.github/.github/workflows/deploy.yml@1b82827b2ddd0b4fc5ef0575d82cfda2c005db80 # dev/deploy-workflow
+    with:
+      ref: ${{ inputs.ref }}
+      op-env-file: .github/deploy/production.env.op
+      run: scripts/deploy.sh production
+    secrets: inherit

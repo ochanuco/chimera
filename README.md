@@ -20,4 +20,6 @@ pnpm exec wrangler dev   # http://localhost:8787
 
 ## デプロイ
 
-`main` に merge すると `production release PR` workflow が `production` への昇格 PR を作る。その PR を merge すると Cloudflare Workers Builds が `pnpm run deploy:production`（D1 migrations apply → wrangler deploy）を実行する。`wrangler deploy` の手打ちはしない。
+production へのデプロイは、GitHub Actions の `deploy` workflow を `main`（または main 上のコミット SHA）を指定して手動で実行する。Environment `production` の承認後に `wrangler deploy` が走る。D1 migration はデプロイでは適用せず、migration を含む PR ごとに手で適用する。
+
+PR ごとの preview は Cloudflare Workers Builds の Preview Builds が作る。Workers Builds の production build は `pnpm exec wrangler versions upload` でバージョンを上げるだけで、反映はしない（設定は Cloudflare ダッシュボード側）。
