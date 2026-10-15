@@ -7,7 +7,8 @@
     "postinstall": "wrangler types",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm run check:boundary",
+    "check:boundary": "node scripts/check-zod-boundary.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
