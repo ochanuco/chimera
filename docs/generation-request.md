@@ -22,7 +22,8 @@ ExperimentRun の作成時には chimera 自身が同じ形の request.json を�
 語彙の正本は chagama の `validate_request`
 （`src/chagama/application/generate.py`）です。chimera が検証するのは封筒の形
 （`schema_version = 1`、`request` / `generation` がオブジェクトであること）と、下記の
-preset の pin と Run の所属だけで、それ以外のキーは解釈せず素通しします。
+preset の pin、Run の所属、`generation.patches` の文法（[patches](#patches)）だけで、
+それ以外のキーは解釈せず素通しします。
 
 ## Envelope
 
@@ -121,6 +122,40 @@ patch は `{ "target", "op", "reason", ... }` で、`reason` は全 patch で必
 [worker-protocol.md「prompt のパーツ単位 patch」](worker-protocol.md#prompt-のパーツ単位-patch)
 にあります。preset の patches は常にこれより先に適用されます
 （[patches の順序](worker-protocol.md#patches-の順序)）。
+
+#### 作成時の文法検査
+
+呼び出し側が渡した patches は、作成時に、その Request の `recipe_ref`（省略時は既定の
+`recipe_ref`）で公開された[カタログ](api.md#recipe-catalog)の `patches` ブロックに照らして検査し、
+違反があれば 400（MCP は tool error）にします。文法は chagama のものなので chimera は写さず、
+次の規則はすべてカタログから読みます。
+
+-   `keys` にないキーは拒否します。
+-   `text.targets` の target と、`text.part_target`（`prompt.positive.<part>`）に当てはまる target
+    （`<part>` は `.` を含まない名前）は text 型です。op は `text.ops` のキーのどれかで、op ごとに
+    `text.ops` が列挙する `value` / `old` はどちらも非空の文字列、列挙されていないほうは持てません。
+-   `number` / `string` / `loras` のように target ごとに op を宣言する class は、宣言された op だけを
+    受け、`value` を必須にします（省略・null・空文字列・空配列は不可）。
+-   どの class にも載っていない target は検査しません（古い worker のカタログは文法が不完全でありえます）。
+
+`constraints` / `values` が示す値の制約、dial の語、part の実在、`old` が本文にあることは検査せず、
+worker が決めます。カタログが無い、`patches` ブロックが `keys` と `text.ops` を持たない旧い形式、
+patches が省略または空、のいずれかなら何も検査しません。文法があるときは、`generation.patches` が配列で
+各要素が `target` / `op` / `reason`（非空文字列）を持つ封筒の規則も同じ場所で検査します。
+
+検査するのは次の入口で呼び出し側が渡した patches だけで、path は 400 の `path: message` の path です。
+
+-   `POST /api/v1/requests`（kind = generate）と MCP `create_request`: `payload.generation.patches`
+-   MCP `derive_request`: `patches`。親から引き継ぐ patches は検査しません。
+-   MCP `create_experiment`: `arms.N.patches`。Experiment を作る前に全 arm をまとめて検査します。
+-   `POST /api/v1/experiments/{id}/runs` と MCP `create_run`: `overrides.patches`
+
+検査は `idempotency_key` の再送の判定より後に行います。受理済みの Request / Run / Experiment の再送は、
+その後にカタログが変わっても既存のレコードを返し（同じキーで内容が違えば検査の前に 409）、新しく作る
+ときだけ検査します。
+
+リロール・`plain_render`・保存済みの Request / Run・`PATCH /api/v1/experiment-runs/{id}`・
+Promotion・resolution の PUT・import は検査しません。
 
 ### 併用できない組み合わせ
 
@@ -254,6 +289,7 @@ requests 行が `failed` になり `error` に理由が残ります。
 chimera（requests 行の作成時）:
 
 -   `schema_version` が `1`、`request` / `generation` がオブジェクトであること。
+-   `generation.patches` の文法（`recipe_ref` のカタログが文法を公開しているときだけ。[作成時の文法検査](#作成時の文法検査)）。
 -   preset の pin の解決（名前が無ければ 400）。
 -   `experiment.run_id` があれば Run の存在と `experiment_id` への所属。
 -   `idempotency_key` の再送は、`kind` と payload の正規化ハッシュが一致すれば既存行を 200、
@@ -264,7 +300,7 @@ worker（claim 後、ComfyUI へ行く前）:
 
 -   `semantic.summary` が非空であること。
 -   `count >= 1`、`seeds` 指定時は `len(seeds) == count`。
--   `parameters` の語彙、[併用できない組み合わせ](#併用できない組み合わせ)、patch の形。
+-   `parameters` の語彙、[併用できない組み合わせ](#併用できない組み合わせ)、patch の値の制約・dial の語・part の実在・`old` の有無。
 -   preset の受領時 lint と identity_tags の保持。
 -   `references` の Generation の存在（worker が resolution を報告するとき chimera が 404 を返す）。
 

@@ -146,6 +146,9 @@ repair と、リロール、pin の再描画（絵柄チェック）だけ」は
 省略時の既定は wrangler の var `REQUESTS_DEFAULT_RECIPE_REF`（`production`）で、Run
 自動起票、`POST /requests`、MCP `create_request` の全てに効きます。
 存在しない ref は worker 側で `failed`（error に checkout 失敗）になります。
+kind = generate の `generation.patches` は、その `recipe_ref` のカタログが `patches` の文法を
+公開していれば作成時に検査します。カタログが無くても request は受理します
+（[generation-request.md「作成時の文法検査」](generation-request.md#作成時の文法検査)）。
 
 #### kind = import
 
@@ -452,9 +455,9 @@ patch や `generation.prompt` の上書きの結果 identity_tags が prompt か
 worker は `failed` にします。`generation.identity_override` に理由の文字列を渡したときだけ
 描画し、Generation の `semantic.attributes` に `identity_override`（理由）と
 `identity_removed`（消えたタグ）を記録します。`lint_waiver` と同じく真偽値ではなく理由を
-要求し、粒度は request 全体です。chimera は `generation` の中身を検証しないので、どちらの
-キーも封筒を素通しします。MCP `derive_request` は `identity_override` 引数をこのキーに
-写し、派生元の値は引き継ぎません。
+要求し、粒度は request 全体です。chimera は `generation` の中身のうち patches の文法だけを
+検査するので、どちらのキーも封筒を素通しします。MCP `derive_request` は `identity_override`
+引数をこのキーに写し、派生元の値は引き継ぎません。
 
 ### finalize
 

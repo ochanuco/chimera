@@ -113,20 +113,24 @@ JSON blob です。評価軸は Experiment や評価者ごとに変わるため�
 境界では任意の JSON オブジェクトを受けます。
 
 `overrides` の実際の語彙は chagama の patch 形式
-（`generation.patches` と同じもの）で、chimera はそれを検証も解釈もせず
-そのまま保存・返却します。patch の意味づけとバリデーションは
-chagama 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
+（`generation.patches` と同じもの）で、chimera はそのまま保存・返却します。
+patch の意味づけは chagama 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
+chimera が見るのは次の2つだけです。
 
-ただし封筒の形だけは chimera 側で検証します。`overrides` は `{}` か
-`{"patches": [...]}` のどちらかで、それ以外のトップレベルキーは400で拒否します。
-各 patch は `target` / `op` / `reason` を持つオブジェクトで、いずれも非空文字列
-であることまでを検証します（`reason` は全 patch で必須）。`value` / `old`
-の有無・型は op に依存するため検証しません。base_parameters
-相当の生成パラメータ（`pose` / `costume` など）が overrides
-に紛れ込む事故を型で防ぐのが目的で、patch の語彙 (target / op
-に何が使えるか) は引き続き chagama 側の実装に属します。
-同じ検証を `promoted_overrides`（ExperimentPromotion）にも適用します。
-`evaluation` / `decision` はこの検証を通さず、引き続き完全に自由記述です。
+-   封筒の形。`overrides` は `{}` か `{"patches": [...]}` のどちらかで、それ以外の
+    トップレベルキーは400で拒否します。各 patch は `target` / `op` / `reason` を持つ
+    オブジェクトで、いずれも非空文字列であることまでを検証します（`reason` は全 patch で必須）。
+    base_parameters 相当の生成パラメータ（`pose` / `costume` など）が overrides に紛れ込む
+    事故を型で防ぐのが目的です。
+-   文法。Run の作成時に限り、`overrides.patches` を chagama がカタログの `patches` ブロックに
+    公開する文法（target の class ごとの op、op ごとの `value` / `old`、許可キー）で検査します
+    （[generation-request.md「作成時の文法検査」](generation-request.md#作成時の文法検査)）。カタログや文法が
+    無いとき、文法に載っていない target は検査せず、値の制約・dial の語・part の実在・needle の有無は
+    chagama 側の実装に属します。
+
+封筒の検証は `promoted_overrides`（ExperimentPromotion）にも適用します。文法の検査は
+Run の作成時だけで、`PATCH /experiment-runs/{id}` と `promoted_overrides` には掛けません。
+`evaluation` / `decision` はどちらの検証も通さず、引き続き完全に自由記述です。
 
 overrides の例:
 

@@ -20,6 +20,7 @@ import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
 import { nowIso, parsePagination } from '../lib/db';
 import { badRequest } from '../lib/errors';
+import { generatePayloadPatches } from '../lib/patch-grammar';
 import { parseOrThrow, validate } from '../lib/validate';
 import type { AppEnv, RequestKind, RequestStatus } from '../types';
 
@@ -36,7 +37,7 @@ requests.post('/', async (c) => {
   const { row, created } = await createRequest(
     db,
     { kind, payload, recipe_ref, idempotency_key, created_by, resolution, run_id },
-    { defaultRecipeRef: defaultRecipeRef(c.env) },
+    { defaultRecipeRef: defaultRecipeRef(c.env), checkPatches: generatePayloadPatches(kind, payload) },
   );
   if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json(serializeRequest(row), created ? 201 : 200);

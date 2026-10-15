@@ -8,13 +8,13 @@ import { addIssues } from './issues';
 export const jsonObject = z.record(z.string(), z.unknown());
 
 /** MCP の入力 (create_experiment の arm / derive_request) が受ける patches。object 型で書くのは、必須キーを
- * tools/list の JSON Schema に `required` として載せ、enqueue 前に弾くため。語彙は検証しない。 */
+ * tools/list の JSON Schema に `required` として載せ、enqueue 前に弾くため。語彙はここでは検証しない (作成時の文法検査は lib/patch-grammar.ts)。 */
 export const patchesSchema = z.array(
   z.object({ target: z.string().min(1), op: z.string().min(1), reason: z.string().min(1) }).passthrough(),
 );
 
-/** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は chagama 側の
- * 実装に属するため検証しない — 保証するのは「diff の形をしているか」だけ (docs/experiment-agent.md)。
+/** overrides/promoted_overrides のエンベロープ検証。保証するのは「diff の形をしているか」だけで、patch の語彙
+ * (target/op/value 等) は見ない。Run 作成時の文法検査は lib/patch-grammar.ts (docs/experiment-agent.md)。
  * evaluation/decision はここを通さない（自由記述のまま）。 */
 export const overridesSchema = jsonObject.superRefine((value, ctx) => addIssues(ctx, overridesIssues(value)));
 

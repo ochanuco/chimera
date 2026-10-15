@@ -17,6 +17,7 @@ import { isUuid, uuidv7 } from './uuidv7';
 import { resolveRequestRenderFacts } from './render-facts';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
+import { assertPatchGrammar, assertPatchLists } from './patch-grammar';
 import { createUniqueRequestShortId, createUniqueShortId } from './shortid';
 import {
   generationPreviewUrl,
@@ -410,8 +411,10 @@ async function findAutoRequestIdForRun(db: D1Database, runId: string): Promise<s
 
 /** POST /api/v1/experiments/{id}/runs と create_run MCP tool が共有する。 */
 export interface CreateExperimentRunOptions {
-  /** 自動起票する requests 行の recipe_ref。呼び出し側が defaultRecipeRef(env) を渡す。 */
+  /** 自動起票する requests 行の recipe_ref。呼び出し側が defaultRecipeRef(env) を渡す。patches の文法検査もこの recipe_ref のカタログで行う。 */
   recipeRef?: string;
+  /** createExperimentWithArms が arm の patches を Experiment を作る前に検査済みのとき true。 */
+  patchesChecked?: boolean;
 }
 
 export async function createExperimentRun(
@@ -431,6 +434,11 @@ export async function createExperimentRun(
       }
       return { row: existing, created: false, request_id: await findAutoRequestIdForRun(db, existing.id) };
     }
+  }
+
+  // 再送の判定より後に検査する: 先に受理した Run の再送は、その後カタログが変わっても既存の Run を返す。
+  if (!options.patchesChecked) {
+    await assertPatchGrammar(db, options.recipeRef ?? 'production', body.overrides?.patches, ['overrides', 'patches']);
   }
 
   let parentRunId: string | null = null;
@@ -593,7 +601,8 @@ export async function createExperimentWithArms(
   const { arms, idempotency_key: key } = input;
   const first = await findRunByIdempotencyKey(db, armIdempotencyKey(key, 0));
 
-  let experiment: ExperimentRow;
+  let experiment: ExperimentRow | null = null;
+  const existingArmKeys = new Set<string>();
   if (first) {
     experiment = await getExperimentOr404(db, first.experiment_id);
     const prefix = `${key}:arm:`;
@@ -609,9 +618,19 @@ export async function createExperimentWithArms(
     if (!matches) {
       throw conflict(`idempotency_key '${key}' was already used for a different set of arms`);
     }
-  } else {
-    experiment = await createExperiment(db, input.experiment);
+    for (const k of existingByKey.keys()) if (k) existingArmKeys.add(k);
   }
+
+  // これから Run を作る arm の patches は、Experiment を作る前にまとめて検査する (途中まで作った Experiment を残さない)。
+  // 再送で既にある arm は先に受理済みなので検査しない。
+  await assertPatchLists(
+    db,
+    options.recipeRef ?? 'production',
+    arms.flatMap((arm, index) =>
+      existingArmKeys.has(armIdempotencyKey(key, index)) ? [] : [{ patches: arm.patches, basePath: ['arms', index, 'patches'] }],
+    ),
+  );
+  experiment ??= await createExperiment(db, input.experiment);
 
   const runs: ExperimentArmRun[] = [];
   for (const [index, arm] of arms.entries()) {
@@ -624,7 +643,7 @@ export async function createExperimentWithArms(
         variables: { arm: arm.label },
         idempotency_key: armIdempotencyKey(key, index),
       },
-      options,
+      { ...options, patchesChecked: true },
     );
     runs.push({ row: result.row, arm: arm.label, request_id: result.request_id, created: result.created });
   }

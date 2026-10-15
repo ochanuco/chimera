@@ -265,7 +265,8 @@ Request の `parameters` は worker が preset を解決した後の値なので
 worker は pin が無ければ現行の版を解決するので、そのまま引き継ぐと text op が needle 不在で落ち、request を積んでから失敗します。
 `replace_patches: true` で現行の preset に対して組み直すか、pin を持つ Request を起点にします。
 その recipe に Preset が1件も無ければ、patches はそのまま引き継ぎます。
-chimera は patch の op を読まないので、needle に依存する op だけを選り分けることはしません。
+引き継ぐ親の patches は文法検査せず、chimera は op の意味も読まないので、needle に依存する op だけを選り分けることはしません。
+文法検査（[generation-request.md](generation-request.md#作成時の文法検査)）の対象は、この呼び出しで渡した `patches` だけです。
 `seeds` を渡すなら要素数は `count` と一致しなければなりません。
 
 `reference` は、起点 Generation への purpose `"derive"` の Reference として payload に載ります。
@@ -334,6 +335,7 @@ options に同じキーがあればそちらが勝ち、明示の `null` も上�
 arm は 1〜9 個で、`label` は呼び出しの中で一意にします。
 `patches` は Run の `overrides.patches` と同じ形で、1つの arm では1つの側面だけを変え、prompt は `prompt.positive.<part>` の部品単位の target で書きます。
 patches を持たない arm が control（基準）なので、control も arm として含めます。
+patches は作成時に、既定の `recipe_ref` のカタログの文法で検査し、どれかの arm が違反していれば `arms.N.patches.M.field: message` の tool error にして、Experiment も Run も作りません。
 
 arm は並び順に Run になります。
 Run の `idempotency_key` は `{idempotency_key}:arm:{index}`、`objective` は `instruction`（省略時は `label`）、`variables` は `{ "arm": label }`、`overrides` は `{ "patches": patches ?? [] }` です。
@@ -342,6 +344,7 @@ Run の `idempotency_key` は `{idempotency_key}:arm:{index}`、`objective` は 
 同じ `idempotency_key` の再送は、何も作らず既存の Experiment と Run を返し、`created: false` になります。
 同じキーを別の arms（件数かラベルが違う）で呼ぶと 409 です。
 再送時に arm の Run が一部だけ欠けていれば、欠けた分だけを作ります。
+文法検査は再送の判定の後に、これから作る arm にだけ行うので、受理済みの呼び出しの再送は、その後にカタログが変わっても既存の Experiment を返します。
 
 結果の `experiment.url` は `/experiments/{short_id}` で、そのページの Compare セクションが arm を列に、seed を行の切り替えにして並べます（[ui.md](ui.md#experiment-view)）。
 `compare_url` はそのセクションへのアンカー付きの URL です。
@@ -353,6 +356,8 @@ Run の代表 Generation を選んだあと、その Generation を見て次の�
 `create_run` の `overrides` は `{}` か `{"patches": [...]}` 形の diff だけを受け付けます。
 各 patch は `{target, op, reason, ...}` で、`reason` は必須です。
 target / op の語彙は recipe のもので、chimera は定義しません。
+作成時には、既定の `recipe_ref` のカタログが公開する `patches` の文法（op の種類、op ごとの `value` / `old`、許可キー）で `overrides.patches` を検査し、違反は `overrides.patches.N.field: message` の tool error です（[generation-request.md](generation-request.md#作成時の文法検査)）。
+値の制約や part の実在は worker が決めます。
 `{"pose": "...", "costume": "...", "count": 1}` のような base_parameters 形のオブジェクトは 400（tool error）で拒否します。
 生成パラメータは Experiment の `base_parameters` に属し、Run ごとには変わりません。
 `variables` は、graph では表せない要因を平らな map で持つ任意の欄で（例 `{"prompt_variant": "socks-v2"}`）、Experiment の facts table に列として出ます。
@@ -382,6 +387,7 @@ worker から見える requests 行の形と claim / 状態遷移は、REST で�
 スリープ中の GPU 機もこのとき起こすので、積んだ直後に `get_gpu_status` が `sleeping` / `waking` でも、行は起床後に claim されます（[worker-protocol.md](worker-protocol.md#gpu-機の起床)）。
 
 `create_request` は kind ごとの payload 封筒（generate なら `schema_version` / `request` / `generation`）を REST と同じ規則で検証し、`created_by` は受け取りません。
+generate の `generation.patches` は、`recipe_ref`（省略時は既定）のカタログが文法を公開していれば、その文法でも検査します（[generation-request.md](generation-request.md#作成時の文法検査)）。
 同じ `idempotency_key` に同じ kind / payload を渡すと元の行を返し（`created: false`）、別の kind / payload を渡すと 409 です。
 この再送の規則は requests 行を積むすべての tool に共通です。
 `get_request` / `list_requests` は読み取りだけで、claim はしません。

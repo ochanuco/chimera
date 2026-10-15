@@ -14,6 +14,7 @@ import { parseJsonObject, type JsonObject } from './overrides';
 import { ApiError, badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
 import { FINALIZE_CREATION_MESSAGE } from './request-rules';
+import { assertPatchGrammar, type PatchList } from './patch-grammar';
 import { canonicalizeMaskedRedrawPayload } from './request-payload';
 import { applyDeliverProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
@@ -265,6 +266,12 @@ export interface CreateRequestOptions {
   runValidation?: boolean;
   /** `recipe_ref` 省略時の値。routes / MCP は defaultRecipeRef(env) を渡す。 */
   defaultRecipeRef?: string;
+  /**
+   * 呼び出し側が渡した patches を、その Request の recipe_ref のカタログの文法で検査する。
+   * 再送の判定より後、INSERT より前に行うので、受理済みの Request の再送はカタログが変わっても既存の行を返す。
+   * リロールなど保存済みの patches を引き継ぐ経路は渡さない。
+   */
+  checkPatches?: PatchList;
 }
 
 export async function createRequest(
@@ -294,6 +301,11 @@ export async function createRequest(
     .bind(input.idempotency_key)
     .first<RequestRow>();
   if (existing) return replayOrConflict(existing, input.kind, payloadHash);
+
+  const recipeRef = input.recipe_ref ?? options.defaultRecipeRef ?? 'production';
+  if (options.checkPatches) {
+    await assertPatchGrammar(db, recipeRef, options.checkPatches.patches, options.checkPatches.basePath);
+  }
 
   // redraw/deliver/repair/masked_redraw の worker は generation_id 自身の画像を読む（derive_request の
   // resolveDerivationSource のような別 Generation への遡りはしない、docs/worker-protocol.md「元画像を読みます」）。
@@ -333,7 +345,6 @@ export async function createRequest(
 
   const id = uuidv7();
   const now = nowIso();
-  const recipeRef = input.recipe_ref ?? options.defaultRecipeRef ?? 'production';
 
   try {
     await db
