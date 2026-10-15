@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 /** https:// 限定。投稿先(X)のURL以外を書く事故を防ぐための最低限のチェック。 */
 export const publicationUrlSchema = z
@@ -22,7 +23,7 @@ export const createPublicationSchema = z.object({
   idempotency_key: z.string().min(1).optional(),
 });
 
-export type CreatePublicationInput = z.infer<typeof createPublicationSchema>;
+export type CreatePublicationInput = StandardSchemaV1.InferOutput<typeof createPublicationSchema>;
 
 export const updatePublicationSchema = z.object({
   url: publicationUrlSchema.nullable(),

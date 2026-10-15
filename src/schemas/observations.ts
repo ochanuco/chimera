@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 export const observationOutcomeSchema = z.enum(['accepted', 'rejected', 'inconclusive']);
 
@@ -48,4 +49,4 @@ export function requirePoseOrComponent(value: { pose?: string; component?: strin
 
 export const createObservationSchema = createObservationObjectSchema.superRefine(requirePoseOrComponent);
 
-export type CreateObservationInput = z.infer<typeof createObservationObjectSchema>;
+export type CreateObservationInput = StandardSchemaV1.InferOutput<typeof createObservationObjectSchema>;

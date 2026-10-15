@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 const epochMs = z.number().int().nonnegative().nullish();
 
@@ -50,7 +51,7 @@ export const putTimingsSchema = z.object({
   prompts: z.array(timingPromptSchema).default([]),
 });
 
-export type PutTimingsInput = z.infer<typeof putTimingsSchema>;
+export type PutTimingsInput = StandardSchemaV1.InferOutput<typeof putTimingsSchema>;
 
 export const statsPeriodSchema = z.enum(['7d', '14d', '30d', '90d', 'all']).default('30d');
 export const statsColdSchema = z.enum(['include', 'exclude']).default('include');

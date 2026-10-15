@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 export const createJobSchema = z.object({
   idempotency_key: z.string().min(1),
@@ -8,7 +9,7 @@ export const createJobSchema = z.object({
   source_generation_id: z.string().min(1).nullish(),
 });
 
-export type CreateJobInput = z.infer<typeof createJobSchema>;
+export type CreateJobInput = StandardSchemaV1.InferOutput<typeof createJobSchema>;
 
 export const updateJobSchema = z
   .object({
@@ -20,7 +21,7 @@ export const updateJobSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
 
-export type UpdateJobInput = z.infer<typeof updateJobSchema>;
+export type UpdateJobInput = StandardSchemaV1.InferOutput<typeof updateJobSchema>;
 
 export const ingestMetadataSchema = z.object({
   seed: z.number().int(),
@@ -29,4 +30,4 @@ export const ingestMetadataSchema = z.object({
   character_id: z.string().min(1).optional(),
 });
 
-export type IngestMetadataInput = z.infer<typeof ingestMetadataSchema>;
+export type IngestMetadataInput = StandardSchemaV1.InferOutput<typeof ingestMetadataSchema>;

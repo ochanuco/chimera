@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 export const semanticCoreSchema = z.object({
   pose: z.string().nullable().optional(),
@@ -23,7 +24,7 @@ export const semanticUpdateSchema = z.object({
     .optional(),
 });
 
-export type SemanticUpdateInput = z.infer<typeof semanticUpdateSchema>;
+export type SemanticUpdateInput = StandardSchemaV1.InferOutput<typeof semanticUpdateSchema>;
 
 export const ratingUpdateSchema = z.object({
   rating: z.enum(['bad', 'neutral', 'good']).nullable(),

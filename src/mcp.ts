@@ -71,6 +71,7 @@ import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun,
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
 import { validate } from './lib/validate';
+import type { StandardSchemaV1 } from './lib/standard-schema';
 import { foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
 import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
 import type { Bindings } from './types';
@@ -95,13 +96,13 @@ type Declared<T> = T extends readonly (infer U)[]
     : T;
 
 /** get_generation_image だけは image block を返すため jsonResult を通らず、structuredContent を直に組む。 */
-type ImageResult = Declared<z.infer<typeof mcpOutputSchemas.get_generation_image>>;
+type ImageResult = Declared<StandardSchemaV1.InferOutput<typeof mcpOutputSchemas.get_generation_image>>;
 
 // content と structuredContent の両方を返す: outputSchema 宣言時は structuredContent が無いと SDK が
 // ProtocolError にし、outputSchema 未対応の client のため text も要る（MCP SEP-2106 §4.3）。
 // schema 引数は型の witness（実行時には使わない）。値で受けないと型引数の指定漏れが unknown に潰れて
 // tsc で検出できなくなる。
-function jsonResult<S extends z.ZodType>(_schema: S, data: Declared<z.infer<S>>) {
+function jsonResult<S extends StandardSchemaV1>(_schema: S, data: Declared<StandardSchemaV1.InferOutput<S>>) {
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
     structuredContent: data as Record<string, unknown>,

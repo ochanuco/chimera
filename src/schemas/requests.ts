@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 /** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。 */
 export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting']);
@@ -348,7 +349,7 @@ export const generatePayloadSchema = z
   .passthrough();
 
 /** REST (`POST /api/v1/requests`) と MCP `create_request` の両方が使う、kind に応じた payload 封筒の検証。 */
-export function payloadEnvelopeIssues(kind: Exclude<z.infer<typeof requestKindSchema>, 'finalize'>, payload: unknown) {
+export function payloadEnvelopeIssues(kind: Exclude<StandardSchemaV1.InferOutput<typeof requestKindSchema>, 'finalize'>, payload: unknown) {
   const schema =
     kind === 'redraw'
       ? redrawPayloadSchema
@@ -418,7 +419,7 @@ export const putResolutionSchema = z
   .object({ ...resolutionShape, worker_id: z.string().min(1).optional() })
   .superRefine(patchesNeedFingerprint);
 
-export type PutResolutionInput = z.infer<typeof putResolutionSchema>;
+export type PutResolutionInput = StandardSchemaV1.InferOutput<typeof putResolutionSchema>;
 
 const RESOLUTION_KEYS = Object.keys(resolutionShape);
 
@@ -474,14 +475,14 @@ export const createRequestSchema = z
     }
   });
 
-export type CreateRequestInput = z.infer<typeof createRequestSchema>;
+export type CreateRequestInput = StandardSchemaV1.InferOutput<typeof createRequestSchema>;
 
 export const claimRequestSchema = z.object({
   worker_id: z.string().min(1),
   kinds: z.array(creatableRequestKindSchema).min(1).optional(),
 });
 
-export type ClaimRequestInput = z.infer<typeof claimRequestSchema>;
+export type ClaimRequestInput = StandardSchemaV1.InferOutput<typeof claimRequestSchema>;
 
 /** `.passthrough()`: worker が done に添える `resolved_options` 等 (docs/worker-protocol.md「deliver profile」) を
  * 素の z.object が黙って落とさないため。chimera は不透明な JSON として保存するだけ。 */
@@ -512,4 +513,4 @@ export const updateRequestSchema = z
     }
   });
 
-export type UpdateRequestInput = z.infer<typeof updateRequestSchema>;
+export type UpdateRequestInput = StandardSchemaV1.InferOutput<typeof updateRequestSchema>;
