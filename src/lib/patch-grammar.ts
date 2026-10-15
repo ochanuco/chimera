@@ -79,6 +79,10 @@ function isEmptySetValue(value: unknown): boolean {
   return isAbsent(value) || value === '' || (Array.isArray(value) && value.length === 0);
 }
 
+function sameKeys(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((key) => b.includes(key));
+}
+
 function useOps(ops: readonly string[]): string {
   return ops.length === 1 ? `use ${ops[0]}` : `use one of ${ops.join(', ')}`;
 }
@@ -92,11 +96,10 @@ function textPatchIssues(grammar: PatchGrammar, patch: Record<string, unknown>, 
   for (const key of takes) {
     if (!isEmptyString(patch[key])) continue;
     let message = `must be a non-empty string (op '${op}' takes ${takes.join(' and ')})`;
-    // 空の value で置き換えたい = 消したい、という書き間違いに削除の op を案内する。
-    const remove = grammar.textOps.get('remove');
-    if (op === 'replace' && key === 'value' && remove !== undefined && remove.length > 0) {
-      message += `; to delete text use op 'remove' with ${remove.join(' and ')}`;
-    }
+    // このキーを外した op の組を取る op があれば案内する (空の value の replace に、old だけを取る op、など)。
+    const rest = takes.filter((k) => k !== key);
+    const alternatives = [...grammar.textOps].filter(([, keys]) => sameKeys(keys, rest)).map(([name]) => name);
+    if (alternatives.length > 0) message += `; ops that take no ${key}: ${alternatives.join(', ')}`;
     issues.push({ path: at(key), message });
   }
   for (const key of TEXT_VALUE_KEYS) {
@@ -169,10 +172,10 @@ export function assertPatchGrammar(db: D1Database, recipeRef: string, patches: u
 }
 
 /**
- * kind=generate の payload (`generation.patches`) の検査。REST の POST /requests と MCP create_request が共有する。
- * createRequest の中では呼ばない: リロールは元の patches をそのまま引き継ぐので、保存済みの patches は検査し直さない。
+ * kind=generate の payload の、呼び出し側が渡した `generation.patches`。createRequest の `checkPatches` に渡す。
+ * REST の POST /requests と MCP create_request だけが渡し、リロールのように元の patches を引き継ぐ経路は渡さない。
  */
-export async function assertGeneratePayloadPatches(db: D1Database, kind: string, payload: unknown, recipeRef: string): Promise<void> {
-  if (kind !== 'generate' || !isPlainObject(payload) || !isPlainObject(payload.generation)) return;
-  await assertPatchGrammar(db, recipeRef, payload.generation.patches, ['payload', 'generation', 'patches']);
+export function generatePayloadPatches(kind: string, payload: unknown): PatchList | undefined {
+  if (kind !== 'generate' || !isPlainObject(payload) || !isPlainObject(payload.generation)) return undefined;
+  return { patches: payload.generation.patches, basePath: ['payload', 'generation', 'patches'] };
 }

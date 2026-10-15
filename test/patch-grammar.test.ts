@@ -43,14 +43,13 @@ const VALID_PATCHES = [
   { target: 'render.loras', op: 'set', value: [{ name: 'a', weight: 0.5 }], reason: 'r' },
 ];
 
-const REPLACE_EMPTY_VALUE_TEXT =
-  "must be a non-empty string (op 'replace' takes old and value); to delete text use op 'remove' with old";
+const REPLACE_EMPTY_VALUE_TEXT = "must be a non-empty string (op 'replace' takes old and value); ops that take no value: remove";
 
 // [label, patches, "path: message" (patches 配列からの相対)]
 const REJECTED: [label: string, patches: unknown[], expected: string][] = [
   ['replace with an empty value', [REPLACE_EMPTY_VALUE], `0.value: ${REPLACE_EMPTY_VALUE_TEXT}`],
   ['replace without value', [{ target: 'prompt.positive.gesture', op: 'replace', old: 'x', reason: 'r' }], `0.value: ${REPLACE_EMPTY_VALUE_TEXT}`],
-  ['replace without old', [{ target: 'prompt.positive.gesture', op: 'replace', value: 'x', reason: 'r' }], "0.old: must be a non-empty string (op 'replace' takes old and value)"],
+  ['replace without old', [{ target: 'prompt.positive.gesture', op: 'replace', value: 'x', reason: 'r' }], "0.old: must be a non-empty string (op 'replace' takes old and value); ops that take no old: append, prepend"],
   ['append without value', [{ target: 'prompt.positive', op: 'append', reason: 'r' }], "0.value: must be a non-empty string (op 'append' takes value)"],
   ['remove with value', [{ target: 'prompt.positive.gesture', op: 'remove', old: 'x', value: 'y', reason: 'r' }], "0.value: op 'remove' does not take value"],
   ['append with old', [{ target: 'prompt.positive.gesture', op: 'append', value: 'x', old: 'y', reason: 'r' }], "0.old: op 'append' does not take old"],
@@ -171,6 +170,28 @@ describe('POST /api/v1/requests (kind=generate)', () => {
     expect((await postGenerate(ref, [REPLACE_EMPTY_VALUE])).status).toBe(201);
   });
 
+  it('replays an accepted request with 200 even after the catalog started rejecting its patches', async () => {
+    const ref = uniqueRecipeRef();
+    const body = generateBody(ref, [REPLACE_EMPTY_VALUE]);
+    const first = await postJson<{ id: string }>('/api/v1/requests', body);
+    expect(first.status).toBe(201);
+    await publish(ref);
+
+    const replay = await postJson<{ id: string }>('/api/v1/requests', body);
+    expect(replay.status).toBe(200);
+    expect(replay.body.id).toBe(first.body.id);
+
+    // 別の内容で同じキーを使えば、検査の前に 409 になる。
+    const conflicting = await postJson<{ error: { code: string } }>('/api/v1/requests', {
+      ...body,
+      payload: { ...body.payload, request: { instruction: 'other', count: 1 } },
+    });
+    expect(conflicting.status).toBe(409);
+
+    // 新しいキーなら検査される。
+    expect((await postJson('/api/v1/requests', { ...body, idempotency_key: crypto.randomUUID() })).status).toBe(400);
+  });
+
   it('does not check the patches a reroll carries over from the original', async () => {
     await publish('production');
     const payload = {
@@ -199,6 +220,21 @@ describe('MCP create_request (kind=generate)', () => {
     expect(call.isError).toBe(true);
     expect(call.text).toBe(`payload.generation.patches.0.value: ${REPLACE_EMPTY_VALUE_TEXT}`);
     expect(await count('requests', 'idempotency_key = ?', key)).toBe(0);
+  });
+
+  it('replays an accepted call as created=false even after the catalog started rejecting its patches', async () => {
+    const ref = uniqueRecipeRef();
+    const input = { kind: 'generate', payload: generateBody(ref, [REPLACE_EMPTY_VALUE]).payload, recipe_ref: ref, idempotency_key: crypto.randomUUID() };
+    const first = await mcpToolCall<{ created: boolean; request: { id: string } }>('create_request', input);
+    expect(first.data?.created).toBe(true);
+    await publish(ref);
+
+    const replay = await mcpToolCall<{ created: boolean; request: { id: string } }>('create_request', input);
+    expect(replay.isError).toBe(false);
+    expect(replay.data?.created).toBe(false);
+    expect(replay.data?.request.id).toBe(first.data?.request.id);
+
+    expect((await mcpToolCall('create_request', { ...input, idempotency_key: crypto.randomUUID() })).isError).toBe(true);
   });
 
   it('uses the default recipe_ref and accepts valid patches', async () => {
@@ -259,6 +295,31 @@ describe('MCP derive_request', () => {
     const call = await derive(generation.id, ref, [{ target: 'render.cfg', op: 'set', value: 6, reason: 'r' }]);
     expect(call.isError).toBe(false);
     expect(call.data?.payload.generation.patches).toEqual([REPLACE_EMPTY_VALUE, { target: 'render.cfg', op: 'set', value: 6, reason: 'r' }]);
+  });
+
+  it('replays an accepted call as created=false even after the catalog started rejecting its patches', async () => {
+    const ref = uniqueRecipeRef();
+    const { generation } = await createParent();
+    const patches = [{ target: 'prompt.positive.gesture', op: 'remove', old: 'x', value: 'y', reason: 'r' }];
+    const key = crypto.randomUUID();
+    const first = await mcpToolCall<{ created: boolean; request: { id: string } }>('derive_request', {
+      from_generation_id: generation.id,
+      instruction: 'variant',
+      count: 1,
+      patches,
+      semantic: { summary: 'variant' },
+      recipe_ref: ref,
+      idempotency_key: key,
+    });
+    expect(first.data?.created).toBe(true);
+    await publish(ref);
+
+    const replay = await derive(generation.id, ref, patches, key);
+    expect(replay.isError).toBe(false);
+    expect((replay.data as unknown as { created: boolean; request: { id: string } }).created).toBe(false);
+    expect((replay.data as unknown as { request: { id: string } }).request.id).toBe(first.data?.request.id);
+
+    expect((await derive(generation.id, ref, patches)).isError).toBe(true);
   });
 
   it('does not check a derive without patches, even when the parent patches are invalid', async () => {
@@ -448,6 +509,18 @@ describe('parsePatchGrammar / patchGrammarIssues', () => {
     expect(patchGrammarIssues(custom, [{ target: 'prompt.positive', op: 'append', value: 'x', reason: 'r' }], [])).toEqual([
       { path: [0, 'op'], message: "op 'append' is not valid for prompt.positive; use swap" },
     ]);
+  });
+
+  it('suggests the ops whose keys are the current op keys minus the missing one', () => {
+    const custom = parsePatchGrammar({
+      keys: ['target', 'op', 'value', 'old', 'reason'],
+      text: { targets: ['prompt.positive'], ops: { put: ['old', 'value'], drop: ['old'], add: ['value'], fill: ['value'], wipe: [] } },
+    })!;
+    const put = (fields: Record<string, unknown>) => patchGrammarIssues(custom, [{ target: 'prompt.positive', op: 'put', reason: 'r', ...fields }], []);
+    expect(put({ old: 'a' })).toEqual([{ path: [0, 'value'], message: "must be a non-empty string (op 'put' takes old and value); ops that take no value: drop" }]);
+    expect(put({ value: 'a' })).toEqual([{ path: [0, 'old'], message: "must be a non-empty string (op 'put' takes old and value); ops that take no old: add, fill" }]);
+    const add = patchGrammarIssues(custom, [{ target: 'prompt.positive', op: 'add', reason: 'r' }], []);
+    expect(add).toEqual([{ path: [0, 'value'], message: "must be a non-empty string (op 'add' takes value); ops that take no value: wipe" }]);
   });
 
   it('treats a part_target-less grammar as having no per-part class', () => {

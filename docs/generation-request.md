@@ -150,6 +150,10 @@ patches が省略または空、のいずれかなら何も検査しません。
 -   MCP `create_experiment`: `arms.N.patches`。Experiment を作る前に全 arm をまとめて検査します。
 -   `POST /api/v1/experiments/{id}/runs` と MCP `create_run`: `overrides.patches`
 
+検査は `idempotency_key` の再送の判定より後に行います。受理済みの Request / Run / Experiment の再送は、
+その後にカタログが変わっても既存のレコードを返し（同じキーで内容が違えば検査の前に 409）、新しく作る
+ときだけ検査します。
+
 リロール・`plain_render`・保存済みの Request / Run・`PATCH /api/v1/experiment-runs/{id}`・
 Promotion・resolution の PUT・import は検査しません。
 
