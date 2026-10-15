@@ -114,7 +114,8 @@ requests 行を作るときに `parameters` の pose / costume / expression か�
 
 ### patches
 
-patch は `{ "target", "op", "reason", ... }` で、`reason` は全 patch で必須です。語彙は
+patch は `{ "target", "op", "reason", ... }` で、`reason` は全 patch で必須です。MCP の
+`derive_request` / `create_experiment` は、この 3 キーが欠けた patch を enqueue 前に拒否します。語彙は
 [domain-model.md「ExperimentRun」](domain-model.md#experimentrun)の overrides と同じもので、
 パーツ単位の target `prompt.positive.<part>` は
 [worker-protocol.md「prompt のパーツ単位 patch」](worker-protocol.md#prompt-のパーツ単位-patch)
