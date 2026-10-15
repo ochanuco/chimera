@@ -233,6 +233,8 @@ export const mcpOutputSchemas = {
     inlined: z.boolean(),
     mime_type: z.string().nullable(),
     reason: z.string().nullable(),
+    // 未採点は null。
+    verdict: z.enum(['block', 'sensitive', 'caution', 'none']).nullable(),
   }),
 
   attach_generation: runSchema,

@@ -443,6 +443,45 @@ describe('MCP get_generation_image', () => {
   });
 });
 
+describe('MCP get_generation_image content-rating gate', () => {
+  const putSafety = (id: string, tags: Record<string, number>) =>
+    postJson(
+      `/api/v1/generations/${id}/safety`,
+      { model: 'wd-test@abc', rating: { general: 0.1, sensitive: 0.1, questionable: 0.9, explicit: 0 }, tags },
+      'PUT',
+    );
+
+  it('withholds the image of a block Generation but keeps its data readable', async () => {
+    const { generation } = await createGeneration();
+    await putSafety(generation.id, { nipples: 0.5 });
+
+    const image = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
+    expect(image.isError).toBe(false);
+    expect(image.result?.content).toHaveLength(1);
+    expect(image.result?.content?.[0]?.type).toBe('text');
+    expect(image.text).toContain(`/g/${generation.short_id}`);
+    expect(image.structured).toMatchObject({ inlined: false, mime_type: null, verdict: 'block' });
+
+    const detail = await mcpToolCall<{ id: string }>('get_generation', { generation_id: generation.short_id });
+    expect(detail.isError).toBe(false);
+    expect(detail.data?.id).toBe(generation.id);
+  });
+
+  it('returns the image for sensitive and unrated Generations', async () => {
+    const sensitive = await createGeneration();
+    await putSafety(sensitive.generation.id, {});
+    const unrated = await createGeneration();
+
+    const s = await mcpToolCall('get_generation_image', { short_id: sensitive.generation.short_id });
+    expect(s.result?.content?.[0]?.type).toBe('image');
+    expect(s.structured).toMatchObject({ inlined: true, verdict: 'sensitive' });
+
+    const u = await mcpToolCall('get_generation_image', { short_id: unrated.generation.short_id });
+    expect(u.result?.content?.[0]?.type).toBe('image');
+    expect(u.structured).toMatchObject({ inlined: true, verdict: null });
+  });
+});
+
 describe('Run creation enforces the same generation provenance rule', () => {
   it('409s creating a run with a generation, since a new run has no result request yet', async () => {
     const { generation } = await createGeneration();

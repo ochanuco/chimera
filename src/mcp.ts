@@ -64,7 +64,7 @@ import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrC
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
-import { publishWarningFor } from './lib/safety';
+import { computeSafetyVerdict, getSafetyForGeneration, publishWarningFor, type SafetyRating } from './lib/safety';
 import { getGpuStatus } from './lib/gpu-wake';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
@@ -640,16 +640,18 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "client caps a whole response at 1MB, which a full-size PNG blows past once base64-encoded — so it's for " +
         'judging composition, not pixel-level inspection. width (256-1024, default 768) trades detail for a ' +
         'smaller reply. Images too large to inline return the canonical URL instead. A Generation whose original ' +
-        'was purged by the retention job is served from its 1024px preview instead.',
+        'was purged by the retention job is served from its 1024px preview instead. A Generation whose content-rating ' +
+        'verdict is block never returns the image, only the canonical URL; get_generation still returns its data.',
       inputSchema: z.object({ short_id: z.string().min(1), width: z.number().optional() }),
       annotations: { readOnlyHint: true },
     },
     async ({ short_id, width }) => {
       const generation = await resolveGenerationOr404(db, short_id);
-      const sourceKey = generation.original_purged_at ? generationPreviewR2Key(generation.id) : generation.r2_object_key;
-      const head = await bucket.head(sourceKey);
-      if (!head) throw notFound('image');
-
+      const safetyRow = await getSafetyForGeneration(db, generation.id);
+      const verdict = safetyRow
+        ? computeSafetyVerdict(JSON.parse(safetyRow.rating_json) as SafetyRating, JSON.parse(safetyRow.tags_json) as Record<string, number>)
+            .verdict
+        : null;
       const canonicalUrl = canonicalGenerationUrl(origin, generation.short_id);
       const pointer = (reason: string) => ({
         content: [{ type: 'text' as const, text: `${reason} See ${canonicalUrl}` }],
@@ -659,8 +661,16 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           inlined: false,
           mime_type: null,
           reason,
+          verdict,
         } satisfies ImageResult,
       });
+
+      // 画像ブロックが client の内容分類器に当たると、会話ごとコネクタが止まることがある。
+      if (verdict === 'block') return pointer('content-rating verdict is block; the image is not returned.');
+
+      const sourceKey = generation.original_purged_at ? generationPreviewR2Key(generation.id) : generation.r2_object_key;
+      const head = await bucket.head(sourceKey);
+      if (!head) throw notFound('image');
 
       if (head.size > MAX_TRANSFORM_INPUT_BYTES) {
         return pointer(`image is ${head.size} bytes, over the ${MAX_TRANSFORM_INPUT_BYTES} byte transform input limit.`);
@@ -699,6 +709,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           inlined: true,
           mime_type: mimeType,
           reason: null,
+          verdict,
         } satisfies ImageResult,
       };
     },
