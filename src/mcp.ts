@@ -313,7 +313,7 @@ const deriveRequestInputSchema = z
     count: z.number().int().min(1).default(1),
     seeds: z.array(z.number().int()).optional(),
     parameters: jsonObject.optional(),
-    patches: z.array(z.unknown()).optional(),
+    patches: patchesSchema.optional(),
     replace_patches: z.boolean().default(false),
     semantic: z.object({ summary: z.string().min(1) }).passthrough(),
     reference: z.object({ aspect: z.string().optional(), instruction: z.string().optional() }).optional(),

@@ -33,8 +33,11 @@ function checkPatches(patches: unknown, ctx: z.RefinementCtx, basePath: PatchPat
   });
 }
 
-/** `overrides.patches` 単体の検証。Run を作る側 (create_experiment の arm) が overrides を組む前に同じ規則で弾く。 */
-export const patchesSchema = z.array(jsonObject).superRefine((patches, ctx) => checkPatches(patches, ctx, []));
+/** MCP の入力 (create_experiment の arm / derive_request) が受ける patches。object 型で書くのは、必須キーを
+ * tools/list の JSON Schema に `required` として載せ、enqueue 前に弾くため。語彙は検証しない。 */
+export const patchesSchema = z.array(
+  z.object({ target: z.string().min(1), op: z.string().min(1), reason: z.string().min(1) }).passthrough(),
+);
 
 /** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は chagama 側の
  * 実装に属するため検証しない — 保証するのは「diff の形をしているか」だけ (docs/experiment-agent.md)。

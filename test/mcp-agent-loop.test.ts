@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { buildDerivedRequestPayload, type BuildDerivedRequestPayloadInput } from '../src/lib/requests';
-import { createRequest, createGeneration, createJob, getJson, ingestGeneration, mcpToolCall, postJson } from './helpers';
+import { createRequest, createGeneration, createJob, getJson, ingestGeneration, mcpCall, mcpToolCall, postJson } from './helpers';
 
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
@@ -185,6 +185,32 @@ describe('MCP derive_request', () => {
       parameters: { pose: 'seated', costume: 'default' },
       patches: [{ target: 'costume', op: 'set', value: 'v2', reason: 'new' }],
     });
+  });
+
+  it('rejects a patch without reason before enqueueing, and lists reason as required in tools/list', async () => {
+    const { generation } = await createParent();
+    const idempotencyKey = crypto.randomUUID();
+
+    const call = await mcpToolCall('derive_request', {
+      from_generation_id: generation.id,
+      instruction: 'try a variant',
+      count: 1,
+      patches: [{ target: 'prompt.positive.expression', op: 'replace', value: 'smile' }],
+      semantic: { summary: 'smile variant' },
+      idempotency_key: idempotencyKey,
+    });
+    expect(call.isError).toBe(true);
+    expect(call.text).toContain('reason');
+    const queued = await env.DB.prepare('SELECT COUNT(*) AS n FROM requests WHERE idempotency_key = ?')
+      .bind(idempotencyKey)
+      .first<{ n: number }>();
+    expect(queued?.n).toBe(0);
+
+    const { body } = await mcpCall<{
+      tools: { name: string; inputSchema: { properties: { patches: { items: { required?: string[] } } } } }[];
+    }>('tools/list', {});
+    const derive = body.result?.tools.find((t) => t.name === 'derive_request');
+    expect(derive?.inputSchema.properties.patches.items.required).toEqual(['target', 'op', 'reason']);
   });
 
   it('writes identity_override into generation.identity_override without carrying one from the parent', async () => {
