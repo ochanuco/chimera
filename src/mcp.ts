@@ -4,31 +4,6 @@
 
 // 読み取り tool には readOnlyHint を付ける（annotation が無いと副作用ありとみなし、承認待ちで結果を返さない client がある）。
 import { McpServer } from '@modelcontextprotocol/server';
-import { z } from 'zod';
-import {
-  baseParametersSchema,
-  createExperimentRunSchema,
-  experimentStatusSchema,
-  jsonObject,
-  patchesSchema,
-} from './schemas/experiments';
-import {
-  creatableRequestKindSchema,
-  requestKindFilterSchema,
-  requestStatusSchema,
-  RECIPE_REF_RE,
-  payloadEnvelopeIssues,
-  redrawOptionsSchema,
-  deliverOptionsSchema,
-  dofOptionsSchema,
-  lensOptionsSchema,
-  photoOptionsSchema,
-  stageOptionsSchema,
-  lightingOptionsSchema,
-  deliverProfileRefSchema,
-  repairOptionsSchema,
-  maskedRedrawOptionsSchema,
-} from './schemas/requests';
 import { notFound } from './lib/errors';
 import {
   createExperimentRun,
@@ -55,22 +30,57 @@ import {
 import { getGenerationDetail, queryGenerations } from './lib/generations';
 import { getGenerationLineage } from './lib/lineage';
 import { getCatalog, summarizeCatalog, findCatalogPose } from './lib/catalogs';
-import { presetKindSchema } from './schemas/presets';
 import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeResolvedPreset } from './lib/presets';
 import { promoteGenerationToPreset, promoteGenerationToProfile } from './lib/promote';
 import { attachReferences, getCurrentReference, referenceView, setPoseReference } from './lib/preset-references';
 import { buildPlainRenderRequest } from './lib/plain-render';
-import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './schemas/observations';
 import { createObservation, getObservation, listObservations } from './lib/observations';
-import { publicationUrlSchema } from './schemas/publications';
 import { createPublication, serializePublication } from './lib/publications';
 import { computeSafetyVerdict, getSafetyForGeneration, publishWarningFor, type SafetyRating } from './lib/safety';
 import { getGpuStatus } from './lib/gpu-wake';
 import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
-import { mcpOutputSchemas } from './schemas/mcp-output';
+import { mcpOutputs } from './schemas/mcp-output';
+import { presetPromoteRequestSchema, presetPromoteProfileRequestSchema } from './schemas/presets';
+import {
+  attachGenerationInputSchema,
+  createExperimentInputSchema,
+  createRequestInputSchema,
+  createRunInputSchema,
+  deliverGenerationInputSchema,
+  deriveRequestInputSchema,
+  dofGenerationInputSchema,
+  emptyInputSchema,
+  generationLineageInputSchema,
+  getCatalogPoseInputSchema,
+  getGenerationImageInputSchema,
+  getGenerationInputSchema,
+  getPresetInputSchema,
+  getRequestInputSchema,
+  getRunInputSchema,
+  idInputSchema,
+  lensGenerationInputSchema,
+  lightingGenerationInputSchema,
+  listCatalogInputSchema,
+  listExperimentsInputSchema,
+  listGenerationsInputSchema,
+  listObservationsInputSchema,
+  listPresetsInputSchema,
+  listRequestsInputSchema,
+  maskedRedrawGenerationInputSchema,
+  photoGenerationInputSchema,
+  plainRenderInputSchema,
+  recordObservationInputSchema,
+  recordPublicationInputSchema,
+  redrawGenerationInputSchema,
+  repairGenerationInputSchema,
+  setDecisionInputSchema,
+  setEvaluationInputSchema,
+  setPoseReferenceInputSchema,
+  stageGenerationInputSchema,
+} from './schemas/mcp-input';
 import { parseJsonObjectOrNull } from './lib/overrides';
-import { validate } from './lib/validate';
+import { mergedBaseParameters } from './lib/experiment-rules';
 import type { StandardSchemaV1 } from './lib/standard-schema';
 import { foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
 import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
@@ -96,7 +106,7 @@ type Declared<T> = T extends readonly (infer U)[]
     : T;
 
 /** get_generation_image だけは image block を返すため jsonResult を通らず、structuredContent を直に組む。 */
-type ImageResult = Declared<StandardSchemaV1.InferOutput<typeof mcpOutputSchemas.get_generation_image>>;
+type ImageResult = Declared<StandardSchemaV1.InferOutput<typeof mcpOutputs.get_generation_image>>;
 
 // content と structuredContent の両方を返す: outputSchema 宣言時は structuredContent が無いと SDK が
 // ProtocolError にし、outputSchema 未対応の client のため text も要る（MCP SEP-2106 §4.3）。
@@ -144,289 +154,6 @@ function promptPartGuidance(identityOverrideField: string): string {
   );
 }
 
-const createExperimentInputSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string().optional(),
-    character_id: z.string().min(1).optional(),
-    recipe: z.string().min(1),
-    parameters: jsonObject.optional(),
-    seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
-    base_generation_id: z.string().min(1).optional(),
-    arms: z
-      .array(
-        z.object({
-          label: z.string().min(1),
-          instruction: z.string().min(1).optional(),
-          patches: patchesSchema.optional(),
-        }),
-      )
-      .min(1)
-      .max(9),
-    idempotency_key: z.string().min(1),
-  })
-  .superRefine((value, ctx) => {
-    const seen = new Set<string>();
-    value.arms.forEach((arm, i) => {
-      if (seen.has(arm.label)) {
-        ctx.addIssue({ code: 'custom', message: `duplicate arm label '${arm.label}'`, path: ['arms', i, 'label'] });
-      }
-      seen.add(arm.label);
-    });
-    const merged = validate(baseParametersSchema, mergedBaseParameters(value));
-    if (!merged.ok) {
-      for (const issue of merged.issues) {
-        ctx.addIssue({ code: 'custom', message: issue.message, path: ['parameters', ...issue.path] });
-      }
-    }
-  });
-
-/** create_experiment の parameters と seeds を、Experiment に保存する base_parameters にまとめる。 */
-function mergedBaseParameters(input: { parameters?: Record<string, unknown>; seeds?: number[] }): Record<string, unknown> {
-  return { ...(input.parameters ?? {}), ...(input.seeds ? { seeds: input.seeds } : {}) };
-}
-
-const createRunInputSchema = createExperimentRunSchema
-  .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
-  .extend({ experiment_id: z.string().min(1) });
-
-/** REST の createRequestSchema と同じ封筒検証だが、`created_by` は tool 側で 'mcp' に固定するため受け取らない。 */
-const createRequestInputSchema = z
-  .object({
-    kind: creatableRequestKindSchema,
-    payload: jsonObject,
-    recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
-    idempotency_key: z.string().min(1),
-  })
-  .superRefine((value, ctx) => {
-    for (const issue of payloadEnvelopeIssues(value.kind, value.payload)) {
-      ctx.addIssue({ code: 'custom', message: issue.message, path: ['payload', ...issue.path] });
-    }
-  });
-
-/** `redraw_generation` の入力。options は redrawPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
-const redrawGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  options: redrawOptionsSchema,
-  idempotency_key: z.string().min(1),
-});
-
-/** `deliver_generation` の入力。options / profile は deliverPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
-const deliverGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  options: deliverOptionsSchema.optional(),
-  profile: deliverProfileRefSchema.optional(),
-  idempotency_key: z.string().min(1),
-});
-
-/** `dof_generation` の入力。options は dofPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
-const dofGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  focus: dofOptionsSchema.shape.focus,
-  f_number: dofOptionsSchema.shape.f_number,
-  scope: dofOptionsSchema.shape.scope,
-  viewfinder: dofOptionsSchema.shape.viewfinder,
-  stand_at: dofOptionsSchema.shape.stand_at,
-  nearer: dofOptionsSchema.shape.nearer,
-  tilt: dofOptionsSchema.shape.tilt,
-  bokeh: dofOptionsSchema.shape.bokeh,
-  focal_length: dofOptionsSchema.shape.focal_length,
-  idempotency_key: z.string().min(1),
-});
-
-/** `lens_generation` の入力。options は lensPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
-const lensGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  center: lensOptionsSchema.shape.center,
-  strength: lensOptionsSchema.shape.strength,
-  shape: lensOptionsSchema.shape.shape,
-  radius: lensOptionsSchema.shape.radius,
-  idempotency_key: z.string().min(1),
-}).refine((input) => input.radius === undefined || input.shape === 'sphere', {
-  message: 'radius is only for shape "sphere"',
-  path: ['radius'],
-});
-
-/** `photo_generation` の入力。options は photoPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
-const photoGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  photo: photoOptionsSchema.shape.photo,
-  place: photoOptionsSchema.shape.place,
-  height: photoOptionsSchema.shape.height,
-  stand_at: photoOptionsSchema.shape.stand_at,
-  nearer: photoOptionsSchema.shape.nearer,
-  focus: photoOptionsSchema.shape.focus,
-  f_number: photoOptionsSchema.shape.f_number,
-  tilt: photoOptionsSchema.shape.tilt,
-  bokeh: photoOptionsSchema.shape.bokeh,
-  focal_length: photoOptionsSchema.shape.focal_length,
-  idempotency_key: z.string().min(1),
-});
-
-/** `stage_generation` の入力。options は stagePayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
-const stageGenerationInputSchema = z
-  .object({
-    generation_id: z.string().min(1),
-    photo: stageOptionsSchema.shape.photo,
-    place: stageOptionsSchema.shape.place,
-    height: stageOptionsSchema.shape.height,
-    backdrop: stageOptionsSchema.shape.backdrop,
-    shadow_from: stageOptionsSchema.shape.shadow_from,
-    light: stageOptionsSchema.shape.light,
-    idempotency_key: z.string().min(1),
-  })
-  .refine((o) => o.photo !== undefined || (o.place === undefined && o.height === undefined), {
-    message: 'place / height are only for a photo',
-    path: ['place'],
-  })
-  .refine((o) => o.photo === undefined || (o.backdrop === undefined && o.shadow_from === undefined && o.light === undefined), {
-    message: 'backdrop / shadow_from / light are not for a photo',
-    path: ['backdrop'],
-  });
-
-/** `lighting_generation` の入力。 */
-const lightingGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  direction: lightingOptionsSchema.shape.direction,
-  strength: lightingOptionsSchema.shape.strength,
-  scene: lightingOptionsSchema.shape.scene,
-  idempotency_key: z.string().min(1),
-});
-
-/** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
-const repairGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  options: repairOptionsSchema.optional(),
-  idempotency_key: z.string().min(1),
-});
-
-/** `masked_redraw_generation` requires explicit regions and a prompt patch. */
-const maskedRedrawGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  options: maskedRedrawOptionsSchema,
-  idempotency_key: z.string().min(1),
-});
-
-/** `derive_request` の入力。count と seeds の対応は request.json v1 (docs/generation-request.md) の request.seeds が Job 数と一致する必要があるための整合チェック。 */
-const deriveRequestInputSchema = z
-  .object({
-    from_generation_id: z.string().min(1),
-    instruction: z.string().min(1),
-    count: z.number().int().min(1).default(1),
-    seeds: z.array(z.number().int()).optional(),
-    parameters: jsonObject.optional(),
-    patches: patchesSchema.optional(),
-    replace_patches: z.boolean().default(false),
-    semantic: z.object({ summary: z.string().min(1) }).passthrough(),
-    reference: z.object({ aspect: z.string().optional(), instruction: z.string().optional() }).optional(),
-    identity_override: z.string().trim().min(1).optional(),
-    idempotency_key: z.string().min(1),
-    recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.seeds && value.seeds.length !== value.count) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `seeds length (${value.seeds.length}) must equal count (${value.count})`,
-        path: ['seeds'],
-      });
-    }
-  });
-
-const generationLineageInputSchema = z.object({
-  generation_id: z.string().min(1),
-  depth: z.number().int().min(0).max(10).optional(),
-});
-
-/** 1:1 with GET /api/v1/generations's filters (src/lib/generations.ts queryGenerations). */
-const listGenerationsInputSchema = z.object({
-  tag: z.string().min(1).optional(),
-  published: z.boolean().optional(),
-  reference: z.boolean().optional(),
-  rating: z.enum(['bad', 'neutral', 'good']).optional(),
-  bookmark: z.boolean().optional(),
-  character: z.string().min(1).optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
-  limit: z.number().int().min(1).optional(),
-  offset: z.number().int().min(0).optional(),
-});
-
-/** `record_publication` の入力。generation_id は short_id / UUID どちらでも受ける。 */
-const recordPublicationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  url: publicationUrlSchema.nullable().optional(),
-  published_at: z.string().min(1).optional(),
-  idempotency_key: z.string().min(1).optional(),
-});
-
-const listCatalogInputSchema = z.object({ recipe_ref: z.string().regex(RECIPE_REF_RE).default('production') });
-
-const getCatalogPoseInputSchema = z.object({
-  recipe: z.string().min(1),
-  pose: z.string().min(1),
-  recipe_ref: z.string().regex(RECIPE_REF_RE).default('production'),
-});
-
-const listPresetsInputSchema = z.object({
-  recipe: z.string().min(1).optional(),
-  kind: presetKindSchema.optional(),
-  include_deprecated: z.boolean().optional(),
-});
-
-const getPresetInputSchema = z.object({
-  recipe: z.string().min(1),
-  kind: presetKindSchema,
-  name: z.string().min(1),
-  version: z.number().int().positive().optional(),
-});
-
-const promoteToPoseInputSchema = z.object({
-  generation_id: z.string().min(1),
-  name: z.string().min(1),
-  kind: presetKindSchema.default('pose'),
-  base_version: z.number().int().positive().optional(),
-  note: z.string().optional(),
-  idempotency_key: z.string().min(1),
-});
-
-const promoteToProfileInputSchema = z.object({
-  generation_id: z.string().min(1),
-  name: z.string().min(1),
-  note: z.string().optional(),
-  idempotency_key: z.string().min(1),
-});
-
-const setPoseReferenceInputSchema = z.object({
-  recipe: z.string().min(1),
-  pose: z.string().min(1),
-  generation_id: z.string().min(1),
-  idempotency_key: z.string().min(1),
-});
-
-const plainRenderInputSchema = z.object({
-  recipe: z.string().min(1),
-  pose: z.string().min(1),
-  seed: z.number().int().optional(),
-  idempotency_key: z.string().min(1).optional(),
-  recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
-});
-
-const listObservationsInputSchema = z.object({
-  character: z.string().min(1).optional(),
-  pose: z.string().min(1).optional(),
-  component: z.string().min(1).optional(),
-  parameter: z.string().min(1).optional(),
-  outcome: observationOutcomeSchema.optional(),
-  q: z.string().min(1).optional(),
-  limit: z.number().int().min(1).optional(),
-});
-
-const getObservationInputSchema = z.object({ id: z.string().min(1) });
-
-/** observed_at は import 専用 (JSONL 記録日) の欄なので持たない。base は createObservationObjectSchema (schemas/observations.ts) を借り、同じ pose/component 必須 refine をかけ直す。 */
-const recordObservationInputSchema = createObservationObjectSchema.omit({ observed_at: true }).superRefine(requirePoseOrComponent);
-
 /**
  * Server-level guidance in the initialize response: tool descriptions alone leave the client to guess the order
  * of operations, so a client seeing only a rating=good Generation re-invents a pose that already exists in the catalog.
@@ -467,9 +194,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_experiments',
     {
-      outputSchema: mcpOutputSchemas.list_experiments,
+      outputSchema: mcpOutputs.list_experiments,
       description: 'List Experiments, optionally filtered by status. Each item carries its base_recipe/base_parameters and latest Run.',
-      inputSchema: z.object({ status: experimentStatusSchema.optional() }),
+      inputSchema: listExperimentsInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ status }) => {
@@ -496,28 +223,28 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
             : null,
         };
       });
-      return jsonResult(mcpOutputSchemas.list_experiments, { items });
+      return jsonResult(mcpOutputs.list_experiments, { items });
     },
   );
 
   server.registerTool(
     'get_experiment',
     {
-      outputSchema: mcpOutputSchemas.get_experiment,
+      outputSchema: mcpOutputs.get_experiment,
       description: 'Get an Experiment (by id or short_id) with its runs, promotions and tags — same shape as GET /api/v1/experiments/{id}.',
-      inputSchema: z.object({ id: z.string().min(1) }),
+      inputSchema: idInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ id }) => {
       const experiment = await getExperimentOr404(db, id);
-      return jsonResult(mcpOutputSchemas.get_experiment, await getExperimentDetail(db, experiment, origin));
+      return jsonResult(mcpOutputs.get_experiment, await getExperimentDetail(db, experiment, origin));
     },
   );
 
   server.registerTool(
     'create_experiment',
     {
-      outputSchema: mcpOutputSchemas.create_experiment,
+      outputSchema: mcpOutputs.create_experiment,
       description:
         'Non-destructive: only adds a new Experiment and its Runs. Never deletes or overwrites existing data. Idempotent by idempotency_key. ' +
         'This is the way to compare variants: one instruction = one Experiment. Each arm becomes one Run with its own generate request, ' +
@@ -561,7 +288,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         outRuns.push({ id: run.row.id, arm: run.arm, request_id: run.request_id, request_short_id: requestShortId });
       }
       const url = canonicalExperimentUrl(origin, experiment.short_id);
-      return jsonResult(mcpOutputSchemas.create_experiment, {
+      return jsonResult(mcpOutputs.create_experiment, {
         experiment: { id: experiment.id, short_id: experiment.short_id, url, compare_url: `${url}#experiment-compare` },
         runs: outRuns,
         created,
@@ -572,7 +299,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'create_run',
     {
-      outputSchema: mcpOutputSchemas.create_run,
+      outputSchema: mcpOutputs.create_run,
       description:
         "Non-destructive: only adds a new Run record under an Experiment. Never deletes or overwrites existing data. Idempotent by idempotency_key. " +
         'Create a new Run under an Experiment with the given overrides. The Run starts unexecuted (no request result yet). ' +
@@ -601,23 +328,23 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         const requestRow = await getRequestOr404(db, request_id);
         notifyHubInBackground(env, 'queued', requestRow);
       }
-      return jsonResult(mcpOutputSchemas.create_run, { created, run: { ...serializeExperimentRun(row), request_id } });
+      return jsonResult(mcpOutputs.create_run, { created, run: { ...serializeExperimentRun(row), request_id } });
     },
   );
 
   server.registerTool(
     'get_run',
     {
-      outputSchema: mcpOutputSchemas.get_run,
+      outputSchema: mcpOutputs.get_run,
       description: "Get a Run, its result request, and that request's generations (short_id, rating, image dimensions).",
-      inputSchema: z.object({ run_id: z.string().min(1) }),
+      inputSchema: getRunInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ run_id }) => {
       const run = await getRunOr404(db, run_id);
       const { decorated, experiment } = await getRunWithExperimentContext(db, run, origin);
       const generations = await listGenerationsLightForRun(db, run.id, origin);
-      return jsonResult(mcpOutputSchemas.get_run, {
+      return jsonResult(mcpOutputs.get_run, {
         ...decorated,
         experiment: {
           id: experiment.id,
@@ -636,7 +363,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_generation_image',
     {
-      outputSchema: mcpOutputSchemas.get_generation_image,
+      outputSchema: mcpOutputs.get_generation_image,
       description:
         'Fetch a Generation image by short_id (or id). Returns it downscaled and re-encoded as JPEG — the MCP ' +
         "client caps a whole response at 1MB, which a full-size PNG blows past once base64-encoded — so it's for " +
@@ -644,7 +371,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'smaller reply. Images too large to inline return the canonical URL instead. A Generation whose original ' +
         'was purged by the retention job is served from its 1024px preview instead. A Generation whose content-rating ' +
         'verdict is block never returns the image, only the canonical URL; get_generation still returns its data.',
-      inputSchema: z.object({ short_id: z.string().min(1), width: z.number().optional() }),
+      inputSchema: getGenerationImageInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ short_id, width }) => {
@@ -720,56 +447,56 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'attach_generation',
     {
-      outputSchema: mcpOutputSchemas.attach_generation,
+      outputSchema: mcpOutputs.attach_generation,
       description:
         "Non-destructive: records which Generation represents a Run; it does not modify or delete the Generation or the Run's request. " +
         'Attach a Generation (the representative result) to a Run. The Run must already have a result request, and the Generation must belong to that request. 409s if the Run already has a different Generation attached, if the Run has no result request yet, or if the Generation belongs to a different request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: z.object({ run_id: z.string().min(1), generation_id: z.string().min(1) }),
+      inputSchema: attachGenerationInputSchema,
     },
     async ({ run_id, generation_id }) => {
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { generation_id });
-      return jsonResult(mcpOutputSchemas.attach_generation, serializeExperimentRun(updated));
+      return jsonResult(mcpOutputs.attach_generation, serializeExperimentRun(updated));
     },
   );
 
   server.registerTool(
     'set_evaluation',
     {
-      outputSchema: mcpOutputSchemas.set_evaluation,
+      outputSchema: mcpOutputs.set_evaluation,
       description:
         "Non-destructive: writes a note-like evaluation object on a Run; nothing is deleted, published or sent. " + 'Set (or clear with null) a Run’s evaluation. Arbitrary JSON object; chimera does not validate its shape.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: z.object({ run_id: z.string().min(1), evaluation: jsonObject.nullable() }),
+      inputSchema: setEvaluationInputSchema,
     },
     async ({ run_id, evaluation }) => {
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { evaluation });
-      return jsonResult(mcpOutputSchemas.set_evaluation, serializeExperimentRun(updated));
+      return jsonResult(mcpOutputs.set_evaluation, serializeExperimentRun(updated));
     },
   );
 
   server.registerTool(
     'set_decision',
     {
-      outputSchema: mcpOutputSchemas.set_decision,
+      outputSchema: mcpOutputs.set_decision,
       description:
         "Non-destructive: writes a note-like decision object on a Run; nothing is deleted, published or sent. " + 'Set (or clear with null) a Run’s decision. Arbitrary JSON object; chimera does not validate its shape.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: z.object({ run_id: z.string().min(1), decision: jsonObject.nullable() }),
+      inputSchema: setDecisionInputSchema,
     },
     async ({ run_id, decision }) => {
       const run = await getRunOr404(db, run_id);
       const updated = await updateExperimentRun(db, run, { decision });
-      return jsonResult(mcpOutputSchemas.set_decision, serializeExperimentRun(updated));
+      return jsonResult(mcpOutputs.set_decision, serializeExperimentRun(updated));
     },
   );
 
   server.registerTool(
     'create_request',
     {
-      outputSchema: mcpOutputSchemas.create_request,
+      outputSchema: mcpOutputs.create_request,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
@@ -793,14 +520,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.create_request, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.create_request, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'redraw_generation',
     {
-      outputSchema: mcpOutputSchemas.redraw_generation,
+      outputSchema: mcpOutputs.redraw_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a redraw request (docs/worker-protocol.md "redraw"): the worker redraws the source picture in exactly ' +
@@ -831,14 +558,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.redraw_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.redraw_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'deliver_generation',
     {
-      outputSchema: mcpOutputSchemas.deliver_generation,
+      outputSchema: mcpOutputs.deliver_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a deliver request (docs/worker-protocol.md "deliver"): cuts the figure out of the source picture and ' +
@@ -890,14 +617,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.deliver_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.deliver_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'dof_generation',
     {
-      outputSchema: mcpOutputSchemas.dof_generation,
+      outputSchema: mcpOutputs.dof_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a dof request (docs/worker-protocol.md "dof"): depth-of-field blur of a delivered picture, made from its ' +
@@ -931,14 +658,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.dof_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.dof_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'lens_generation',
     {
-      outputSchema: mcpOutputSchemas.lens_generation,
+      outputSchema: mcpOutputs.lens_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a lens request (docs/worker-protocol.md "lens"): bend a delivered picture through a fisheye or its ' +
@@ -969,14 +696,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.lens_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.lens_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'photo_generation',
     {
-      outputSchema: mcpOutputSchemas.photo_generation,
+      outputSchema: mcpOutputs.photo_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a photo request (docs/worker-protocol.md "photo"): stand a delivered picture\'s figure and outline bands, ' +
@@ -1017,14 +744,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.photo_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.photo_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'stage_generation',
     {
-      outputSchema: mcpOutputSchemas.stage_generation,
+      outputSchema: mcpOutputs.stage_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a stage request (docs/worker-protocol.md "stage"): set a delivered picture\'s figure and outline layers on a ' +
@@ -1056,14 +783,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.stage_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.stage_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'lighting_generation',
     {
-      outputSchema: mcpOutputSchemas.lighting_generation,
+      outputSchema: mcpOutputs.lighting_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a lighting request (docs/worker-protocol.md "lighting"): light a staged picture\'s figure and outline by its ' +
@@ -1088,14 +815,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.lighting_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.lighting_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'repair_generation',
     {
-      outputSchema: mcpOutputSchemas.repair_generation,
+      outputSchema: mcpOutputs.repair_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a repair request (docs/worker-protocol.md "repair"): a masked local redraw of hands and/or feet ' +
@@ -1123,14 +850,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.repair_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.repair_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'masked_redraw_generation',
     {
-      outputSchema: mcpOutputSchemas.masked_redraw_generation,
+      outputSchema: mcpOutputs.masked_redraw_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a generic masked redraw / garment inpaint request (docs/worker-protocol.md "masked_redraw"): ' +
@@ -1154,43 +881,38 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.masked_redraw_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.masked_redraw_generation, { created, request: serializeRequest(row) });
     },
   );
 
   server.registerTool(
     'get_request',
     {
-      outputSchema: mcpOutputSchemas.get_request,
+      outputSchema: mcpOutputs.get_request,
       description:
         'Get a requests row by id, including its payload and (once done/failed) result/error. ' +
         'Prompt bodies (prompt overrides, prompt patches) in the payload are folded to a length marker by default; ' +
         'pass include_prompts: true only when you actually need the text.',
-      inputSchema: z.object({ id: z.string().min(1), include_prompts: z.boolean().default(false) }),
+      inputSchema: getRequestInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ id, include_prompts }) => {
       const row = await getRequestOr404(db, id);
       const serialized = serializeRequest(row);
       const payload = include_prompts ? serialized.payload : foldRequestPayloadPrompts(serialized.payload);
-      return jsonResult(mcpOutputSchemas.get_request, { ...serialized, payload });
+      return jsonResult(mcpOutputs.get_request, { ...serialized, payload });
     },
   );
 
   server.registerTool(
     'list_requests',
     {
-      outputSchema: mcpOutputSchemas.list_requests,
+      outputSchema: mcpOutputs.list_requests,
       description:
         'List requests rows, optionally filtered by status, kind, or run_id. Read-only; does not claim. ' +
         'Prompt bodies (prompt overrides, prompt patches) in each payload are folded to a length marker by default; ' +
         'pass include_prompts: true only when you actually need the text.',
-      inputSchema: z.object({
-        status: requestStatusSchema.optional(),
-        kind: requestKindFilterSchema.optional(),
-        run_id: z.string().min(1).optional(),
-        include_prompts: z.boolean().default(false),
-      }),
+      inputSchema: listRequestsInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ status, kind, run_id, include_prompts }) => {
@@ -1200,14 +922,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         const payload = include_prompts ? serialized.payload : foldRequestPayloadPrompts(serialized.payload);
         return { ...serialized, payload };
       });
-      return jsonResult(mcpOutputSchemas.list_requests, { items });
+      return jsonResult(mcpOutputs.list_requests, { items });
     },
   );
 
   server.registerTool(
     'list_generations',
     {
-      outputSchema: mcpOutputSchemas.list_generations,
+      outputSchema: mcpOutputs.list_generations,
       description:
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
         '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, repair_generation, ' +
@@ -1236,7 +958,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         offset: offset === undefined ? undefined : String(offset),
       };
       const { items, total } = await queryGenerations(db, query, origin);
-      return jsonResult(mcpOutputSchemas.list_generations, {
+      return jsonResult(mcpOutputs.list_generations, {
         items: items.map((item) => ({
           short_id: item.short_id,
           rating: item.rating,
@@ -1259,7 +981,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_generation',
     {
-      outputSchema: mcpOutputSchemas.get_generation,
+      outputSchema: mcpOutputs.get_generation,
       description:
         'Get a Generation (by id or short_id) with its request, comfy_job (graph/render_facts) and reference links — same shape as GET /api/v1/generations/{id}. ' +
         'request is the generation request this Generation belongs to: {id, short_id, kind, recipe, raw_instruction, prompt, ' +
@@ -1275,20 +997,20 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Prompt bodies (request prompt/negative_prompt/parameters.prompt_patch/prompt patches, render_facts sampler prompts, the ComfyUI graph) are folded to a ' +
         'length marker by default (the graph becomes null with comfy_job.graph_omitted: true); pass include_prompts: true ' +
         'only when you actually need the text.',
-      inputSchema: z.object({ generation_id: z.string().min(1), include_prompts: z.boolean().default(false) }),
+      inputSchema: getGenerationInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ generation_id, include_prompts }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const detail = await getGenerationDetail(db, origin, generation);
-      return jsonResult(mcpOutputSchemas.get_generation, include_prompts ? detail : foldGenerationDetailPrompts(detail));
+      return jsonResult(mcpOutputs.get_generation, include_prompts ? detail : foldGenerationDetailPrompts(detail));
     },
   );
 
   server.registerTool(
     'get_generation_lineage',
     {
-      outputSchema: mcpOutputSchemas.get_generation_lineage,
+      outputSchema: mcpOutputs.get_generation_lineage,
       description:
         'Walk a Generation\'s request lineage: ancestors (material requests it referenced, and the request it was refined from) ' +
         'and descendants (requests that referenced or were refined from it), each annotated with how they connect ' +
@@ -1299,14 +1021,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ generation_id, depth }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
-      return jsonResult(mcpOutputSchemas.get_generation_lineage, await getGenerationLineage(db, generation, depth));
+      return jsonResult(mcpOutputs.get_generation_lineage, await getGenerationLineage(db, generation, depth));
     },
   );
 
   server.registerTool(
     'derive_request',
     {
-      outputSchema: mcpOutputSchemas.derive_request,
+      outputSchema: mcpOutputs.derive_request,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything, and never modifies the parent Generation. Idempotent by idempotency_key. " +
         'Enqueue a generate request derived from an existing Generation: carries the parent request\'s recipe/parameters/patches ' +
@@ -1372,7 +1094,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.derive_request, {
+      return jsonResult(mcpOutputs.derive_request, {
         created,
         request: serializeRequest(row),
         payload,
@@ -1387,7 +1109,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'list_catalog',
     {
-      outputSchema: mcpOutputSchemas.list_catalog,
+      outputSchema: mcpOutputs.list_catalog,
       description:
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
         'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
@@ -1405,7 +1127,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     async ({ recipe_ref }) => {
       const found = await getCatalog(db, recipe_ref);
       if (!found) throw notFound(`recipe catalog '${recipe_ref}'`);
-      return jsonResult(mcpOutputSchemas.list_catalog, {
+      return jsonResult(mcpOutputs.list_catalog, {
         recipe_ref: found.row.recipe_ref,
         published_at: found.row.published_at,
         updated_at: found.row.updated_at,
@@ -1417,20 +1139,20 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_gpu_status',
     {
-      outputSchema: mcpOutputSchemas.get_gpu_status,
+      outputSchema: mcpOutputs.get_gpu_status,
       description:
         'Report the power state of the GPU machine whose worker claims queued requests: ' +
         'online / going_to_sleep / sleeping / offline / waking, with since, reason and last_seen. ' +
         'The machine sleeps after 10 idle minutes and every tool that queues a request wakes it (about 10 s from sleep), ' +
         'so a sleeping or waking state only means queued requests start a little later. ' +
         'state is null and error says why when the status could not be read.',
-      inputSchema: z.object({}),
+      inputSchema: emptyInputSchema,
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async () => {
       const result = await getGpuStatus(env);
       return jsonResult(
-        mcpOutputSchemas.get_gpu_status,
+        mcpOutputs.get_gpu_status,
         result.ok
           ? { ...result.status, error: null }
           : { state: null, since: null, reason: null, last_seen: null, error: result.error },
@@ -1441,7 +1163,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'get_catalog_pose',
     {
-      outputSchema: mcpOutputSchemas.get_catalog_pose,
+      outputSchema: mcpOutputs.get_catalog_pose,
       description:
         'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production"). ' +
         'Where the recipe splits its prompt into parts, `parts` is [{name, text}] in order (the texts concatenate to the ' +
@@ -1458,14 +1180,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const reference = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
       // catalog は本文を持たない pose を裸の名前文字列で書ける。structuredContent は object 必須なのでここで {name} に揃える。
       const recordObject = typeof record === 'string' ? { name: record } : (record as Record<string, unknown>);
-      return jsonResult(mcpOutputSchemas.get_catalog_pose, { ...recordObject, reference });
+      return jsonResult(mcpOutputs.get_catalog_pose, { ...recordObject, reference });
     },
   );
 
   server.registerTool(
     'list_presets',
     {
-      outputSchema: mcpOutputSchemas.list_presets,
+      outputSchema: mcpOutputs.list_presets,
       description:
         'List Presets (pose/costume/expression/deliver), one row per name at its latest version — no record body. ' +
         "Unlike list_catalog/get_catalog_pose, which read the chagama catalog snapshot, Presets are " +
@@ -1479,14 +1201,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         recipe,
         kind,
       });
-      return jsonResult(mcpOutputSchemas.list_presets, { items });
+      return jsonResult(mcpOutputs.list_presets, { items });
     },
   );
 
   server.registerTool(
     'get_preset',
     {
-      outputSchema: mcpOutputSchemas.get_preset,
+      outputSchema: mcpOutputs.get_preset,
       description:
         'Get a Preset resolved to its full body: record plus, for a promoted version, the patches accumulated ' +
         "from its base chain (oldest first). version defaults to the name's latest active version; an explicit " +
@@ -1502,14 +1224,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (!row) throw notFound(`preset '${recipe}/${kind}/${name}'`);
       const resolved = await resolvePreset(db, row);
       const reference = await referenceView(db, await getCurrentReference(db, row.recipe, row.kind, row.name));
-      return jsonResult(mcpOutputSchemas.get_preset, { ...serializeResolvedPreset(row, resolved), reference });
+      return jsonResult(mcpOutputs.get_preset, { ...serializeResolvedPreset(row, resolved), reference });
     },
   );
 
   server.registerTool(
     'promote_to_pose',
     {
-      outputSchema: mcpOutputSchemas.promote_to_pose,
+      outputSchema: mcpOutputs.promote_to_pose,
       description:
         'Non-destructive: only appends one new Preset version. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
         'Turn a rating=good Generation into a new Preset version (docs/worker-protocol.md「preset の移行」段階 B). ' +
@@ -1523,7 +1245,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'neither a pin nor base_version is available. idempotency_key replay returns the already-created version ' +
         'unchanged.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: promoteToPoseInputSchema,
+      inputSchema: presetPromoteRequestSchema,
     },
     async ({ generation_id, name, kind, base_version, note, idempotency_key }) => {
       const result = await promoteGenerationToPreset(db, {
@@ -1536,14 +1258,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         created_by: 'mcp',
       });
       const reference = await referenceView(db, await getCurrentReference(db, result.recipe, result.kind, result.name));
-      return jsonResult(mcpOutputSchemas.promote_to_pose, { ...result, reference });
+      return jsonResult(mcpOutputs.promote_to_pose, { ...result, reference });
     },
   );
 
   server.registerTool(
     'set_pose_reference',
     {
-      outputSchema: mcpOutputSchemas.set_pose_reference,
+      outputSchema: mcpOutputs.set_pose_reference,
       description:
         'Non-destructive: only appends one new preset_references row. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
         'Pins generation_id as the basis render for recipe/pose — the render plain_render reproduces (at its seed) as the ' +
@@ -1564,14 +1286,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async ({ recipe, pose, generation_id, idempotency_key }) => {
       const result = await setPoseReference(db, { recipe, pose, generation_id, idempotency_key, created_by: 'mcp' });
-      return jsonResult(mcpOutputSchemas.set_pose_reference, result);
+      return jsonResult(mcpOutputs.set_pose_reference, result);
     },
   );
 
   server.registerTool(
     'plain_render',
     {
-      outputSchema: mcpOutputSchemas.plain_render,
+      outputSchema: mcpOutputs.plain_render,
       description:
         'Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never ' +
         'deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
@@ -1595,7 +1317,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
       if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputSchemas.plain_render, {
+      return jsonResult(mcpOutputs.plain_render, {
         created,
         request: serializeRequest(row),
         payload: built.payload,
@@ -1608,7 +1330,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   server.registerTool(
     'promote_to_profile',
     {
-      outputSchema: mcpOutputSchemas.promote_to_profile,
+      outputSchema: mcpOutputs.promote_to_profile,
       description:
         'Non-destructive: only appends one new Preset version. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. ' +
         'Turn a rating=good deliver-kind Generation into a new kind="deliver" Preset version (a reusable profile of ' +
@@ -1620,19 +1342,19 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'idempotency_key replay returns the already-created version unchanged. Use the result with ' +
         'deliver_generation\'s profile input or list_presets kind="deliver".',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: promoteToProfileInputSchema,
+      inputSchema: presetPromoteProfileRequestSchema,
     },
     async ({ generation_id, name, note, idempotency_key }) => {
       const result = await promoteGenerationToProfile(db, { generation_id, name, note, idempotency_key, created_by: 'mcp' });
       const reference = await referenceView(db, await getCurrentReference(db, result.recipe, result.kind, result.name));
-      return jsonResult(mcpOutputSchemas.promote_to_profile, { ...result, reference });
+      return jsonResult(mcpOutputs.promote_to_profile, { ...result, reference });
     },
   );
 
   server.registerTool(
     'list_observations',
     {
-      outputSchema: mcpOutputSchemas.list_observations,
+      outputSchema: mcpOutputs.list_observations,
       description:
         "List Observations, chimera's index of chagama' experiments/ records (docs/domain-model.md#observation). " +
         'The index is not the source of truth — it can lag the JSONL files. Observation is history, not the current rule; ' +
@@ -1648,29 +1370,29 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { character, pose, component, parameter, outcome, q },
         { limit: limit ?? 50, offset: 0 },
       );
-      return jsonResult(mcpOutputSchemas.list_observations, { items, total });
+      return jsonResult(mcpOutputs.list_observations, { items, total });
     },
   );
 
   server.registerTool(
     'get_observation',
     {
-      outputSchema: mcpOutputSchemas.get_observation,
+      outputSchema: mcpOutputs.get_observation,
       description: 'Get one Observation by id (docs/domain-model.md#observation). 404s (as a tool error) when not found.',
-      inputSchema: getObservationInputSchema,
+      inputSchema: idInputSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ id }) => {
       const row = await getObservation(db, id);
       if (!row) throw notFound('observation');
-      return jsonResult(mcpOutputSchemas.get_observation, row);
+      return jsonResult(mcpOutputs.get_observation, row);
     },
   );
 
   server.registerTool(
     'record_observation',
     {
-      outputSchema: mcpOutputSchemas.record_observation,
+      outputSchema: mcpOutputs.record_observation,
       description:
         'Non-destructive: only appends one new Observation. Never deletes, overwrites, publishes or sends anything. ' +
         'Records what was tried for one parameter and what happened (docs/domain-model.md#observation). Requires pose and/or ' +
@@ -1686,14 +1408,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     },
     async (input) => {
       const row = await createObservation(db, input, 'mcp');
-      return jsonResult(mcpOutputSchemas.record_observation, row);
+      return jsonResult(mcpOutputs.record_observation, row);
     },
   );
 
   server.registerTool(
     'record_publication',
     {
-      outputSchema: mcpOutputSchemas.record_publication,
+      outputSchema: mcpOutputs.record_publication,
       description:
         'Non-destructive: only records that a Generation was posted (docs/domain-model.md#publication). Never deletes, ' +
         'overwrites, or sends anything — it does not post to X itself, it just records that a posting happened. The response carries `warning` (non-null when the Generation content-rating verdict is block or sensitive; the posting is still recorded, never rejected). url is ' +
@@ -1711,7 +1433,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         idempotencyKey: idempotency_key,
       });
       const warning = await publishWarningFor(db, generation.id);
-      return jsonResult(mcpOutputSchemas.record_publication, { ...serializePublication(row), warning });
+      return jsonResult(mcpOutputs.record_publication, { ...serializePublication(row), warning });
     },
   );
 
