@@ -280,7 +280,7 @@ export const lightingPayloadSchema = z
   })
   .strict();
 
-/** generate の payload は request.json v1 をそのまま包む (generation-request.md)。chimera が検証するのは封筒の形だけで、中身の語彙は検証しない。 */
+/** generate の payload は request.json v1 をそのまま包む (generation-request.md)。この schema が検証するのは封筒の形だけで、中身の語彙は見ない (`generation.patches` の文法だけは作成時に lib/patch-grammar.ts が見る)。 */
 export const generatePayloadSchema = z
   .object({
     schema_version: z.literal(1),

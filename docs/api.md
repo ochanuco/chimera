@@ -377,10 +377,12 @@ Run を返します（新規作成は201、再送は200）。同じキーを別�
 `overrides` は `{}` か `{"patches": [...]}` のどちらかで、それ以外のキーが
 トップレベルにあると400です。各 patch は `target` / `op` / `reason`
 を持つオブジェクトで、いずれも非空文字列である必要があります（`value` /
-`old` の有無・型は検証しません）。`pose` / `costume` のような生成パラメータは
+`old` の有無・型は封筒では検証しません）。`pose` / `costume` のような生成パラメータは
 overrides ではなく Experiment の `base_parameters` に属します。同じ検証は
 PATCH /api/v1/experiment-runs/{id} と Promotion の `promoted_overrides`
-にも適用されます。
+にも適用されます。作成時にはさらに、既定の `recipe_ref` のカタログが `patches` の文法を公開していれば
+その文法でも検査し、違反は `overrides.patches.N.field: message` の形で400です（PATCH と
+`promoted_overrides` には掛けません。[generation-request.md「作成時の文法検査」](generation-request.md#作成時の文法検査)）。
 
 `variables` は省略可能な、キー文字列 → `string | number` のフラットな
 マップです（ネストしたオブジェクト・配列・真偽値・null は400）。プロンプトの
@@ -855,8 +857,10 @@ key だけです。同じ key の再送は既にある行をそのまま 200 で
 
 chagama 側の recipe（pose / costume / expression の一覧、patches の語彙、
 git 情報）を worker が起動のたびに公開するスナップショットです。recipe_ref
-単位で最新の1件だけを持ち（履歴は持ちません）、chimera は語彙を検証も解釈もせず
-そのまま保存・返却します。pose 名に加えて recipe ごとの `parameters` の可否、`patches` の
+単位で最新の1件だけを持ち（履歴は持ちません）、chimera は `PUT` では語彙を検証も解釈もせず
+そのまま保存・返却します。例外は `patches` ブロックで、Request と Run の作成時に patch の
+文法検査の正本として読みます（[generation-request.md「作成時の文法検査」](generation-request.md#作成時の文法検査)）。
+pose 名に加えて recipe ごとの `parameters` の可否、`patches` の
 語彙、model、canvas を運ぶ capability document でもあるため、Preset の導入後も残ります。
 
 ``` text
