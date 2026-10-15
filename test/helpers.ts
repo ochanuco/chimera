@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { app } from '../src/app';
-import { mcpOutputSchemas } from '../src/schemas/mcp-output';
+import { mcpOutputs } from '../src/schemas/mcp-output';
+import { formatValidationIssues, validate } from '../src/lib/validate';
 
 const BASE = 'https://chimera.test';
 
@@ -82,11 +83,11 @@ export async function mcpToolCall<T = unknown>(name: string, args: unknown, id: 
   const { status, body } = await mcpCall<McpToolCallResult>('tools/call', { name, arguments: args }, id);
   const result = body.result;
   if (result && result.isError !== true && result.structuredContent !== undefined) {
-    const schema = mcpOutputSchemas[name as keyof typeof mcpOutputSchemas];
+    const schema = mcpOutputs[name as keyof typeof mcpOutputs];
     if (!schema) throw new Error(`no outputSchema registered for MCP tool '${name}'`);
-    const parsed = schema.safeParse(result.structuredContent);
-    if (!parsed.success) {
-      throw new Error(`MCP tool '${name}' structuredContent violates its outputSchema: ${parsed.error.message}`);
+    const parsed = validate(schema, result.structuredContent);
+    if (!parsed.ok) {
+      throw new Error(`MCP tool '${name}' structuredContent violates its outputSchema: ${formatValidationIssues(parsed.issues)}`);
     }
   }
   const firstText = result?.content?.[0]?.text;

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { renameTagSchema } from '../schemas/tags';
 import { nowIso } from '../lib/db';
 import { conflict, notFound } from '../lib/errors';
+import { parseOrThrow } from '../lib/validate';
 import type { AppEnv, TagRow } from '../types';
 
 export const tags = new Hono<AppEnv>();
@@ -26,7 +27,7 @@ tags.get('/', async (c) => {
 });
 
 tags.patch('/:id', async (c) => {
-  const body = renameTagSchema.parse(await c.req.json());
+  const body = parseOrThrow(renameTagSchema, await c.req.json());
   const db = c.env.DB;
 
   const row = await db.prepare('SELECT * FROM tags WHERE id = ?').bind(c.req.param('id')).first<TagRow>();

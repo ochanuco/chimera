@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
+import { poseOrComponentIssues } from '../lib/observation-rules';
+import { addIssues } from './issues';
 
 export const observationOutcomeSchema = z.enum(['accepted', 'rejected', 'inconclusive']);
 
@@ -41,11 +44,9 @@ export const createObservationObjectSchema = z.object({
 });
 
 export function requirePoseOrComponent(value: { pose?: string; component?: string }, ctx: z.RefinementCtx): void {
-  if (!value.pose && !value.component) {
-    ctx.addIssue({ code: 'custom', message: 'pose か component の少なくとも一方が必要です', path: ['pose'] });
-  }
+  addIssues(ctx, poseOrComponentIssues(value));
 }
 
 export const createObservationSchema = createObservationObjectSchema.superRefine(requirePoseOrComponent);
 
-export type CreateObservationInput = z.infer<typeof createObservationObjectSchema>;
+export type CreateObservationInput = StandardSchemaV1.InferOutput<typeof createObservationObjectSchema>;

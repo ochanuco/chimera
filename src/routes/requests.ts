@@ -20,6 +20,7 @@ import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
 import { nowIso, parsePagination } from '../lib/db';
 import { badRequest } from '../lib/errors';
+import { parseOrThrow, validate } from '../lib/validate';
 import type { AppEnv, RequestKind, RequestStatus } from '../types';
 
 export const requests = new Hono<AppEnv>();
@@ -28,7 +29,7 @@ export const requests = new Hono<AppEnv>();
 requests.get('/ws', viewerWs);
 
 requests.post('/', async (c) => {
-  const body = createRequestSchema.parse(await c.req.json());
+  const body = parseOrThrow(createRequestSchema, await c.req.json());
   const db = c.env.DB;
   const { kind, payload, recipe_ref, idempotency_key, created_by, status: _status, run_id, ...rest } = body;
   const resolution = kind === 'import' ? { ...rest, parameters: rest.parameters! } : undefined;
@@ -51,16 +52,16 @@ requests.get('/', async (c) => {
   if (query.pending === 'true') {
     status = 'queued';
   } else if (query.status) {
-    const parsed = requestStatusSchema.safeParse(query.status);
-    if (!parsed.success) throw badRequest(`invalid status '${query.status}'`);
-    status = parsed.data;
+    const parsed = validate(requestStatusSchema, query.status);
+    if (!parsed.ok) throw badRequest(`invalid status '${query.status}'`);
+    status = parsed.value;
   }
 
   let kind: RequestKind | undefined;
   if (query.kind) {
-    const parsed = requestKindFilterSchema.safeParse(query.kind);
-    if (!parsed.success) throw badRequest(`invalid kind '${query.kind}'`);
-    kind = parsed.data;
+    const parsed = validate(requestKindFilterSchema, query.kind);
+    if (!parsed.ok) throw badRequest(`invalid kind '${query.kind}'`);
+    kind = parsed.value;
   }
 
   const rows = await listRequests(
@@ -73,7 +74,7 @@ requests.get('/', async (c) => {
 });
 
 requests.post('/claim', async (c) => {
-  const body = claimRequestSchema.parse(await c.req.json());
+  const body = parseOrThrow(claimRequestSchema, await c.req.json());
   const db = c.env.DB;
   const { row, requeued } = await claimRequest(db, body.worker_id, body.kinds);
   // 戻した行の queued より先に worker_seen を届け、claim した worker のために GPU 機を起こさない。
@@ -115,7 +116,7 @@ requests.get('/:id', async (c) => {
 });
 
 requests.put('/:id/resolution', async (c) => {
-  const { worker_id, ...input } = putResolutionSchema.parse(await c.req.json());
+  const { worker_id, ...input } = parseOrThrow(putResolutionSchema, await c.req.json());
   const db = c.env.DB;
   const row = await getRequestOr404(db, c.req.param('id'));
   await putResolution(db, row, input, worker_id);
@@ -124,13 +125,13 @@ requests.put('/:id/resolution', async (c) => {
 });
 
 requests.put('/:id/timings', async (c) => {
-  const body = putTimingsSchema.parse(await c.req.json());
+  const body = parseOrThrow(putTimingsSchema, await c.req.json());
   await putRequestTimings(c.env.DB, c.req.param('id'), body);
   return c.json({ ok: true });
 });
 
 requests.post('/:id/jobs', async (c) => {
-  const body = createJobSchema.parse(await c.req.json());
+  const body = parseOrThrow(createJobSchema, await c.req.json());
   const db = c.env.DB;
   const row = await getRequestOr404(db, c.req.param('id'));
   const { status, job } = await createRequestJob(db, row, body);
@@ -138,7 +139,7 @@ requests.post('/:id/jobs', async (c) => {
 });
 
 requests.patch('/:id', async (c) => {
-  const body = updateRequestSchema.parse(await c.req.json());
+  const body = parseOrThrow(updateRequestSchema, await c.req.json());
   const db = c.env.DB;
   const row = await getRequestOr404(db, c.req.param('id'));
   const updated = await updateRequest(db, row, body);

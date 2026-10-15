@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 // role is free-form by design (no enum) — vocabulary lives in docs/domain-model.md, not code.
 const tokenSchema = z
@@ -14,4 +15,4 @@ export const ingestGenerationAssetMetadataSchema = z.object({
   content_type: z.string().min(1).optional(),
 });
 
-export type IngestGenerationAssetMetadataInput = z.infer<typeof ingestGenerationAssetMetadataSchema>;
+export type IngestGenerationAssetMetadataInput = StandardSchemaV1.InferOutput<typeof ingestGenerationAssetMetadataSchema>;

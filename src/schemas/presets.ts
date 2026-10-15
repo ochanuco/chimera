@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { RECIPE_REF_RE, deliverOptionsSchema } from './requests';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
+import { RECIPE_REF_RE } from '../lib/request-rules';
+import { deliverOptionsSchema } from './request-payloads';
 
 export const presetKindSchema = z.enum(['pose', 'costume', 'expression', 'deliver']);
 
@@ -38,7 +40,7 @@ export const presetBodyDeliverSchema = z.object({ options: deliverOptionsSchema 
 
 export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema, presetBodyDeliverSchema]);
 
-export type PresetBody = z.infer<typeof presetBodySchema>;
+export type PresetBody = StandardSchemaV1.InferOutput<typeof presetBodySchema>;
 
 export const presetPromoteProfileRequestSchema = z.object({
   generation_id: z.string().min(1),

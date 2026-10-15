@@ -6,6 +6,7 @@ import { getCatalog } from './catalogs';
 import { badRequest, conflict, notFound } from './errors';
 import { presetBodySchema, presetBodyDeliverSchema, type PresetBody } from '../schemas/presets';
 import { uuidv7 } from './uuidv7';
+import { parseOrThrow } from './validate';
 import type { JsonObject } from './overrides';
 import type { PresetKind, PresetRow, PresetSource, PresetStatus } from '../types';
 
@@ -366,7 +367,7 @@ export async function resolvePreset(db: D1Database, row: PresetRow): Promise<Res
   let current = row;
 
   for (let depth = 0; depth < MAX_RESOLVE_DEPTH; depth++) {
-    const body = presetBodySchema.parse(JSON.parse(current.body_json));
+    const body = parseOrThrow(presetBodySchema, JSON.parse(current.body_json));
     bodies.push(body);
 
     if ('recipe_pose' in body) {
@@ -431,7 +432,7 @@ export async function applyDeliverProfile(db: D1Database, payload: JsonObject): 
   const row = await getPresetRow(db, owner.recipe, 'deliver', profile.name, version);
   if (!row) throw notFound('deliver profile');
 
-  const body = presetBodyDeliverSchema.parse(JSON.parse(row.body_json));
+  const body = parseOrThrow(presetBodyDeliverSchema, JSON.parse(row.body_json));
   const requestOptions = isJsonObject(payload.options) ? payload.options : {};
 
   return {
@@ -462,7 +463,7 @@ export async function listDeliverProfiles(db: D1Database, recipe: string): Promi
     .all<PresetRow>();
 
   return (results ?? []).map((row) => {
-    const body = presetBodyDeliverSchema.parse(JSON.parse(row.body_json));
+    const body = parseOrThrow(presetBodyDeliverSchema, JSON.parse(row.body_json));
     return { name: row.name, version: row.version, options: body.options as JsonObject };
   });
 }

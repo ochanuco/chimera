@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StandardSchemaV1 } from '../lib/standard-schema';
 
 /** Envelope-only: vocabulary (pose/costume/expression, patches shapes) belongs to chagama; chimera stores and republishes without interpreting it (docs/api.md「Recipe Catalog」). */
 export const recipeCatalogEnvelopeSchema = z
@@ -12,4 +13,4 @@ export const recipeCatalogEnvelopeSchema = z
   })
   .passthrough();
 
-export type RecipeCatalogDoc = z.infer<typeof recipeCatalogEnvelopeSchema>;
+export type RecipeCatalogDoc = StandardSchemaV1.InferOutput<typeof recipeCatalogEnvelopeSchema>;

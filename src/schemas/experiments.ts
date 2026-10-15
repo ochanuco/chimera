@@ -1,37 +1,11 @@
 import { z } from 'zod';
+import { baseParametersIssues, overridesIssues } from '../lib/experiment-rules';
+import { isHttpUrl } from '../lib/url-rules';
+import { addIssues } from './issues';
 
 /** overrides/evaluation/decision/promoted_overrides は typed schema を持たない JSON blob として受ける
  * (docs/domain-model.md)。評価軸は Experiment/評価者ごとに変わるため、固定すると都度 migration が必要になる。 */
 export const jsonObject = z.record(z.string(), z.unknown());
-
-type PatchPath = (string | number)[];
-
-function checkPatches(patches: unknown, ctx: z.RefinementCtx, basePath: PatchPath): void {
-  if (!Array.isArray(patches)) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'must be an array of patch objects, e.g. [{ target, op, reason, value? }]',
-      path: basePath,
-    });
-    return;
-  }
-  patches.forEach((patch, i) => {
-    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'each patch must be an object with target, op and reason',
-        path: [...basePath, i],
-      });
-      return;
-    }
-    for (const field of ['target', 'op', 'reason'] as const) {
-      const fieldValue = (patch as Record<string, unknown>)[field];
-      if (typeof fieldValue !== 'string' || fieldValue.length === 0) {
-        ctx.addIssue({ code: 'custom', message: 'must be a non-empty string', path: [...basePath, i, field] });
-      }
-    }
-  });
-}
 
 /** MCP の入力 (create_experiment の arm / derive_request) が受ける patches。object 型で書くのは、必須キーを
  * tools/list の JSON Schema に `required` として載せ、enqueue 前に弾くため。語彙は検証しない。 */
@@ -42,62 +16,17 @@ export const patchesSchema = z.array(
 /** overrides/promoted_overrides のエンベロープ検証。patch の語彙 (target/op/value 等) は chagama 側の
  * 実装に属するため検証しない — 保証するのは「diff の形をしているか」だけ (docs/experiment-agent.md)。
  * evaluation/decision はここを通さない（自由記述のまま）。 */
-export const overridesSchema = jsonObject.superRefine((value, ctx) => {
-  const keys = Object.keys(value);
-  const unexpected = keys.filter((k) => k !== 'patches');
-  if (unexpected.length > 0) {
-    ctx.addIssue({
-      code: 'custom',
-      message:
-        `must be {} or {"patches": [...]}; unexpected key(s): ${unexpected.join(', ')}. ` +
-        "Generation parameters (pose, costume, count, ...) belong to the Experiment's base_parameters, not to a Run's overrides.",
-    });
-    return;
-  }
-  if (!('patches' in value)) return;
-
-  checkPatches(value.patches, ctx, ['patches']);
-});
+export const overridesSchema = jsonObject.superRefine((value, ctx) => addIssues(ctx, overridesIssues(value)));
 
 export const experimentStatusSchema = z.enum(['active', 'stabilized', 'promoted', 'abandoned']);
 export const promotionStatusSchema = z.enum(['proposed', 'applied', 'rejected']);
 
 /** `javascript:` などの実行可能スキームが `<a href>` に入らないよう、保存時点で弾く。 */
-const httpUrl = z.string().refine(
-  (v) => {
-    try {
-      const u = new URL(v);
-      return u.protocol === 'http:' || u.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  },
-  { message: 'must be an http(s) URL' },
-);
-
-const seedsSchema = z.array(z.number().int().nonnegative()).min(1).max(16);
+const httpUrl = z.string().refine(isHttpUrl, { message: 'must be an http(s) URL' });
 
 /** base_parameters は語彙を解釈しない JSON blob だが、`seeds` だけは Run の request.seeds になる契約値なので形を検証する。
  * seeds があるとき request.count は seeds.length で決まるため、食い違う `count` は受け付けない。 */
-export const baseParametersSchema = jsonObject.superRefine((value, ctx) => {
-  if (!('seeds' in value)) return;
-  const parsed = seedsSchema.safeParse(value.seeds);
-  if (!parsed.success) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'must be an array of 1-16 non-negative integers',
-      path: ['seeds'],
-    });
-    return;
-  }
-  if ('count' in value && value.count !== parsed.data.length) {
-    ctx.addIssue({
-      code: 'custom',
-      message: `count (${String(value.count)}) must equal seeds length (${parsed.data.length}); omit count when seeds is given`,
-      path: ['count'],
-    });
-  }
-});
+export const baseParametersSchema = jsonObject.superRefine((value, ctx) => addIssues(ctx, baseParametersIssues(value)));
 
 export const createExperimentSchema = z.object({
   name: z.string().min(1),

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { createCharacterSchema } from '../schemas/characters';
 import { uuidv7 } from '../lib/uuidv7';
 import { conflict } from '../lib/errors';
+import { parseOrThrow } from '../lib/validate';
 import type { AppEnv } from '../types';
 import type { CharacterRow } from '../types';
 
@@ -16,7 +17,7 @@ function serialize(row: CharacterRow) {
 }
 
 characters.post('/', async (c) => {
-  const body = createCharacterSchema.parse(await c.req.json());
+  const body = parseOrThrow(createCharacterSchema, await c.req.json());
   const db = c.env.DB;
 
   const row: CharacterRow = {

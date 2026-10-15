@@ -4,14 +4,15 @@ import { badRequest, notFound } from '../lib/errors';
 import { getPresetRow, importFromCatalog, listPresets, listPresetVersions, resolvePreset, serializeResolvedPreset } from '../lib/presets';
 import { promoteGenerationToPreset, promoteGenerationToProfile } from '../lib/promote';
 import { attachReferences, getCurrentReference, referenceView } from '../lib/preset-references';
+import { parseOrThrow, validate } from '../lib/validate';
 import type { AppEnv, PresetKind } from '../types';
 
 export const presets = new Hono<AppEnv>();
 
 function requireKind(raw: string): PresetKind {
-  const parsed = presetKindSchema.safeParse(raw);
-  if (!parsed.success) throw badRequest(`invalid kind '${raw}'`);
-  return parsed.data;
+  const parsed = validate(presetKindSchema, raw);
+  if (!parsed.ok) throw badRequest(`invalid kind '${raw}'`);
+  return parsed.value;
 }
 
 function requireVersion(raw: string): number {
@@ -26,19 +27,19 @@ function isIncludeDeprecated(raw: string | undefined): boolean {
 
 // Hono マッチ順: /import, /promote, /promote-profile は :recipe/:kind/:name より先に登録する。
 presets.post('/import', async (c) => {
-  const { recipe_ref } = presetImportRequestSchema.parse(await c.req.json());
+  const { recipe_ref } = parseOrThrow(presetImportRequestSchema, await c.req.json());
   const result = await importFromCatalog(c.env.DB, recipe_ref);
   return c.json(result);
 });
 
 presets.post('/promote', async (c) => {
-  const body = presetPromoteRequestSchema.parse(await c.req.json());
+  const body = parseOrThrow(presetPromoteRequestSchema, await c.req.json());
   const result = await promoteGenerationToPreset(c.env.DB, { ...body, created_by: 'gui' });
   return c.json(result);
 });
 
 presets.post('/promote-profile', async (c) => {
-  const body = presetPromoteProfileRequestSchema.parse(await c.req.json());
+  const body = parseOrThrow(presetPromoteProfileRequestSchema, await c.req.json());
   const result = await promoteGenerationToProfile(c.env.DB, { ...body, created_by: 'gui' });
   return c.json(result);
 });

@@ -152,7 +152,7 @@ const observationSchema = z.looseObject({
   created_at: z.string(),
 });
 
-export const mcpOutputSchemas = {
+export const mcpOutputs = {
   list_experiments: z.looseObject({
     items: z.array(
       z.looseObject({
