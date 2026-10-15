@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   // Cloudflare Access が境界認証を担うため、Access の外にある workers.dev は閉じる
   "workers_dev": false,
+  "preview_urls": true,
   "routes": [
     {
       "pattern": "chimera.chanu.co",
@@ -51,6 +52,38 @@
         "class_name": "WorkerHub"
       }
     ]
+  },
+  // プレビューは本番と同じ D1・R2 を使う。Durable Object はプレビューごとに別になるので、GPU 機につながらず生成は動かない。
+  // WOL_* の secret はプレビューに渡さず、プレビューから GPU 機を起こさない。
+  "previews": {
+    "vars": {
+      "REQUESTS_DEFAULT_RECIPE_REF": "production",
+      "ORIGINAL_RECOMPRESS": "on"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "chimera",
+        "database_id": "895f0d2e-7785-468a-bbcc-8a61dcc63f7e"
+      }
+    ],
+    "r2_buckets": [
+      {
+        "binding": "IMAGES",
+        "bucket_name": "chimera-images"
+      }
+    ],
+    "images": {
+      "binding": "IMAGE_TRANSFORM"
+    },
+    "durable_objects": {
+      "bindings": [
+        {
+          "name": "WORKER_HUB",
+          "class_name": "WorkerHub"
+        }
+      ]
+    }
   },
   "migrations": [
     {
