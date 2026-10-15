@@ -8,6 +8,7 @@ import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import { parsePngDimensions } from '../lib/image-meta';
 import { extractRenderFacts } from '../lib/render-facts';
 import { notifyHubGeneration, runInBackground } from '../lib/hub-notify';
+import { parseOrThrow } from '../lib/validate';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
 export const jobs = new Hono<AppEnv>();
@@ -19,7 +20,7 @@ async function getJobOr404(db: D1Database, id: string): Promise<ComfyJobRow> {
 }
 
 jobs.patch('/:jobId', async (c) => {
-  const body = updateJobSchema.parse(await c.req.json());
+  const body = parseOrThrow(updateJobSchema, await c.req.json());
   const db = c.env.DB;
   const job = await getJobOr404(db, c.req.param('jobId'));
 
@@ -67,7 +68,7 @@ jobs.post('/:jobId/generations', async (c) => {
   } catch {
     throw badRequest('metadata is not valid JSON');
   }
-  const metadata = ingestMetadataSchema.parse(metadataJson);
+  const metadata = parseOrThrow(ingestMetadataSchema, metadataJson);
 
   if (metadata.character_id) {
     const character = await db

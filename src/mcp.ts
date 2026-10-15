@@ -70,6 +70,7 @@ import { notifyHub, type Waitable } from './lib/hub-notify';
 import { canonicalExperimentUrl, canonicalGenerationUrl, serializeExperimentRun, serializeRequest } from './lib/serialize';
 import { mcpOutputSchemas } from './schemas/mcp-output';
 import { parseJsonObjectOrNull } from './lib/overrides';
+import { validate } from './lib/validate';
 import { foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
 import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
 import type { Bindings } from './types';
@@ -171,9 +172,9 @@ const createExperimentInputSchema = z
       }
       seen.add(arm.label);
     });
-    const merged = baseParametersSchema.safeParse(mergedBaseParameters(value));
-    if (!merged.success) {
-      for (const issue of merged.error.issues) {
+    const merged = validate(baseParametersSchema, mergedBaseParameters(value));
+    if (!merged.ok) {
+      for (const issue of merged.issues) {
         ctx.addIssue({ code: 'custom', message: issue.message, path: ['parameters', ...issue.path] });
       }
     }

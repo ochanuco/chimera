@@ -6,6 +6,7 @@ import { badRequest, notFound } from '../lib/errors';
 import { notifyHub, runInBackground } from '../lib/hub-notify';
 import { defaultRecipeRef } from '../lib/requests';
 import { renderStyleCheck, STYLE_CHECK_RECIPE } from '../lib/style-check';
+import { parseOrThrow } from '../lib/validate';
 import type { AppEnv } from '../types';
 
 export const catalogs = new Hono<AppEnv>();
@@ -22,7 +23,7 @@ catalogs.get('/', async (c) => {
 
 catalogs.put('/:recipe_ref', async (c) => {
   const recipeRef = requireRecipeRef(c.req.param('recipe_ref'));
-  const doc = recipeCatalogEnvelopeSchema.parse(await c.req.json());
+  const doc = parseOrThrow(recipeCatalogEnvelopeSchema, await c.req.json());
   const row = await putCatalog(c.env.DB, recipeRef, doc);
   if (recipeRef === defaultRecipeRef(c.env)) {
     const env = c.env;

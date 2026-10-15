@@ -16,6 +16,7 @@ import {
 } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
 import { deliverOptionsSchema, redrawOptionsSchema } from '../src/schemas/requests';
+import { validate } from '../src/lib/validate';
 
 function uniqueRecipe(): string {
   return `yukari-${crypto.randomUUID()}`;
@@ -144,7 +145,7 @@ describe('catalog dials passthrough', () => {
 
 describe('redrawOptionsSchema', () => {
   it('accepts keep_regions rectangles and a keep_strength between 0 and 1 on canvas', () => {
-    expect(redrawOptionsSchema.safeParse({ method: 'canvas', keep_regions: [[0.3, 0.1, 0.7, 0.4]], keep_strength: 0.25 }).success).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'canvas', keep_regions: [[0.3, 0.1, 0.7, 0.4]], keep_strength: 0.25 }).ok).toBe(true);
   });
 
   it.each([
@@ -162,29 +163,29 @@ describe('redrawOptionsSchema', () => {
     ['an unknown method', { method: 'repin' }],
     ['no method', { denoise: 0.4 }],
   ])('rejects %s', (_label, options) => {
-    expect(redrawOptionsSchema.safeParse(options).success).toBe(false);
+    expect(validate(redrawOptionsSchema, options).ok).toBe(false);
   });
 
   it('accepts hires with or without a denoise, and each light form', () => {
-    expect(redrawOptionsSchema.safeParse({ method: 'hires', hires: 2048, denoise: 0.45 }).success).toBe(true);
-    expect(redrawOptionsSchema.safeParse({ method: 'hires', hires: null }).success).toBe(true);
-    expect(redrawOptionsSchema.safeParse({ method: 'light', scene: 'sunset' }).success).toBe(true);
-    expect(redrawOptionsSchema.safeParse({ method: 'light', scene: 'moon', from: 'ne' }).success).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'hires', hires: 2048, denoise: 0.45 }).ok).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'hires', hires: null }).ok).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'light', scene: 'sunset' }).ok).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'light', scene: 'moon', from: 'ne' }).ok).toBe(true);
   });
 });
 
 describe('deliverOptionsSchema', () => {
   it('accepts outlines as up to 6 {color, width} entries, empty and null included', () => {
-    expect(deliverOptionsSchema.safeParse({ outlines: [{ color: '#ffffff', width: 0.4 }, { color: '#885B80', width: 5 }] }).success).toBe(true);
-    expect(deliverOptionsSchema.safeParse({ outlines: [] }).success).toBe(true);
-    expect(deliverOptionsSchema.safeParse({ outlines: null }).success).toBe(true);
+    expect(validate(deliverOptionsSchema, { outlines: [{ color: '#ffffff', width: 0.4 }, { color: '#885B80', width: 5 }] }).ok).toBe(true);
+    expect(validate(deliverOptionsSchema, { outlines: [] }).ok).toBe(true);
+    expect(validate(deliverOptionsSchema, { outlines: null }).ok).toBe(true);
     const six = Array.from({ length: 6 }, () => ({ color: '#000000', width: 1 }));
-    expect(deliverOptionsSchema.safeParse({ outlines: six }).success).toBe(true);
+    expect(validate(deliverOptionsSchema, { outlines: six }).ok).toBe(true);
   });
 
   it('accepts every stroke_light direction and even', () => {
     for (const v of ['even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw', null]) {
-      expect(deliverOptionsSchema.safeParse({ stroke_light: v }).success).toBe(true);
+      expect(validate(deliverOptionsSchema, { stroke_light: v }).ok).toBe(true);
     }
   });
 
@@ -200,11 +201,11 @@ describe('deliverOptionsSchema', () => {
     ['an unknown outline key', { outlines: [{ color: '#ffffff', width: 1, blur: 1 }] }],
     ['an outline without width', { outlines: [{ color: '#ffffff' }] }],
   ])('rejects %s', (_label, options) => {
-    expect(deliverOptionsSchema.safeParse(options).success).toBe(false);
+    expect(validate(deliverOptionsSchema, options).ok).toBe(false);
   });
 
   it.each([{ scene: 'sunset' }, { scene: 'moon', from: 'ne' }, null])('accepts light %j', (light) => {
-    expect(deliverOptionsSchema.safeParse({ light }).success).toBe(true);
+    expect(validate(deliverOptionsSchema, { light }).ok).toBe(true);
   });
 
   it.each([
@@ -213,12 +214,12 @@ describe('deliverOptionsSchema', () => {
     ['an unknown light from', { light: { scene: 'sunset', from: 'up' } }],
     ['an unknown light key', { light: { scene: 'sunset', strength: 1 } }],
   ])('rejects %s', (_label, options) => {
-    expect(deliverOptionsSchema.safeParse(options).success).toBe(false);
+    expect(validate(deliverOptionsSchema, options).ok).toBe(false);
   });
 
   it('rejects the options finalize carried that belong to redraw or are gone', () => {
     for (const key of ['deliver_only', 'denoise', 'hires', 'repair', 'repair_seeds', 'handdrawn', 'toe_guard', 'lora_strength']) {
-      expect(deliverOptionsSchema.safeParse({ [key]: true }).success, key).toBe(false);
+      expect(validate(deliverOptionsSchema, { [key]: true }).ok, key).toBe(false);
     }
   });
 });

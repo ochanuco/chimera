@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { ZodError } from 'zod';
 import { createMcpHandler } from 'agents/mcp/server';
 import { ApiError } from './lib/errors';
+import { ValidationError, formatValidationIssues } from './lib/validate';
 import { jobs } from './routes/jobs';
 import { generations } from './routes/generations';
 import { experiments, experimentRuns, promotions } from './routes/experiments';
@@ -66,9 +66,8 @@ app.onError((err, c) => {
   if (err instanceof ApiError) {
     return c.json(err.toJSON(), err.status as 400 | 404 | 409 | 410);
   }
-  if (err instanceof ZodError) {
-    const message = err.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
-    return c.json({ error: { code: 'validation_error', message } }, 400);
+  if (err instanceof ValidationError) {
+    return c.json({ error: { code: 'validation_error', message: formatValidationIssues(err.issues) } }, 400);
   }
   console.error(err);
   return c.json({ error: { code: 'internal_error', message: 'internal server error' } }, 500);

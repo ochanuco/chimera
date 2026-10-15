@@ -52,5 +52,5 @@ export const putTimingsSchema = z.object({
 
 export type PutTimingsInput = z.infer<typeof putTimingsSchema>;
 
-export const statsPeriodSchema = z.enum(['7d', '14d', '30d', '90d', 'all']);
-export const statsColdSchema = z.enum(['include', 'exclude']);
+export const statsPeriodSchema = z.enum(['7d', '14d', '30d', '90d', 'all']).default('30d');
+export const statsColdSchema = z.enum(['include', 'exclude']).default('include');

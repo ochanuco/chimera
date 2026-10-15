@@ -19,6 +19,7 @@ import { serializeGenerationAsset } from '../lib/serialize';
 import { generationAssetR2Key } from '../lib/generation-assets';
 import { buildWorkbenchTree, findRootGeneration } from '../lib/workbench';
 import { buildContext, getGenerationDetail, queryGenerations, queryTimeline } from '../lib/generations';
+import { parseOrThrow } from '../lib/validate';
 import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
 
 export const generations = new Hono<AppEnv>();
@@ -71,7 +72,7 @@ generations.get('/:id', async (c) => {
 });
 
 generations.patch('/:id', async (c) => {
-  const body = updateGenerationSchema.parse(await c.req.json());
+  const body = parseOrThrow(updateGenerationSchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
 
@@ -98,7 +99,7 @@ generations.patch('/:id', async (c) => {
 });
 
 generations.put('/:id/semantic', async (c) => {
-  const body = semanticUpdateSchema.parse(await c.req.json());
+  const body = parseOrThrow(semanticUpdateSchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
 
@@ -131,7 +132,7 @@ generations.put('/:id/semantic', async (c) => {
 });
 
 generations.put('/:id/rating', async (c) => {
-  const body = ratingUpdateSchema.parse(await c.req.json());
+  const body = parseOrThrow(ratingUpdateSchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
 
@@ -140,7 +141,7 @@ generations.put('/:id/rating', async (c) => {
 });
 
 generations.put('/:id/safety', async (c) => {
-  const body = putSafetySchema.parse(await c.req.json());
+  const body = parseOrThrow(putSafetySchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
   const row = await putSafety(db, generation.id, body);
@@ -161,7 +162,7 @@ generations.delete('/:id/bookmark', async (c) => {
 });
 
 generations.post('/:id/tags', async (c) => {
-  const body = assignTagSchema.parse(await c.req.json());
+  const body = parseOrThrow(assignTagSchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
 
@@ -185,7 +186,7 @@ generations.get('/:id/publications', async (c) => {
 
 // created_by は 'gui' 固定 (MCP は record_publication 経由で別途 'mcp' を渡す。src/mcp.ts 参照)。
 generations.post('/:id/publications', async (c) => {
-  const body = createPublicationSchema.parse(await c.req.json());
+  const body = parseOrThrow(createPublicationSchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
   const { row, created } = await createPublication(db, generation.id, {
@@ -201,7 +202,7 @@ generations.post('/:id/publications', async (c) => {
 // GUI の「基準にする」窓口 (docs/domain-model.md「基準 render の pin」)。MCP set_pose_reference と違い
 // 呼び出し側は recipe/pose を知らないため raw Request から推測する (lib/preset-references.ts)。created_by は 'gui' 固定。
 generations.post('/:id/pose-reference', async (c) => {
-  const body = setPoseReferenceForGenerationSchema.parse(await c.req.json());
+  const body = parseOrThrow(setPoseReferenceForGenerationSchema, await c.req.json());
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
   const result = await setPoseReferenceForGeneration(db, {
@@ -258,7 +259,7 @@ generations.post('/:id/assets', async (c) => {
   } catch {
     throw badRequest('metadata is not valid JSON');
   }
-  const metadata = ingestGenerationAssetMetadataSchema.parse(metadataJson);
+  const metadata = parseOrThrow(ingestGenerationAssetMetadataSchema, metadataJson);
 
   // '' is the "whole image, no region" sentinel: omitted key and explicit
   // null both normalize to it (see docs/domain-model.md).

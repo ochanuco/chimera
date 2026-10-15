@@ -45,7 +45,8 @@ import {
   serializeExperimentRun,
   serializePairwiseJudgment,
 } from '../lib/serialize';
-import type { AppEnv, ExperimentPromotionRow, ExperimentRunRow, PromotionStatus } from '../types';
+import { parseOrThrow, validate } from '../lib/validate';
+import type { AppEnv, ExperimentPromotionRow, ExperimentRunRow, ExperimentStatus, PromotionStatus } from '../types';
 
 export const experiments = new Hono<AppEnv>();
 /** Mounted at /api/v1/experiment-runs: Run は Experiment を跨いで一意なので直接引ける。 */
@@ -73,7 +74,7 @@ async function getPromotionOr404(db: D1Database, id: string): Promise<Experiment
 }
 
 experiments.post('/', async (c) => {
-  const body = createExperimentSchema.parse(await c.req.json());
+  const body = parseOrThrow(createExperimentSchema, await c.req.json());
   const row = await createExperiment(c.env.DB, body);
   return c.json(serializeExperiment(row), 201);
 });
@@ -83,11 +84,11 @@ experiments.get('/', async (c) => {
   const query = c.req.query();
   const { limit, offset } = parsePagination(query);
 
-  let status: ReturnType<typeof experimentStatusSchema.parse> | undefined;
+  let status: ExperimentStatus | undefined;
   if (query.status) {
-    const parsed = experimentStatusSchema.safeParse(query.status);
-    if (!parsed.success) throw badRequest(`invalid status '${query.status}'`);
-    status = parsed.data;
+    const parsed = validate(experimentStatusSchema, query.status);
+    if (!parsed.ok) throw badRequest(`invalid status '${query.status}'`);
+    status = parsed.value;
   }
 
   const rows = await queryExperiments(
@@ -125,7 +126,7 @@ experiments.get('/:id', async (c) => {
 });
 
 experiments.patch('/:id', async (c) => {
-  const body = updateExperimentSchema.parse(await c.req.json());
+  const body = parseOrThrow(updateExperimentSchema, await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
   if (body.character_id) await assertCharacterExists(db, body.character_id);
@@ -174,7 +175,7 @@ experiments.patch('/:id', async (c) => {
 });
 
 experiments.post('/:id/runs', async (c) => {
-  const body = createExperimentRunSchema.parse(await c.req.json());
+  const body = parseOrThrow(createExperimentRunSchema, await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
   const { row, created, request_id } = await createExperimentRun(db, experiment, body, {
@@ -222,7 +223,7 @@ experimentRuns.get('/:runId', async (c) => {
 });
 
 experimentRuns.patch('/:runId', async (c) => {
-  const body = updateExperimentRunSchema.parse(await c.req.json());
+  const body = parseOrThrow(updateExperimentRunSchema, await c.req.json());
   const db = c.env.DB;
   const run = await getRunOr404(db, c.req.param('runId'));
   const updated = await updateExperimentRun(db, run, body);
@@ -230,7 +231,7 @@ experimentRuns.patch('/:runId', async (c) => {
 });
 
 experiments.post('/:id/promotions', async (c) => {
-  const body = createPromotionSchema.parse(await c.req.json());
+  const body = parseOrThrow(createPromotionSchema, await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
 
@@ -305,7 +306,7 @@ promotions.get('/:promotionId', async (c) => {
 });
 
 promotions.patch('/:promotionId', async (c) => {
-  const body = updatePromotionSchema.parse(await c.req.json());
+  const body = parseOrThrow(updatePromotionSchema, await c.req.json());
   const db = c.env.DB;
   const promotion = await getPromotionOr404(db, c.req.param('promotionId'));
 
@@ -346,7 +347,7 @@ promotions.patch('/:promotionId', async (c) => {
 });
 
 experiments.post('/:id/judgments', async (c) => {
-  const body = createJudgmentSchema.parse(await c.req.json());
+  const body = parseOrThrow(createJudgmentSchema, await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
   const { row, winner, reveal } = await createJudgment(db, experiment, body);
@@ -379,7 +380,7 @@ experiments.delete('/:id/bookmark', async (c) => {
 });
 
 experiments.post('/:id/tags', async (c) => {
-  const body = assignTagSchema.parse(await c.req.json());
+  const body = parseOrThrow(assignTagSchema, await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
   const { tag, created } = await assignTag(db, 'experiment_tags', experiment.id, body.name, body.created_by);
