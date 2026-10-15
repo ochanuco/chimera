@@ -4924,8 +4924,7 @@ export const appJs = `
       stageMode: 'pattern',
       photo: null,
       place: null,
-      shadow: '',
-      shadowTouched: false,
+      shadow: true,
       lightingDir: '',
       lightingScene: '',
       card: null,
@@ -5022,11 +5021,29 @@ export const appJs = `
       return null;
     }
 
-    function setShadow(value) {
-      wb.shadow = value;
-      setCompassValue(qs('[data-compass="shadow"]', root), value);
-      qs('[data-wb-shadow-none]', root).classList.toggle('wb-pill-on', value === '');
-      qs('[data-wb-shadow-readout]', root).textContent = value ? 'from: ' + value : 'なし';
+    // The stroke_light of the deliver a picture was cut out by, or undefined when that deliver left it to the worker.
+    function strokeLightOf(node) {
+      var guard = 0;
+      while (node && guard < 50) {
+        guard += 1;
+        if (node.kind === 'deliver') {
+          var o = node.options || {};
+          if (o.outlines && o.outlines.length === 0) return 'even';
+          return o.stroke_light;
+        }
+        node = node.refines_generation_id ? nodeById(node.refines_generation_id) : null;
+      }
+      return undefined;
+    }
+
+    // The shadow falls from the same light as the outermost outline's shading, else from the scene's light.
+    // undefined leaves the direction to the worker, which resolves it the same way.
+    function shadowDirection(node, sceneOn) {
+      var stroke = strokeLightOf(node);
+      if (stroke === undefined) return undefined;
+      if (stroke && stroke !== 'even') return stroke;
+      var scene = sceneOn ? sceneOf(node) : null;
+      return scene ? scene.from : null;
     }
 
     function photoStaged(node) {
@@ -5441,9 +5458,20 @@ export const appJs = `
         if (scene) {
           qs('[data-wb-stage-scene-label]', root).textContent =
             'シーンの色を背景と影に付ける: ' + (WB_SCENE_LABELS[scene.scene] || scene.scene) + '（from ' + scene.from + '、1 の light から）';
-          // In a scene the shadow falls away from its light unless the user chose otherwise.
-          if (!wb.shadowTouched && wb.shadow === '' && qs('input[name="wb_stage_scene"]', root).checked) setShadow(scene.from);
         }
+      }
+      if (wb.active === 4) {
+        qsa('[data-wb-shadow]', root).forEach(function (b) {
+          b.classList.toggle('wb-pill-on', (b.getAttribute('data-wb-shadow') === 'on') === wb.shadow);
+        });
+        var shadowDir = shadowDirection(activeInputNode(), qs('input[name="wb_stage_scene"]', root).checked);
+        qs('[data-wb-shadow-readout]', root).textContent = !wb.shadow
+          ? ''
+          : shadowDir === undefined
+            ? '3 のフチの陰影の向き'
+            : shadowDir
+              ? 'from ' + shadowDir + '（3 のフチの陰影と同じ）'
+              : '向きが無いので付きません（3 のフチの陰影が均一）';
       }
       var dofPhoto = qs('[data-wb-dof-photo]', root);
       var stagedInPhoto = wb.active === WB_LAST && photoStaged(activeInputNode());
@@ -5608,9 +5636,15 @@ export const appJs = `
         }
         var backdropOptions = deliverOptionsFrom(form, false);
         if (!backdropOptions) return null;
-        var stageOptions = { backdrop: backdropOptions.backdrop, shadow_from: wb.shadow || null };
+        var stageOptions = { backdrop: backdropOptions.backdrop };
+        var sceneOn = qs('input[name="wb_stage_scene"]', form).checked;
+        if (!wb.shadow) stageOptions.shadow_from = null;
+        else {
+          var dir = shadowDirection(activeInputNode(), sceneOn);
+          if (dir !== undefined) stageOptions.shadow_from = dir;
+        }
         // The scene is inherited by the worker; unchecking it asks for none.
-        if (sceneOf(activeInputNode()) && !qs('input[name="wb_stage_scene"]', form).checked) stageOptions.light = null;
+        if (sceneOf(activeInputNode()) && !sceneOn) stageOptions.light = null;
         return { kind: 'stage', options: stageOptions };
       }
       if (k === 5) {
@@ -5788,14 +5822,10 @@ export const appJs = `
         if (!wb.place) wb.place = [0.5, 0.95];
         return render();
       }
-      var shadowDir = t.closest('[data-compass="shadow"] [data-compass-dir]');
-      if (shadowDir) {
-        wb.shadowTouched = true;
-        return setShadow(shadowDir.getAttribute('data-compass-dir'));
-      }
-      if (t.closest('[data-wb-shadow-none]')) {
-        wb.shadowTouched = true;
-        return setShadow('');
+      var shadowPill = t.closest('[data-wb-shadow]');
+      if (shadowPill) {
+        wb.shadow = shadowPill.getAttribute('data-wb-shadow') === 'on';
+        return render();
       }
       var lightingDir = t.closest('[data-compass="lighting"] [data-compass-dir]');
       if (lightingDir) {
@@ -5872,6 +5902,7 @@ export const appJs = `
         syncBackdropColor(phaseForm(4));
         if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(4)).focus();
       }
+      if (radio instanceof HTMLInputElement && radio.name === 'wb_stage_scene') render();
       if (radio instanceof HTMLInputElement && radio.hasAttribute('data-wb-photo-file')) uploadStagePhoto(radio);
     });
 

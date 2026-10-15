@@ -327,13 +327,15 @@ function StageForm({ data }: { data: WorkbenchData }) {
           </div>
           <input type="text" name="backdrop_color" placeholder="#RRGGBB" pattern="^#[0-9a-fA-F]{6}$" value={data.backdropColor ?? '#ffffff'} hidden disabled />
           <div class="wb-field">
-            影 <span class="mono" data-wb-shadow-readout>なし</span>
-            <div class="wb-pills">
-              <button type="button" class="wb-pill wb-pill-on" data-wb-shadow-none>
+            影 <span class="mono" data-wb-shadow-readout></span>
+            <div class="wb-pills" role="group" aria-label="影">
+              <button type="button" class="wb-pill wb-pill-on" data-wb-shadow="on">
+                影あり
+              </button>
+              <button type="button" class="wb-pill" data-wb-shadow="off">
                 影なし
               </button>
             </div>
-            <Compass name="shadow" value="" centreLabel="光" />
           </div>
         </div>
 
