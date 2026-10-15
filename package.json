@@ -22,7 +22,7 @@
     "@types/node": "^26.3.0",
     "typescript": "~5.9.3",
     "vitest": "^4.1.11",
-    "wrangler": "^4.125.0"
+    "wrangler": "^4.151.0"
   },
   "packageManager": "pnpm@10.33.0"
 }
