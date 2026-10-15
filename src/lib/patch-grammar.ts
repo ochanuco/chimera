@@ -1,6 +1,6 @@
 // 呼び出し側が渡す patch を、chagama がカタログの `patches` に載せた文法で作成時に検査する (docs/generation-request.md「作成時の文法検査」)。
 // 文法は chagama のものなので chimera では複製しない: target の class、class ごとの op、op ごとの value / old はすべてカタログから読む。
-// 値の制約 (constraints / values / dial word)、part の実在、old の有無は worker が決める。
+// 値の制約 (constraints / values / dial word)、part の実在、old が本文に含まれるかは worker が決める。
 
 import { getCatalog } from './catalogs';
 import { patchesShapeIssues } from './experiment-rules';
