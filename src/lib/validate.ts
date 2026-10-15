@@ -8,6 +8,11 @@ export type ValidationResult<S extends StandardSchemaV1> =
   | { ok: true; value: StandardSchemaV1.InferOutput<S> }
   | { ok: false; issues: ValidationIssue[] };
 
+/** 入れ子の値に対する検証結果を、親の path の下に付け替える。 */
+export function prefixIssues(prefix: (string | number)[], issues: readonly ValidationIssue[]): ValidationIssue[] {
+  return issues.map((issue) => ({ message: issue.message, path: [...prefix, ...issue.path] }));
+}
+
 /** 400 の本文にそのまま載せる形: `path.to.field: message; ...` (path が空なら `(root)`)。 */
 export function formatValidationIssues(issues: readonly ValidationIssue[]): string {
   return issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');

@@ -2,7 +2,7 @@
 
 import { nowIso } from './db';
 import type { RecipeCatalogDoc } from '../schemas/catalogs';
-import { MAX_OUTLINES } from '../schemas/requests';
+import { MAX_OUTLINES } from './request-rules';
 import type { RecipeCatalogRow } from '../types';
 
 function extractNames(value: unknown): string[] {

@@ -15,7 +15,7 @@ import {
   findRedrawLight,
 } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
-import { deliverOptionsSchema, redrawOptionsSchema } from '../src/schemas/requests';
+import { deliverOptionsSchema, redrawOptionsSchema } from '../src/schemas/request-payloads';
 import { validate } from '../src/lib/validate';
 
 function uniqueRecipe(): string {

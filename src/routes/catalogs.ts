@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { recipeCatalogEnvelopeSchema } from '../schemas/catalogs';
-import { RECIPE_REF_RE } from '../schemas/requests';
+import { RECIPE_REF_RE } from '../lib/request-rules';
 import { decodeBackdropThumbnail, getCatalog, listCatalogs, putCatalog, summarizeCatalog } from '../lib/catalogs';
 import { badRequest, notFound } from '../lib/errors';
 import { notifyHub, runInBackground } from '../lib/hub-notify';

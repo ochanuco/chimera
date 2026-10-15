@@ -1,20 +1,10 @@
 // MCP tool の inputSchema。SDK が引数の検証と tools/list の JSON Schema 生成に使うので、宣言の形はクライアントから見える契約になる。
-// REST と同じ語彙は schemas/requests.ts など既存の宣言を借り、ここに二重定義しない。
+// REST と同じ語彙は schemas/request-payloads.ts など既存の宣言を借り、ここに二重定義しない。
 
 import { z } from 'zod';
+import { createExperimentRunSchema, experimentStatusSchema, jsonObject, patchesSchema } from './experiments';
+import { creatableRequestKindSchema, requestKindFilterSchema, requestStatusSchema } from './requests';
 import {
-  baseParametersSchema,
-  createExperimentRunSchema,
-  experimentStatusSchema,
-  jsonObject,
-  patchesSchema,
-} from './experiments';
-import {
-  creatableRequestKindSchema,
-  requestKindFilterSchema,
-  requestStatusSchema,
-  RECIPE_REF_RE,
-  payloadEnvelopeIssues,
   redrawOptionsSchema,
   deliverOptionsSchema,
   dofOptionsSchema,
@@ -25,12 +15,14 @@ import {
   deliverProfileRefSchema,
   repairOptionsSchema,
   maskedRedrawOptionsSchema,
-} from './requests';
+} from './request-payloads';
 import { presetKindSchema } from './presets';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './observations';
 import { publicationUrlSchema } from './publications';
-import { mergedBaseParameters } from '../lib/experiment-rules';
-import { validate } from '../lib/validate';
+import { addIssues } from './issues';
+import { createExperimentInputIssues } from '../lib/experiment-rules';
+import { requestPayloadIssues } from '../lib/request-payload';
+import { RECIPE_REF_RE, deriveRequestIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
 
 export const listExperimentsInputSchema = z.object({ status: experimentStatusSchema.optional() });
 
@@ -80,21 +72,7 @@ export const createExperimentInputSchema = z
       .max(9),
     idempotency_key: z.string().min(1),
   })
-  .superRefine((value, ctx) => {
-    const seen = new Set<string>();
-    value.arms.forEach((arm, i) => {
-      if (seen.has(arm.label)) {
-        ctx.addIssue({ code: 'custom', message: `duplicate arm label '${arm.label}'`, path: ['arms', i, 'label'] });
-      }
-      seen.add(arm.label);
-    });
-    const merged = validate(baseParametersSchema, mergedBaseParameters(value));
-    if (!merged.ok) {
-      for (const issue of merged.issues) {
-        ctx.addIssue({ code: 'custom', message: issue.message, path: ['parameters', ...issue.path] });
-      }
-    }
-  });
+  .superRefine((value, ctx) => addIssues(ctx, createExperimentInputIssues(value)));
 
 export const createRunInputSchema = createExperimentRunSchema
   .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
@@ -108,20 +86,16 @@ export const createRequestInputSchema = z
     recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
     idempotency_key: z.string().min(1),
   })
-  .superRefine((value, ctx) => {
-    for (const issue of payloadEnvelopeIssues(value.kind, value.payload)) {
-      ctx.addIssue({ code: 'custom', message: issue.message, path: ['payload', ...issue.path] });
-    }
-  });
+  .superRefine((value, ctx) => addIssues(ctx, requestPayloadIssues(value.kind, value.payload)));
 
-/** `redraw_generation` の入力。options は redrawPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+/** `redraw_generation` の入力。options は redrawPayloadSchema と同じ語彙 (schemas/request-payloads.ts) をそのまま流用する。 */
 export const redrawGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   options: redrawOptionsSchema,
   idempotency_key: z.string().min(1),
 });
 
-/** `deliver_generation` の入力。options / profile は deliverPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+/** `deliver_generation` の入力。options / profile は deliverPayloadSchema と同じ語彙 (schemas/request-payloads.ts) をそのまま流用する。 */
 export const deliverGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   options: deliverOptionsSchema.optional(),
@@ -129,7 +103,7 @@ export const deliverGenerationInputSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
-/** `dof_generation` の入力。options は dofPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+/** `dof_generation` の入力。options は dofPayloadSchema と同じ語彙 (schemas/request-payloads.ts) を平らに受ける。 */
 export const dofGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   focus: dofOptionsSchema.shape.focus,
@@ -144,7 +118,7 @@ export const dofGenerationInputSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
-/** `lens_generation` の入力。options は lensPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+/** `lens_generation` の入力。options は lensPayloadSchema と同じ語彙 (schemas/request-payloads.ts) を平らに受ける。 */
 export const lensGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   center: lensOptionsSchema.shape.center,
@@ -152,12 +126,9 @@ export const lensGenerationInputSchema = z.object({
   shape: lensOptionsSchema.shape.shape,
   radius: lensOptionsSchema.shape.radius,
   idempotency_key: z.string().min(1),
-}).refine((input) => input.radius === undefined || input.shape === 'sphere', {
-  message: 'radius is only for shape "sphere"',
-  path: ['radius'],
-});
+}).superRefine((input, ctx) => addIssues(ctx, lensOptionsIssues(input)));
 
-/** `photo_generation` の入力。options は photoPayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+/** `photo_generation` の入力。options は photoPayloadSchema と同じ語彙 (schemas/request-payloads.ts) を平らに受ける。 */
 export const photoGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   photo: photoOptionsSchema.shape.photo,
@@ -173,7 +144,7 @@ export const photoGenerationInputSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
-/** `stage_generation` の入力。options は stagePayloadSchema と同じ語彙 (schemas/requests.ts) を平らに受ける。 */
+/** `stage_generation` の入力。options は stagePayloadSchema と同じ語彙 (schemas/request-payloads.ts) を平らに受ける。 */
 export const stageGenerationInputSchema = z
   .object({
     generation_id: z.string().min(1),
@@ -185,14 +156,7 @@ export const stageGenerationInputSchema = z
     light: stageOptionsSchema.shape.light,
     idempotency_key: z.string().min(1),
   })
-  .refine((o) => o.photo !== undefined || (o.place === undefined && o.height === undefined), {
-    message: 'place / height are only for a photo',
-    path: ['place'],
-  })
-  .refine((o) => o.photo === undefined || (o.backdrop === undefined && o.shadow_from === undefined && o.light === undefined), {
-    message: 'backdrop / shadow_from / light are not for a photo',
-    path: ['backdrop'],
-  });
+  .superRefine((input, ctx) => addIssues(ctx, stageOptionsIssues(input)));
 
 /** `lighting_generation` の入力。 */
 export const lightingGenerationInputSchema = z.object({
@@ -203,7 +167,7 @@ export const lightingGenerationInputSchema = z.object({
   idempotency_key: z.string().min(1),
 });
 
-/** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/requests.ts) をそのまま流用する。 */
+/** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/request-payloads.ts) をそのまま流用する。 */
 export const repairGenerationInputSchema = z.object({
   generation_id: z.string().min(1),
   options: repairOptionsSchema.optional(),
@@ -233,15 +197,7 @@ export const deriveRequestInputSchema = z
     idempotency_key: z.string().min(1),
     recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
   })
-  .superRefine((value, ctx) => {
-    if (value.seeds && value.seeds.length !== value.count) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `seeds length (${value.seeds.length}) must equal count (${value.count})`,
-        path: ['seeds'],
-      });
-    }
-  });
+  .superRefine((value, ctx) => addIssues(ctx, deriveRequestIssues(value)));
 
 export const generationLineageInputSchema = z.object({
   generation_id: z.string().min(1),

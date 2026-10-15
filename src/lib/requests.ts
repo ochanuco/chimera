@@ -13,7 +13,8 @@ import {
 import { parseJsonObject, type JsonObject } from './overrides';
 import { ApiError, badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
-import { FINALIZE_CREATION_MESSAGE, canonicalizeMaskedRedrawPayload } from '../schemas/requests';
+import { FINALIZE_CREATION_MESSAGE } from './request-rules';
+import { canonicalizeMaskedRedrawPayload } from './request-payload';
 import { applyDeliverProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import { createUniqueRequestShortId } from './shortid';

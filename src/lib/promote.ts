@@ -7,7 +7,7 @@ import { conflict, notFound } from './errors';
 import { getPresetRow, resolvePreset, serializeResolvedPreset } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
-import { deliverOptionsSchema } from '../schemas/requests';
+import { deliverOptionsSchema } from '../schemas/request-payloads';
 import { presetBodyDeliverSchema } from '../schemas/presets';
 import { parseOrThrow } from './validate';
 import type { GenerationRow, PresetCreatedBy, PresetKind, PresetRow } from '../types';

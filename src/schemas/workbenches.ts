@@ -1,19 +1,13 @@
 import { z } from 'zod';
-
-export const WORKBENCH_PHASES = ['1', '2', '3', '4', '5', '6'] as const;
+import { workbenchPicksIssues } from '../lib/workbench-rules';
+import { addIssues } from './issues';
 
 const pickSchema = z.union([z.object({ generation_id: z.string().min(1) }).strict(), z.object({ skip: z.literal(true) }).strict()]);
 
 /** PUT /api/v1/workbenches/:rootId — picks は丸ごと置き換える。キーはフェーズ番号 "1".."6"（描き直し / 部分 / 切り抜き・フチ / 背景 / 光 / ボケ）。 */
 export const putWorkbenchSchema = z
   .object({
-    picks: z.record(z.string(), pickSchema).superRefine((picks, ctx) => {
-      for (const key of Object.keys(picks)) {
-        if (!(WORKBENCH_PHASES as readonly string[]).includes(key)) {
-          ctx.addIssue({ code: 'custom', message: `phase key must be one of 1..6, got '${key}'`, path: [key] });
-        }
-      }
-    }),
+    picks: z.record(z.string(), pickSchema).superRefine((picks, ctx) => addIssues(ctx, workbenchPicksIssues(picks))),
   })
   .strict();
 

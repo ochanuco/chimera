@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { StandardSchemaV1 } from '../lib/standard-schema';
-import { RECIPE_REF_RE, deliverOptionsSchema } from './requests';
+import { RECIPE_REF_RE } from '../lib/request-rules';
+import { deliverOptionsSchema } from './request-payloads';
 
 export const presetKindSchema = z.enum(['pose', 'costume', 'expression', 'deliver']);
 
