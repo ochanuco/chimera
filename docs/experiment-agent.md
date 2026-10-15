@@ -430,7 +430,7 @@ schema と serializer のずれは、実際に呼ばれるまで表に出ませ�
 テストの `mcpToolCall` は返ってきた `structuredContent` を宣言済みの schema で parse するので、実データでのずれはテストで出ます。
 どちらも loose object のままなので、欄が増えるぶんには通ります。
 
-`get_generation_image` の `structuredContent` は画像そのものではなく `{short_id, canonical_url, inlined, mime_type, reason}` で、画像は content の image ブロックで返ります。
+`get_generation_image` の `structuredContent` は画像そのものではなく `{short_id, canonical_url, inlined, mime_type, reason, verdict}` で、画像は content の image ブロックで返ります。
 
 ### prompt の折り畳み
 
@@ -453,6 +453,12 @@ MCP client は tools/call のレスポンスの大きさに上限を設けてい
 それを超えるとき、または変換前の画像が Images binding の入力上限（20 MiB）を超えるときは、画像の代わりに canonical URL を返します（`inlined: false`、`reason` に理由）。
 変換に失敗したときは、元画像が上限内に収まればそのまま返します。
 保持期間ジョブで original を削除した Generation は、1024px の preview から返します。
+
+安全性判定（[api.md「Safety」](api.md#safety)）が `block` の Generation は、画像を返さず canonical URL だけを返します（`inlined: false`、`verdict: "block"`）。
+画像ブロックが client の内容分類器に当たると、会話ごとコネクタが止まることがあるためです。
+止めるのは画像だけで、`get_generation` などは prompt を含めて通常どおり返します。
+`sensitive` 以下と未採点（`verdict: null`）は画像を返します。
+解除する引数はありません。
 
 ## 生やさない操作
 
