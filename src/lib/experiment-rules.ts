@@ -9,7 +9,7 @@ export function mergedBaseParameters(input: { parameters?: Record<string, unknow
 
 type IssuePath = (string | number)[];
 
-function patchesShapeIssues(patches: unknown, basePath: IssuePath): ValidationIssue[] {
+export function patchesShapeIssues(patches: unknown, basePath: IssuePath): ValidationIssue[] {
   if (!Array.isArray(patches)) {
     return [{ message: 'must be an array of patch objects, e.g. [{ target, op, reason, value? }]', path: basePath }];
   }

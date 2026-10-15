@@ -20,6 +20,7 @@ import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
 import { nowIso, parsePagination } from '../lib/db';
 import { badRequest } from '../lib/errors';
+import { assertGeneratePayloadPatches } from '../lib/patch-grammar';
 import { parseOrThrow, validate } from '../lib/validate';
 import type { AppEnv, RequestKind, RequestStatus } from '../types';
 
@@ -33,6 +34,7 @@ requests.post('/', async (c) => {
   const db = c.env.DB;
   const { kind, payload, recipe_ref, idempotency_key, created_by, status: _status, run_id, ...rest } = body;
   const resolution = kind === 'import' ? { ...rest, parameters: rest.parameters! } : undefined;
+  await assertGeneratePayloadPatches(db, kind, payload, recipe_ref ?? defaultRecipeRef(c.env));
   const { row, created } = await createRequest(
     db,
     { kind, payload, recipe_ref, idempotency_key, created_by, resolution, run_id },

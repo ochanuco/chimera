@@ -5,6 +5,7 @@
 // 読み取り tool には readOnlyHint を付ける（annotation が無いと副作用ありとみなし、承認待ちで結果を返さない client がある）。
 import { McpServer } from '@modelcontextprotocol/server';
 import { notFound } from './lib/errors';
+import { assertGeneratePayloadPatches, assertPatchGrammar } from './lib/patch-grammar';
 import {
   createExperimentRun,
   createExperimentWithArms,
@@ -514,6 +515,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       inputSchema: createRequestInputSchema,
     },
     async ({ kind, payload, recipe_ref, idempotency_key }) => {
+      await assertGeneratePayloadPatches(db, kind, payload, recipe_ref ?? defaultRecipeRef(env));
       const { row, created } = await createRequest(
         db,
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
@@ -1062,6 +1064,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       idempotency_key,
       recipe_ref,
     }) => {
+      // 親から引き継ぐ patches は含めず、この呼び出しで渡された patches だけを検査する。
+      await assertPatchGrammar(db, recipe_ref ?? defaultRecipeRef(env), patches, ['patches']);
       const requestedGeneration = await resolveGenerationOr404(db, from_generation_id);
       const { generation: sourceGeneration, request: sourceRequest } = await resolveDerivationSource(db, requestedGeneration);
 
