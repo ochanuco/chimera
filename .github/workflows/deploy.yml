@@ -13,10 +13,20 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    uses: ochanuco/.github/.github/workflows/deploy.yml@71e324e93ea560488bcc309e52c5ce48ef8a282c # v1.3.0
+  plan:
+    uses: ochanuco/.github/.github/workflows/deploy-plan.yml@62a64c6573161d5f0e94c187b9fe07e9eca43fbc # v1.4.0
+    permissions:
+      contents: read
+      actions: read
     with:
       ref: ${{ inputs.ref }}
+      notices: |
+        migrations/=D1 migration を含む。デプロイの後に `pnpm exec wrangler d1 migrations apply chimera --remote` を手で実行する
+  deploy:
+    needs: plan
+    uses: ochanuco/.github/.github/workflows/deploy.yml@62a64c6573161d5f0e94c187b9fe07e9eca43fbc # v1.4.0
+    with:
+      ref: ${{ needs.plan.outputs.sha }}
       op-env-file: .github/deploy/production.env.op
       run: scripts/deploy.sh production
     secrets: inherit
