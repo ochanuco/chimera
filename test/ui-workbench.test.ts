@@ -179,17 +179,18 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('切り抜きは 2 回目から使い回します');
   });
 
-  it('phase 4 offers patterns with a shadow compass, or a photo with upload, placement and height', async () => {
+  it('phase 4 offers patterns with a shadow toggle, or a photo with upload, placement and height', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
     expect(form).toContain('data-wb-stage-mode="pattern"');
     expect(form).toContain('data-wb-stage-mode="photo"');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="random" checked[^>]*>\s*<span class="backdrop-option-label">ランダム/);
-    expect(form).toContain('data-wb-shadow-none');
+    expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-shadow="on"/);
+    expect(form).toContain('data-wb-shadow="off"');
     expect(form).toMatch(/data-wb-stage-scene[^>]*hidden/);
     expect(form).toContain('name="wb_stage_scene" checked');
-    expect(form).toContain('data-compass="shadow"');
+    expect(form).not.toContain('data-compass="shadow"');
     expect(form).toContain('data-wb-photos');
     expect(form).toContain('data-wb-photo-file');
     expect(form).toContain('name="wb_stage_height"');
