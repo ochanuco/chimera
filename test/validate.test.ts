@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { StandardSchemaV1 } from '../src/lib/standard-schema';
 import { ValidationError, formatValidationIssues, parseOrThrow, validate } from '../src/lib/validate';
 
@@ -52,6 +53,17 @@ describe('validate / parseOrThrow', () => {
 
   it('rejects a schema that validates asynchronously', () => {
     const schema = schemaOf<number>(async () => ({ value: 1 }));
-    expect(() => validate(schema, 1)).toThrow('async schemas are not supported');
+    expect(() => validate(schema, 1)).toThrow('schema returned a Promise');
+  });
+
+  it('logs the original error when a zod refinement throws', async () => {
+    const boom = new Error('boom');
+    const schema = z.number().refine(() => {
+      throw boom;
+    });
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => validate(schema, 1)).toThrow('schema returned a Promise');
+    await vi.waitFor(() => expect(logged).toHaveBeenCalledWith('schema validation threw', boom));
+    logged.mockRestore();
   });
 });

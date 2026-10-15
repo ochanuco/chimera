@@ -32,7 +32,11 @@ function toPathElement(segment: PropertyKey | StandardSchemaV1.PathSegment): str
 
 export function validate<S extends StandardSchemaV1>(schema: S, input: unknown): ValidationResult<S> {
   const result = schema['~standard'].validate(input);
-  if (result instanceof Promise) throw new Error('async schemas are not supported');
+  if (result instanceof Promise) {
+    // zod は同期実行で refinement が throw すると非同期で再実行した Promise を返す。元の例外はその reject に載るので捨てずにログへ出す。
+    result.catch((cause: unknown) => console.error('schema validation threw', cause));
+    throw new Error('schema returned a Promise: async refinement, or a refinement threw');
+  }
   if (result.issues) {
     return {
       ok: false,
