@@ -19,7 +19,11 @@ export const frameJs = `
   var MAX_TOTAL_POINTS = 20000;
   var MIN_SIZE = 0.02;
   var HEX_RE = /^#[0-9a-fA-F]{6}$/;
-  var DEFAULT_LINE_COLOR = '#885b80';
+  var DEFAULT_LINE_COLOR = '#4a3152';
+  // 斜線の線の柄（docs/worker-protocol.md「stage」の frame）。値は線の幅 w に対する比。
+  var SLASH = { period: 2.2, thickness: 0.14, offset: 0.34 };
+  // 斜線が見える太さの下限（長辺に対する %）。斜線に切り替えたとき、これより細ければここまで上げる。
+  var SLASH_MIN_WIDTH = 1.2;
   var DEFAULT_RIM_COLOR = '#2e2236';
   var SIDE_KEYS = ['top', 'right', 'bottom', 'left'];
   // 辺の名前から [x0, y0, x1, y1] の添字へ。
@@ -39,6 +43,7 @@ export const frameJs = `
     backdrop: null,
     lineColor: DEFAULT_LINE_COLOR,
     lineWidth: 0.6,
+    linePattern: 'solid',
     rimColor: DEFAULT_RIM_COLOR,
     rimWidth: 0.25,
     paper: '#ffffff',
@@ -62,6 +67,7 @@ export const frameJs = `
       backdrop: state.backdrop ? { kind: state.backdrop.kind, name: state.backdrop.name, color: state.backdrop.color } : null,
       lineColor: state.lineColor,
       lineWidth: state.lineWidth,
+      linePattern: state.linePattern,
       rimColor: state.rimColor,
       rimWidth: state.rimWidth,
       paper: state.paper,
@@ -392,7 +398,53 @@ export const frameJs = `
   // rim の色で枠全体のリングを塗り、その上に line のリングを塗る。
   function drawLine() {
     drawRing(frameHalfPct(), state.rimColor);
-    drawRing(lineWidthPct() / 2, state.lineColor);
+    if (state.linePattern === 'slash') {
+      drawRing(lineWidthPct() / 2, state.paper);
+      drawRing(lineWidthPct() / 2, slashPattern());
+    } else {
+      drawRing(lineWidthPct() / 2, state.lineColor);
+    }
+  }
+
+  // u = (x + y) / √2 の周期の縞なので、x・y とも周期 × √2 の正方形を敷けば継ぎ目なく続く。
+  // 座標は出力キャンバスの左上を原点にした納品の px。
+  var slashCache = null;
+  function slashPattern() {
+    var w = (lineWidthPct() / 100) * longSide();
+    var scale = (cssW / (view[2] - view[0])) / picW * dpr;
+    var period = SLASH.period * w;
+    var side = period * Math.SQRT2;
+    var n = Math.max(4, Math.min(512, Math.round(side * scale)));
+    var key = [w, n, state.lineColor].join(',');
+    if (!slashCache || slashCache.key !== key) {
+      var tile = makeCanvas(n, n);
+      var tctx = tile.getContext('2d');
+      var img = tctx.createImageData(n, n);
+      var rgb = [parseInt(state.lineColor.slice(1, 3), 16), parseInt(state.lineColor.slice(3, 5), 16), parseInt(state.lineColor.slice(5, 7), 16)];
+      var s1 = 0.2 * period;
+      var s2 = s1 + SLASH.offset * w;
+      var t = SLASH.thickness * w;
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          var x = ((c + 0.5) / n) * side;
+          var y = ((r + 0.5) / n) * side;
+          var phase = ((x + y) / Math.SQRT2) % period;
+          var a = Math.max(clamp(Math.min(phase - s1, s1 + t - phase) + 0.5, 0, 1), clamp(Math.min(phase - s2, s2 + t - phase) + 0.5, 0, 1));
+          var o = (r * n + c) * 4;
+          img.data[o] = rgb[0];
+          img.data[o + 1] = rgb[1];
+          img.data[o + 2] = rgb[2];
+          img.data[o + 3] = Math.round(a * 255);
+        }
+      }
+      tctx.putImageData(img, 0, 0);
+      slashCache = { key: key, tile: tile };
+    }
+    var pat = ctx.createPattern(slashCache.tile, 'repeat');
+    var cr = canvasRect();
+    var k = (side * (cssW / (view[2] - view[0])) / picW) / n;
+    pat.setTransform(new DOMMatrix([k, 0, 0, k, X(cr[0]), Y(cr[1])]));
+    return pat;
   }
 
   function drawRing(halfPct, color) {
@@ -669,6 +721,7 @@ export const frameJs = `
     }
     $('#fr-line-color').value = state.lineColor;
     $('#fr-line-width').value = String(state.lineWidth);
+    $all('[data-fr-line-pattern]').forEach(function (el) { setPill(el, el.getAttribute('data-fr-line-pattern') === state.linePattern); });
     $('#fr-line-readout').textContent = String(state.lineWidth);
     $('#fr-rim-color').value = state.rimColor;
     $('#fr-rim-width').value = String(state.rimWidth);
@@ -690,7 +743,7 @@ export const frameJs = `
     var frame = {
       box: state.box.map(r4),
       sides: { top: state.sides.top, right: state.sides.right, bottom: state.sides.bottom, left: state.sides.left },
-      line: state.lineWidth > 0 ? { color: state.lineColor, width: r4(state.lineWidth) } : null,
+      line: state.lineWidth > 0 ? { color: state.lineColor, width: r4(state.lineWidth), pattern: state.linePattern } : null,
       rim: state.rimWidth > 0 ? { color: state.rimColor, width: r4(state.rimWidth) } : null,
       paper: state.paper
     };
@@ -805,6 +858,21 @@ export const frameJs = `
   bindRange('#fr-rim-color', function (v) { state.rimColor = v; });
   bindRange('#fr-rim-width', function (v) { state.rimWidth = r4(parseFloat(v)); maskDirty = true; });
   bindRange('#fr-paper', function (v) { state.paper = v; });
+  $all('[data-fr-line-pattern]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var pattern = el.getAttribute('data-fr-line-pattern');
+      if (pattern === state.linePattern) return;
+      begin();
+      state.linePattern = pattern;
+      if (pattern === 'slash' && state.lineWidth < SLASH_MIN_WIDTH) {
+        state.lineWidth = SLASH_MIN_WIDTH;
+        maskDirty = true;
+      }
+      end();
+      syncControls();
+      changed();
+    });
+  });
   bindRange('#fr-line-width', function (v) { state.lineWidth = r4(parseFloat(v)); maskDirty = true; });
   $('#fr-brush').addEventListener('input', function (e) {
     ui.brush = parseFloat(e.target.value);
@@ -941,6 +1009,7 @@ export const frameJs = `
     else if (f.line) {
       if (typeof f.line.color === 'string' && HEX_RE.test(f.line.color)) state.lineColor = f.line.color.toLowerCase();
       if (typeof f.line.width === 'number') state.lineWidth = f.line.width;
+      if (f.line.pattern === 'solid' || f.line.pattern === 'slash') state.linePattern = f.line.pattern;
     }
     if (f.rim === null) state.rimWidth = 0;
     else if (f.rim) {

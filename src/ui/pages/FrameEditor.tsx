@@ -102,8 +102,17 @@ export function FrameEditorPage({ path, data, requestedShortId }: { path: string
             <section class="fr-section">
               <h2>線と紙</h2>
               <label class="fr-row">
-                線の色 <input type="color" id="fr-line-color" value="#885b80" />
+                線の色 <input type="color" id="fr-line-color" value="#4a3152" />
               </label>
+              <div class="fr-row">
+                線の柄
+                <div class="wb-pills" role="group" aria-label="線の柄">
+                  <Pill attrs={{ 'data-fr-line-pattern': 'solid' }} on>
+                    実線
+                  </Pill>
+                  <Pill attrs={{ 'data-fr-line-pattern': 'slash' }}>斜線</Pill>
+                </div>
+              </div>
               <label class="fr-row">
                 線の太さ <span class="mono" id="fr-line-readout">0.6</span> %
                 <input type="range" id="fr-line-width" min="0" max="5" step="0.1" value="0.6" />

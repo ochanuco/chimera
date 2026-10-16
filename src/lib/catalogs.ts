@@ -141,7 +141,7 @@ export function findBackdrops(doc: RecipeCatalogDoc): CatalogBackdrop[] {
 
 export interface StageFrameDefaults {
   sides: Record<string, string> | null;
-  line: { color?: string; width?: number } | null;
+  line: { color?: string; width?: number; pattern?: string } | null;
   rim: { color?: string; width?: number } | null;
   paper: string | null;
   /** `stage.frame.expand`: 全辺共通の boolean か、辺ごとの boolean。 */
@@ -158,7 +158,11 @@ export function findStageFrameDefaults(doc: RecipeCatalogDoc): StageFrameDefault
   };
   return {
     sides: plainObject(frame.sides) as Record<string, string> | null,
-    line: stroke(frame.line),
+    line: (() => {
+      const line = stroke(frame.line);
+      const pattern = plainObject(frame.line)?.pattern;
+      return line && typeof pattern === 'string' ? { ...line, pattern } : line;
+    })(),
     rim: stroke(frame.rim),
     paper: typeof frame.paper === 'string' ? frame.paper : null,
     expand: typeof frame.expand === 'boolean' ? frame.expand : (plainObject(frame.expand) as Record<string, boolean> | null),
