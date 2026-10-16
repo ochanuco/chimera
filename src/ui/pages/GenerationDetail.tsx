@@ -162,6 +162,7 @@ export function GenerationDetailPage({
   canPromoteToProfile,
   producedByOptions,
   frameable,
+  hasCutout,
 }: {
   path: string;
   data: GenerationDetailData;
@@ -176,6 +177,8 @@ export function GenerationDetailPage({
   producedByOptions: ProducedByOptions | null;
   /** 人物レイヤー (layer-figure / layer-outline) があり、/frame で枠に入れられる。 */
   frameable: boolean;
+  /** cutout asset (透過 PNG) がある。主画像は original (緑背景の絵) でなく cutout を出す。 */
+  hasCutout: boolean;
 }) {
   // A refined Generation rerolls its raw source; a raw one needs a recipe-driven generate request.
   const rerollable = data.refines_generation !== null || (data.request?.kind === 'generate' && Boolean(data.request.recipe));
@@ -197,8 +200,22 @@ export function GenerationDetailPage({
       <div class="detail-layout">
         <div class="detail-left">
           <div class="gen-detail-hero">
-            <img src={data.original_purged_at ? `/g/${data.short_id}/preview` : data.image.url} alt={data.short_id} />
+            <img
+              src={
+                hasCutout
+                  ? `/g/${data.short_id}/assets/cutout`
+                  : data.original_purged_at
+                    ? `/g/${data.short_id}/preview`
+                    : data.image.url
+              }
+              alt={data.short_id}
+            />
           </div>
+          {hasCutout && !data.original_purged_at ? (
+            <p class="image-meta">
+              切り抜き表示 · <a href={data.image.url}>元画像（緑背景）</a>
+            </p>
+          ) : null}
           {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
           {data.original_purged_at ? <p class="image-meta">原寸は破棄済み（preview のみ）</p> : null}
           <p class="detail-workbench">

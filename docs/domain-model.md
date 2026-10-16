@@ -714,6 +714,7 @@ worker が元の絵の original を読むためです。保持期間による削
 [architecture.md](architecture.md)「R2」節参照）だけが残り、そのまま読めます。
 `GET /g/{short_id}/image` は 410 (`original_purged`) を返し、redraw / deliver の起票は 409 (`original_purged`) で拒否されます（[api.md](api.md)、
 [worker-protocol.md](worker-protocol.md)）。GUI は preview を代わりに表示します（[ui.md](ui.md)）。
+cutout を持つ Generation の preview は original でなく cutout から作ります（`preview-cutout.webp`。[architecture.md](architecture.md)「R2」）。
 
 ### original の再圧縮
 

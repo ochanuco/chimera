@@ -1307,7 +1307,7 @@ pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null
 等の軽量情報を返します。
 
 `thumbnail_url` は `GET /g/{short_id}/preview`（長辺1024px以下のWebP。初回リクエスト時に
-元画像から生成しR2へ保存する）、`image_url` は `GET /g/{short_id}/image`（元画像そのもの）
+元画像から生成しR2へ保存する。cutout asset を持つ Generation は元画像ではなく cutout から作り、透明を保つ）、`image_url` は `GET /g/{short_id}/image`（元画像そのもの）
 です。サムネイル用途は必ず前者を使います。保持期間（30日）を過ぎた古い Generation では
 再圧縮ジョブ（[domain-model.md](domain-model.md#original-の再圧縮)）が原本を lossless
 WebP に変換していることがあり、その場合 `image_url` は `Content-Type: image/webp` を

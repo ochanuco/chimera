@@ -3,6 +3,7 @@ import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPo
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
 import { putSafetySchema } from '../schemas/safety';
+import { generationCutoutPreviewR2Key } from '../lib/generation-preview';
 import { notifyHub, notifyHubSafety, runInBackground } from '../lib/hub-notify';
 import { defaultRecipeRef } from '../lib/requests';
 import { createReroll, getRerollState } from '../lib/reroll';
@@ -277,6 +278,8 @@ generations.post('/:id/assets', async (c) => {
     const updated = await upsertGenerationAsset(db, row, contentType, size, r2Key, now);
     await putObject();
     if (row.r2_object_key !== r2Key) await c.env.IMAGES.delete(row.r2_object_key);
+    // cutout を差し替えたら、旧 cutout 由来の preview は作り直す。
+    if (row.role === 'cutout' && row.region === '') await c.env.IMAGES.delete(generationCutoutPreviewR2Key(row.generation_id));
     return updated;
   };
 
