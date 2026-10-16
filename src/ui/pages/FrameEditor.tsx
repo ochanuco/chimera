@@ -108,6 +108,13 @@ export function FrameEditorPage({ path, data, requestedShortId }: { path: string
                 <input type="range" id="fr-line-width" min="0" max="5" step="0.1" value="0.6" />
               </label>
               <label class="fr-row">
+                縁の色 <input type="color" id="fr-rim-color" value="#2e2236" />
+              </label>
+              <label class="fr-row">
+                縁の太さ <span class="mono" id="fr-rim-readout">0.25</span> %
+                <input type="range" id="fr-rim-width" min="0" max="5" step="0.05" value="0.25" />
+              </label>
+              <label class="fr-row">
                 紙の色 <input type="color" id="fr-paper" value="#ffffff" />
               </label>
             </section>

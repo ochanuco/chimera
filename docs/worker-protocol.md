@@ -792,6 +792,7 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
   box            必須。[x0, y0, x1, y1]（x0 < x1、y0 < y1）。背景を描く箱
   sides          {top, right, bottom, left}、各 "cut" \| "out"。省略した辺は top = "out"、ほかは "cut"
   line           {color?: "#RRGGBB", width?: 0〜5} \| null。width は入力の絵の長辺に対する %。0 と null は線なし
+  rim            {color?: "#RRGGBB", width?: 0〜5} \| null。line の内外に沿う縁。width は長辺に対する %（片側の幅）。0 と null は縁なし
   paper          "#RRGGBB"。箱の外の色
   canvas         [x0, y0, x1, y1]（同じ座標、x0 < x1、y0 < y1）。出力の範囲。省略は下の自動
   strokes        [{mode: "erase" \| "restore", width: 0 超〜20, points: [[x, y], ...]}]。width はペン径（長辺に対する %）、
@@ -804,16 +805,18 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
 1.  canvas 全体を paper で塗ります。
 2.  box の中に背景を box の大きさで描きます（柄は box の大きさでレンダリングし、`#RRGGBB` なら単色）。柄の座標は box の長辺で割った値で
     原点は左上なので、柄の細かさは box の長辺に比例します。
-3.  box の辺を中心に線を描きます。線の太さ w は width / 100 × 長辺の px で、辺をまたぎます。
+3.  box の辺を中心に枠を描きます。枠は外側の rim・line・内側の rim の 3 本で、辺をまたいで中央に置きます。
+    line の太さを w、rim の太さを r（どちらも width / 100 × 長辺の px）とし、B = w/2 + r とします。rim の色でリング
+    [box − B, box + B) を塗り、その上に line の色でリング [box − w/2, box + w/2) を塗ります。どちらも画素の中心で判定するハードエッジです。
 4.  キャラ（`layer-figure`）とフチ（`layer-outline`）を納品の絵と同じ位置に、keep-mask m（0〜1）を掛けて重ねます（フチが下）。
-    -   m の初期値は、"cut" の辺ごとの半平面です。境界は線の内縁（box の辺を w/2 だけ内側へ寄せた位置。線が無ければ辺そのもの）で、
+    -   m の初期値は、"cut" の辺ごとの半平面です。境界は枠の内縁（box の辺を B だけ内側へ寄せた位置。枠が無ければ辺そのもの）で、
         半平面は無限に続きます（下の辺を切ると、box の x の範囲の外でもその y より下は消えます）。縁はアンチエイリアスせず、
         画素の中心が残る側にあれば残します。"out" の辺は切らず、線に重なったキャラは線の上に描きます。
     -   strokes を順に当てます。erase は m = m·(1−a)、restore は m = m + (1−m)·a です（a はアンチエイリアスしたペンの被覆率。丸い端と丸い継ぎ目）。
         mask の canvas に、erase を不透明の `destination-out`、restore を白の `source-over` で描くのと同じです。
     -   最終的なキャラの alpha は元の alpha × m なので、restore で元から無い所にキャラが増えることはありません。
 5.  出力は canvas の範囲だけです。canvas が省略されたときは、m を掛けた後のキャラかフチの alpha が 0 を超える画素の bbox と、
-    box を線の外側の半分（w/2）だけ広げた矩形との和に、長辺の 4% の余白を足した範囲にします。px へは外向きに丸め、-1〜2 に収めます。
+    box を B だけ広げた矩形との和に、長辺の 4% の余白を足した範囲にします。px へは外向きに丸め、-1〜2 に収めます。
     worker は解決した canvas を出力の `parameters.frame.canvas` に記録します。
 
 写真に置くときは photo kind と同じ置き方（キャラとフチを 1 枚の板として拡大縮小）で、出力は写真と同じ大きさです。

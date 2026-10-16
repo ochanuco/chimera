@@ -142,6 +142,7 @@ export function findBackdrops(doc: RecipeCatalogDoc): CatalogBackdrop[] {
 export interface StageFrameDefaults {
   sides: Record<string, string> | null;
   line: { color?: string; width?: number } | null;
+  rim: { color?: string; width?: number } | null;
   paper: string | null;
 }
 
@@ -149,10 +150,14 @@ export interface StageFrameDefaults {
 export function findStageFrameDefaults(doc: RecipeCatalogDoc): StageFrameDefaults | null {
   const frame = plainObject(plainObject((doc as { stage?: unknown }).stage)?.frame);
   if (!frame) return null;
-  const line = plainObject(frame.line);
+  const stroke = (value: unknown) => {
+    const entry = plainObject(value);
+    return entry ? { color: typeof entry.color === 'string' ? entry.color : undefined, width: typeof entry.width === 'number' ? entry.width : undefined } : null;
+  };
   return {
     sides: plainObject(frame.sides) as Record<string, string> | null,
-    line: line ? { color: typeof line.color === 'string' ? line.color : undefined, width: typeof line.width === 'number' ? line.width : undefined } : null,
+    line: stroke(frame.line),
+    rim: stroke(frame.rim),
     paper: typeof frame.paper === 'string' ? frame.paper : null,
   };
 }

@@ -8,6 +8,7 @@ const FRAME = {
   box: [0.1, 0.3, 0.9, 1],
   sides: { top: 'out', right: 'cut', bottom: 'cut', left: 'cut' },
   line: { color: '#885b80', width: 0.6 },
+  rim: { color: '#2e2236', width: 0.25 },
   paper: '#ffffff',
   strokes: [{ mode: 'erase', width: 2, points: [[0.2, 0.4], [0.3, 0.5]] }],
 };
@@ -73,6 +74,8 @@ describe('stage frame validation', () => {
     ['bad hex paper', { frame: { box: [0, 0, 1, 1], paper: '#fff' } }],
     ['bad hex line color', { frame: { box: [0, 0, 1, 1], line: { color: 'red' } } }],
     ['line width over 5', { frame: { box: [0, 0, 1, 1], line: { width: 5.1 } } }],
+    ['bad hex rim color', { frame: { box: [0, 0, 1, 1], rim: { color: 'black' } } }],
+    ['rim width over 5', { frame: { box: [0, 0, 1, 1], rim: { width: 5.1 } } }],
     ['stroke width 0', { frame: { box: [0, 0, 1, 1], strokes: [{ mode: 'erase', width: 0, points: [[0, 0]] }] } }],
     ['stroke point out of range', { frame: { box: [0, 0, 1, 1], strokes: [{ mode: 'restore', width: 1, points: [[0, 2.5]] }] } }],
   ];
@@ -161,9 +164,14 @@ describe('frame editor entry points and assets', () => {
 
 describe('findStageFrameDefaults', () => {
   it('reads stage.frame and leaves out what the catalog lacks', () => {
-    const doc = { stage: { frame: { sides: { top: 'out' }, line: { color: '#885b80', width: 0.6 }, paper: '#ffffff' } } };
-    expect(findStageFrameDefaults(doc as never)).toEqual({ sides: { top: 'out' }, line: { color: '#885b80', width: 0.6 }, paper: '#ffffff' });
-    expect(findStageFrameDefaults({ stage: { frame: {} } } as never)).toEqual({ sides: null, line: null, paper: null });
+    const doc = { stage: { frame: { sides: { top: 'out' }, line: { color: '#885b80', width: 0.6 }, rim: { color: '#2e2236', width: 0.25 }, paper: '#ffffff' } } };
+    expect(findStageFrameDefaults(doc as never)).toEqual({
+      sides: { top: 'out' },
+      line: { color: '#885b80', width: 0.6 },
+      rim: { color: '#2e2236', width: 0.25 },
+      paper: '#ffffff',
+    });
+    expect(findStageFrameDefaults({ stage: { frame: {} } } as never)).toEqual({ sides: null, line: null, rim: null, paper: null });
     expect(findStageFrameDefaults({} as never)).toBeNull();
   });
 });

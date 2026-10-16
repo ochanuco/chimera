@@ -20,6 +20,7 @@ export const frameJs = `
   var MIN_SIZE = 0.02;
   var HEX_RE = /^#[0-9a-fA-F]{6}$/;
   var DEFAULT_LINE_COLOR = '#885b80';
+  var DEFAULT_RIM_COLOR = '#2e2236';
   var SIDE_KEYS = ['top', 'right', 'bottom', 'left'];
 
   function $(sel) { return root.querySelector(sel); }
@@ -35,6 +36,8 @@ export const frameJs = `
     backdrop: null,
     lineColor: DEFAULT_LINE_COLOR,
     lineWidth: 0.6,
+    rimColor: DEFAULT_RIM_COLOR,
+    rimWidth: 0.25,
     paper: '#ffffff',
     canvasMode: 'auto',
     canvas: [0, 0, 1, 1],
@@ -55,6 +58,8 @@ export const frameJs = `
       backdrop: state.backdrop ? { kind: state.backdrop.kind, name: state.backdrop.name, color: state.backdrop.color } : null,
       lineColor: state.lineColor,
       lineWidth: state.lineWidth,
+      rimColor: state.rimColor,
+      rimWidth: state.rimWidth,
       paper: state.paper,
       canvasMode: state.canvasMode,
       canvas: state.canvas.slice(),
@@ -132,6 +137,9 @@ export const frameJs = `
   function pctToY(pct) { return (pct / 100) * longSide() / picH; }
 
   function lineWidthPct() { return state.lineWidth > 0 ? state.lineWidth : 0; }
+  function rimWidthPct() { return state.rimWidth > 0 ? state.rimWidth : 0; }
+  // 枠全体（外の rim + line + 内の rim）の半幅。cut の境目と自動 canvas はこの縁で決まる。
+  function frameHalfPct() { return lineWidthPct() / 2 + rimWidthPct(); }
 
   function alphaBBox(source, maxSide) {
     var scale = Math.min(1, maxSide / Math.max(source.width, source.height));
@@ -192,10 +200,10 @@ export const frameJs = `
     mctx.clearRect(0, 0, workW, workH);
     mctx.fillStyle = '#fff';
     mctx.fillRect(0, 0, workW, workH);
-    var hx = pctToX(lineWidthPct()) / 2;
-    var hy = pctToY(lineWidthPct()) / 2;
+    var hx = pctToX(frameHalfPct());
+    var hy = pctToY(frameHalfPct());
     var b = state.box;
-    // 切る辺は線の内縁を境にした半平面。画素の中心が残る側にあれば残す。
+    // 切る辺は枠の内縁を境にした半平面。画素の中心が残る側にあれば残す。
     if (state.sides.left === 'cut') {
       mctx.clearRect(0, 0, clamp(Math.ceil((b[0] + hx) * workW - 0.5), 0, workW), workH);
     }
@@ -239,8 +247,8 @@ export const frameJs = `
     sctx.drawImage(maskedOut, 0, 0, sum.width, sum.height);
     sctx.drawImage(maskedFig, 0, 0, sum.width, sum.height);
     var vis = alphaBBox(sum, SCAN_MAX);
-    var hx = pctToX(lineWidthPct()) / 2;
-    var hy = pctToY(lineWidthPct()) / 2;
+    var hx = pctToX(frameHalfPct());
+    var hy = pctToY(frameHalfPct());
     var b = state.box;
     var r = [b[0] - hx, b[1] - hy, b[2] + hx, b[3] + hy];
     if (vis) r = [Math.min(r[0], vis[0]), Math.min(r[1], vis[1]), Math.max(r[2], vis[2]), Math.max(r[3], vis[3])];
@@ -349,13 +357,18 @@ export const frameJs = `
     }
   }
 
+  // rim の色で枠全体のリングを塗り、その上に line のリングを塗る。
   function drawLine() {
-    var pct = lineWidthPct();
-    if (pct <= 0) return;
-    var hx = pctToX(pct) / 2;
-    var hy = pctToY(pct) / 2;
+    drawRing(frameHalfPct(), state.rimColor);
+    drawRing(lineWidthPct() / 2, state.lineColor);
+  }
+
+  function drawRing(halfPct, color) {
+    if (halfPct <= 0) return;
+    var hx = pctToX(halfPct);
+    var hy = pctToY(halfPct);
     var b = state.box;
-    ctx.fillStyle = state.lineColor;
+    ctx.fillStyle = color;
     var ox0 = X(b[0] - hx), oy0 = Y(b[1] - hy), ox1 = X(b[2] + hx), oy1 = Y(b[3] + hy);
     var ix0 = X(b[0] + hx), iy0 = Y(b[1] + hy), ix1 = X(b[2] - hx), iy1 = Y(b[3] - hy);
     if (ix1 <= ix0 || iy1 <= iy0) {
@@ -599,6 +612,9 @@ export const frameJs = `
     $('#fr-line-color').value = state.lineColor;
     $('#fr-line-width').value = String(state.lineWidth);
     $('#fr-line-readout').textContent = String(state.lineWidth);
+    $('#fr-rim-color').value = state.rimColor;
+    $('#fr-rim-width').value = String(state.rimWidth);
+    $('#fr-rim-readout').textContent = String(state.rimWidth);
     $('#fr-paper').value = state.paper;
     $('#fr-brush').value = String(ui.brush);
     $('#fr-brush-readout').textContent = String(ui.brush);
@@ -618,6 +634,7 @@ export const frameJs = `
       box: state.box.map(r4),
       sides: { top: state.sides.top, right: state.sides.right, bottom: state.sides.bottom, left: state.sides.left },
       line: state.lineWidth > 0 ? { color: state.lineColor, width: r4(state.lineWidth) } : null,
+      rim: state.rimWidth > 0 ? { color: state.rimColor, width: r4(state.rimWidth) } : null,
       paper: state.paper
     };
     if (state.canvasMode === 'manual') frame.canvas = state.canvas.map(r4);
@@ -725,6 +742,8 @@ export const frameJs = `
     el.addEventListener('change', end);
   }
   bindRange('#fr-line-color', function (v) { state.lineColor = v; });
+  bindRange('#fr-rim-color', function (v) { state.rimColor = v; });
+  bindRange('#fr-rim-width', function (v) { state.rimWidth = r4(parseFloat(v)); maskDirty = true; });
   bindRange('#fr-paper', function (v) { state.paper = v; });
   bindRange('#fr-line-width', function (v) { state.lineWidth = r4(parseFloat(v)); maskDirty = true; });
   $('#fr-brush').addEventListener('input', function (e) {
@@ -855,6 +874,11 @@ export const frameJs = `
       if (typeof f.line.color === 'string' && HEX_RE.test(f.line.color)) state.lineColor = f.line.color.toLowerCase();
       if (typeof f.line.width === 'number') state.lineWidth = f.line.width;
     }
+    if (f.rim === null) state.rimWidth = 0;
+    else if (f.rim) {
+      if (typeof f.rim.color === 'string' && HEX_RE.test(f.rim.color)) state.rimColor = f.rim.color.toLowerCase();
+      if (typeof f.rim.width === 'number') state.rimWidth = f.rim.width;
+    }
     if (typeof f.paper === 'string' && HEX_RE.test(f.paper)) state.paper = f.paper.toLowerCase();
     if (validRect(f.canvas)) { state.canvas = f.canvas.slice(); state.canvasMode = 'manual'; }
     if (Array.isArray(f.strokes)) state.strokes = f.strokes.map(function (s) { return { mode: s.mode, width: s.width, points: s.points.map(function (p) { return [p[0], p[1]]; }) }; });
@@ -889,6 +913,7 @@ export const frameJs = `
       if (init.defaults) {
         var d = { sides: init.defaults.sides || undefined, paper: init.defaults.paper || undefined };
         if (init.defaults.line) d.line = init.defaults.line;
+        if (init.defaults.rim) d.rim = init.defaults.rim;
         applyInitial({ frame: d });
       }
       if (init.initial) applyInitial(init.initial);

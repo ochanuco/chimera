@@ -255,6 +255,11 @@ const frameSchema = z
       .strict()
       .nullable()
       .optional(),
+    rim: z
+      .object({ color: frameColor.optional(), width: z.number().min(0).max(5).optional() })
+      .strict()
+      .nullable()
+      .optional(),
     paper: frameColor.optional(),
     canvas: frameRect.optional(),
     strokes: z
