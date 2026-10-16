@@ -144,6 +144,7 @@ export interface StageFrameDefaults {
   line: { color?: string; width?: number } | null;
   rim: { color?: string; width?: number } | null;
   paper: string | null;
+  expand: boolean | null;
 }
 
 /** Top-level `stage.frame` (chagama が埋める frame の既定値)。枠エディタの初期値にだけ使い、request には埋めない。セクションが無ければ null。 */
@@ -159,6 +160,7 @@ export function findStageFrameDefaults(doc: RecipeCatalogDoc): StageFrameDefault
     line: stroke(frame.line),
     rim: stroke(frame.rim),
     paper: typeof frame.paper === 'string' ? frame.paper : null,
+    expand: typeof frame.expand === 'boolean' ? frame.expand : null,
   };
 }
 

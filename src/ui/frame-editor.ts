@@ -40,9 +40,10 @@ export const frameJs = `
     rimWidth: 0.25,
     paper: '#ffffff',
     canvasMode: 'auto',
+    expand: true,
     canvas: [0, 0, 1, 1],
     strokes: [],
-    shadowOn: true,
+    shadowOn: false,
     shadowKeep: null
   };
   var ui = { tool: 'box', brush: 2, hover: null };
@@ -62,6 +63,7 @@ export const frameJs = `
       rimWidth: state.rimWidth,
       paper: state.paper,
       canvasMode: state.canvasMode,
+      expand: state.expand,
       canvas: state.canvas.slice(),
       // 描き終えたストロークは書き換えないので、配列だけ写せばよい。
       strokes: state.strokes.slice(),
@@ -194,6 +196,17 @@ export const frameJs = `
     mctx.restore();
   }
 
+  // [lo, hi) に中心が入る画素の範囲。
+  function pixelSpan(lo, hi, size) {
+    return [clamp(Math.ceil(lo * size - 0.5), 0, size), clamp(Math.ceil(hi * size - 0.5), 0, size)];
+  }
+
+  function clearBand(mctx, x0, y0, x1, y1) {
+    var xs = pixelSpan(x0, x1, workW);
+    var ys = pixelSpan(y0, y1, workH);
+    if (xs[1] > xs[0] && ys[1] > ys[0]) mctx.clearRect(xs[0], ys[0], xs[1] - xs[0], ys[1] - ys[0]);
+  }
+
   function rebuildMask() {
     var mctx = maskC.getContext('2d');
     mctx.globalCompositeOperation = 'source-over';
@@ -218,6 +231,12 @@ export const frameJs = `
       var bs = clamp(Math.floor((b[3] - hy) * workH - 0.5) + 1, 0, workH);
       mctx.clearRect(0, bs, workW, workH - bs);
     }
+    // behind の辺は、その辺の枠の帯（角まで含む）の下だけ抜く。枠は背景側にあるので、枠がキャラの上に見える。
+    var bx0 = b[0] - hx, by0 = b[1] - hy, bx1 = b[2] + hx, by1 = b[3] + hy;
+    if (state.sides.top === 'behind') clearBand(mctx, bx0, b[1] - hy, bx1, b[1] + hy);
+    if (state.sides.right === 'behind') clearBand(mctx, b[2] - hx, by0, b[2] + hx, by1);
+    if (state.sides.bottom === 'behind') clearBand(mctx, bx0, b[3] - hy, bx1, b[3] + hy);
+    if (state.sides.left === 'behind') clearBand(mctx, b[0] - hx, by0, b[0] + hx, by1);
     for (var i = 0; i < state.strokes.length; i++) drawStroke(mctx, state.strokes[i], 0);
     maskDirty = false;
     layersDirty = true;
@@ -254,7 +273,9 @@ export const frameJs = `
     if (vis) r = [Math.min(r[0], vis[0]), Math.min(r[1], vis[1]), Math.max(r[2], vis[2]), Math.max(r[3], vis[3])];
     var mx = pctToX(4);
     var my = pctToY(4);
-    autoBox = [clampCoord(r[0] - mx), clampCoord(r[1] - my), clampCoord(r[2] + mx), clampCoord(r[3] + my)];
+    var lo = state.expand ? -1 : 0;
+    var hi = state.expand ? 2 : 1;
+    autoBox = [clamp(r[0] - mx, lo, hi), clamp(r[1] - my, lo, hi), clamp(r[2] + mx, lo, hi), clamp(r[3] + my, lo, hi)];
     autoDirty = false;
   }
 
@@ -620,6 +641,8 @@ export const frameJs = `
     $('#fr-brush-readout').textContent = String(ui.brush);
     var canvasTool = $('[data-fr-tool="canvas"]');
     canvasTool.hidden = state.canvasMode !== 'manual';
+    $('#fr-expand-row').hidden = state.canvasMode !== 'auto';
+    $('#fr-no-expand').checked = !state.expand;
     if (state.canvasMode !== 'manual' && ui.tool === 'canvas') ui.tool = 'box';
     updateStatus();
   }
@@ -638,6 +661,7 @@ export const frameJs = `
       paper: state.paper
     };
     if (state.canvasMode === 'manual') frame.canvas = state.canvas.map(r4);
+    else frame.expand = state.expand;
     if (state.strokes.length) {
       frame.strokes = state.strokes.map(function (s) {
         return { mode: s.mode, width: s.width, points: s.points.map(function (p) { return [p[0], p[1]]; }) };
@@ -769,6 +793,14 @@ export const frameJs = `
     });
   });
 
+  $('#fr-no-expand').addEventListener('change', function (e) {
+    begin();
+    state.expand = !e.target.checked;
+    end();
+    autoDirty = true;
+    changed();
+  });
+
   $all('[data-fr-shadow]').forEach(function (el) {
     el.addEventListener('click', function () {
       begin();
@@ -868,7 +900,7 @@ export const frameJs = `
     var f = opts.frame;
     if (!f) return;
     if (validRect(f.box)) state.box = f.box.slice();
-    if (f.sides) SIDE_KEYS.forEach(function (k) { if (f.sides[k] === 'cut' || f.sides[k] === 'out') state.sides[k] = f.sides[k]; });
+    if (f.sides) SIDE_KEYS.forEach(function (k) { if (f.sides[k] === 'cut' || f.sides[k] === 'out' || f.sides[k] === 'behind') state.sides[k] = f.sides[k]; });
     if (f.line === null) state.lineWidth = 0;
     else if (f.line) {
       if (typeof f.line.color === 'string' && HEX_RE.test(f.line.color)) state.lineColor = f.line.color.toLowerCase();
@@ -880,6 +912,7 @@ export const frameJs = `
       if (typeof f.rim.width === 'number') state.rimWidth = f.rim.width;
     }
     if (typeof f.paper === 'string' && HEX_RE.test(f.paper)) state.paper = f.paper.toLowerCase();
+    if (typeof f.expand === 'boolean') state.expand = f.expand;
     if (validRect(f.canvas)) { state.canvas = f.canvas.slice(); state.canvasMode = 'manual'; }
     if (Array.isArray(f.strokes)) state.strokes = f.strokes.map(function (s) { return { mode: s.mode, width: s.width, points: s.points.map(function (p) { return [p[0], p[1]]; }) }; });
   }
@@ -914,9 +947,14 @@ export const frameJs = `
         var d = { sides: init.defaults.sides || undefined, paper: init.defaults.paper || undefined };
         if (init.defaults.line) d.line = init.defaults.line;
         if (init.defaults.rim) d.rim = init.defaults.rim;
+        if (typeof init.defaults.expand === 'boolean') d.expand = init.defaults.expand;
         applyInitial({ frame: d });
       }
-      if (init.initial) applyInitial(init.initial);
+      if (init.initial) {
+        // 復元では shadow_from の省略は「納品の影を継ぐ」なので影ありに戻す。
+        state.shadowOn = init.initial.shadow_from !== null;
+        applyInitial(init.initial);
+      }
       if (state.backdrop && state.backdrop.kind === 'pattern') loadThumb(state.backdrop.name);
 
       var note = document.getElementById('fr-loading');

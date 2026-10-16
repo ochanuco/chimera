@@ -240,7 +240,7 @@ const COMPASS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 const frameCoord = z.number().min(-1).max(2);
 const frameRect = z.tuple([frameCoord, frameCoord, frameCoord, frameCoord]);
 const frameColor = z.string().regex(HEX_COLOR_RE);
-const frameSide = z.enum(['cut', 'out']);
+const frameSide = z.enum(['cut', 'out', 'behind']);
 
 /** stage の frame (docs/worker-protocol.md「stage」)。座標は納品画像のキャンバスに対する分数。x0<x1 などの組み合わせは stageOptionsIssues が見る。 */
 const frameSchema = z
@@ -262,6 +262,7 @@ const frameSchema = z
       .optional(),
     paper: frameColor.optional(),
     canvas: frameRect.optional(),
+    expand: z.boolean().optional(),
     strokes: z
       .array(
         z
