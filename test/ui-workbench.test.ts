@@ -105,7 +105,7 @@ describe('GET /work/:shortId', () => {
 
     const html = await (await req(`/work/${root.short_id}?at=${hires.short_id}`)).text();
     expect(html).toContain('data-workbench=');
-    for (const label of ['元絵', '1. 描き直し', '2. 切り抜き・フチ', '3. 背景', '4. 光', '5. ボケ']) expect(html).toContain(label);
+    for (const label of ['元絵', '1. 描き直し', '2. フチ', '3. 背景', '4. 光', '5. ボケ']) expect(html).toContain(label);
     for (const phase of [1, 2, 3, 4, 5]) expect(html).toContain(`data-wb-form="${phase}"`);
     expect(html).not.toContain('data-wb-form="6"');
     expect(html).not.toContain('2. 部分');
@@ -137,8 +137,9 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('name="wb_redraw_no_cut"');
     expect(form).toContain('切り抜かない');
     expect(appJs).toContain("if (!qs('input[name=\"wb_redraw_no_cut\"]', form).checked) redrawOptions.cut = true;");
-    expect(appJs).toContain("wb.active === 2 && titleInput && titleInput.cutout ? 'フチ' : phase.label");
-    expect(appJs).toContain("input.cutout ? '先に 2 でフチを付けてください' : '先に切り抜いてください'");
+    expect(appJs).not.toContain('titleInput');
+    expect(appJs).toContain("var notDelivered = '先に 2 でフチを付けてください';");
+    expect(appJs).not.toContain('先に切り抜いてください');
     expect(appJs).toContain("node.cutout ? '/g/' + node.short_id + '/assets/cutout'");
   });
 
@@ -179,18 +180,19 @@ describe('GET /work/:shortId', () => {
     for (const dir of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) expect(form).toContain(`data-compass-dir="${dir}"`);
   });
 
-  it('phase 2 cuts out transparent with size, the outline editor open and finishing controls in closed details', async () => {
+  it('phase 2 cuts out transparent with the outline editor open and finishing controls in closed details', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="2"'), html.indexOf('data-wb-form="3"'));
     expect(form).not.toContain('data-wb-bg=');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="transparent" checked/);
-    expect(form).toContain('name="wb_deliver_size"');
     expect(form).toMatch(/<details class="wb-acc" open="">\s*<summary>\s*フチ/);
     expect(form).toContain('data-outline-editor');
     expect(form).toContain('一番外の陰影');
     expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
-    for (const name of ['repin', 'recolor', 'skin', 'keep_legwear']) expect(form).toContain(`name="${name}"`);
+    expect(form).toContain('name="repin"');
+    for (const name of ['recolor', 'skin', 'keep_legwear', 'wb_deliver_size']) expect(form).not.toContain(`name="${name}"`);
+    expect(appJs).not.toMatch(/recolor|keep_legwear|deliver_size|name="skin"/);
     expect(form).toContain('切り抜きは 2 回目から使い回します');
   });
 

@@ -9,7 +9,7 @@ import type { GenerationRow, RequestKind, RequestStatus } from '../types';
 
 const MAX_ROOT_HOPS = 100;
 
-/** redraw（canvas / hires / light）= 1 描き直し、deliver = 2 切り抜き・フチ、stage = 3 背景、lighting = 4 光、dof = 5 ボケ。
+/** redraw（canvas / hires / light）= 1 描き直し、deliver = 2 フチ、stage = 3 背景、lighting = 4 光、dof = 5 ボケ。
  * 作成できなくなった repair / masked_redraw の既存の行は、描き直しの候補として 1 に置く。それ以外は null。 */
 export function workbenchPhase(kind: string, method: string | null): number | null {
   if (kind === 'redraw') return method === 'light' || method === 'canvas' || method === 'hires' ? 1 : null;

@@ -536,8 +536,7 @@ chimera の WebUI フォームのプリセットもここから取っていま�
       "repin": true,
       "stroke_light": "n",
       "backdrop": "dots",
-      "outlines": [{ "color": "#ffffff", "width": 0.4 }, { "color": "#885b80", "width": 1.04 }],
-      "deliver_size": 1536
+      "outlines": [{ "color": "#ffffff", "width": 0.4 }, { "color": "#885b80", "width": 1.04 }]
     }
   }
 }
@@ -550,15 +549,11 @@ chimera の WebUI フォームのプリセットもここから取っていま�
   options        型
   -------------- --------------------------------------------------------------------------
   repin          bool（アクセント色の彩度を基準絵の帯域へ圧縮する。既定 true）
-  recolor        bool（yukari のパレットに塗り直す）
-  skin           bool
-  keep_legwear   null \| true \| number \| word（true は既定 0.62、number はその値。word の語彙は catalog の `recipes[].dials.deliver`）
   keep_scene     bool（背景・景色を残す）
   transparent    null \| bool（`true` は背景なしで切り抜いた透過納品の明示形。`false` は `backdrop` が null でも背景を敷く）
   backdrop       null \| string（catalog `backdrops` の模様名か `#RRGGBB`。`null` は透過納品、ただし `transparent: false` なら除く。既定 `"dots"`）
   outlines       null \| [{color: "#rrggbb", width}]（フチのリスト、内側から外側へ 0〜6 本。`width` は長辺に対する %で 0 < width <= 5。省略または `null` は catalog の `recipes[].deliver.outlines.default`、`[]` はフチなし）
   stroke_light   null \| "even" \| "n".."nw"（一番外のフチの陰影。`"even"`（`null` も同じ）は一定の太さ、8 方位はフチを光源側で細く影側で太くし落ち影も付ける。陰影と押し出しは一番外のフチにかかり、落ち影も一番外のフチの外形に沿う。既定 `"n"`。`"none"` は 400 で、フチなしは `outlines: []`）
-  deliver_size   null \| integer（納品ファイルの長辺）
   see_through    null \| number（1〜5、既定 1。green key の上に描かれた透け衣装越しに背景が透ける量を何倍にするか。合成にだけ効き、保存する `alpha` は変えない）
   light          null \| {scene, from?}（下記）
 
@@ -573,7 +568,7 @@ Generation（納品の Generation ではない）に付きます。最初の del
 条件の一致を確かめて使い回し、違うときは作り直して同じ `(role, region)` を置換します。背景・紫縁・F 値だけを
 変えた deliver は切り抜きをやり直しません。worker は asset を `GET /g/{generation uuid}/assets/{role}` で読みます。
 
-deliver は出力の Generation に層の asset を付けます。いずれも出力と同じ寸法（`deliver_size` で縮めた後）の PNG で、
+deliver は出力の Generation に層の asset を付けます。いずれも出力と同じ寸法の PNG で、
 dof が読みます。
 
   role            内容
@@ -587,15 +582,15 @@ dof が読みます。
 絵は受けません。chimera が検証するのは型だけで、組み合わせの妥当性（recipe が route を持つか等）は worker が
 判定して `failed` にします。
 
-`keep_legwear` の word は `^[a-z][a-z0-9-]*$` にマッチする文字列で、word の語彙は recipe ごとに catalog が
-`recipes[].dials.deliver` として公開します。chimera はそれを表示にだけ使い、word が実在するかの検証と
-number への解決は worker が行います（未知の word は `failed`）。catalog は既定を
+`recolor` / `skin` / `keep_legwear` / `deliver_size` は廃止したので、deliver の新しい Request に含めると 400 です。
+これらを含む保存済みの payload は読めるままで、保存済みの deliver profile の本文は読むときにこの 4 キーを除いて使います
+（profile の展開、`promote-profile`、`get_preset`、profile の一覧）。catalog は既定を
 `recipes[].deliver.defaults`、フチの既定と上限を `recipes[].deliver.outlines`（`{default: [{color, width}], max_count, max_width}`）、
 `stroke_light` の選択肢を `recipes[].deliver.stroke_light`、単色の初期値を
 `recipes[].deliver.backdrop_color`（`#RRGGBB`）として公開し、WebUI のフォームのプリセットもここから取っています。
 catalog の envelope の `schema_version` は 1・2・3 を受けます（3 は `deliver.dof` を持たず、最上位の `dof` 節を持つ）。
 
-GUI が積む deliver は `repin` / `recolor` / `keep_legwear` / `backdrop` / `outlines` に加えて、`紫縁` が `既定` なら
+GUI が積む deliver は `repin` / `backdrop` / `outlines` に加えて、`紫縁` が `既定` なら
 `stroke_light` と `light` を省略し（worker が引き継ぎ・既定から解決）、`立体` なら `光の向き` の方位、`均等` なら
 `even` を `stroke_light` に積みます。`光源` を選んだときだけ `light: {scene, from}` を積みます
 （`from` は `光の向き` の値）。`backdrop` は選んだカードの模様名 → その文字列、`透過 PNG` → `null`、`単色` → 入力した
@@ -617,7 +612,7 @@ worker が読むのは展開済みの `payload.options` だけで、`payload.pro
 body の形は次の通りです。pose/costume/expression の Preset と違い、base への参照も patches も持たない全文上書きです。
 
 ``` json
-{ "options": { "keep_legwear": "on", "backdrop": "dots" } }
+{ "options": { "repin": true, "backdrop": "dots" } }
 ```
 
 `POST /api/v1/presets/promote-profile`（body `{ generation_id, name, note?, idempotency_key }`）が新しい版を作ります。

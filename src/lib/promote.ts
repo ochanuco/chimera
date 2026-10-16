@@ -7,7 +7,7 @@ import { conflict, notFound } from './errors';
 import { getPresetRow, resolvePreset, serializeResolvedPreset } from './presets';
 import { parseJsonObjectOrNull } from './overrides';
 import { uuidv7 } from './uuidv7';
-import { deliverOptionsSchema } from '../schemas/request-payloads';
+import { deliverOptionsSchema, stripRemovedDeliverOptions } from '../schemas/request-payloads';
 import { presetBodyDeliverSchema } from '../schemas/presets';
 import { parseOrThrow } from './validate';
 import type { GenerationRow, PresetCreatedBy, PresetKind, PresetRow } from '../types';
@@ -192,7 +192,7 @@ export async function promoteGenerationToProfile(db: D1Database, input: PromoteG
   if (deliverRequest.kind !== 'deliver') throw conflict('generation is not a deliver-kind result; nothing to promote from');
 
   const payload = JSON.parse(deliverRequest.payload_json) as { options?: unknown };
-  const options = parseOrThrow(deliverOptionsSchema, payload.options ?? {});
+  const options = parseOrThrow(deliverOptionsSchema, stripRemovedDeliverOptions(payload.options ?? {}));
   const bodyJson = JSON.stringify(parseOrThrow(presetBodyDeliverSchema, { options }));
 
   const id = uuidv7();

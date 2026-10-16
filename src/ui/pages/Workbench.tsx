@@ -38,7 +38,7 @@ export interface WorkbenchData {
 
 const PHASES = [
   { no: 1, label: '描き直し' },
-  { no: 2, label: '切り抜き・フチ' },
+  { no: 2, label: 'フチ' },
   { no: 3, label: '背景' },
   { no: 4, label: '光' },
   { no: 5, label: 'ボケ' },
@@ -172,15 +172,6 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
       <div data-wb-form-body>
         <div class="wb-row">
           <span class="wb-note">透過で切り抜き、フチを付けます。背景は次のフェーズで付けます。</span>
-          <label class="wb-inline-field">
-            サイズ
-            <select name="wb_deliver_size">
-              <option value="1536" selected>
-                1536
-              </option>
-              <option value="2048">2048</option>
-            </select>
-          </label>
         </div>
 
         <details class="wb-acc" open>
@@ -195,15 +186,6 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           <div class="wb-acc-body">
             <label>
               <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する
-            </label>
-            <label>
-              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える
-            </label>
-            <label>
-              <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える
-            </label>
-            <label>
-              <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す
             </label>
           </div>
         </details>

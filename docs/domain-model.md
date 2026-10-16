@@ -355,7 +355,7 @@ dial word か、chimera が検証しない数値で、chimera が語彙を持た
 ですが、base も patches も持ちません — 版ごと全文上書きの leaf です。
 
 ``` json
-{ "options": { "keep_legwear": "on", "backdrop": "dots" } }
+{ "options": { "repin": true, "backdrop": "dots" } }
 ```
 
 不変条件は pose/costume/expression と共有するものと、deliver 固有のものがあります。

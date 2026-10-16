@@ -17,7 +17,6 @@ const regionSchema = z
 /** redraw / deliver の options は worker の引数に 1 対 1 で写す (docs/worker-protocol.md「redraw」「deliver」)。
  * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。 */
 const denoiseField = z.union([z.number(), dialWord]).nullable().optional();
-const keepLegwearField = z.union([z.literal(true), z.number(), dialWord]).nullable().optional();
 const routeField = z.enum(['latent', 'pixel']).nullable().optional();
 const finalizerField = z.string().nullable().optional();
 const sizeField = z.number().int().nullable().optional();
@@ -28,13 +27,10 @@ const keepStrengthField = z.number().gt(0).lt(1).optional();
 const hiresField = z.number().int().min(64).nullable().optional();
 const hiresDenoiseField = z.number().gt(0).lte(1).nullable().optional();
 const repinField = z.boolean().optional();
-const recolorField = z.boolean().optional();
-const skinField = z.boolean().optional();
 const keepSceneField = z.boolean().optional();
 const transparentField = z.boolean().nullable().optional();
 const backdropField = z.string().nullable().optional();
 const strokeLightField = z.enum(['even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional();
-const deliverSizeField = z.number().int().nullable().optional();
 const seeThroughField = z.number().min(1).max(5).nullable().optional();
 const outlineSchema = z
   .object({ color: z.string().regex(/^#[0-9a-f]{6}$/i), width: z.number().gt(0).lte(5) })
@@ -68,19 +64,25 @@ export const redrawOptionsSchema = z.discriminatedUnion('method', [
   z.object({ method: z.literal('light'), scene: lightSceneField.optional(), from: lightFromField, cut: cutField }).strict(),
 ]);
 
+/** 廃止した deliver option。保存済みの payload / profile 本文には残っているので、読み直すときは `stripRemovedDeliverOptions` で落とす。 */
+export const REMOVED_DELIVER_OPTIONS = ['recolor', 'skin', 'keep_legwear', 'deliver_size'] as const;
+
+export function stripRemovedDeliverOptions(options: unknown): unknown {
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) return options;
+  const kept = { ...(options as Record<string, unknown>) };
+  for (const key of REMOVED_DELIVER_OPTIONS) delete kept[key];
+  return kept;
+}
+
 /** deliver の options は切り抜き後の飾りだけ (docs/worker-protocol.md「deliver」)。 */
 export const deliverOptionsSchema = z
   .object({
     repin: repinField,
-    recolor: recolorField,
-    skin: skinField,
-    keep_legwear: keepLegwearField,
     keep_scene: keepSceneField,
     transparent: transparentField,
     backdrop: backdropField,
     stroke_light: strokeLightField,
     outlines: outlinesField,
-    deliver_size: deliverSizeField,
     light: lightField,
     see_through: seeThroughField,
   })
