@@ -13,9 +13,8 @@ import {
 import { parseJsonObject, type JsonObject } from './overrides';
 import { ApiError, badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
-import { FINALIZE_CREATION_MESSAGE } from './request-rules';
+import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE } from './request-rules';
 import { assertPatchGrammar, type PatchList } from './patch-grammar';
-import { canonicalizeMaskedRedrawPayload } from './request-payload';
 import { applyDeliverProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import { createUniqueRequestShortId } from './shortid';
@@ -281,19 +280,18 @@ export async function createRequest(
 ): Promise<CreateRequestResult> {
   const { runValidation = true } = options;
   if (input.kind === 'finalize') throw badRequest(FINALIZE_CREATION_MESSAGE);
+  if (input.kind === 'repair' || input.kind === 'masked_redraw') throw badRequest(PARTIAL_FIX_CREATION_MESSAGE);
   if (input.kind === 'import') return createImportRequest(db, input, options);
   if (input.payload === undefined) throw badRequest('payload is required');
-  // masked_redraw のエイリアス正規化、generate の preset pin (worker-protocol.md「preset の pin」)、
+  // generate の preset pin (worker-protocol.md「preset の pin」)、
   // deliver profile の展開 (worker-protocol.md「deliver profile」) は payload をハッシュする前にここで行う
   // — 内部呼び出しや idempotency 再送もこの正規化を通す。
   const payload =
-    input.kind === 'masked_redraw'
-      ? (canonicalizeMaskedRedrawPayload(input.payload) as JsonObject)
-      : input.kind === 'generate'
-        ? await pinPresets(db, input.payload)
-        : input.kind === 'deliver'
-          ? await applyDeliverProfile(db, input.payload)
-          : input.payload;
+    input.kind === 'generate'
+      ? await pinPresets(db, input.payload)
+      : input.kind === 'deliver'
+        ? await applyDeliverProfile(db, input.payload)
+        : input.payload;
   const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
   const existing = await db

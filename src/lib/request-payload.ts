@@ -6,18 +6,16 @@ import {
   generatePayloadSchema,
   lensPayloadSchema,
   lightingPayloadSchema,
-  maskedRedrawPayloadSchema,
   photoPayloadSchema,
   redrawPayloadSchema,
-  repairPayloadSchema,
   stagePayloadSchema,
 } from '../schemas/request-payloads';
-import { FINALIZE_CREATION_MESSAGE, patchesFingerprintIssues } from './request-rules';
-import { parseOrThrow, prefixIssues, validate, type ValidationIssue } from './validate';
+import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE, patchesFingerprintIssues } from './request-rules';
+import { prefixIssues, validate, type ValidationIssue } from './validate';
 import type { StandardSchemaV1 } from './standard-schema';
 import type { RequestKind } from '../types';
 
-export type PayloadKind = Exclude<RequestKind, 'finalize' | 'import'>;
+export type PayloadKind = Exclude<RequestKind, 'finalize' | 'repair' | 'masked_redraw' | 'import'>;
 
 function payloadSchemaFor(kind: PayloadKind): StandardSchemaV1 {
   switch (kind) {
@@ -35,10 +33,6 @@ function payloadSchemaFor(kind: PayloadKind): StandardSchemaV1 {
       return stagePayloadSchema;
     case 'lighting':
       return lightingPayloadSchema;
-    case 'repair':
-      return repairPayloadSchema;
-    case 'masked_redraw':
-      return maskedRedrawPayloadSchema;
     case 'generate':
       return generatePayloadSchema;
   }
@@ -53,16 +47,6 @@ export function payloadEnvelopeIssues(kind: PayloadKind, payload: unknown): Vali
 /** payload 封筒の issue を、リクエスト本体の `payload` の下に付け替えたもの。 */
 export function requestPayloadIssues(kind: PayloadKind, payload: unknown): ValidationIssue[] {
   return prefixIssues(['payload'], payloadEnvelopeIssues(kind, payload));
-}
-
-/** Canonicalizes to one stable vocabulary even when a caller uses aliases. Validation normally happens
- * at the REST/MCP boundary; parsing here also guards direct callers (e.g. request helpers). */
-export function canonicalizeMaskedRedrawPayload(payload: unknown): Record<string, unknown> {
-  const parsed = parseOrThrow(maskedRedrawPayloadSchema, payload);
-  const { pad, feather, ...options } = parsed.options;
-  if (options.mask_padding === undefined && pad !== undefined) options.mask_padding = pad;
-  if (options.mask_feather === undefined && feather !== undefined) options.mask_feather = feather;
-  return { generation_id: parsed.generation_id, options };
 }
 
 /** `POST /api/v1/requests` の本体に対する kind 別の規則。`resolutionKeys` は import だけが受ける解決済みの値のキー。 */
@@ -81,6 +65,9 @@ export function createRequestIssues(
   const issues: ValidationIssue[] = [];
   if (value.kind === 'finalize') {
     return [{ message: FINALIZE_CREATION_MESSAGE, path: ['kind'] }];
+  }
+  if (value.kind === 'repair' || value.kind === 'masked_redraw') {
+    return [{ message: PARTIAL_FIX_CREATION_MESSAGE, path: ['kind'] }];
   }
   if (value.kind === 'import') {
     if (value.status !== 'done') {

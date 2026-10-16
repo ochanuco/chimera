@@ -18,7 +18,7 @@ import { listPhotos } from '../lib/photos';
 import { getStats, STATS_PERIODS, type StatsCold, type StatsPeriod } from '../lib/stats';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
-import { WorkbenchPage, type WorkbenchData, type WorkbenchPart } from '../ui/pages/Workbench';
+import { WorkbenchPage, type WorkbenchData } from '../ui/pages/Workbench';
 import { buildWorkbenchTree, findRootGeneration, getWorkbench } from '../lib/workbench';
 import { RerollPage } from '../ui/pages/Reroll';
 import { FrameEditorPage, FrameEditorUnavailablePage } from '../ui/pages/FrameEditor';
@@ -510,20 +510,6 @@ async function currentRecipes(db: D1Database, workedOn: string[], selected: stri
   return workedOn.filter((r) => names.has(r) || r === selected);
 }
 
-/** The parts of the pose that drew `generationId`, with each part's text when the pose record carries it. */
-function workbenchParts(doc: RecipeCatalogDoc, recipe: string, pose: string | null): WorkbenchPart[] {
-  const recipeDoc = doc.recipes.find((r: unknown) => (r as { name?: unknown }).name === recipe) as { parts?: unknown } | undefined;
-  const names = Array.isArray(recipeDoc?.parts) ? recipeDoc.parts.filter((p): p is string => typeof p === 'string') : [];
-  const poseRecord = pose ? (findCatalogPose(doc, recipe, pose) as { parts?: unknown } | null) : null;
-  const texts = new Map<string, string>();
-  if (poseRecord && Array.isArray(poseRecord.parts)) {
-    for (const part of poseRecord.parts as { name?: unknown; text?: unknown }[]) {
-      if (part && typeof part.name === 'string' && typeof part.text === 'string') texts.set(part.name, part.text.replace(/[\s,]+$/, '').trim());
-    }
-  }
-  return names.map((name) => ({ name, text: texts.get(name) || null }));
-}
-
 pages.get('/work/:shortId', async (c) => {
   const db = c.env.DB;
   const shortId = c.req.param('shortId');
@@ -540,7 +526,7 @@ pages.get('/work/:shortId', async (c) => {
     internalApiRequest(c, `/api/v1/generations/${generation.id}`),
     listPhotos(db),
   ]);
-  const detail = (await detailRes.json()) as { request: { recipe: string | null; drawn_pose: { pose: string } | null } | null };
+  const detail = (await detailRes.json()) as { request: { recipe: string | null } | null };
   const recipe = detail.request?.recipe ?? null;
   const recipeRef = recipe ? defaultRecipeRef(c.env) : null;
   const catalog = recipeRef ? await getCatalog(db, recipeRef) : null;
@@ -566,7 +552,6 @@ pages.get('/work/:shortId', async (c) => {
     catalogVersion: catalog?.row.updated_at ?? null,
     backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
     dof: doc ? findDof(doc) : null,
-    parts: doc && recipe ? workbenchParts(doc, recipe, detail.request?.drawn_pose?.pose ?? null) : [],
     photos,
   };
   return c.html(<WorkbenchPage path={c.req.path} data={data} />);

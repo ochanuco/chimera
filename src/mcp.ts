@@ -68,13 +68,11 @@ import {
   listObservationsInputSchema,
   listPresetsInputSchema,
   listRequestsInputSchema,
-  maskedRedrawGenerationInputSchema,
   photoGenerationInputSchema,
   plainRenderInputSchema,
   recordObservationInputSchema,
   recordPublicationInputSchema,
   redrawGenerationInputSchema,
-  repairGenerationInputSchema,
   setDecisionInputSchema,
   setEvaluationInputSchema,
   setPoseReferenceInputSchema,
@@ -170,7 +168,7 @@ const MCP_INSTRUCTIONS =
   'get_generation reports which pose a Generation drew and that pose\'s current pin as request.drawn_pose.\n' +
   '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
   'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
-  '5. A redrawn / delivered / repaired / masked_redraw Generation exposes the Generation it was made from as ' +
+  '5. A redrawn / delivered (or older repaired / masked_redraw) Generation exposes the Generation it was made from as ' +
   '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
   'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
@@ -503,9 +501,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light; every method takes cut: true to cut the figure out), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "repair" ' +
-        '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
-        '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}). "finalize", "repair" and "masked_redraw" can no longer ' +
         'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
@@ -544,8 +540,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'method "light" relights the picture: scene ("sunset" | "moon") and from (the direction the light comes from, ' +
         'n/ne/e/se/s/sw/w/nw, default "nw"). Every method also takes cut (boolean, default false): true also cuts the figure out and attaches a transparent "cutout" asset (plus alpha / depth / cut) to the output, so a later deliver reuses the cut. Omitted fields resolve to the defaults published in list_catalog\'s ' +
         'recipes[].redraw (defaults per method, and the light scenes and directions). ' +
-        'Sources: hires needs an Anima generate output (not an import without a graph, not a repair / masked_redraw / ' +
-        'redraw output, not already hires-ed); canvas and light work on any Anima picture, including repair, masked_redraw ' +
+        'Sources: hires needs an Anima generate output (not an import without a graph, not an older repair / masked_redraw / ' +
+        'redraw output, not already hires-ed); canvas and light work on any Anima picture, including older repair, masked_redraw ' +
         'and redraw outputs. Neither accepts an already delivered picture or a LayerDiffuse-derived one, and a picture ' +
         'from a non-Anima recipe cannot be redrawn. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -823,72 +819,6 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   );
 
   server.registerTool(
-    'repair_generation',
-    {
-      outputSchema: mcpOutputs.repair_generation,
-      description:
-        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
-        'Enqueue a repair request (docs/worker-protocol.md "repair"): a masked local redraw of hands and/or feet ' +
-        'on a raw or redrawn Generation; its output Generations record the source Generation as the one they refine, the ' +
-        'same lineage shape as redraw. generation_id accepts a short_id and cannot be an already delivered Generation. ' +
-        "options is optional; every field defaults to the worker/recipe " +
-        'default when omitted: parts (array of "hands"/"feet" to redraw, worker default both), ' +
-        'regions (explicit [x0,y0,x1,y1] fraction rectangles, worker auto-detects when omitted), ' +
-        'denoise (redraw strength, recipe default), seeds (up to 16 seeds to try, worker default), ' +
-        'size (redraw longest side, recipe default), pad (detected-region padding factor, worker default), ' +
-        'lora (part LoRA for the redrawn hands/feet: true for the worker default weight, or a number). ' +
-        'denoise and lora also accept a word string instead of a number/true — the word vocabulary for this ' +
-        "recipe is list_catalog's recipes[].dials.repair (chimera only checks the type; the worker resolves the word). " +
-        'Follow status with get_request.',
-      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: repairGenerationInputSchema,
-    },
-    async ({ generation_id, options, idempotency_key }) => {
-      const generation = await resolveGenerationOr404(db, generation_id);
-      const payload: Record<string, unknown> = { generation_id: generation.short_id };
-      if (options) payload.options = options;
-      const { row, created } = await createRequest(
-        db,
-        { kind: 'repair', payload, idempotency_key, created_by: 'mcp' },
-        { defaultRecipeRef: defaultRecipeRef(env) },
-      );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.repair_generation, { created, request: serializeRequest(row) });
-    },
-  );
-
-  server.registerTool(
-    'masked_redraw_generation',
-    {
-      outputSchema: mcpOutputs.masked_redraw_generation,
-      description:
-        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
-        'Enqueue a generic masked redraw / garment inpaint request (docs/worker-protocol.md "masked_redraw"): ' +
-        'the source Generation is left unchanged and the worker creates new Generations that record it as the one they refine. ' +
-        'generation_id accepts a short_id. options requires one or more non-overlapping ' +
-        'normalized [x0,y0,x1,y1] rectangles and a non-empty prompt_patch; denoise is (0,0.75] or a word string ' +
-        "(chimera only checks the word's type; no catalog dials namespace is defined for masked_redraw yet, so " +
-        'validity is the worker\'s concern), ' +
-        'mask_padding/mask_feather are pixel distances (pad/feather are accepted and canonicalized aliases), and size/seeds are optional. ' +
-        'Use this for arbitrary garment or local redraw regions; use repair_generation for the hands/feet-specific compatibility API. ' +
-        'Follow status with get_request.',
-      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      inputSchema: maskedRedrawGenerationInputSchema,
-    },
-    async ({ generation_id, options, idempotency_key }) => {
-      const generation = await resolveGenerationOr404(db, generation_id);
-      const payload: Record<string, unknown> = { generation_id: generation.short_id, options };
-      const { row, created } = await createRequest(
-        db,
-        { kind: 'masked_redraw', payload, idempotency_key, created_by: 'mcp' },
-        { defaultRecipeRef: defaultRecipeRef(env) },
-      );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.masked_redraw_generation, { created, request: serializeRequest(row) });
-    },
-  );
-
-  server.registerTool(
     'get_request',
     {
       outputSchema: mcpOutputs.get_request,
@@ -935,8 +865,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.list_generations,
       description:
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
-        '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, repair_generation, ' +
-        "masked_redraw_generation, derive_request) assumes you already have one. Filters mirror the gallery's own " +
+        '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, ' +
+        "derive_request) assumes you already have one. Filters mirror the gallery's own " +
         'filters (character, tag, rating, bookmark, created_at range) and combine freely; published=true is the ' +
         "delivered-look index — every look that was posted, each still carrying its look:<pose> tag; reference=true " +
         "is the pose basis-render index — every Generation currently pinned via set_pose_reference. rating is " +
@@ -1118,8 +1048,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
         'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
-        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver/repair ' +
-        'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation/repair_generation accept ' +
+        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver ' +
+        'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation accept ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
         'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus, F-number and focal_length defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +

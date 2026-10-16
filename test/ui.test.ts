@@ -655,22 +655,19 @@ describe('Web GUI pages', () => {
     expect(afterHtml).toContain('<span class="request-kind">描き直し</span>');
   });
 
-  it('a posted repair payload creates a repair request listed on the Generation', async () => {
+  it('a repair request made before the removal is still listed on the Generation, and a new one is refused', async () => {
     const { generation } = await createGeneration();
-    const posted = await postJson<{ kind: string; payload: unknown }>('/api/v1/requests', {
+    await createRequest({ kind: 'repair', status: 'queued', payload: { generation_id: generation.short_id } });
+    const after = await (await req(`/g/${generation.short_id}`)).text();
+    expect(after).toContain('<span class="request-kind">repair</span>');
+
+    const refused = await postJson('/api/v1/requests', {
       kind: 'repair',
-      payload: { generation_id: generation.short_id, options: { parts: ['feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2], size: 1024, pad: 1.5, lora: true } },
+      payload: { generation_id: generation.short_id },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
-    expect(posted.status).toBe(201);
-    expect(posted.body.kind).toBe('repair');
-    expect(posted.body.payload).toEqual({
-      generation_id: generation.short_id,
-      options: { parts: ['feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2], size: 1024, pad: 1.5, lora: true },
-    });
-    const after = await (await req(`/g/${generation.short_id}`)).text();
-    expect(after).toContain('<span class="request-kind">repair</span>');
+    expect(refused.status).toBe(400);
   });
 
   it('POST /api/v1/requests with kind finalize is rejected, naming redraw and deliver', async () => {

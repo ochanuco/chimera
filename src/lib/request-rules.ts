@@ -16,42 +16,13 @@ export const MAX_FRAME_TOTAL_POINTS = 20000;
 
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
-/** Generic masked redraw keeps its strength in the low-to-medium inpaint range. */
-export const MASKED_REDRAW_MAX_DENOISE = 0.75;
+export const PARTIAL_FIX_CREATION_MESSAGE =
+  "kinds 'repair' and 'masked_redraw' can no longer be created: use 'redraw' to change the picture (the partial-fix feature was removed)";
 
 export const FINALIZE_CREATION_MESSAGE =
   "kind 'finalize' can no longer be created: use 'redraw' (change the picture) or 'deliver' (cut out and finish)";
 
 type Region = readonly [number, number, number, number];
-
-export function regionsOverlap(a: Region, b: Region): boolean {
-  return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-}
-
-/** masked_redraw の options: alias (`pad` / `feather`) と正規名の同時指定、region 同士の重なりを弾く。 */
-export function maskedRedrawOptionsIssues(value: {
-  regions: readonly Region[];
-  mask_padding?: number;
-  pad?: number;
-  mask_feather?: number;
-  feather?: number;
-}): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  if (value.mask_padding !== undefined && value.pad !== undefined) {
-    issues.push({ message: 'use either mask_padding or pad, not both', path: ['mask_padding'] });
-  }
-  if (value.mask_feather !== undefined && value.feather !== undefined) {
-    issues.push({ message: 'use either mask_feather or feather, not both', path: ['mask_feather'] });
-  }
-  for (let i = 0; i < value.regions.length; i += 1) {
-    for (let j = i + 1; j < value.regions.length; j += 1) {
-      if (regionsOverlap(value.regions[i]!, value.regions[j]!)) {
-        issues.push({ message: `region overlaps region ${j}`, path: ['regions', i] });
-      }
-    }
-  }
-  return issues;
-}
 
 /** dof の scope は 3 層のうち 1 つは残す。 */
 export function dofScopeIssues(scope: { figure?: boolean; outline?: boolean; backdrop?: boolean }): ValidationIssue[] {

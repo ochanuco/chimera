@@ -33,10 +33,7 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['request create: lens strength 0', 'POST', '/api/v1/requests', requestCase('lens', optionsPayload({ strength: 0 }))],
   ['request create: stage place without photo', 'POST', '/api/v1/requests', requestCase('stage', optionsPayload({ place: [0.5, 0.5] }))],
   ['request create: stage photo with backdrop', 'POST', '/api/v1/requests', requestCase('stage', optionsPayload({ photo: 'p', backdrop: 'dots', shadow_from: 'n' }))],
-  ['request create: repair inverted region', 'POST', '/api/v1/requests', requestCase('repair', optionsPayload({ regions: [[0.5, 0, 0.2, 1]] }))],
-  ['request create: masked_redraw empty regions', 'POST', '/api/v1/requests', requestCase('masked_redraw', optionsPayload({ regions: [], prompt_patch: 'x' }))],
-  ['request create: masked_redraw blank prompt_patch', 'POST', '/api/v1/requests', requestCase('masked_redraw', optionsPayload({ regions: [[0, 0, 1, 1]], prompt_patch: '  ' }))],
-  ['request create: masked_redraw aliases twice and overlap', 'POST', '/api/v1/requests', requestCase('masked_redraw', optionsPayload({ regions: [[0, 0, 0.6, 0.6], [0.5, 0.5, 1, 1], [0.55, 0.55, 0.9, 0.9]], prompt_patch: 'x', pad: 1, mask_padding: 2, feather: 1, mask_feather: 2 }))],
+  ['request create: repair', 'POST', '/api/v1/requests', requestCase('repair', optionsPayload({ parts: ['hands'] }))],
   ['request create: redraw method missing', 'POST', '/api/v1/requests', requestCase('redraw', optionsPayload({ denoise: 0.5 }))],
   ['request create: deliver outlines over the limit', 'POST', '/api/v1/requests', requestCase('deliver', optionsPayload({ outlines: Array.from({ length: 7 }, () => ({ color: '#ffffff', width: 1 })) }))],
   ['request create: bad recipe_ref', 'POST', '/api/v1/requests', requestCase('lighting', { generation_id: MISSING_ID }, { recipe_ref: '-bad' })],
@@ -98,8 +95,6 @@ const MCP_CASES: [label: string, tool: string, args: Record<string, unknown>][] 
   ['stage_generation: photo with backdrop', 'stage_generation', { generation_id: 'g', photo: 'p', backdrop: 'dots', idempotency_key: 'k' }],
   ['photo_generation: missing photo', 'photo_generation', { generation_id: 'g', idempotency_key: 'k' }],
   ['lighting_generation: bad direction', 'lighting_generation', { generation_id: 'g', direction: 'up', idempotency_key: 'k' }],
-  ['repair_generation: inverted region', 'repair_generation', { generation_id: 'g', options: { regions: [[0.5, 0, 0.2, 1]] }, idempotency_key: 'k' }],
-  ['masked_redraw_generation: overlap and both aliases', 'masked_redraw_generation', { generation_id: 'g', options: { regions: [[0, 0, 0.6, 0.6], [0.5, 0.5, 1, 1]], prompt_patch: 'x', pad: 1, mask_padding: 2 }, idempotency_key: 'k' }],
   ['deliver_generation: profile without name', 'deliver_generation', { generation_id: 'g', profile: { version: 0 }, idempotency_key: 'k' }],
   ['list_requests: bad status', 'list_requests', { status: 'nope' }],
   ['list_generations: bad limit', 'list_generations', { limit: 0 }],
@@ -172,14 +167,8 @@ const REST_EXPECTED: Record<string, string> = {
     '400 payload.options.place: place / height are only for a photo',
   'request create: stage photo with backdrop':
     '400 payload.options.backdrop: backdrop / shadow_from / light are not for a photo',
-  'request create: repair inverted region':
-    '400 payload.options.regions.0: region must have x0 < x1 and y0 < y1',
-  'request create: masked_redraw empty regions':
-    '400 payload.options.regions: at least one region is required',
-  'request create: masked_redraw blank prompt_patch':
-    '400 payload.options.prompt_patch: prompt_patch must not be empty',
-  'request create: masked_redraw aliases twice and overlap':
-    '400 payload.options.mask_padding: use either mask_padding or pad, not both; payload.options.mask_feather: use either mask_feather or feather, not both; payload.options.regions.0: region overlaps region 1; payload.options.regions.0: region overlaps region 2; payload.options.regions.1: region overlaps region 2',
+  'request create: repair':
+    "400 kind: kinds 'repair' and 'masked_redraw' can no longer be created: use 'redraw' to change the picture (the partial-fix feature was removed)",
   'request create: redraw method missing':
     "400 payload.options.method: Invalid discriminator value. Expected 'canvas' | 'hires' | 'light'",
   'request create: deliver outlines over the limit':
@@ -239,7 +228,7 @@ const REST_EXPECTED: Record<string, string> = {
   'observation sync: records shape':
     '400 files.0.records.0.line: Too small: expected number to be >0; files.0.records.0.record: Invalid input: expected nonoptional, received undefined',
   'workbench: unknown phase key':
-    "400 picks.0: phase key must be one of 1..6, got '0'; picks.7: phase key must be one of 1..6, got '7'",
+    "400 picks.0: phase key must be one of 1..5, got '0'; picks.7: phase key must be one of 1..5, got '7'",
   'workbench: malformed picks':
     '400 picks.1.generation_id: Too small: expected string to have >=1 characters; picks.2: Invalid input',
   'workbench: extra top-level key':
@@ -274,7 +263,7 @@ const MCP_EXPECTED: Record<string, string> = {
   'create_run: bad variables':
     'Input validation error: Invalid arguments for tool create_run: variables.a: Invalid input',
   'create_request: finalize kind':
-    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"',
+    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"',
   'create_request: invalid deliver envelope':
     'Input validation error: Invalid arguments for tool create_request: payload.options.stroke_light: Invalid option: expected one of "even"|"n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw", payload: Unrecognized key: "extra"',
   'create_request: bad recipe_ref':
@@ -299,10 +288,6 @@ const MCP_EXPECTED: Record<string, string> = {
     'Input validation error: Invalid arguments for tool photo_generation: photo: Invalid input: expected string, received undefined',
   'lighting_generation: bad direction':
     'Input validation error: Invalid arguments for tool lighting_generation: direction: Invalid option: expected one of "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"',
-  'repair_generation: inverted region':
-    'Input validation error: Invalid arguments for tool repair_generation: options.regions.0: region must have x0 < x1 and y0 < y1',
-  'masked_redraw_generation: overlap and both aliases':
-    'Input validation error: Invalid arguments for tool masked_redraw_generation: options.mask_padding: use either mask_padding or pad, not both, options.regions.0: region overlaps region 1',
   'deliver_generation: profile without name':
     'Input validation error: Invalid arguments for tool deliver_generation: profile.name: Invalid input: expected string, received undefined, profile.version: Too small: expected number to be >0',
   'list_requests: bad status':

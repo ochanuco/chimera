@@ -10,7 +10,6 @@ import {
   findDof,
   findDeliverBackdropColor,
   findRedrawDials,
-  findRepairDials,
   findRedrawDefaults,
   findRedrawLight,
 } from '../src/lib/catalogs';
@@ -240,7 +239,7 @@ describe('deliverOptionsSchema', () => {
   });
 });
 
-describe('redraw/deliver/masked_redraw options accept dial words', () => {
+describe('redraw/deliver options accept dial words', () => {
   it('redraw canvas: denoise accepts a word; reject a malformed string', async () => {
     const { generation } = await createGeneration();
     const ok = await postJson('/api/v1/requests', {
@@ -278,20 +277,6 @@ describe('redraw/deliver/masked_redraw options accept dial words', () => {
       created_by: 'gui',
     });
     expect(bad.status).toBe(400);
-  });
-
-  it('masked_redraw: denoise accepts a word', async () => {
-    const { generation } = await createGeneration();
-    const ok = await postJson('/api/v1/requests', {
-      kind: 'masked_redraw',
-      payload: {
-        generation_id: generation.id,
-        options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'replace the dress', denoise: 'soft' },
-      },
-      idempotency_key: crypto.randomUUID(),
-      created_by: 'gui',
-    });
-    expect(ok.status).toBe(201);
   });
 });
 
@@ -577,10 +562,6 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
     expect(found).not.toBeNull();
     expect(findDeliverDials(found!.doc, recipe)).toEqual({ keep_legwear: { on: 0.62 } });
     expect(findRedrawDials(found!.doc, recipe)).toEqual({ denoise: { tidy: 0.65, heavy: 0.8 } });
-    expect(findRepairDials(found!.doc, recipe)).toBeNull();
-    const withRepair = { ...found!.doc, recipes: [{ name: recipe, poses: [], dials: { repair: { denoise: { light: 0.4 } } } }] };
-    expect(findRepairDials(withRepair, recipe)).toEqual({ denoise: { light: 0.4 } });
-    expect(findRepairDials(found!.doc, 'nonexistent-recipe')).toBeNull();
     expect(findDeliverDials(found!.doc, 'nonexistent-recipe')).toBeNull();
     expect(findRedrawDials(found!.doc, 'nonexistent-recipe')).toBeNull();
   });

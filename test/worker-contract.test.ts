@@ -189,22 +189,6 @@ describe('worker flow', () => {
     expect(detail.body.refines_generation?.id).toBe(source.id);
   });
 
-  it('repair: source_generation_id per job, two sources share one request', async () => {
-    const a = await createGeneration();
-    const b = await createGeneration();
-    const r = await queue('repair', { generation_id: a.generation.id });
-    await claim(r.id);
-    expect((await putResolution(r.id, resolution({ parameters: { kind: 'repair' } }))).status).toBe(200);
-
-    const j0 = await postJob(r.id, { idempotency_key: `request:${r.id}:job:0`, seed: 1, index: 0, source_generation_id: a.generation.id });
-    const j1 = await postJob(r.id, { idempotency_key: `request:${r.id}:job:1`, seed: 2, index: 1, source_generation_id: b.generation.id });
-    expect(j0.status).toBe(201);
-    expect(j1.status).toBe(201);
-    const g1 = await ingestGeneration(j1.body.id, { seed: 2, original_filename: 'o.png', comfy_output_index: 0 });
-    const row = await env.DB.prepare('SELECT refines_generation_id FROM generations WHERE id = ?').bind(g1.body.id).first<{ refines_generation_id: string }>();
-    expect(row!.refines_generation_id).toBe(b.generation.id);
-  });
-
   it('generate rejects a source_generation_id', async () => {
     const { generation } = await createGeneration();
     const r = await queue('generate', generatePayload());

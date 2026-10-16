@@ -77,7 +77,7 @@ Promotion として提案し、実際のコード変更は別途 chagama
 -   生成画像を Management API へ ingest する。
 -   Discord へ Generation ID / canonical URL と画像を通知する。
 -   リトライ・冪等性を担保する。
--   redraw（絵を変える1操作）/ deliver（切り抜きと飾り）/ repair と masked_redraw（任意矩形の masked-img2img）を requests 行から受けて実行する。
+-   redraw（絵を変える1操作）/ deliver（切り抜きと飾り）などを requests 行から受けて実行する。
 
 ### Management API
 
@@ -100,19 +100,16 @@ Promotion として提案し、実際のコード変更は別途 chagama
 -   Provenance（親・子・兄弟）を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
 -   Experiment 一覧・詳細を閲覧する。
--   semantic 判断を伴わない再実行（redraw / deliver / repair）を requests 行として積む。任意領域の
-    garment inpaint は GUI に追加せず、semantic 判断主体が MCP の masked_redraw_generation
-    を使う。
+-   semantic 判断を伴わない再実行（redraw / deliver）を requests 行として積む。
 -   リロール（[ui.md](ui.md#リロール)）: 元絵の generate payload を seed だけ変えて 4 枚振り直す
     `kind = generate` を requests 行として積む。recipe も prompt も触らない。
 -   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 代表ポーズの pin を、今のカタログ既定で
     もう一度描く plain render を requests 行として積む。GUI は prompt を書かない。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（redraw / deliver / stage / lighting / dof / repair）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が
+判断を伴わない再実行（redraw / deliver / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が
 触るのは自分の D1 の requests 行と、写真ページ（[ui.md](ui.md#写真photos)）とワークベンチの背景フェーズがアップロードする写真（`kind = import`
-の Request・Job・Generation と R2 の original）のみです。masked_redraw は MCP からのみ積み、worker が
-source Generation を変更せず、Job の `source_generation_id` で仕上げ元を指す新しい Generation を作ります。
+の Request・Job・Generation と R2 の original）のみです。
 
 ## Storage
 
@@ -152,7 +149,7 @@ ComfyUI の filename は object key に利用せず、DB 上の metadata
 original から生成・保存されるサムネイルで、正本ではありません。GUI/API の
 サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
-`original.png` は削除しません（redraw / deliver / repair が元の絵の original を読むため）。
+`original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。
 過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
 
 cron trigger `*/30 * * * *` の `scheduled` ハンドラは再圧縮ジョブ

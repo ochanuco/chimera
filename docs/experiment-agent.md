@@ -117,7 +117,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `attach_generation` | `run_id, generation_id` | 追記 | Run の代表 Generation を記録する |
 | `set_evaluation` | `run_id, evaluation` | 追記 | Run の evaluation を書く（`null` でクリア） |
 | `set_decision` | `run_id, decision` | 追記 | Run の decision を書く（`null` でクリア） |
-| `create_request` | `kind, payload, recipe_ref?, idempotency_key` | 追記 | requests 行を手組みの payload で積む（`kind` は generate / redraw / deliver / repair / masked_redraw。finalize は作れない） |
+| `create_request` | `kind, payload, recipe_ref?, idempotency_key` | 追記 | requests 行を手組みの payload で積む（`kind` は generate / redraw / deliver など。finalize / repair / masked_redraw は作れない） |
 | `get_request` | `id, include_prompts?` | 読み取り | requests 行1件（payload、done / failed 後は result / error） |
 | `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧（`kind` は `import` も指定できる）。claim はしない |
 | `derive_request` | `from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?` | 追記 | 既存 Generation を起点にした generate request を積む |
@@ -128,8 +128,6 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `stage_generation` | `generation_id, photo?, place?, height?, backdrop?, shadow_from?, idempotency_key` | 追記 | stage request を積む。納品の層をぼかさずに写真の中か背景の柄の上へ置く |
 | `lighting_generation` | `generation_id, direction?, strength?, idempotency_key` | 追記 | lighting request を積む。stage の絵のキャラとフチを背景の光（露出・色味・向き）に合わせる |
 | `lens_generation` | `generation_id, center?, strength?, shape?, radius?, idempotency_key` | 追記 | lens request を積む。納品の絵を魚眼 / 逆魚眼で歪めるか、球面フィルターで円の内側を膨らませる |
-| `repair_generation` | `generation_id, options?, idempotency_key` | 追記 | hands / feet の repair request を積む |
-| `masked_redraw_generation` | `generation_id, options, idempotency_key` | 追記 | 任意矩形の garment / local inpaint request を積む。source は不変 |
 | `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
 | `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / pose_reference / refines_generation 込み） |
 | `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
@@ -161,7 +159,7 @@ Generation を取る tool は、`generation_id` に UUID と short_id のどち�
 どちらも `recipe_ref` を省略すると `"production"` を見ます。
 
 `list_catalog` は prompt 本文を含みません。
-返すのは recipe ごとの pose / costume / expression の名前、recipe が持つ場合は `parts` と `identity_tags`、parameters、patches の語彙、redraw / deliver / repair の dial 語彙（`dials`）、`deliver`（`defaults` / `dof` / `stroke_light` / `backdrop_color`。`deliver_generation` が省略した option をどう解決するか）と `redraw`（`light` の scene / 方位と method ごとの `defaults`）、backdrop の一覧（`backdrops`）、git 情報です。
+返すのは recipe ごとの pose / costume / expression の名前、recipe が持つ場合は `parts` と `identity_tags`、parameters、patches の語彙、redraw / deliver の dial 語彙（`dials`）、`deliver`（`defaults` / `dof` / `stroke_light` / `backdrop_color`。`deliver_generation` が省略した option をどう解決するか）と `redraw`（`light` の scene / 方位と method ごとの `defaults`）、backdrop の一覧（`backdrops`）、git 情報です。
 特定の pose の中身が要るときだけ `get_catalog_pose` でフルレコードを引きます。
 パーツに分かれた recipe なら `parts` は順序付きの `{name, text}` の列で、text を連結すると positive prompt になります。
 `reference` はその pose の現行の pin で、無ければ `null` です。
@@ -279,17 +277,17 @@ worker は pin が無ければ現行の版を解決するので、そのまま�
 identity を意図して変えるときだけ `identity_override` に理由を渡します。
 `create_request` で generate の payload を手で組むときも同じ規則です（[worker-protocol.md「prompt のパーツ単位 patch」](worker-protocol.md#prompt-のパーツ単位-patch)、[「identity の上書き」](worker-protocol.md#identity-の上書き)）。
 
-### 仕上げ（redraw / deliver / repair / masked_redraw）
+### 仕上げ（redraw / deliver）
 
-`redraw_generation` / `deliver_generation` / `repair_generation` / `masked_redraw_generation` は、`create_request(kind: "redraw" | "deliver" | "repair" | "masked_redraw", ...)` と同じ requests 行を積む専用窓口です。
+`redraw_generation` / `deliver_generation` は、`create_request(kind: "redraw" | "deliver", ...)` と同じ requests 行を積む専用窓口です。
 `generation_id` を解決して `payload.generation_id` に short_id を詰め、`options`（deliver は `profile` も）を渡されたときだけ payload に載せます（`redraw_generation` は `options` が必須）。
 options は REST の payload と同じ zod スキーマで検証します。
-`create_request` で payload を手で組む代わりに、これら4つを使います。
+`create_request` で payload を手で組む代わりに、これらを使います。
 どれも出力は source Generation を仕上げ元（`refines_generation_id`）とする Generation として記録されます。
-options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[redraw](worker-protocol.md#redraw)」「[deliver](worker-protocol.md#deliver)」「[repair](worker-protocol.md#repair)」「[masked_redraw](worker-protocol.md#masked_redraw)」節が正本です。
+options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[redraw](worker-protocol.md#redraw)」「[deliver](worker-protocol.md#deliver)」節が正本です。
 
 `redraw_generation` は絵を変える操作を `options.method` で 1 つだけ選びます。`canvas`（キャンバス全体の描き直し）、`hires`（同じ seed で大きく描き直す。Anima の generate の出力だけ）、`light`（光の入れ直し）で、method ごとに受けるキーが違います。
-canvas と light は Anima の絵（repair / masked_redraw / redraw の出力を含む）に使え、どの method も納品済みの絵は受けません。
+canvas と light は Anima の絵（古い repair / masked_redraw と redraw の出力を含む）に使え、どの method も納品済みの絵は受けません。
 省略した値の既定は `list_catalog` の `recipes[].redraw`、dial の語は `recipes[].dials.redraw` です。
 
 `deliver_generation` は切り抜いて背景・フチのリスト・光源などを付けます。`outlines` は内側から外側へ最大 6 本の `{color, width}` で、省略は catalog の既定、`[]` はフチなしです。ボケは `dof_generation` が別 request で付けます。
@@ -304,12 +302,6 @@ canvas と light は Anima の絵（repair / masked_redraw / redraw の出力を
 `deliver_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `deliver` の Preset を解決して options の土台にします。
 展開は `create_request` の deliver payload と同じ処理を通ります（[deliver profile](worker-protocol.md#deliver-profile)）。
 options に同じキーがあればそちらが勝ち、明示の `null` も上書きとして扱います。
-
-`repair_generation` は hands / feet 専用です。
-`repair_generation` / `masked_redraw_generation` は raw か描き直した絵を指定できます。納品済みの絵は受けません。
-
-`masked_redraw_generation` は `regions`（1つ以上の、互いに重ならない正規化矩形）と空でない `prompt_patch` を必須とし、`denoise`（0 超 0.75 以下、または dial の語）、`mask_padding`、`mask_feather`、`size`、`seeds` を任意で受けます（[api.md](api.md#generic-masked-redraw)）。
-`pad` / `feather` は alias として受け、`mask_padding` / `mask_feather` に正規化して保存します。
 
 ### create_experiment
 
@@ -378,7 +370,7 @@ requests 行を積む tool と、その行の `created_by` は次の通りです
 | `create_experiment` / `create_run`（自動起票） | `generate`（`run_id` 付き、`idempotency_key` は `run:{run_id}`） | `system` |
 | `create_request` | 指定した kind | `mcp` |
 | `derive_request` / `plain_render` | `generate` | `mcp` |
-| `redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `stage_generation` / `lighting_generation` / `repair_generation` / `masked_redraw_generation` | `redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `lighting` / `repair` / `masked_redraw` | `mcp` |
+| `redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `stage_generation` / `lighting_generation` | `redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `lighting` | `mcp` |
 
 `create_experiment` / `create_run` 以外は `POST /api/v1/requests` と同じ `src/lib/requests.ts` の `createRequest` を通り、preset の pin と deliver profile の展開もそこで hash の計算より前に行います。
 Run 作成の自動起票も同じ規則で pin してから hash を取るので、同じ内容の request はどの経路でも同じ hash になります。

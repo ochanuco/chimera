@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DIAL_WORD_RE, HEX_COLOR_RE, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, MASKED_REDRAW_MAX_DENOISE, dofScopeIssues, lensOptionsIssues, maskedRedrawOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
+import { DIAL_WORD_RE, HEX_COLOR_RE, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
 import { addIssues } from './issues';
 
 /** worker に渡す payload の語彙 (docs/worker-protocol.md)。kind ごとの封筒の検証は lib/request-payload.ts が引く。 */
@@ -7,16 +7,12 @@ export const jsonObject = z.record(z.string(), z.unknown());
 
 const dialWord = z.string().regex(DIAL_WORD_RE);
 
-/** repair region は width/height に対する分数の矩形 [x0,y0,x1,y1] (x0<x1, y0<y1)。 */
-const repairRegionSchema = z
+/** region は width/height に対する分数の矩形 [x0,y0,x1,y1] (x0<x1, y0<y1)。 */
+const regionSchema = z
   .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
   .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
     message: 'region must have x0 < x1 and y0 < y1',
   });
-
-/** Same coordinate convention as repair, but deliberately a separate schema: masked redraw requires
- * >=1 rectangle and rejects overlaps so the worker gets an unambiguous mask union. */
-export const maskedRedrawRegionSchema = repairRegionSchema;
 
 /** redraw / deliver の options は worker の引数に 1 対 1 で写す (docs/worker-protocol.md「redraw」「deliver」)。
  * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。 */
@@ -27,7 +23,7 @@ const finalizerField = z.string().nullable().optional();
 const sizeField = z.number().int().nullable().optional();
 const upscaleField = z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional();
 // worker は keep_regions / keep_strength の null を型エラーにするので、他の option と違い nullable にしない。
-const keepRegionsField = z.array(repairRegionSchema).optional();
+const keepRegionsField = z.array(regionSchema).optional();
 const keepStrengthField = z.number().gt(0).lt(1).optional();
 const hiresField = z.number().int().min(64).nullable().optional();
 const hiresDenoiseField = z.number().gt(0).lte(1).nullable().optional();
@@ -189,51 +185,6 @@ export const photoPayloadSchema = z
   .object({
     generation_id: z.string().min(1),
     options: photoOptionsSchema,
-  })
-  .strict();
-
-/** repair の options は masked local redraw (hands/feet) の worker 側引数に写す (docs/worker-protocol.md「repair」)。chimera は型だけ見る。 */
-export const repairOptionsSchema = z
-  .object({
-    parts: z.array(z.enum(['hands', 'feet'])).optional(),
-    regions: z.array(repairRegionSchema).optional(),
-    denoise: z.union([z.number().gt(0).lte(1), dialWord]).nullable().optional(),
-    seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
-    size: z.number().int().min(256).multipleOf(8).nullable().optional(),
-    pad: z.number().min(0.5).max(3).nullable().optional(),
-    lora: z.union([z.literal(true), z.number(), dialWord]).nullable().optional(),
-  })
-  .strict();
-
-export const repairPayloadSchema = z
-  .object({
-    generation_id: z.string().min(1),
-    options: repairOptionsSchema.optional(),
-  })
-  .strict();
-
-/** Generic masked-img2img/inpaint options. `mask_padding`/`mask_feather` are pixel distances the worker
- * applies after resolving image dimensions. `pad`/`feather` are compatibility aliases (shorter repair
- * vocabulary), canonicalized before a request is persisted. */
-export const maskedRedrawOptionsSchema = z
-  .object({
-    regions: z.array(maskedRedrawRegionSchema).min(1, 'at least one region is required'),
-    prompt_patch: z.string().trim().min(1, 'prompt_patch must not be empty').max(4096),
-    denoise: z.union([z.number().gt(0).lte(MASKED_REDRAW_MAX_DENOISE), dialWord]).optional(),
-    mask_padding: z.number().min(0).max(512).optional(),
-    mask_feather: z.number().min(0).max(256).optional(),
-    pad: z.number().min(0).max(512).optional(),
-    feather: z.number().min(0).max(256).optional(),
-    size: z.number().int().min(256).multipleOf(8).nullable().optional(),
-    seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => addIssues(ctx, maskedRedrawOptionsIssues(value)));
-
-export const maskedRedrawPayloadSchema = z
-  .object({
-    generation_id: z.string().min(1),
-    options: maskedRedrawOptionsSchema,
   })
   .strict();
 

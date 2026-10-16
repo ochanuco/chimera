@@ -227,6 +227,8 @@ describe('MCP server at /mcp', () => {
     const list = await mcpCall<{ tools: { name: string }[] }>('tools/list', {});
     expect(list.status).toBe(200);
     const names = list.body.result?.tools.map((t) => t.name) ?? [];
+    expect(names).not.toContain('repair_generation');
+    expect(names).not.toContain('masked_redraw_generation');
     expect(names.sort()).toEqual(
       [
         'list_experiments',
@@ -246,8 +248,6 @@ describe('MCP server at /mcp', () => {
         'photo_generation',
         'stage_generation',
         'lighting_generation',
-        'repair_generation',
-        'masked_redraw_generation',
         'get_request',
         'list_requests',
         'list_generations',
@@ -525,8 +525,6 @@ describe('MCP tool annotations', () => {
       'derive_request',
       'redraw_generation',
       'deliver_generation',
-      'repair_generation',
-      'masked_redraw_generation',
     ]) {
       const annotations = byName.get(name)?.annotations as
         | { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean }

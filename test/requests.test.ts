@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createRequest as createRequestRow } from '../src/lib/requests';
-import { createGeneration, getJson, ingestGeneration, postJson, req, clearRequests } from './helpers';
+import { createGeneration, createRequest as seedRequest, getJson, ingestGeneration, postJson, req, clearRequests } from './helpers';
 
 // claim() grabs the globally oldest queued row with no way to scope it to this test's
 // own rows, so FIFO / kinds / stale-requeue assertions need an empty table to start from.
@@ -86,31 +86,19 @@ function repairRequestBody(generationId: string, overrides: Record<string, unkno
   };
 }
 
-async function createRepairRequest(generationId: string, overrides: Record<string, unknown> = {}) {
-  return postJson<RequestBody>('/api/v1/requests', repairRequestBody(generationId, overrides));
-}
-
 function maskedRedrawRequestBody(generationId: string, overrides: Record<string, unknown> = {}) {
   return {
     kind: 'masked_redraw',
-    payload: {
-      generation_id: generationId,
-      options: {
-        regions: [[0.2, 0.4, 0.8, 0.9]],
-        prompt_patch: 'replace the garment',
-        denoise: 0.5,
-        mask_padding: 24,
-        mask_feather: 8,
-      },
-    },
+    payload: { generation_id: generationId, options: { regions: [[0.2, 0.4, 0.8, 0.9]], prompt_patch: 'replace the garment' } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'mcp',
     ...overrides,
   };
 }
 
-async function createMaskedRedrawRequest(generationId: string, overrides: Record<string, unknown> = {}) {
-  return postJson<RequestBody>('/api/v1/requests', maskedRedrawRequestBody(generationId, overrides));
+/** repair / masked_redraw can no longer be created through the API, so rows that predate the removal are seeded directly. */
+async function seedQueuedPartialRequest(kind: 'repair' | 'masked_redraw', generationId: string) {
+  return seedRequest({ kind, status: 'queued', payload: { generation_id: generationId } });
 }
 
 async function claim(workerId: string, kinds?: string[]): Promise<{ status: number; body: RequestBody | null }> {
@@ -187,126 +175,20 @@ describe('POST /api/v1/requests', () => {
     expect(count?.n).toBe(0);
   });
 
-  it('repair: 201 create with parts/regions/denoise/seeds/pad, unknown option key is 400, bad region (x0 > x1) is 400', async () => {
+  it('repair and masked_redraw: creation is rejected with a 400 over REST and createRequest, and no row is written', async () => {
     const { generation } = await createGeneration();
+    for (const body of [repairRequestBody(generation.id), maskedRedrawRequestBody(generation.id)]) {
+      const res = await postJson<{ error: { message: string } }>('/api/v1/requests', body);
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toMatch(/can no longer be created/);
+      expect(JSON.stringify(res.body)).toMatch(/redraw/);
 
-    const created = await createRepairRequest(generation.id, {
-      payload: {
-        generation_id: generation.id,
-        options: { parts: ['hands', 'feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2, 3, 4], size: 1024, pad: 1.0 },
-      },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.kind).toBe('repair');
-    expect(created.body.status).toBe('queued');
-    expect(created.body.payload).toEqual({
-      generation_id: generation.id,
-      options: { parts: ['hands', 'feet'], regions: [[0.1, 0.7, 0.5, 0.95]], denoise: 0.6, seeds: [1, 2, 3, 4], size: 1024, pad: 1.0 },
-    });
-
-    const unknownKey = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { bogus: true } },
-    });
-    expect(unknownKey.status).toBe(400);
-
-    const badRegion = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { regions: [[0.5, 0.7, 0.1, 0.95]] } },
-    });
-    expect(badRegion.status).toBe(400);
-  });
-
-  it('repair: lora accepts true, a number, null, and a dial word; rejects a malformed string', async () => {
-    const { generation } = await createGeneration();
-
-    const workerDefault = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { lora: true } },
-    });
-    expect(workerDefault.status).toBe(201);
-    expect(workerDefault.body.payload).toEqual({ generation_id: generation.id, options: { lora: true } });
-
-    const explicitWeight = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { lora: 0.6 } },
-    });
-    expect(explicitWeight.status).toBe(201);
-    expect(explicitWeight.body.payload).toEqual({ generation_id: generation.id, options: { lora: 0.6 } });
-
-    const off = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { lora: null } },
-    });
-    expect(off.status).toBe(201);
-
-    const word = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { lora: 'strong' } },
-    });
-    expect(word.status).toBe(201);
-    expect(word.body.payload).toEqual({ generation_id: generation.id, options: { lora: 'strong' } });
-
-    const badType = await createRepairRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { lora: 'Strong!' } },
-    });
-    expect(badType.status).toBe(400);
-  });
-
-  it('masked_redraw: accepts arbitrary non-overlapping regions and rejects empty/overlapping regions', async () => {
-    const { generation } = await createGeneration();
-    const created = await createMaskedRedrawRequest(generation.id, {
-      payload: {
-        generation_id: generation.id,
-        options: {
-          regions: [
-            [0.05, 0.25, 0.45, 0.8],
-            [0.55, 0.25, 0.95, 0.8],
-          ],
-          prompt_patch: 'long loose A-line mid-calf dress',
-          denoise: 0.45,
-          mask_padding: 32,
-          mask_feather: 6,
-        },
-      },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.kind).toBe('masked_redraw');
-
-    const empty = await createMaskedRedrawRequest(generation.id, {
-      payload: { generation_id: generation.id, options: { regions: [], prompt_patch: 'dress' } },
-    });
-    expect(empty.status).toBe(400);
-
-    const overlap = await createMaskedRedrawRequest(generation.id, {
-      payload: {
-        generation_id: generation.id,
-        options: {
-          regions: [
-            [0.1, 0.2, 0.6, 0.8],
-            [0.5, 0.4, 0.9, 0.9],
-          ],
-          prompt_patch: 'dress',
-        },
-      },
-    });
-    expect(overlap.status).toBe(400);
-
-    const alias = await createMaskedRedrawRequest(generation.id, {
-      payload: {
-        generation_id: generation.id,
-        options: {
-          regions: [[0.1, 0.1, 0.3, 0.3]],
-          prompt_patch: 'replace the bodice',
-          pad: 18,
-          feather: 4,
-        },
-      },
-    });
-    expect(alias.status).toBe(201);
-    expect(alias.body.payload).toEqual({
-      generation_id: generation.id,
-      options: {
-        regions: [[0.1, 0.1, 0.3, 0.3]],
-        prompt_patch: 'replace the bodice',
-        mask_padding: 18,
-        mask_feather: 4,
-      },
-    });
+      await expect(
+        createRequestRow(env.DB, { kind: body.kind as 'repair' | 'masked_redraw', payload: body.payload, idempotency_key: crypto.randomUUID(), created_by: 'gui' }),
+      ).rejects.toMatchObject({ status: 400 });
+    }
+    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM requests WHERE kind IN ('repair', 'masked_redraw')").first<{ n: number }>();
+    expect(count?.n).toBe(0);
   });
 
   it('recipe_ref defaults to the REQUESTS_DEFAULT_RECIPE_REF var (production), for POST and for run auto-provisioning', async () => {
@@ -484,7 +366,7 @@ describe('POST /api/v1/requests/claim', () => {
     const { generation: g1 } = await createGeneration();
     const deliverReq = await createDeliverRequest(g1.id);
     const { generation: g2 } = await createGeneration();
-    const repairReq = await createRepairRequest(g2.id);
+    const repairReq = await seedQueuedPartialRequest('repair', g2.id);
 
     const claimed = await claim('worker-a', ['repair']);
     expect(claimed.status).toBe(200);
@@ -498,7 +380,7 @@ describe('POST /api/v1/requests/claim', () => {
 
   it('kinds filter: claims a masked_redraw row when kinds includes only masked_redraw', async () => {
     const { generation } = await createGeneration();
-    const masked = await createMaskedRedrawRequest(generation.id);
+    const masked = await seedQueuedPartialRequest('masked_redraw', generation.id);
 
     const claimed = await claim('worker-a', ['masked_redraw']);
     expect(claimed.status).toBe(200);
@@ -722,7 +604,7 @@ describe('GET /api/v1/requests', () => {
   it('generation_id also returns repair rows alongside deliver rows', async () => {
     const { generation } = await createGeneration();
     const deliverReq = await createDeliverRequest(generation.id);
-    const repairReq = await createRepairRequest(generation.id);
+    const repairReq = await seedQueuedPartialRequest('repair', generation.id);
 
     const byGenerationId = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}`);
     expect(byGenerationId.body.items.map((r) => r.id).sort()).toEqual([deliverReq.body.id, repairReq.body.id].sort());
@@ -734,7 +616,7 @@ describe('GET /api/v1/requests', () => {
 
   it('generation_id includes masked_redraw rows', async () => {
     const { generation } = await createGeneration();
-    const masked = await createMaskedRedrawRequest(generation.id);
+    const masked = await seedQueuedPartialRequest('masked_redraw', generation.id);
 
     const byGeneration = await getJson<{ items: RequestBody[] }>(`/api/v1/requests?generation_id=${generation.id}`);
     expect(byGeneration.body.items.map((r) => r.id)).toEqual([masked.body.id]);
