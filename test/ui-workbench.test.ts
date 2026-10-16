@@ -128,6 +128,42 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('name="wb_size"');
   });
 
+  it('phase 1 offers a no-cut checkbox and sends cut: true unless it is checked', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const form = html.slice(html.indexOf('data-wb-form="1"'), html.indexOf('data-wb-form="2"'));
+    expect(form).toContain('name="wb_redraw_no_cut"');
+    expect(form).toContain('切り抜かない');
+    expect(appJs).toContain("if (!qs('input[name=\"wb_redraw_no_cut\"]', form).checked) redrawOptions.cut = true;");
+    expect(appJs).toContain("node.cutout ? '/g/' + node.short_id + '/assets/cutout'");
+  });
+
+  it('marks cutout on tree nodes only when the cutout asset exists', async () => {
+    const { generation: root } = await createGeneration();
+    const cut = await derive(root, 'redraw', { method: 'hires', cut: true });
+    const plain = await derive(root, 'redraw', { method: 'canvas' });
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO generation_assets (id, generation_id, role, region, r2_object_key, content_type, size, created_at, updated_at)
+       VALUES (?, ?, 'cutout', '', 'k', 'image/png', 1, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), cut.id, now, now)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO generation_assets (id, generation_id, role, region, r2_object_key, content_type, size, created_at, updated_at)
+       VALUES (?, ?, 'alpha', '', 'k2', 'image/png', 1, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), plain.id, now, now)
+      .run();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const initial = /data-initial="([^"]*)"/.exec(html)?.[1]?.replaceAll('&quot;', '"') ?? '';
+    const data = JSON.parse(initial) as { tree: { nodes: { short_id: string; cutout: boolean }[] } };
+    const byId = new Map(data.tree.nodes.map((n) => [n.short_id, n.cutout]));
+    expect(byId.get(cut.short_id)).toBe(true);
+    expect(byId.get(plain.short_id)).toBe(false);
+    expect(byId.get(root.short_id)).toBe(false);
+  });
+
   it('phase 1 light lists the catalog light scenes with an eight-direction compass', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();

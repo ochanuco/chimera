@@ -12,6 +12,20 @@ interface RequestResult {
   };
 }
 
+describe('MCP redraw_generation cut', () => {
+  it('passes cut through to the queued payload', async () => {
+    const { generation } = await createGeneration();
+    const options = { method: 'hires', hires: 2048, cut: true };
+    const call = await mcpToolCall<RequestResult>('redraw_generation', {
+      generation_id: generation.short_id,
+      options,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options });
+  });
+});
+
 describe('MCP masked_redraw_generation', () => {
   it('queues explicit arbitrary regions and propagates prompt/denoise/padding/feather options', async () => {
     const { generation } = await createGeneration({

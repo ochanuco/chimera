@@ -4754,7 +4754,7 @@ export const appJs = `
         pane.setAttribute('data-wb-role', role);
         pane.setAttribute('data-wb-imgpane', '');
         pane.textContent = '';
-        pane.classList.toggle('wb-checker', !!(node && node.delivered));
+        pane.classList.toggle('wb-checker', !!(node && (node.delivered || node.cutout)));
         if (node) {
           var img = document.createElement('img');
           img.alt = node.short_id;
@@ -4763,7 +4763,7 @@ export const appJs = `
           img.addEventListener('error', function () {
             if (img.getAttribute('src') !== '/g/' + node.short_id + '/preview') img.src = '/g/' + node.short_id + '/preview';
           });
-          img.src = '/g/' + node.short_id + '/image';
+          img.src = node.cutout ? '/g/' + node.short_id + '/assets/cutout' : '/g/' + node.short_id + '/image';
           pane.appendChild(img);
           var overlay = wbEl('div', 'wb-overlay');
           overlay.hidden = true;
@@ -5323,10 +5323,10 @@ export const appJs = `
         var thumb = wbEl('div', 'wb-mini-thumb');
         if (item.node) {
           var img = document.createElement('img');
-          img.src = '/g/' + item.node.short_id + '/preview';
+          img.src = item.node.cutout ? '/g/' + item.node.short_id + '/assets/cutout' : '/g/' + item.node.short_id + '/preview';
           img.alt = item.node.short_id;
           thumb.appendChild(img);
-          thumb.classList.toggle('wb-checker', item.node.delivered);
+          thumb.classList.toggle('wb-checker', item.node.delivered || item.node.cutout);
         }
         btn.appendChild(thumb);
         var bar = wbEl('span', 'wb-mini-rate');
@@ -5634,14 +5634,17 @@ export const appJs = `
       var form = phaseForm(k);
       if (k === 1) {
         var method = currentMethod();
+        var redrawOptions;
         if (method === 'canvas') {
-          return { kind: 'redraw', options: { method: 'canvas', denoise: Number(qs('input[name="wb_denoise"]', form).value), size: Number(qs('select[name="wb_size"]', form).value) } };
-        }
-        if (method === 'light') {
+          redrawOptions = { method: 'canvas', denoise: Number(qs('input[name="wb_denoise"]', form).value), size: Number(qs('select[name="wb_size"]', form).value) };
+        } else if (method === 'light') {
           var scene = qs('[data-wb-scene].wb-pill-on', form);
-          return { kind: 'redraw', options: { method: 'light', scene: scene.getAttribute('data-wb-scene'), from: qs('[data-compass="light"]', form).getAttribute('data-value') } };
+          redrawOptions = { method: 'light', scene: scene.getAttribute('data-wb-scene'), from: qs('[data-compass="light"]', form).getAttribute('data-value') };
+        } else {
+          redrawOptions = { method: 'hires', hires: Number(qs('select[name="wb_hires"]', form).value), denoise: Number(qs('select[name="wb_hires_denoise"]', form).value) };
         }
-        return { kind: 'redraw', options: { method: 'hires', hires: Number(qs('select[name="wb_hires"]', form).value), denoise: Number(qs('select[name="wb_hires_denoise"]', form).value) } };
+        if (!qs('input[name="wb_redraw_no_cut"]', form).checked) redrawOptions.cut = true;
+        return { kind: 'redraw', options: redrawOptions };
       }
       if (k === 2) {
         if (wb.partMode === 'auto') {

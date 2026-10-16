@@ -141,6 +141,9 @@ function RedrawForm({ data }: { data: WorkbenchData }) {
         </label>
       </div>
       <LightPanel data={data} />
+      <label class="wb-field">
+        <input type="checkbox" name="wb_redraw_no_cut" /> 切り抜かない
+      </label>
     </div>
   );
 }
