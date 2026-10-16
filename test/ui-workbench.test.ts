@@ -186,8 +186,10 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('data-wb-stage-mode="pattern"');
     expect(form).toContain('data-wb-stage-mode="photo"');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="random" checked[^>]*>\s*<span class="backdrop-option-label">ランダム/);
-    expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-shadow="on"/);
-    expect(form).toContain('data-wb-shadow="off"');
+    expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-shadow="off"/);
+    expect(form).toContain('data-wb-shadow="on"');
+    expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-framed="on"/);
+    expect(form).toContain('data-wb-framed="off"');
     expect(form).toMatch(/data-wb-stage-scene[^>]*hidden/);
     expect(form).toContain('name="wb_stage_scene" checked');
     expect(form).not.toContain('data-compass="shadow"');
@@ -311,6 +313,8 @@ describe('workbench client script', () => {
     expect(appJs).toContain("kind: 'lighting'");
     expect(appJs).toContain('function sceneOf(node)');
     expect(appJs).toContain('stageOptions.light = null');
+    expect(appJs).toContain('var WB_FRAME_BOX = [0.05, 0.05, 0.95, 0.95];');
+    expect(appJs).toContain("sides: { top: 'out', right: 'out', bottom: 'out', left: 'out' }");
   });
 
   it('saves picks as the whole map through the workbench endpoint, truncating by lineage', () => {

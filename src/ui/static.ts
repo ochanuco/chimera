@@ -4946,7 +4946,8 @@ export const appJs = `
       stageMode: 'pattern',
       photo: null,
       place: null,
-      shadow: true,
+      shadow: false,
+      framed: true,
       lightingDir: '',
       lightingScene: '',
       card: null,
@@ -5029,6 +5030,9 @@ export const appJs = `
     }
 
     var WB_SCENE_LABELS = { sunset: '夕日', moon: '月明かり' };
+
+    // 4 背景の既定の枠。座標は納品キャンバスに対する分数。
+    var WB_FRAME_BOX = [0.05, 0.05, 0.95, 0.95];
 
     // The light scene a picture was drawn or delivered in: the nearest light redraw (or a deliver's own light) up its lineage.
     function sceneOf(node) {
@@ -5486,6 +5490,9 @@ export const appJs = `
         qsa('[data-wb-shadow]', root).forEach(function (b) {
           b.classList.toggle('wb-pill-on', (b.getAttribute('data-wb-shadow') === 'on') === wb.shadow);
         });
+        qsa('[data-wb-framed]', root).forEach(function (b) {
+          b.classList.toggle('wb-pill-on', (b.getAttribute('data-wb-framed') === 'on') === wb.framed);
+        });
         var shadowDir = shadowDirection(activeInputNode(), qs('input[name="wb_stage_scene"]', root).checked);
         qs('[data-wb-shadow-readout]', root).textContent = !wb.shadow
           ? ''
@@ -5665,6 +5672,7 @@ export const appJs = `
         var backdropOptions = deliverOptionsFrom(form, false);
         if (!backdropOptions) return null;
         var stageOptions = { backdrop: backdropOptions.backdrop };
+        if (wb.framed) stageOptions.frame = { box: WB_FRAME_BOX.slice(), sides: { top: 'out', right: 'out', bottom: 'out', left: 'out' } };
         var sceneOn = qs('input[name="wb_stage_scene"]', form).checked;
         if (!wb.shadow) stageOptions.shadow_from = null;
         else {
@@ -5848,6 +5856,11 @@ export const appJs = `
           height: Number(photo.getAttribute('data-height')) || null,
         };
         if (!wb.place) wb.place = [0.5, 0.95];
+        return render();
+      }
+      var framePill = t.closest('[data-wb-framed]');
+      if (framePill) {
+        wb.framed = framePill.getAttribute('data-wb-framed') === 'on';
         return render();
       }
       var shadowPill = t.closest('[data-wb-shadow]');
