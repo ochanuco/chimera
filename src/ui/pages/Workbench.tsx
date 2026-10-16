@@ -15,12 +15,6 @@ export interface BackdropOption {
   label: string;
 }
 
-export interface WorkbenchPart {
-  name: string;
-  /** The part's text in the prompt that drew the source; null when the prompt's parts are unknown. */
-  text: string | null;
-}
-
 export interface WorkbenchData {
   root: { id: string; short_id: string };
   tree: WorkbenchTree;
@@ -38,18 +32,16 @@ export interface WorkbenchData {
   catalogVersion: string | null;
   backdropColor: string | null;
   dof: DofCatalog | null;
-  parts: WorkbenchPart[];
   /** Photos uploaded on `/photos` (or from the 背景 phase), newest first. */
   photos: PhotoItem[];
 }
 
 const PHASES = [
   { no: 1, label: '描き直し' },
-  { no: 2, label: '部分' },
-  { no: 3, label: '切り抜き・フチ' },
-  { no: 4, label: '背景' },
-  { no: 5, label: '光' },
-  { no: 6, label: 'ボケ' },
+  { no: 2, label: 'フチ' },
+  { no: 3, label: '背景' },
+  { no: 4, label: '光' },
+  { no: 5, label: 'ボケ' },
 ] as const;
 
 function numberDefault(fields: Record<string, unknown> | undefined, key: string): number | null {
@@ -172,80 +164,14 @@ function LightPanel({ data }: { data: WorkbenchData }) {
   );
 }
 
-const PART_MODES = [
-  ['auto', '手足を自動で探す'],
-  ['rect', '矩形を引く'],
-] as const;
-
-function PartForm({ data }: { data: WorkbenchData }) {
-  return (
-    <div class="wb-form" data-wb-form="2" hidden>
-      <div class="wb-field">
-        描き直す場所
-        <div class="wb-pills" role="group" aria-label="描き直す場所">
-          {PART_MODES.map(([mode, label], i) => (
-            <button type="button" class={`wb-pill${i === 0 ? ' wb-pill-on' : ''}`} data-wb-part-mode={mode}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div data-wb-part-panel="auto">
-        <label class="wb-field">
-          対象
-          <select name="wb_repair_parts">
-            <option value="both">手と足</option>
-            <option value="hands">手だけ</option>
-            <option value="feet">足だけ</option>
-          </select>
-        </label>
-      </div>
-      <div data-wb-part-panel="rect" hidden>
-        <div class="wb-rect-row">
-          <span data-wb-rect-count>矩形 0 か所</span>
-          <button type="button" class="wb-pill" data-wb-rect-clear>
-            全部消す
-          </button>
-        </div>
-        <label class="wb-field">
-          足す語（必須）
-          <input type="text" name="wb_patch" placeholder="例: holding mug" autocomplete="off" />
-        </label>
-        {data.parts.length > 0 ? (
-          <div class="wb-field">
-            元の絵の parts から足す
-            <div class="wb-pills">
-              {data.parts.map((part) => (
-                <button type="button" class="wb-pill" data-wb-part-chip={part.name} data-part-text={part.text ?? ''}>
-                  <span class="mono">{part.name}</span>
-                </button>
-              ))}
-            </div>
-            <span class="wb-note">元の prompt から顔・髪・構図の語を外し、足す語を末尾に付けて描き直します。</span>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function DeliverForm({ data }: { data: WorkbenchData }) {
   const defaults = data.deliverDefaults;
   return (
-    <div class="wb-form" data-wb-form="3" hidden>
+    <div class="wb-form" data-wb-form="2" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <div class="wb-row">
           <span class="wb-note">透過で切り抜き、フチを付けます。背景は次のフェーズで付けます。</span>
-          <label class="wb-inline-field">
-            サイズ
-            <select name="wb_deliver_size">
-              <option value="1536" selected>
-                1536
-              </option>
-              <option value="2048">2048</option>
-            </select>
-          </label>
         </div>
 
         <details class="wb-acc" open>
@@ -261,15 +187,6 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
             <label>
               <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する
             </label>
-            <label>
-              <input type="checkbox" name="recolor" checked={defaults?.recolor === true} /> パレットを揃える
-            </label>
-            <label>
-              <input type="checkbox" name="skin" checked={defaults?.skin === true} /> 肌を整える
-            </label>
-            <label>
-              <input type="checkbox" name="keep_legwear" checked={defaults?.keep_legwear === true} /> 脚衣を残す
-            </label>
           </div>
         </details>
         <label class="backdrop-option-plain" hidden>
@@ -284,7 +201,7 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
 function StageForm({ data }: { data: WorkbenchData }) {
   const patterns = data.backdrops.length > 0 ? data.backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
   return (
-    <div class="wb-form" data-wb-form="4" hidden>
+    <div class="wb-form" data-wb-form="3" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <div class="wb-pills" role="group" aria-label="背景の種類">
@@ -390,7 +307,7 @@ function StageForm({ data }: { data: WorkbenchData }) {
 
 function LightingForm() {
   return (
-    <div class="wb-form" data-wb-form="5" hidden>
+    <div class="wb-form" data-wb-form="4" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <p class="wb-note">背景の明るさと色味にキャラとフチを合わせます。向きを選ぶとその側から陰影も付けます。</p>
@@ -446,7 +363,7 @@ function FocalLengthField({ dof }: { dof: DofCatalog }) {
 
 function DofForm({ data }: { data: WorkbenchData }) {
   return (
-    <div class="wb-form" data-wb-form="6" hidden>
+    <div class="wb-form" data-wb-form="5" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <DofFields dof={data.dof ?? FALLBACK_DOF} />
@@ -471,7 +388,7 @@ function DofForm({ data }: { data: WorkbenchData }) {
   );
 }
 
-/** `/work/:shortId`: the six-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
+/** `/work/:shortId`: the five-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
 export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchData }) {
   const initial = { tree: data.tree, picks: data.picks, at: data.at };
   return (
@@ -562,14 +479,13 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
             <div class="wb-panel-body">
               <div>
                 <p class="wb-note">
-                  フェーズ <span data-wb-phase-no>1</span> / 6
+                  フェーズ <span data-wb-phase-no>1</span> / 5
                 </p>
                 <h2 class="wb-panel-title">
                   <span data-wb-phase-title>描き直し</span>の候補を作る
                 </h2>
               </div>
               <RedrawForm data={data} />
-              <PartForm data={data} />
               <DeliverForm data={data} />
               <StageForm data={data} />
               <LightingForm />

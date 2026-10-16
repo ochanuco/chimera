@@ -1,19 +1,20 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { createGeneration, postJson, req } from './helpers';
+import { createGeneration, createRequest, postJson, req } from './helpers';
 
 async function createRefinementRequest(
   generationId: string,
   kind: 'redraw' | 'deliver' | 'repair' | 'masked_redraw' = 'deliver',
 ): Promise<string> {
+  // repair / masked_redraw can no longer be created through the API; rows that predate the removal are seeded directly.
+  if (kind === 'repair' || kind === 'masked_redraw') {
+    const seeded = await createRequest({ kind, status: 'queued', payload: { generation_id: generationId } });
+    return seeded.body.id;
+  }
   const payload =
-    kind === 'masked_redraw'
-      ? { generation_id: generationId, options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'x', denoise: 0.5 } }
-      : kind === 'repair'
-        ? { generation_id: generationId, options: { parts: ['hands'] } }
-        : kind === 'redraw'
-          ? { generation_id: generationId, options: { method: 'canvas' } }
-          : { generation_id: generationId, options: { repin: true } };
+    kind === 'redraw'
+      ? { generation_id: generationId, options: { method: 'canvas' } }
+      : { generation_id: generationId, options: { repin: true } };
   const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
     kind,
     payload,

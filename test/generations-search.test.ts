@@ -227,8 +227,8 @@ describe('Generation search: refinement_request badge (docs/ui.md「Gallery」�
     kind: 'finalize' | 'redraw' | 'deliver' | 'repair' | 'masked_redraw',
     createdAt?: string,
   ): Promise<string> {
-    // 古い finalize は API から作れないので行を直接入れる。
-    if (kind === 'finalize') {
+    // 古い finalize / repair / masked_redraw は API から作れないので行を直接入れる。
+    if (kind === 'finalize' || kind === 'repair' || kind === 'masked_redraw') {
       const { body } = await createRequest({
         kind,
         status: 'queued',
@@ -238,13 +238,9 @@ describe('Generation search: refinement_request badge (docs/ui.md「Gallery」�
       return body.id;
     }
     const payload =
-      kind === 'masked_redraw'
-        ? { generation_id: generationIdOrShortId, options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'x', denoise: 0.5 } }
-        : kind === 'repair'
-          ? { generation_id: generationIdOrShortId, options: { parts: ['hands'] } }
-          : kind === 'redraw'
-            ? { generation_id: generationIdOrShortId, options: { method: 'light', scene: 'sunset' } }
-            : { generation_id: generationIdOrShortId, options: { repin: true } };
+      kind === 'redraw'
+        ? { generation_id: generationIdOrShortId, options: { method: 'light', scene: 'sunset' } }
+        : { generation_id: generationIdOrShortId, options: { repin: true } };
     const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
       kind,
       payload,

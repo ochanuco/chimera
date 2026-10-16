@@ -1610,9 +1610,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-loupe-cross { position: absolute; inset: 0; }
 .wb-loupe-cross::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-loupe-cross::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid rgba(255, 0, 140, 0.85); }
-.wb-rects { position: absolute; inset: 0; }
-.wb-rect { position: absolute; border: 2px solid var(--accent); background: rgba(124, 156, 245, 0.2); box-sizing: border-box; }
-.wb-rect-draft { border-style: dashed; }
 .wb-focus { z-index: 1; }
 
 .wb-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.5rem; }
@@ -1657,7 +1654,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-note { margin: 0; font-size: 0.8rem; color: var(--text-dim); }
 .wb-unavailable { padding: 0.7rem; border-radius: 8px; background: rgba(184, 171, 95, 0.15); color: var(--text); font-size: 0.85rem; }
 .wb-error { margin: 0; color: var(--bad); font-size: 0.85rem; }
-.wb-form, .wb-form > [data-wb-form-body], .wb-form > [data-wb-method-panel], .wb-form > [data-wb-part-panel] { display: flex; flex-direction: column; gap: 0.7rem; }
+.wb-form, .wb-form > [data-wb-form-body], .wb-form > [data-wb-method-panel] { display: flex; flex-direction: column; gap: 0.7rem; }
 .wb-pills, .wb-words { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .wb-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
 .wb-field select, .wb-field input[type="text"] {
@@ -1667,7 +1664,6 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .wb-inline-field { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: 0.85rem; color: var(--text-dim); }
 .wb-inline-field select { font: inherit; min-height: 2.4rem; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
-.wb-rect-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
 .wb-acc { border: 1px solid var(--border); border-radius: 10px; }
 .wb-acc > summary { cursor: pointer; min-height: 2.5rem; padding: 0.5rem 0.7rem; font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
 .wb-acc-sub { margin-left: auto; font-weight: 400; font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
@@ -2552,22 +2548,11 @@ export const appJs = `
       }
     }
 
-    var keepLegwearFromDial = dialGroupValue(form, 'keep_legwear');
-    var keepLegwear = keepLegwearFromDial === undefined
-      ? (checkbox('keep_legwear') ? true : null)
-      : keepLegwearFromDial;
-
     var options = {
       repin: checkbox('repin'),
-      recolor: checkbox('recolor'),
-      keep_legwear: keepLegwear,
       backdrop: backdrop,
     };
-    if (qs('input[name="skin"]', form)) options.skin = checkbox('skin');
     if (qs('input[name="keep_scene"]', form)) options.keep_scene = checkbox('keep_scene');
-
-    var sizeSelect = qs('select[name="wb_deliver_size"]', form);
-    if (sizeSelect) options.deliver_size = Number(sizeSelect.value);
 
     var editor = qs('[data-outline-editor]', form);
     if (editor) {
@@ -4623,11 +4608,10 @@ export const appJs = `
   // ---- ワークベンチ (/work/:shortId, docs/ui.md「Workbench」) ----
   var WB_PHASES = [
     { no: 1, label: '描き直し' },
-    { no: 2, label: '部分' },
-    { no: 3, label: '切り抜き・フチ' },
-    { no: 4, label: '背景' },
-    { no: 5, label: '光' },
-    { no: 6, label: 'ボケ' },
+    { no: 2, label: 'フチ' },
+    { no: 3, label: '背景' },
+    { no: 4, label: '光' },
+    { no: 5, label: 'ボケ' },
   ];
   var WB_LAST = WB_PHASES.length;
   var WB_RATING_COLOR = { bad: 'var(--bad)', neutral: 'var(--neutral)', good: 'var(--good)' };
@@ -4676,10 +4660,6 @@ export const appJs = `
       flipX: flipX,
       flipY: flipY
     };
-  }
-
-  function wbRectsOverlap(a, b) {
-    return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
   }
 
   // Same text as formatImageMetaText in src/lib/image-meta.ts; '' while the size is unknown.
@@ -4773,7 +4753,6 @@ export const appJs = `
           loupe.hidden = true;
           loupe.appendChild(wbEl('div', 'wb-loupe-cross'));
           overlay.appendChild(loupe);
-          overlay.appendChild(wbEl('div', 'wb-rects'));
           var guideClip = wbEl('div', 'dof-guide-clip');
           guideClip.appendChild(wbEl('div', 'dof-guide-circle wb-guide'));
           overlay.appendChild(guideClip);
@@ -4874,7 +4853,7 @@ export const appJs = `
       else if (ev.key === ']') stepLoupeZoom(1);
     });
 
-    // Crosshair on every image pane; the caller draws anything else (rects, focus) itself.
+    // Crosshair on every image pane; the caller draws anything else (focus) itself.
     function updateCrosshair() {
       imagePanes().forEach(function (pane) {
         var overlay = qs('.wb-overlay', pane);
@@ -4937,9 +4916,6 @@ export const appJs = `
       loupe: { on: true, zoom: 3 },
       forcedInput: null,
       method: 'hires',
-      partMode: 'auto',
-      rects: [],
-      draft: null,
       focus: null,
       error: '',
       timer: null,
@@ -5220,28 +5196,15 @@ export const appJs = `
     }
 
     function stagingPhoto() {
-      return wb.active === 4 && wb.stageMode === 'photo' && !!wb.photo && unavailableText() === '';
+      return wb.active === 3 && wb.stageMode === 'photo' && !!wb.photo && unavailableText() === '';
     }
 
     function updateOverlays() {
-      var rectsActive = wb.active === 2 && wb.partMode === 'rect';
       viewer.updateCrosshair();
       imagePanes().forEach(function (pane) {
         var overlay = qs('.wb-overlay', pane);
         if (!overlay) return;
         var role = pane.getAttribute('data-wb-role');
-        var rects = qs('.wb-rects', overlay);
-        rects.textContent = '';
-        if (role === 'input' && rectsActive) {
-          wb.rects.concat(wb.draft ? [wb.draft] : []).forEach(function (r, i) {
-            var d = wbEl('div', 'wb-rect' + (i >= wb.rects.length ? ' wb-rect-draft' : ''));
-            d.style.left = r[0] * 100 + '%';
-            d.style.top = r[1] * 100 + '%';
-            d.style.width = (r[2] - r[0]) * 100 + '%';
-            d.style.height = (r[3] - r[1]) * 100 + '%';
-            rects.appendChild(d);
-          });
-        }
         updateCard(overlay, role === 'input' && stagingPhoto() && !!wb.place);
         var marker = qs('.wb-focus', overlay);
         marker.hidden = !(role === 'input' && wb.active === WB_LAST && wb.focus);
@@ -5265,8 +5228,6 @@ export const appJs = `
           guide.style.top = (wb.focus[1] - d / h / 2) * 100 + '%';
         }
       });
-      var count = qs('[data-wb-rect-count]', root);
-      if (count) count.textContent = '矩形 ' + wb.rects.length + ' か所';
       var readout = qs('[data-dof-focus-readout]', root);
       if (readout) readout.textContent = wb.focus ? 'ピント: [' + wb.focus[0] + ', ' + wb.focus[1] + ']' : '';
     }
@@ -5280,12 +5241,11 @@ export const appJs = `
     function unavailableText() {
       var input = activeInputNode();
       if (!input) return '';
-      if (wb.active === 3 && input.delivered) return '納品済み';
-      // 切り抜き済みの描き直しも、4 以降は 3 の deliver が作る層を読むので 3 を通す。
-      var notDelivered = input.cutout ? '先に 3 でフチを付けてください' : '先に切り抜いてください';
-      if (wb.active === 4 && input.kind !== 'deliver') return notDelivered;
-      if (wb.active === 5 && input.kind !== 'stage') return '先に背景を付けてください';
-      if (wb.active === 6 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
+      if (wb.active === 2 && input.delivered) return '納品済み';
+      var notDelivered = '先に 2 でフチを付けてください';
+      if (wb.active === 3 && input.kind !== 'deliver') return notDelivered;
+      if (wb.active === 4 && input.kind !== 'stage') return '先に背景を付けてください';
+      if (wb.active === 5 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
       return '';
     }
 
@@ -5371,7 +5331,6 @@ export const appJs = `
       qs('[data-wb-input-meta]', root).textContent = imageMetaText(input);
       var hint = '';
       if (wb.active === WB_LAST) hint = 'クリックでピント';
-      else if (wb.active === 2 && wb.partMode === 'rect') hint = 'ドラッグで矩形';
       else if (stagingPhoto()) hint = 'クリックで台座';
       qs('[data-wb-pane-hint]', root).textContent = hint;
       inputPane.classList.toggle('wb-pane-active', hint !== '');
@@ -5431,11 +5390,7 @@ export const appJs = `
     function runBlocker() {
       if (!activeInputNode()) return '入力がありません';
       if (unavailableText()) return '';
-      if (wb.active === 2 && wb.partMode === 'rect') {
-        if (wb.rects.length === 0) return '矩形を引いてください';
-        if (qs('input[name="wb_patch"]', root).value.trim() === '') return '足す語を入力してください';
-      }
-      if (wb.active === 4 && wb.stageMode === 'photo') {
+      if (wb.active === 3 && wb.stageMode === 'photo') {
         if (!wb.photo) return '写真を選んでください';
         if (!wb.place) return '台座の位置をクリックしてください';
       }
@@ -5446,8 +5401,7 @@ export const appJs = `
     function renderPanel() {
       var phase = WB_PHASES[wb.active - 1];
       qs('[data-wb-phase-no]', root).textContent = String(wb.active);
-      var titleInput = activeInputNode();
-      qs('[data-wb-phase-title]', root).textContent = wb.active === 3 && titleInput && titleInput.cutout ? 'フチ' : phase.label;
+      qs('[data-wb-phase-title]', root).textContent = phase.label;
       qsa('[data-wb-form]', root).forEach(function (form) {
         form.hidden = Number(form.getAttribute('data-wb-form')) !== wb.active;
       });
@@ -5465,12 +5419,6 @@ export const appJs = `
       run.hidden = unavailable !== '' || !activeInputNode();
       run.disabled = blocker !== null;
       run.textContent = blocker ? blocker : '実行';
-      qsa('[data-wb-part-panel]', root).forEach(function (panel) {
-        panel.hidden = panel.getAttribute('data-wb-part-panel') !== wb.partMode;
-      });
-      qsa('[data-wb-part-mode]', root).forEach(function (b) {
-        b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-part-mode') === wb.partMode);
-      });
       qsa('[data-wb-stage-panel]', root).forEach(function (panel) {
         panel.hidden = panel.getAttribute('data-wb-stage-panel') !== wb.stageMode;
       });
@@ -5482,14 +5430,14 @@ export const appJs = `
       });
       var sceneBox = qs('[data-wb-stage-scene]', root);
       if (sceneBox) {
-        var scene = wb.active === 4 ? sceneOf(activeInputNode()) : null;
+        var scene = wb.active === 3 ? sceneOf(activeInputNode()) : null;
         sceneBox.hidden = !scene;
         if (scene) {
           qs('[data-wb-stage-scene-label]', root).textContent =
             'シーンの色を背景と影に付ける: ' + (WB_SCENE_LABELS[scene.scene] || scene.scene) + '（from ' + scene.from + '、1 の light から）';
         }
       }
-      if (wb.active === 4) {
+      if (wb.active === 3) {
         qsa('[data-wb-shadow]', root).forEach(function (b) {
           b.classList.toggle('wb-pill-on', (b.getAttribute('data-wb-shadow') === 'on') === wb.shadow);
         });
@@ -5512,7 +5460,7 @@ export const appJs = `
       if (dofScope) dofScope.hidden = stagedInPhoto;
       var frameLink = qs('[data-wb-frame-link]', root);
       if (frameLink) {
-        var frameInput = wb.active === 4 ? activeInputNode() : null;
+        var frameInput = wb.active === 3 ? activeInputNode() : null;
         frameLink.hidden = !frameInput;
         if (frameInput) frameLink.href = '/frame/' + frameInput.short_id;
       }
@@ -5547,8 +5495,6 @@ export const appJs = `
       wb.active = k;
       wb.forcedInput = null;
       wb.compareId = null;
-      wb.rects = [];
-      wb.draft = null;
       wb.error = '';
       render();
     }
@@ -5650,28 +5596,12 @@ export const appJs = `
         return { kind: 'redraw', options: redrawOptions };
       }
       if (k === 2) {
-        if (wb.partMode === 'auto') {
-          var which = qs('select[name="wb_repair_parts"]', form).value;
-          return { kind: 'repair', options: which === 'both' ? {} : { parts: [which] } };
-        }
-        for (var i = 0; i < wb.rects.length; i++) {
-          for (var j = i + 1; j < wb.rects.length; j++) {
-            if (wbRectsOverlap(wb.rects[i], wb.rects[j])) {
-              wb.error = '矩形が重なっています';
-              renderPanel();
-              return null;
-            }
-          }
-        }
-        return { kind: 'masked_redraw', options: { regions: wb.rects.map(function (r) { return r.slice(); }), prompt_patch: qs('input[name="wb_patch"]', form).value.trim() } };
-      }
-      if (k === 3) {
         var options = deliverOptionsFrom(form, false);
         if (!options) return null;
         options.transparent = true;
         return { kind: 'deliver', options: options };
       }
-      if (k === 4) {
+      if (k === 3) {
         if (wb.stageMode === 'photo') {
           return { kind: 'stage', options: { photo: wb.photo.short_id, place: [wb.place[0], wb.place[1]], height: stageHeight() } };
         }
@@ -5689,7 +5619,7 @@ export const appJs = `
         if (sceneOf(activeInputNode()) && !sceneOn) stageOptions.light = null;
         return { kind: 'stage', options: stageOptions };
       }
-      if (k === 5) {
+      if (k === 4) {
         var lightingOptions = { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null };
         if (wb.lightingScene) lightingOptions.scene = wb.lightingScene;
         return { kind: 'lighting', options: lightingOptions };
@@ -5916,24 +5846,6 @@ export const appJs = `
         qs('[data-wb-light-readout]', root).textContent = 'from: ' + value;
         return;
       }
-      var partMode = t.closest('[data-wb-part-mode]');
-      if (partMode) {
-        wb.partMode = partMode.getAttribute('data-wb-part-mode');
-        wb.draft = null;
-        return render();
-      }
-      if (t.closest('[data-wb-rect-clear]')) {
-        wb.rects = [];
-        wb.draft = null;
-        return render();
-      }
-      var chip = t.closest('[data-wb-part-chip]');
-      if (chip) {
-        var field = qs('input[name="wb_patch"]', root);
-        var text = chip.getAttribute('data-part-text') || chip.getAttribute('data-wb-part-chip');
-        field.value = (field.value.trim() ? field.value.trim() + ', ' : '') + text;
-        return renderPanel();
-      }
       // initBookmark on document does the request; the node follows so a re-render keeps the new state.
       var bm = t.closest('[data-wb-bookmark]');
       if (bm) {
@@ -5946,8 +5858,8 @@ export const appJs = `
     root.addEventListener('change', function (ev) {
       var radio = ev.target;
       if (radio instanceof HTMLInputElement && radio.type === 'radio' && radio.name === 'backdrop') {
-        syncBackdropColor(phaseForm(4));
-        if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(4)).focus();
+        syncBackdropColor(phaseForm(3));
+        if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(3)).focus();
       }
       if (radio instanceof HTMLInputElement && radio.name === 'wb_stage_scene') render();
       if (radio instanceof HTMLInputElement && radio.hasAttribute('data-wb-photo-file')) uploadStagePhoto(radio);
@@ -5996,26 +5908,20 @@ export const appJs = `
       }
       if (input.name === 'wb_lighting_strength') qs('[data-wb-lighting-readout]', root).textContent = input.value;
       if (/^wb_dof_(tilt|nearer|bokeh)$/.test(input.name)) qs('[data-wb-dof-readout="' + input.name.slice(7) + '"]', root).textContent = input.value;
-      if (input.name === 'wb_patch') renderPanel();
     });
 
     var drawing = null;
     root.addEventListener('pointerdown', function (ev) {
       var pane = ev.target.closest ? ev.target.closest('[data-wb-input-pane]') : null;
       if (!pane || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
-      var rectMode = wb.active === 2 && wb.partMode === 'rect';
       var placing = stagingPhoto();
-      if (!rectMode && !placing && wb.active !== WB_LAST) return;
+      if (!placing && wb.active !== WB_LAST) return;
       var p = pointIn(pane, ev);
       // The base may go below the photo (y up to 1.5) to crop the feet.
       if (!p || !(p.inside || (placing && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1.5))) return;
       ev.preventDefault();
       try { pane.setPointerCapture(ev.pointerId); } catch (e) {}
-      drawing = { pane: pane, x: p.x, y: p.y, moved: false, rect: rectMode };
-      if (rectMode) {
-        wb.draft = [wbRound(p.x), wbRound(p.y), wbRound(p.x), wbRound(p.y)];
-        updateOverlays();
-      }
+      drawing = { pane: pane, x: p.x, y: p.y, moved: false };
     });
 
     root.addEventListener('pointermove', function (ev) {
@@ -6024,11 +5930,6 @@ export const appJs = `
         var q = pointIn(drawing.pane, ev);
         if (q) {
           drawing.moved = drawing.moved || Math.abs(q.x - drawing.x) > 0.005 || Math.abs(q.y - drawing.y) > 0.005;
-          if (drawing.rect) {
-            var x = clamp01(q.x);
-            var y = clamp01(q.y);
-            wb.draft = [wbRound(Math.min(drawing.x, x)), wbRound(Math.min(drawing.y, y)), wbRound(Math.max(drawing.x, x)), wbRound(Math.max(drawing.y, y))];
-          }
           wb.cursor = { x: clamp01(q.x), y: clamp01(q.y) };
         }
         return updateOverlays();
@@ -6044,11 +5945,7 @@ export const appJs = `
       var d = drawing;
       drawing = null;
       var p = pointIn(d.pane, ev);
-      if (d.rect) {
-        var r = wb.draft;
-        wb.draft = null;
-        if (r && r[2] - r[0] > 0.02 && r[3] - r[1] > 0.02) wb.rects.push(r);
-      } else if (p && !d.moved && stagingPhoto()) {
+      if (p && !d.moved && stagingPhoto()) {
         wb.place = [wbRound(clamp01(p.x)), wbRound(Math.min(1.5, Math.max(0, p.y)))];
       } else if (p && !d.moved) {
         wb.focus = [wbRound(clamp01(p.x)), wbRound(clamp01(p.y))];
@@ -6059,7 +5956,6 @@ export const appJs = `
 
     root.addEventListener('pointercancel', function () {
       drawing = null;
-      wb.draft = null;
       updateOverlays();
     });
 
@@ -6103,7 +5999,7 @@ export const appJs = `
       while (open < WB_LAST && pick(open)) open += 1;
       wb.active = open;
     }
-    var stageForm = phaseForm(4);
+    var stageForm = phaseForm(3);
     if (stageForm) syncBackdropColor(stageForm);
     window.addEventListener('resize', function () { fitPanel(); imagePanes().forEach(layoutPane); });
     render();

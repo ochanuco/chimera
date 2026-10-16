@@ -8,8 +8,8 @@
 Experiment → ExperimentRun → Request → ComfyJob → Generation
 ```
 
-Request は worker への生成要求 1 件で、generate / redraw / deliver / dof / lens / photo / stage / lighting / repair / masked_redraw / import の
-どれも、Generation は必ず Request に属します。Run の結果は `requests.run_id` が Run を指す
+Request は worker への生成要求 1 件で、generate / redraw / deliver / dof / lens / photo / stage / lighting / import の
+どれも（古い行は repair / masked_redraw / finalize もある）、Generation は必ず Request に属します。Run の結果は `requests.run_id` が Run を指す
 Request で、Run が Request を包含するのではなく、Request が Run を参照します。
 
 ただし、本システムの重要部分は階層そのものではなく、生成探索に存在する複数種類の
@@ -23,7 +23,7 @@ Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
   関係             意味
   ---------------- ----------------------------------------------
   素材参照         過去Generationの何を生成材料として利用したか
-  仕上げ元         この Generation が、どの Generation を redraw / deliver / dof / lens / photo / stage / lighting / repair / masked_redraw したものか
+  仕上げ元         この Generation が、どの Generation を redraw / deliver / dof / lens / photo / stage / lighting（と古い repair / masked_redraw）したものか
 
 ## Experiment
 
@@ -305,7 +305,7 @@ publish されておらず、参照にしても行が増えるだけで何も足
     本文は chagama の checkout の中にあり、版が固定するのは patches の層だけです。
     版が不変でも、指す先の pose は commit で動きます。
 -   昇格できるのは、Request が patches を持つ generate 由来の Generation だけです。
-    `generation.prompt` で全文上書きしたものと、redraw / deliver / repair / masked_redraw の
+    `generation.prompt` で全文上書きしたものと、redraw / deliver（と古い repair / masked_redraw）の
     出力は patches という概念を持たないので昇格できません。
 -   昇格の入力になる patches は Request 行から取ります。`semantic.attributes.patches` は
     使いません。semantic の PUT は失敗しても生成が進み、MCP クライアントから後で
@@ -355,7 +355,7 @@ dial word か、chimera が検証しない数値で、chimera が語彙を持た
 ですが、base も patches も持ちません — 版ごと全文上書きの leaf です。
 
 ``` json
-{ "options": { "keep_legwear": "on", "backdrop": "dots" } }
+{ "options": { "repin": true, "backdrop": "dots" } }
 ```
 
 不変条件は pose/costume/expression と共有するものと、deliver 固有のものがあります。
@@ -391,7 +391,7 @@ resolved raw Request から推測します（[api.md](api.md#pose-reference-pin)
 pin できる Generation には条件があります。
 
 -   `rating = good` でなければなりません（他の kind と同じ、[Rating](#rating)）。
--   redraw / deliver / repair の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
+-   redraw / deliver（と古い repair）の出力は `resolveDerivationSource`（`derive_request` と同じ解決）で
     raw Generation まで遡ります。rating を見るのは指定した Generation 自身、pin する
     render とその seed は遡った先の raw Generation です。
 -   遡った先の Request は「recipe/pose の素の render」でなければなりません: recipe が
@@ -504,7 +504,7 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 ``` text
 id
 short_id          /b/{short_id} の Request の短縮 ID
-kind              generate | redraw | deliver | dof | lens | photo | stage | lighting | repair | masked_redraw | import（finalize は古い行を読むためだけに残る）
+kind              generate | redraw | deliver | dof | lens | photo | stage | lighting | import（finalize / repair / masked_redraw は古い行を読むためだけに残る）
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -540,9 +540,7 @@ Job の `graph` / `render_facts` を正とします。素材参照は `request_r
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
-`{ generation_id, options }`（redraw / deliver / dof / lens / photo / stage / lighting / repair / masked_redraw、古い finalize）です。masked_redraw の
-options は明示的な矩形 `regions` と非空の `prompt_patch` を必須とし、低〜中程度の
-`denoise`、`mask_padding`、`mask_feather` を保持します。契約全体（状態遷移、API、payload
+`{ generation_id, options }`（redraw / deliver / dof / lens / photo / stage / lighting、古い repair / masked_redraw / finalize）です。契約全体（状態遷移、API、payload
 の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
 
 不変条件:
@@ -646,7 +644,7 @@ created_at
 updated_at
 ```
 
-`source_generation_id` は redraw / deliver / dof / lens / photo / stage / lighting / repair / masked_redraw（と古い finalize）の Job で仕上げ元の Generation を指します。
+`source_generation_id` は redraw / deliver / dof / lens / photo / stage / lighting（と古い repair / masked_redraw / finalize）の Job で仕上げ元の Generation を指します。
 
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
@@ -709,13 +707,12 @@ status 等で扱います。original 画像（`r2_object_key` の R2 オブジ�
 
 ### original の保持
 
-original.png は削除しません。deliver をやり直すときも、redraw や repair の入力にするときも、
+original.png は削除しません。deliver をやり直すときも、redraw の入力にするときも、
 worker が元の絵の original を読むためです。保持期間による削除ジョブは動かしていません。
 
 過去に削除済みの Generation（`original_purged_at` が非 NULL）は、行と `preview.webp`（1024px WebP、
 [architecture.md](architecture.md)「R2」節参照）だけが残り、そのまま読めます。
-`GET /g/{short_id}/image` は 410 (`original_purged`) を返し、redraw / deliver / repair /
-masked_redraw の起票は 409 (`original_purged`) で拒否されます（[api.md](api.md)、
+`GET /g/{short_id}/image` は 410 (`original_purged`) を返し、redraw / deliver の起票は 409 (`original_purged`) で拒否されます（[api.md](api.md)、
 [worker-protocol.md](worker-protocol.md)）。GUI は preview を代わりに表示します（[ui.md](ui.md)）。
 
 ### original の再圧縮
@@ -907,7 +904,7 @@ other
 
 ## 仕上げ元
 
-redraw / deliver / dof / lens / photo / stage / lighting / repair / masked_redraw（と古い finalize）の出力 Generation は、仕上げた元の Generation を
+redraw / deliver / dof / lens / photo / stage / lighting（と古い repair / masked_redraw / finalize）の出力 Generation は、仕上げた元の Generation を
 `generations.refines_generation_id` で直接指します。再試行の関係は持ちません。
 素材参照（Generation → Request）とは別の関係で、統合しません。
 
@@ -933,8 +930,8 @@ picks_json          TEXT NOT NULL          {"1": {"generation_id": "<id>"} | {"s
 created_at / updated_at
 ```
 
-フェーズは 1 描き直し（redraw の hires / canvas）、2 光（redraw の light）、3 部分（repair / masked_redraw）、4 納品（deliver）、
-5 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
+フェーズは 1 描き直し（redraw の hires / canvas / light。作れなくなった古い repair / masked_redraw もここに置く）、2 切り抜き・フチ（deliver）、
+3 背景（stage）、4 光（lighting）、5 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
 採用は木のどこかの Generation を指すだけで、Generation 側には何も書きません。木の取得と保存の API は
 [api.md](api.md#generation-tree) です。
 

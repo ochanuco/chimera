@@ -98,27 +98,6 @@ async function createDeliverRequest(generationId: string) {
   });
 }
 
-async function createRepairRequest(generationId: string) {
-  return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
-    kind: 'repair',
-    payload: { generation_id: generationId, options: { parts: ['hands', 'feet'] } },
-    idempotency_key: crypto.randomUUID(),
-    created_by: 'gui',
-  });
-}
-
-async function createMaskedRedrawRequest(generationId: string) {
-  return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
-    kind: 'masked_redraw',
-    payload: {
-      generation_id: generationId,
-      options: { regions: [[0.2, 0.4, 0.8, 0.9]], prompt_patch: 'replace the garment', denoise: 0.5 },
-    },
-    idempotency_key: crypto.randomUUID(),
-    created_by: 'mcp',
-  });
-}
-
 describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
   it('hello -> hello_ack', async () => {
     const ws = await connectWs('/api/v1/worker/ws');
@@ -260,40 +239,6 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     // 届かないことの確認なので waitFor のタイムアウトは使わず、素朴に待って現れないことを見る。
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(workerT.messages.find((m) => m.type === 'queued' && m.request_id === requestId)).toBeUndefined();
-
-    worker.close();
-  });
-
-  it('hello kinds accepts repair: a worker with kinds ["repair"] gets a repair request queued', async () => {
-    const worker = await connectWs('/api/v1/worker/ws');
-    const workerT = trackMessages(worker);
-    hello(worker, 'w-repair-only', ['repair']);
-    await workerT.waitFor((m) => m.type === 'hello_ack');
-
-    const { generation } = await createGeneration();
-    const created = await createRepairRequest(generation.id);
-    expect(created.status).toBe(201);
-    const requestId = created.body.id;
-
-    const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
-    expect(queuedMsg.kind).toBe('repair');
-
-    worker.close();
-  });
-
-  it('hello kinds accepts masked_redraw: a masked-redraw worker gets only that request', async () => {
-    const worker = await connectWs('/api/v1/worker/ws');
-    const workerT = trackMessages(worker);
-    hello(worker, 'w-masked-redraw-only', ['masked_redraw']);
-    await workerT.waitFor((m) => m.type === 'hello_ack');
-
-    const { generation } = await createGeneration();
-    const created = await createMaskedRedrawRequest(generation.id);
-    expect(created.status).toBe(201);
-    const requestId = created.body.id;
-
-    const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === requestId);
-    expect(queuedMsg.kind).toBe('masked_redraw');
 
     worker.close();
   });

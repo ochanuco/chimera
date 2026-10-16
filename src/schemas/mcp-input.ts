@@ -13,8 +13,6 @@ import {
   stageOptionsSchema,
   lightingOptionsSchema,
   deliverProfileRefSchema,
-  repairOptionsSchema,
-  maskedRedrawOptionsSchema,
 } from './request-payloads';
 import { presetKindSchema } from './presets';
 import { createObservationObjectSchema, observationOutcomeSchema, requirePoseOrComponent } from './observations';
@@ -165,20 +163,6 @@ export const lightingGenerationInputSchema = z.object({
   direction: lightingOptionsSchema.shape.direction,
   strength: lightingOptionsSchema.shape.strength,
   scene: lightingOptionsSchema.shape.scene,
-  idempotency_key: z.string().min(1),
-});
-
-/** `repair_generation` の入力。options は repairPayloadSchema と同じ語彙 (schemas/request-payloads.ts) をそのまま流用する。 */
-export const repairGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  options: repairOptionsSchema.optional(),
-  idempotency_key: z.string().min(1),
-});
-
-/** `masked_redraw_generation` requires explicit regions and a prompt patch. */
-export const maskedRedrawGenerationInputSchema = z.object({
-  generation_id: z.string().min(1),
-  options: maskedRedrawOptionsSchema,
   idempotency_key: z.string().min(1),
 });
 

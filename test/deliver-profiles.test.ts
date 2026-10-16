@@ -10,7 +10,6 @@ import {
   findDof,
   findDeliverBackdropColor,
   findRedrawDials,
-  findRepairDials,
   findRedrawDefaults,
   findRedrawLight,
 } from '../src/lib/catalogs';
@@ -240,7 +239,7 @@ describe('deliverOptionsSchema', () => {
   });
 });
 
-describe('redraw/deliver/masked_redraw options accept dial words', () => {
+describe('redraw/deliver options accept dial words', () => {
   it('redraw canvas: denoise accepts a word; reject a malformed string', async () => {
     const { generation } = await createGeneration();
     const ok = await postJson('/api/v1/requests', {
@@ -260,38 +259,59 @@ describe('redraw/deliver/masked_redraw options accept dial words', () => {
     expect(bad.status).toBe(400);
   });
 
-  it('deliver: keep_legwear accepts true, a number, null and a word; rejects a malformed string', async () => {
+  it('deliver: the removed options recolor, skin, keep_legwear and deliver_size are rejected', async () => {
     const { generation } = await createGeneration();
-    for (const keep_legwear of [true, 0.5, null, 'on']) {
-      const ok = await postJson('/api/v1/requests', {
+    for (const options of [{ recolor: true }, { skin: false }, { keep_legwear: 0.5 }, { keep_legwear: 'on' }, { deliver_size: 1536 }]) {
+      const res = await postJson('/api/v1/requests', {
         kind: 'deliver',
-        payload: { generation_id: generation.id, options: { keep_legwear } },
+        payload: { generation_id: generation.id, options },
         idempotency_key: crypto.randomUUID(),
         created_by: 'gui',
       });
-      expect(ok.status).toBe(201);
+      expect(res.status).toBe(400);
     }
-    const bad = await postJson('/api/v1/requests', {
-      kind: 'deliver',
-      payload: { generation_id: generation.id, options: { keep_legwear: 'On!' } },
-      idempotency_key: crypto.randomUUID(),
-      created_by: 'gui',
-    });
-    expect(bad.status).toBe(400);
   });
 
-  it('masked_redraw: denoise accepts a word', async () => {
+  it('MCP deliver_generation rejects the removed options', async () => {
     const { generation } = await createGeneration();
-    const ok = await postJson('/api/v1/requests', {
-      kind: 'masked_redraw',
-      payload: {
-        generation_id: generation.id,
-        options: { regions: [[0.1, 0.1, 0.5, 0.5]], prompt_patch: 'replace the dress', denoise: 'soft' },
-      },
+    for (const options of [{ recolor: true }, { skin: true }, { keep_legwear: 0.5 }, { deliver_size: 1536 }]) {
+      const tool = await mcpToolCall('deliver_generation', { generation_id: generation.id, options, idempotency_key: crypto.randomUUID() });
+      expect(tool.isError).toBe(true);
+    }
+  });
+
+  it('a stored deliver profile or payload that still carries the removed options is read without them', async () => {
+    const recipe = uniqueRecipe();
+    const { generation } = await createGeneration({ requestOverrides: { recipe } });
+    const { delivered } = await createDeliverResult(recipe, { repin: true });
+    await setRatingGood(delivered.id);
+    const legacy = JSON.stringify({ options: { repin: true, recolor: true, skin: false, keep_legwear: 0.6, deliver_size: 1536 } });
+    const producing = await findProducingRequest(env.DB, delivered.id);
+    await env.DB.prepare('UPDATE requests SET payload_json = ? WHERE id = ?')
+      .bind(JSON.stringify({ generation_id: generation.id, options: JSON.parse(legacy).options }), producing!.id)
+      .run();
+
+    const promoted = await postJson<{ record: unknown }>('/api/v1/presets/promote-profile', {
+      generation_id: delivered.id,
+      name: 'old',
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(promoted.status).toBe(200);
+    expect(promoted.body.record).toEqual({ options: { repin: true } });
+
+    await env.DB.prepare("UPDATE presets SET body_json = ? WHERE recipe = ? AND kind = 'deliver' AND name = 'old'").bind(legacy, recipe).run();
+
+    const profiled = await postJson<RequestBody>('/api/v1/requests', {
+      kind: 'deliver',
+      payload: { generation_id: generation.id, profile: { name: 'old' } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
-    expect(ok.status).toBe(201);
+    expect(profiled.status).toBe(201);
+    expect(profiled.body.payload.options).toEqual({ repin: true });
+
+    const listed = await listDeliverProfiles(env.DB, recipe);
+    expect(listed.find((p) => p.name === 'old')?.options).toEqual({ repin: true });
   });
 });
 
@@ -300,7 +320,7 @@ describe('deliver profile resolution (createRequest)', () => {
     const recipe = uniqueRecipe();
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
-    const { delivered } = await createDeliverResult(recipe, { keep_legwear: 0.7, repin: true });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'grid', repin: true });
     await setRatingGood(delivered.id);
     const promoted = await postJson<{ version: number }>('/api/v1/presets/promote-profile', {
       generation_id: delivered.id,
@@ -312,7 +332,7 @@ describe('deliver profile resolution (createRequest)', () => {
 
     const created = await postJson<RequestBody>('/api/v1/requests', {
       kind: 'deliver',
-      payload: { generation_id: generation.id, profile: { name: 'daily' }, options: { keep_legwear: null } },
+      payload: { generation_id: generation.id, profile: { name: 'daily' }, options: { backdrop: null } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
@@ -320,14 +340,14 @@ describe('deliver profile resolution (createRequest)', () => {
     expect(created.body.payload).toEqual({
       generation_id: generation.id,
       profile: { name: 'daily', version: 1 },
-      options: { repin: true, keep_legwear: null },
+      options: { repin: true, backdrop: null },
     });
   });
 
   it('expands the profile before the payload hash: a replay of the same key is 200, and a later profile version does not turn it into a conflict', async () => {
     const recipe = uniqueRecipe();
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
-    const { delivered: d1 } = await createDeliverResult(recipe, { keep_legwear: 0.6 });
+    const { delivered: d1 } = await createDeliverResult(recipe, { backdrop: 'dots' });
     await setRatingGood(d1.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: d1.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
@@ -339,7 +359,7 @@ describe('deliver profile resolution (createRequest)', () => {
     };
     const first = await postJson<RequestBody>('/api/v1/requests', body);
     expect(first.status).toBe(201);
-    expect(first.body.payload.options).toEqual({ keep_legwear: 0.6 });
+    expect(first.body.payload.options).toEqual({ backdrop: 'dots' });
 
     const replay = await postJson<RequestBody>('/api/v1/requests', body);
     expect(replay.status).toBe(200);
@@ -347,7 +367,7 @@ describe('deliver profile resolution (createRequest)', () => {
 
     const explicit = await postJson('/api/v1/requests', {
       ...body,
-      payload: { generation_id: generation.id, options: { keep_legwear: 0.6 } },
+      payload: { generation_id: generation.id, options: { backdrop: 'dots' } },
     });
     expect(explicit.status).toBe(409);
   });
@@ -356,11 +376,11 @@ describe('deliver profile resolution (createRequest)', () => {
     const recipe = uniqueRecipe();
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
-    const { delivered: d1 } = await createDeliverResult(recipe, { keep_legwear: 0.6 });
+    const { delivered: d1 } = await createDeliverResult(recipe, { backdrop: 'dots' });
     await setRatingGood(d1.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: d1.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
-    const { delivered: d2 } = await createDeliverResult(recipe, { keep_legwear: 0.8 });
+    const { delivered: d2 } = await createDeliverResult(recipe, { backdrop: 'stripes' });
     await setRatingGood(d2.id);
     const v2 = await postJson<{ version: number }>('/api/v1/presets/promote-profile', {
       generation_id: d2.id,
@@ -379,7 +399,7 @@ describe('deliver profile resolution (createRequest)', () => {
     expect(created.body.payload).toEqual({
       generation_id: generation.id,
       profile: { name: 'daily', version: 1 },
-      options: { keep_legwear: 0.6 },
+      options: { backdrop: 'dots' },
     });
   });
 
@@ -413,7 +433,7 @@ describe('deliver profile resolution (createRequest)', () => {
 describe('resolvePreset for kind=deliver', () => {
   it('GET /api/v1/presets/{recipe}/deliver/{name}/{version} resolves to {options} with no patches', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { repin: true, keep_legwear: 'on' });
+    const { delivered } = await createDeliverResult(recipe, { repin: true, backdrop: 'checks' });
     await setRatingGood(delivered.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: delivered.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
@@ -421,7 +441,7 @@ describe('resolvePreset for kind=deliver', () => {
       `/api/v1/presets/${recipe}/deliver/daily/1`,
     );
     expect(got.status).toBe(200);
-    expect(got.body.record).toEqual({ options: { repin: true, keep_legwear: 'on' } });
+    expect(got.body.record).toEqual({ options: { repin: true, backdrop: 'checks' } });
     expect(got.body.patches).toEqual([]);
   });
 });
@@ -429,7 +449,7 @@ describe('resolvePreset for kind=deliver', () => {
 describe('promote_to_profile', () => {
   it('promotes a rating=good deliver-kind Generation; repeated names append the next version', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { repin: true, keep_legwear: 'on' });
+    const { delivered } = await createDeliverResult(recipe, { repin: true, backdrop: 'checks' });
     await setRatingGood(delivered.id);
 
     const v1 = await postJson<{ recipe: string; kind: string; name: string; version: number; source: string; record: unknown }>(
@@ -438,9 +458,9 @@ describe('promote_to_profile', () => {
     );
     expect(v1.status).toBe(200);
     expect(v1.body).toMatchObject({ recipe, kind: 'deliver', name: 'daily', version: 1, source: 'promote' });
-    expect(v1.body.record).toEqual({ options: { repin: true, keep_legwear: 'on' } });
+    expect(v1.body.record).toEqual({ options: { repin: true, backdrop: 'checks' } });
 
-    const { delivered: delivered2 } = await createDeliverResult(recipe, { keep_legwear: 0.8 });
+    const { delivered: delivered2 } = await createDeliverResult(recipe, { backdrop: 'stripes' });
     await setRatingGood(delivered2.id);
     const v2 = await postJson<{ version: number }>('/api/v1/presets/promote-profile', {
       generation_id: delivered2.id,
@@ -504,7 +524,7 @@ describe('promote_to_profile', () => {
 
   it('MCP promote_to_profile matches the REST result', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { keep_legwear: 0.55 });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'plaid' });
     await setRatingGood(delivered.id);
     const tool = await mcpToolCall<{ version: number; record: { options: Record<string, unknown> } }>('promote_to_profile', {
       generation_id: delivered.id,
@@ -513,7 +533,7 @@ describe('promote_to_profile', () => {
     });
     expect(tool.isError).toBe(false);
     expect(tool.data?.version).toBe(1);
-    expect(tool.data?.record).toEqual({ options: { keep_legwear: 0.55 } });
+    expect(tool.data?.record).toEqual({ options: { backdrop: 'plaid' } });
   });
 });
 
@@ -521,7 +541,7 @@ describe('deliver_generation MCP tool profile field', () => {
   it('passes profile through and resolves it server-side, same as REST', async () => {
     const recipe = uniqueRecipe();
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
-    const { delivered } = await createDeliverResult(recipe, { keep_legwear: 0.6 });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'dots' });
     await setRatingGood(delivered.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: delivered.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
@@ -534,7 +554,7 @@ describe('deliver_generation MCP tool profile field', () => {
     expect(tool.data?.request.payload).toEqual({
       generation_id: generation.short_id,
       profile: { name: 'daily', version: 1 },
-      options: { keep_legwear: 0.6 },
+      options: { backdrop: 'dots' },
     });
   });
 });
@@ -542,15 +562,15 @@ describe('deliver_generation MCP tool profile field', () => {
 describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () => {
   it('listDeliverProfiles returns each name once, at its latest active version, with options inlined', async () => {
     const recipe = uniqueRecipe();
-    const { delivered: d1 } = await createDeliverResult(recipe, { keep_legwear: 0.6 });
+    const { delivered: d1 } = await createDeliverResult(recipe, { backdrop: 'dots' });
     await setRatingGood(d1.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: d1.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
-    const { delivered: d2 } = await createDeliverResult(recipe, { keep_legwear: 0.9 });
+    const { delivered: d2 } = await createDeliverResult(recipe, { backdrop: 'waves' });
     await setRatingGood(d2.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: d2.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
-    const { delivered: d3 } = await createDeliverResult(recipe, { keep_legwear: 'on' });
+    const { delivered: d3 } = await createDeliverResult(recipe, { backdrop: 'checks' });
     await setRatingGood(d3.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: d3.id, name: 'heavy', idempotency_key: crypto.randomUUID() });
 
@@ -558,9 +578,9 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
     expect(profiles.map((p) => p.name).sort()).toEqual(['daily', 'heavy']);
     const daily = profiles.find((p) => p.name === 'daily');
     expect(daily?.version).toBe(2);
-    expect(daily?.options).toEqual({ keep_legwear: 0.9 });
+    expect(daily?.options).toEqual({ backdrop: 'waves' });
     const heavy = profiles.find((p) => p.name === 'heavy');
-    expect(heavy?.options).toEqual({ keep_legwear: 'on' });
+    expect(heavy?.options).toEqual({ backdrop: 'checks' });
   });
 
   it('listDeliverProfiles returns [] for a recipe with no deliver Presets', async () => {
@@ -577,10 +597,6 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
     expect(found).not.toBeNull();
     expect(findDeliverDials(found!.doc, recipe)).toEqual({ keep_legwear: { on: 0.62 } });
     expect(findRedrawDials(found!.doc, recipe)).toEqual({ denoise: { tidy: 0.65, heavy: 0.8 } });
-    expect(findRepairDials(found!.doc, recipe)).toBeNull();
-    const withRepair = { ...found!.doc, recipes: [{ name: recipe, poses: [], dials: { repair: { denoise: { light: 0.4 } } } }] };
-    expect(findRepairDials(withRepair, recipe)).toEqual({ denoise: { light: 0.4 } });
-    expect(findRepairDials(found!.doc, 'nonexistent-recipe')).toBeNull();
     expect(findDeliverDials(found!.doc, 'nonexistent-recipe')).toBeNull();
     expect(findRedrawDials(found!.doc, 'nonexistent-recipe')).toBeNull();
   });
@@ -802,7 +818,7 @@ describe('findRedrawLight', () => {
 describe('list_presets / get_preset accept kind=deliver', () => {
   it('list_presets kind=deliver and get_preset match the REST routes', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { keep_legwear: 0.6 });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'dots' });
     await setRatingGood(delivered.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: delivered.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
@@ -819,18 +835,18 @@ describe('list_presets / get_preset accept kind=deliver', () => {
       name: 'daily',
     });
     expect(getTool.isError).toBe(false);
-    expect(getTool.data?.record).toEqual({ options: { keep_legwear: 0.6 } });
+    expect(getTool.data?.record).toEqual({ options: { backdrop: 'dots' } });
   });
 });
 
 describe('result.resolved_options (worker-written, opaque)', () => {
   it('findProducingRequest finds the request whose result.generation_ids includes the generation; null otherwise', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { keep_legwear: 'tidy' });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'argyle' });
 
     const producing = await findProducingRequest(env.DB, delivered.id);
     expect(producing).not.toBeNull();
-    expect(JSON.parse(producing!.payload_json)).toMatchObject({ options: { keep_legwear: 'tidy' } });
+    expect(JSON.parse(producing!.payload_json)).toMatchObject({ options: { backdrop: 'argyle' } });
 
     const { generation: unrelated } = await createGeneration();
     expect(await findProducingRequest(env.DB, unrelated.id)).toBeNull();
@@ -842,7 +858,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
 
     const deliverReq = await postJson<{ id: string }>('/api/v1/requests', {
       kind: 'deliver',
-      payload: { generation_id: source.id, options: { keep_legwear: 'tidy' } },
+      payload: { generation_id: source.id, options: { backdrop: 'argyle' } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
@@ -888,7 +904,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
     expect(html).toContain('<td>ピント位置</td><td>x 0.37 · y 0.36</td>');
     expect(html).toContain('<td>ボケの範囲</td><td>背景も</td>');
     expect(html).toContain('<td>ファインダー</td><td>ON/OFF 2枚</td>');
-    expect(html).toContain('&quot;keep_legwear&quot;: &quot;tidy&quot;');
+    expect(html).toContain('&quot;backdrop&quot;: &quot;argyle&quot;');
 
     // The source's own page lists this request among those targeting it and shows the resolved
     // value too, but it's not the delivered row, so no 仕上げの解決値 section.
@@ -964,7 +980,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
 
   it('a delivered row with no resolved_options written yet shows no 仕上げの解決値 section', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { keep_legwear: 0.6 });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'dots' });
     const html = await (await req(`/g/${delivered.short_id}`)).text();
     expect(html).not.toContain('仕上げの解決値');
   });

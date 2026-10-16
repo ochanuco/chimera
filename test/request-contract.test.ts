@@ -133,7 +133,7 @@ describe('createRequestSchema: unknown keys elsewhere', () => {
     const strictKinds = [
       ['redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048 } }],
       ['deliver', { generation_id: generation.id, options: { repin: true } }],
-      ['repair', { generation_id: generation.id }],
+      ['dof', { generation_id: generation.id, options: { focus: [0.5, 0.5] } }],
       ['lighting', { generation_id: generation.id }],
     ] as const;
     for (const [kind, payload] of strictKinds) {
@@ -265,17 +265,13 @@ describe('validation_error body', () => {
   it('prefixes payload envelope issues with payload and their own path', async () => {
     const { generation } = await createGeneration();
     const res = await postJson<ErrorBody>('/api/v1/requests', {
-      kind: 'masked_redraw',
-      payload: {
-        generation_id: generation.id,
-        options: { regions: [[0, 0, 0.5, 0.5], [0.25, 0.25, 0.75, 0.75]], prompt_patch: 'x', pad: 1, mask_padding: 2 },
-      },
+      kind: 'dof',
+      payload: { generation_id: generation.id, options: { focus: [0.5, 0.5], scope: { figure: false, outline: false, backdrop: false } } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe(
-      'payload.options.mask_padding: use either mask_padding or pad, not both; payload.options.regions.0: region overlaps region 1',
-    );
+    expect(res.body.error.message).toBe('payload.options.scope: scope must keep at least one layer');
   });
+
 });
