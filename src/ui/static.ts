@@ -4922,7 +4922,7 @@ export const appJs = `
       stageMode: 'pattern',
       photo: null,
       place: null,
-      shadow: false,
+      shadow: true,
       framed: true,
       lightingDir: '',
       lightingScene: '',

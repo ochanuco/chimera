@@ -214,8 +214,8 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('data-wb-stage-mode="pattern"');
     expect(form).toContain('data-wb-stage-mode="photo"');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="random" checked[^>]*>\s*<span class="backdrop-option-label">ランダム/);
-    expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-shadow="off"/);
-    expect(form).toContain('data-wb-shadow="on"');
+    expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-shadow="on"/);
+    expect(form).toContain('data-wb-shadow="off"');
     expect(form).toMatch(/class="wb-pill wb-pill-on" data-wb-framed="on"/);
     expect(form).toContain('data-wb-framed="off"');
     expect(form).toMatch(/data-wb-stage-scene[^>]*hidden/);
