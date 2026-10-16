@@ -791,7 +791,8 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
   -------------- --------------------------------------------------------------------------
   box            必須。[x0, y0, x1, y1]（x0 < x1、y0 < y1）。背景を描く箱
   sides          {top, right, bottom, left}、各 "cut" \| "out" \| "behind"。省略した辺は top = "out"、ほかは "cut"
-  line           {color?: "#RRGGBB", width?: 0〜5} \| null。width は入力の絵の長辺に対する %。0 と null は線なし
+  line           {color?: "#RRGGBB", width?: 0〜5, pattern?: "solid" \| "slash"} \| null。width は入力の絵の長辺に対する %。0 と null は線なし。
+                 pattern は線の柄（下の 3）
   rim            {color?: "#RRGGBB", width?: 0〜5} \| null。line の内外に沿う縁。width は長辺に対する %（片側の幅）。0 と null は縁なし
   paper          "#RRGGBB"。箱の外の色
   canvas         [x0, y0, x1, y1]、各値は同じ座標か null。出力の範囲。null の辺は下の自動で、全部 null は省略と同じ。
@@ -811,6 +812,10 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
 3.  box の辺を中心に枠を描きます。枠は外側の rim・line・内側の rim の 3 本で、辺をまたいで中央に置きます。
     line の太さを w、rim の太さを r（どちらも width / 100 × 長辺の px）とし、B = w/2 + r とします。rim の色でリング
     [box − B, box + B) を塗り、その上に line の色でリング [box − w/2, box + w/2) を塗ります。どちらも画素の中心で判定するハードエッジです。
+    line の pattern が "slash" なら、line のリングをまず paper の色で塗り、その上に line の色で「/」の 2 本組を描きます。
+    出力の画素の中心 (c + 0.5, r + 0.5) について u = (x + y) / √2、phase = u mod (2.2w) とし、s1 = 0.2 × 2.2w、s2 = s1 + 0.34w、
+    太さ t = 0.14w として、被覆率は s ∈ {s1, s2} の max(clip(min(phase − s, s + t − phase) + 0.5, 0, 1)) です。向きはどの辺でも「/」で、
+    キャンバス全体の縞をリングで切り抜いたものです。斜線が見えるのは width が 1.2 以上のときです。rim は pattern を取りません。
 4.  キャラ（`layer-figure`）とフチ（`layer-outline`）を納品の絵と同じ位置に、keep-mask m（0〜1）を掛けて重ねます（フチが下）。
     -   m の初期値は、"cut" の辺ごとの半平面です。境界は枠の内縁（box の辺を B だけ内側へ寄せた位置。枠が無ければ辺そのもの）で、
         半平面は無限に続きます（下の辺を切ると、box の x の範囲の外でもその y より下は消えます）。縁はアンチエイリアスせず、

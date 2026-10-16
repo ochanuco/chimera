@@ -251,7 +251,7 @@ const frameSchema = z
       .strict()
       .optional(),
     line: z
-      .object({ color: frameColor.optional(), width: z.number().min(0).max(5).optional() })
+      .object({ color: frameColor.optional(), width: z.number().min(0).max(5).optional(), pattern: z.enum(['solid', 'slash']).optional() })
       .strict()
       .nullable()
       .optional(),

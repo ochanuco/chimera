@@ -7,7 +7,7 @@ import { createGeneration, mcpToolCall, postJson, req, TINY_PNG } from './helper
 const FRAME = {
   box: [0.1, 0.3, 0.9, 1],
   sides: { top: 'out', right: 'behind', bottom: 'behind', left: 'cut' },
-  line: { color: '#885b80', width: 0.6 },
+  line: { color: '#4a3152', width: 1.8, pattern: 'slash' },
   rim: { color: '#2e2236', width: 0.25 },
   paper: '#ffffff',
   expand: { top: true, right: false, bottom: false },
@@ -90,6 +90,8 @@ describe('stage frame validation', () => {
     ['bad hex line color', { frame: { box: [0, 0, 1, 1], line: { color: 'red' } } }],
     ['line width over 5', { frame: { box: [0, 0, 1, 1], line: { width: 5.1 } } }],
     ['bad hex rim color', { frame: { box: [0, 0, 1, 1], rim: { color: 'black' } } }],
+    ['bad line pattern', { frame: { box: [0, 0, 1, 1], line: { pattern: 'dots' } } }],
+    ['rim with a pattern', { frame: { box: [0, 0, 1, 1], rim: { pattern: 'slash' } } }],
     ['rim width over 5', { frame: { box: [0, 0, 1, 1], rim: { width: 5.1 } } }],
     ['stroke width 0', { frame: { box: [0, 0, 1, 1], strokes: [{ mode: 'erase', width: 0, points: [[0, 0]] }] } }],
     ['stroke point out of range', { frame: { box: [0, 0, 1, 1], strokes: [{ mode: 'restore', width: 1, points: [[0, 2.5]] }] } }],
