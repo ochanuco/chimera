@@ -52,7 +52,7 @@ export function FrameEditorPage({ path, data, requestedShortId }: { path: string
                 </Pill>
                 <Pill attrs={{ 'data-fr-tool': 'erase' }}>消す</Pill>
                 <Pill attrs={{ 'data-fr-tool': 'restore' }}>戻す</Pill>
-                <Pill attrs={{ 'data-fr-tool': 'canvas', hidden: '' }}>範囲</Pill>
+                <Pill attrs={{ 'data-fr-tool': 'canvas' }}>範囲</Pill>
               </div>
               <label class="fr-row">
                 ブラシ幅 <span class="mono" id="fr-brush-readout">2</span> %
@@ -121,15 +121,19 @@ export function FrameEditorPage({ path, data, requestedShortId }: { path: string
             </section>
             <section class="fr-section">
               <h2>出力範囲</h2>
-              <div class="wb-pills" role="group" aria-label="出力範囲">
-                <Pill attrs={{ 'data-fr-canvas-mode': 'auto' }} on>
-                  自動
-                </Pill>
-                <Pill attrs={{ 'data-fr-canvas-mode': 'manual' }}>指定</Pill>
-              </div>
-              <label class="fr-row" id="fr-expand-row">
-                <input type="checkbox" id="fr-no-expand" /> 元画像より広げない
-              </label>
+              {SIDES.map(([side, label]) => (
+                <div class="fr-row fr-side">
+                  <span class="fr-side-label">{label}</span>
+                  <Pill attrs={{ 'data-fr-margin': side, 'data-fr-margin-mode': 'on' }} on>
+                    余白あり
+                  </Pill>
+                  <Pill attrs={{ 'data-fr-margin': side, 'data-fr-margin-mode': 'off' }}>余白なし</Pill>
+                  <button type="button" class="wb-pill" data-fr-edge-reset={side} hidden>
+                    自動に戻す
+                  </button>
+                </div>
+              ))}
+              <p class="fr-note">余白ありの辺は、ツールの「範囲」で端をドラッグして固定できます。破線は自動、実線は固定した辺です。</p>
             </section>
             <section class="fr-section">
               <h2>影</h2>

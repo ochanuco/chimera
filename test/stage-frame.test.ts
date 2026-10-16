@@ -10,7 +10,8 @@ const FRAME = {
   line: { color: '#885b80', width: 0.6 },
   rim: { color: '#2e2236', width: 0.25 },
   paper: '#ffffff',
-  expand: false,
+  expand: { top: true, right: false, bottom: false },
+  canvas: [-0.2, null, null, null],
   strokes: [{ mode: 'erase', width: 2, points: [[0.2, 0.4], [0.3, 0.5]] }],
 };
 
@@ -55,6 +56,14 @@ describe('stage frame validation', () => {
     expect(mcp.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { backdrop: '#ffeeaa', frame: FRAME } });
   });
 
+  it('accepts expand as one boolean and a canvas of all automatic edges', async () => {
+    const { generation } = await createGeneration();
+    const frame = { box: [0.1, 0.3, 0.9, 1], expand: false, canvas: [null, null, null, null] };
+    const res = await postJson<{ payload: unknown }>('/api/v1/requests', stagePayload(generation.id, { frame }));
+    expect(res.status).toBe(201);
+    expect(res.body.payload).toEqual({ generation_id: generation.id, options: { frame } });
+  });
+
   const points = (n: number) => Array.from({ length: n }, () => [0.5, 0.5]);
   const stroke = (n: number) => ({ mode: 'erase', width: 2, points: points(n) });
   const REJECTS: [label: string, options: unknown, message?: string][] = [
@@ -65,6 +74,10 @@ describe('stage frame validation', () => {
     ['unknown key', { frame: { box: [0, 0, 1, 1], extra: 1 } }],
     ['bad side', { frame: { box: [0, 0, 1, 1], sides: { top: 'in' } } }],
     ['non-boolean expand', { frame: { box: [0, 0, 1, 1], expand: 'no' } }],
+    ['unknown expand side', { frame: { box: [0, 0, 1, 1], expand: { up: false } } }],
+    ['non-boolean expand side', { frame: { box: [0, 0, 1, 1], expand: { top: 'no' } } }],
+    ['canvas edges crossed', { frame: { box: [0, 0, 1, 1], canvas: [0.6, null, 0.4, null] } }, 'frame canvas must have x0 < x1 and y0 < y1'],
+    ['canvas edge out of range', { frame: { box: [0, 0, 1, 1], canvas: [null, -1.5, null, null] } }],
     ['more than 200 strokes', { frame: { box: [0, 0, 1, 1], strokes: Array.from({ length: 201 }, () => stroke(1)) } }],
     ['more than 2000 points in a stroke', { frame: { box: [0, 0, 1, 1], strokes: [stroke(2001)] } }],
     ['empty stroke', { frame: { box: [0, 0, 1, 1], strokes: [stroke(0)] } }],

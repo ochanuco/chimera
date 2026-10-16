@@ -794,8 +794,10 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
   line           {color?: "#RRGGBB", width?: 0〜5} \| null。width は入力の絵の長辺に対する %。0 と null は線なし
   rim            {color?: "#RRGGBB", width?: 0〜5} \| null。line の内外に沿う縁。width は長辺に対する %（片側の幅）。0 と null は縁なし
   paper          "#RRGGBB"。箱の外の色
-  canvas         [x0, y0, x1, y1]（同じ座標、x0 < x1、y0 < y1）。出力の範囲。省略は下の自動
-  expand         boolean。省略は true。自動の canvas を納品のキャンバスより広げてよいか（下の 5）。canvas を明示したときは使わない
+  canvas         [x0, y0, x1, y1]、各値は同じ座標か null。出力の範囲。null の辺は下の自動で、全部 null は省略と同じ。
+                 向かい合う辺が両方数のときだけ x0 < x1、y0 < y1
+  expand         boolean \| {top?, right?, bottom?, left?: boolean}。省略した辺は true。辺ごとに、自動の canvas を納品のキャンバスより
+                 外へ広げてよいか（下の 5）。数で固定した canvas の辺には効かない
   strokes        [{mode: "erase" \| "restore", width: 0 超〜20, points: [[x, y], ...]}]。width はペン径（長辺に対する %）、
                  points は 1〜2000 点（各座標 -1〜2）。最大 200 本、全体で 20000 点まで
 
@@ -820,8 +822,9 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
         mask の canvas に、erase を不透明の `destination-out`、restore を白の `source-over` で描くのと同じです。
     -   最終的なキャラの alpha は元の alpha × m なので、restore で元から無い所にキャラが増えることはありません。
 5.  出力は canvas の範囲だけです。canvas が省略されたときは、m を掛けた後のキャラかフチの alpha が 0 を超える画素の bbox と、
-    box を B だけ広げた矩形との和に、長辺の 4% の余白を足した範囲にします。px へは外向きに丸め、expand が true なら -1〜2、false なら 0〜1（納品のキャンバスそのもの）に収めます。
-    worker は解決した canvas を出力の `parameters.frame.canvas` に記録します。
+    box を B だけ広げた矩形との和に、長辺の 4% の余白を足した範囲にします。px へは外向きに丸め、辺ごとに、expand が true なら -1 / 2、
+    false なら 0 / 1（納品のキャンバスの端）に収めます。最後に canvas で数を与えた辺だけを、その値（px は round(x×W)）に置き換えます。
+    worker は null の辺を埋めた canvas を出力の `parameters.frame.canvas` と `resolved_options` に記録します。
 
 写真に置くときは photo kind と同じ置き方（キャラとフチを 1 枚の板として拡大縮小）で、出力は写真と同じ大きさです。
 柄に置くときは納品の大きさのままで、シーンがあれば背景を deliver と同じくそのシーンの色に染め、影もシーンの色で背景に描きます。

@@ -22,6 +22,9 @@ export const frameJs = `
   var DEFAULT_LINE_COLOR = '#885b80';
   var DEFAULT_RIM_COLOR = '#2e2236';
   var SIDE_KEYS = ['top', 'right', 'bottom', 'left'];
+  // 辺の名前から [x0, y0, x1, y1] の添字へ。
+  var EDGE_INDEX = { left: 0, top: 1, right: 2, bottom: 3 };
+  var EDGE_SIDE = ['left', 'top', 'right', 'bottom'];
 
   function $(sel) { return root.querySelector(sel); }
   function $all(sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
@@ -39,9 +42,9 @@ export const frameJs = `
     rimColor: DEFAULT_RIM_COLOR,
     rimWidth: 0.25,
     paper: '#ffffff',
-    canvasMode: 'auto',
-    expand: true,
-    canvas: [0, 0, 1, 1],
+    // 辺ごとの余白の有無（frame.expand）と、出力範囲の辺 [x0, y0, x1, y1]（null は自動。frame.canvas）。
+    margin: { top: true, right: true, bottom: true, left: true },
+    edges: [null, null, null, null],
     strokes: [],
     shadowOn: false,
     shadowKeep: null
@@ -62,9 +65,8 @@ export const frameJs = `
       rimColor: state.rimColor,
       rimWidth: state.rimWidth,
       paper: state.paper,
-      canvasMode: state.canvasMode,
-      expand: state.expand,
-      canvas: state.canvas.slice(),
+      margin: { top: state.margin.top, right: state.margin.right, bottom: state.margin.bottom, left: state.margin.left },
+      edges: state.edges.slice(),
       // 描き終えたストロークは書き換えないので、配列だけ写せばよい。
       strokes: state.strokes.slice(),
       shadowOn: state.shadowOn,
@@ -273,9 +275,13 @@ export const frameJs = `
     if (vis) r = [Math.min(r[0], vis[0]), Math.min(r[1], vis[1]), Math.max(r[2], vis[2]), Math.max(r[3], vis[3])];
     var mx = pctToX(4);
     var my = pctToY(4);
-    var lo = state.expand ? -1 : 0;
-    var hi = state.expand ? 2 : 1;
-    autoBox = [clamp(r[0] - mx, lo, hi), clamp(r[1] - my, lo, hi), clamp(r[2] + mx, lo, hi), clamp(r[3] + my, lo, hi)];
+    var m = state.margin;
+    autoBox = [
+      clamp(r[0] - mx, m.left ? -1 : 0, 2),
+      clamp(r[1] - my, m.top ? -1 : 0, 2),
+      clamp(r[2] + mx, -1, m.right ? 2 : 1),
+      clamp(r[3] + my, -1, m.bottom ? 2 : 1)
+    ];
     autoDirty = false;
   }
 
@@ -286,7 +292,12 @@ export const frameJs = `
   }
 
   function canvasRect() {
-    return state.canvasMode === 'manual' ? state.canvas : autoBox;
+    return autoBox.map(function (v, i) { return state.edges[i] === null ? v : state.edges[i]; });
+  }
+
+  function canvasValid() {
+    var c = canvasRect();
+    return c[0] < c[2] && c[1] < c[3];
   }
 
   // ---- 表示範囲 ----
@@ -418,12 +429,12 @@ export const frameJs = `
     ];
   }
 
-  function drawHandles(r, color) {
+  function drawHandles(r, color, list) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
     ctx.strokeRect(X(r[0]), Y(r[1]), X(r[2]) - X(r[0]), Y(r[3]) - Y(r[1]));
-    var hs = handlePoints(r);
+    var hs = list || handlePoints(r);
     for (var i = 0; i < hs.length; i++) {
       ctx.fillStyle = '#fff';
       ctx.beginPath();
@@ -465,14 +476,21 @@ export const frameJs = `
     ctx.setLineDash([2, 3]);
     ctx.strokeRect(X(0), Y(0), X(1) - X(0), Y(1) - Y(0));
 
+    // 出力範囲の辺は、自動なら破線、固定なら実線。
     ctx.strokeStyle = '#7c9cf5';
     ctx.lineWidth = 1.5;
-    ctx.setLineDash(state.canvasMode === 'auto' ? [6, 4] : []);
-    ctx.strokeRect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+    var segs = [[cx0, cy0, cx0, cy1], [cx0, cy0, cx1, cy0], [cx1, cy0, cx1, cy1], [cx0, cy1, cx1, cy1]];
+    for (var e = 0; e < 4; e++) {
+      ctx.setLineDash(state.edges[e] === null ? [6, 4] : []);
+      ctx.beginPath();
+      ctx.moveTo(segs[e][0], segs[e][1]);
+      ctx.lineTo(segs[e][2], segs[e][3]);
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
 
     if (ui.tool === 'box') drawHandles(state.box, '#f2c94c');
-    if (ui.tool === 'canvas') drawHandles(state.canvas, '#7c9cf5');
+    if (ui.tool === 'canvas') drawHandles(canvasRect(), '#7c9cf5', canvasHandles());
     if ((ui.tool === 'erase' || ui.tool === 'restore') && ui.hover) {
       var pxPerX = cssW / (view[2] - view[0]);
       var rad = (ui.brush / 100) * longSide() / picW * pxPerX / 2;
@@ -486,12 +504,21 @@ export const frameJs = `
 
   // ---- 操作 ----
   var drag = null;
-  function activeRect() { return ui.tool === 'canvas' ? state.canvas : state.box; }
+  function activeRect() { return ui.tool === 'canvas' ? canvasRect() : state.box; }
+
+  // 出力範囲で動かせるのは余白ありの辺だけ。余白なしの辺は元画像の端に留まる。
+  function edgeMovable(i) { return state.margin[EDGE_SIDE[i]]; }
+
+  function canvasHandles() {
+    return handlePoints(canvasRect()).filter(function (h) {
+      return (h.hx < 0 && edgeMovable(0)) || (h.hx > 0 && edgeMovable(2)) || (h.hy < 0 && edgeMovable(1)) || (h.hy > 0 && edgeMovable(3));
+    });
+  }
 
   function hitHandle(r, e) {
     var tol = e.pointerType === 'touch' ? 18 : 10;
     var rect = canvas.getBoundingClientRect();
-    var hs = handlePoints(r);
+    var hs = ui.tool === 'canvas' ? canvasHandles() : handlePoints(r);
     var best = null;
     var bestD = tol;
     for (var i = 0; i < hs.length; i++) {
@@ -524,8 +551,13 @@ export const frameJs = `
       if (d.handle.hy > 0) r[3] = clamp(s[3] + dy, s[1] + MIN_SIZE, 2);
     }
     d.moved = true;
-    if (ui.tool === 'canvas') state.canvas = r; else state.box = r;
-    if (ui.tool !== 'canvas') maskDirty = true;
+    if (ui.tool === 'canvas') {
+      // 動かした辺だけを固定する。余白なしの辺は自動のまま。
+      for (var i = 0; i < 4; i++) if (r[i] !== s[i] && edgeMovable(i)) state.edges[i] = r[i];
+    } else {
+      state.box = r;
+      maskDirty = true;
+    }
   }
 
   function strokePointCount() {
@@ -562,7 +594,7 @@ export const frameJs = `
     if (ui.tool === 'box' || ui.tool === 'canvas') {
       var r = activeRect();
       var handle = hitHandle(r, e);
-      if (!handle && !inside(r, p)) return;
+      if (!handle && (ui.tool === 'canvas' || !inside(r, p))) return;
       begin();
       drag = { mode: handle ? 'resize' : 'move', handle: handle, start: p, rect: r.slice() };
     } else {
@@ -590,7 +622,7 @@ export const frameJs = `
     } else if (ui.tool === 'box' || ui.tool === 'canvas') {
       var r = activeRect();
       var h = hitHandle(r, e);
-      canvas.style.cursor = h ? (h.hx && h.hy ? (h.hx * h.hy > 0 ? 'nwse-resize' : 'nesw-resize') : h.hx ? 'ew-resize' : 'ns-resize') : inside(r, p) ? 'move' : 'default';
+      canvas.style.cursor = h ? (h.hx && h.hy ? (h.hx * h.hy > 0 ? 'nwse-resize' : 'nesw-resize') : h.hx ? 'ew-resize' : 'ns-resize') : ui.tool === 'box' && inside(r, p) ? 'move' : 'default';
     }
     schedule();
   });
@@ -601,7 +633,7 @@ export const frameJs = `
     drag = null;
     end();
     recomputeView();
-    updateStatus();
+    syncControls();
     schedule();
   }
   canvas.addEventListener('pointerup', finish);
@@ -619,7 +651,12 @@ export const frameJs = `
     $all('[data-fr-side]').forEach(function (el) {
       setPill(el, state.sides[el.getAttribute('data-fr-side')] === el.getAttribute('data-fr-side-mode'));
     });
-    $all('[data-fr-canvas-mode]').forEach(function (el) { setPill(el, el.getAttribute('data-fr-canvas-mode') === state.canvasMode); });
+    $all('[data-fr-margin]').forEach(function (el) {
+      setPill(el, state.margin[el.getAttribute('data-fr-margin')] === (el.getAttribute('data-fr-margin-mode') === 'on'));
+    });
+    $all('[data-fr-edge-reset]').forEach(function (el) {
+      el.hidden = state.edges[EDGE_INDEX[el.getAttribute('data-fr-edge-reset')]] === null;
+    });
     $all('[data-fr-shadow]').forEach(function (el) { setPill(el, (el.getAttribute('data-fr-shadow') === 'on') === state.shadowOn); });
     var bd = state.backdrop;
     $all('[data-fr-backdrop]').forEach(function (el) {
@@ -639,11 +676,8 @@ export const frameJs = `
     $('#fr-paper').value = state.paper;
     $('#fr-brush').value = String(ui.brush);
     $('#fr-brush-readout').textContent = String(ui.brush);
-    var canvasTool = $('[data-fr-tool="canvas"]');
-    canvasTool.hidden = state.canvasMode !== 'manual';
-    $('#fr-expand-row').hidden = state.canvasMode !== 'auto';
-    $('#fr-no-expand').checked = !state.expand;
-    if (state.canvasMode !== 'manual' && ui.tool === 'canvas') ui.tool = 'box';
+    $('[data-fr-tool="canvas"]').hidden = !SIDE_KEYS.some(function (k) { return state.margin[k]; });
+    if (ui.tool === 'canvas' && $('[data-fr-tool="canvas"]').hidden) ui.tool = 'box';
     updateStatus();
   }
 
@@ -660,8 +694,8 @@ export const frameJs = `
       rim: state.rimWidth > 0 ? { color: state.rimColor, width: r4(state.rimWidth) } : null,
       paper: state.paper
     };
-    if (state.canvasMode === 'manual') frame.canvas = state.canvas.map(r4);
-    else frame.expand = state.expand;
+    frame.expand = { top: state.margin.top, right: state.margin.right, bottom: state.margin.bottom, left: state.margin.left };
+    frame.canvas = state.edges.map(function (v) { return v === null ? null : r4(v); });
     if (state.strokes.length) {
       frame.strokes = state.strokes.map(function (s) {
         return { mode: s.mode, width: s.width, points: s.points.map(function (p) { return [p[0], p[1]]; }) };
@@ -683,8 +717,10 @@ export const frameJs = `
     $('#fr-clear-strokes').disabled = !strokes;
     var submit = $('#fr-submit');
     var same = submittedKey !== null && submittedKey === JSON.stringify(buildOptions());
-    submit.disabled = over || same || !maskC;
+    var flipped = !!autoBox && !canvasValid();
+    submit.disabled = over || flipped || same || !maskC;
     if (over) setStatus('ストロークか点が上限を超えています。ブラシを減らしてください。', true);
+    else if (flipped) setStatus('出力範囲の辺が向かいの辺を越えています。範囲の辺を動かすか自動に戻してください。', true);
     else if (!same && $('#fr-status').getAttribute('data-kind') === 'error-limit') setStatus('', false);
   }
 
@@ -776,29 +812,29 @@ export const frameJs = `
     schedule();
   });
 
-  $all('[data-fr-canvas-mode]').forEach(function (el) {
+  $all('[data-fr-margin]').forEach(function (el) {
     el.addEventListener('click', function () {
-      var mode = el.getAttribute('data-fr-canvas-mode');
-      if (mode === state.canvasMode) return;
+      var side = el.getAttribute('data-fr-margin');
+      var on = el.getAttribute('data-fr-margin-mode') === 'on';
+      if (state.margin[side] === on) return;
       begin();
-      if (mode === 'manual') {
-        refreshDerived();
-        state.canvas = autoBox.map(function (v) { return clamp(v, -1, 2); });
-      }
-      state.canvasMode = mode;
+      state.margin[side] = on;
+      if (!on) state.edges[EDGE_INDEX[side]] = null;
       end();
-      if (mode === 'manual') ui.tool = 'canvas';
+      autoDirty = true;
       syncControls();
       changed();
     });
   });
 
-  $('#fr-no-expand').addEventListener('change', function (e) {
-    begin();
-    state.expand = !e.target.checked;
-    end();
-    autoDirty = true;
-    changed();
+  $all('[data-fr-edge-reset]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      begin();
+      state.edges[EDGE_INDEX[el.getAttribute('data-fr-edge-reset')]] = null;
+      end();
+      syncControls();
+      changed();
+    });
   });
 
   $all('[data-fr-shadow]').forEach(function (el) {
@@ -912,8 +948,12 @@ export const frameJs = `
       if (typeof f.rim.width === 'number') state.rimWidth = f.rim.width;
     }
     if (typeof f.paper === 'string' && HEX_RE.test(f.paper)) state.paper = f.paper.toLowerCase();
-    if (typeof f.expand === 'boolean') state.expand = f.expand;
-    if (validRect(f.canvas)) { state.canvas = f.canvas.slice(); state.canvasMode = 'manual'; }
+    if (typeof f.expand === 'boolean') SIDE_KEYS.forEach(function (k) { state.margin[k] = f.expand; });
+    else if (f.expand && typeof f.expand === 'object') SIDE_KEYS.forEach(function (k) { state.margin[k] = f.expand[k] !== false; });
+    if (Array.isArray(f.canvas) && f.canvas.length === 4) {
+      state.edges = f.canvas.map(function (v) { return typeof v === 'number' ? v : null; });
+    }
+    SIDE_KEYS.forEach(function (k) { if (!state.margin[k]) state.edges[EDGE_INDEX[k]] = null; });
     if (Array.isArray(f.strokes)) state.strokes = f.strokes.map(function (s) { return { mode: s.mode, width: s.width, points: s.points.map(function (p) { return [p[0], p[1]]; }) }; });
   }
 
@@ -947,7 +987,7 @@ export const frameJs = `
         var d = { sides: init.defaults.sides || undefined, paper: init.defaults.paper || undefined };
         if (init.defaults.line) d.line = init.defaults.line;
         if (init.defaults.rim) d.rim = init.defaults.rim;
-        if (typeof init.defaults.expand === 'boolean') d.expand = init.defaults.expand;
+        if (init.defaults.expand !== null) d.expand = init.defaults.expand;
         applyInitial({ frame: d });
       }
       if (init.initial) {
@@ -965,8 +1005,11 @@ export const frameJs = `
       schedule();
     })
     .catch(function (err) {
+      // 読み込み表示を消した後の初期化の失敗も見えるように、状態欄とコンソールにも出す。
+      console.error(err);
       var note = document.getElementById('fr-loading');
       if (note) note.textContent = err.message;
+      else setStatus(err.message, true);
     });
 })();
 `;
