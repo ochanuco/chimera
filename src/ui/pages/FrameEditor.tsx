@@ -76,7 +76,8 @@ export function FrameEditorPage({ path, data, requestedShortId }: { path: string
                 <div class="fr-row fr-side">
                   <span class="fr-side-label">{label}</span>
                   <Pill attrs={{ 'data-fr-side': side, 'data-fr-side-mode': 'cut' }}>切る</Pill>
-                  <Pill attrs={{ 'data-fr-side': side, 'data-fr-side-mode': 'out' }}>はみ出す</Pill>
+                  <Pill attrs={{ 'data-fr-side': side, 'data-fr-side-mode': 'out' }}>上に出す</Pill>
+                  <Pill attrs={{ 'data-fr-side': side, 'data-fr-side-mode': 'behind' }}>枠の下を通す</Pill>
                 </div>
               ))}
             </section>
@@ -126,14 +127,17 @@ export function FrameEditorPage({ path, data, requestedShortId }: { path: string
                 </Pill>
                 <Pill attrs={{ 'data-fr-canvas-mode': 'manual' }}>指定</Pill>
               </div>
+              <label class="fr-row" id="fr-expand-row">
+                <input type="checkbox" id="fr-no-expand" /> 元画像より広げない
+              </label>
             </section>
             <section class="fr-section">
               <h2>影</h2>
               <div class="wb-pills" role="group" aria-label="影">
-                <Pill attrs={{ 'data-fr-shadow': 'on' }} on>
-                  影あり
+                <Pill attrs={{ 'data-fr-shadow': 'off' }} on>
+                  影なし
                 </Pill>
-                <Pill attrs={{ 'data-fr-shadow': 'off' }}>影なし</Pill>
+                <Pill attrs={{ 'data-fr-shadow': 'on' }}>影あり</Pill>
               </div>
             </section>
             <section class="fr-section">

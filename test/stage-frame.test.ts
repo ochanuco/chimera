@@ -6,10 +6,11 @@ import { createGeneration, mcpToolCall, postJson, req, TINY_PNG } from './helper
 
 const FRAME = {
   box: [0.1, 0.3, 0.9, 1],
-  sides: { top: 'out', right: 'cut', bottom: 'cut', left: 'cut' },
+  sides: { top: 'out', right: 'behind', bottom: 'behind', left: 'cut' },
   line: { color: '#885b80', width: 0.6 },
   rim: { color: '#2e2236', width: 0.25 },
   paper: '#ffffff',
+  expand: false,
   strokes: [{ mode: 'erase', width: 2, points: [[0.2, 0.4], [0.3, 0.5]] }],
 };
 
@@ -63,6 +64,7 @@ describe('stage frame validation', () => {
     ['box out of range', { frame: { box: [-1.5, 0, 1, 1] } }],
     ['unknown key', { frame: { box: [0, 0, 1, 1], extra: 1 } }],
     ['bad side', { frame: { box: [0, 0, 1, 1], sides: { top: 'in' } } }],
+    ['non-boolean expand', { frame: { box: [0, 0, 1, 1], expand: 'no' } }],
     ['more than 200 strokes', { frame: { box: [0, 0, 1, 1], strokes: Array.from({ length: 201 }, () => stroke(1)) } }],
     ['more than 2000 points in a stroke', { frame: { box: [0, 0, 1, 1], strokes: [stroke(2001)] } }],
     ['empty stroke', { frame: { box: [0, 0, 1, 1], strokes: [stroke(0)] } }],
@@ -164,14 +166,15 @@ describe('frame editor entry points and assets', () => {
 
 describe('findStageFrameDefaults', () => {
   it('reads stage.frame and leaves out what the catalog lacks', () => {
-    const doc = { stage: { frame: { sides: { top: 'out' }, line: { color: '#885b80', width: 0.6 }, rim: { color: '#2e2236', width: 0.25 }, paper: '#ffffff' } } };
+    const doc = { stage: { frame: { sides: { top: 'out' }, line: { color: '#885b80', width: 0.6 }, rim: { color: '#2e2236', width: 0.25 }, paper: '#ffffff', expand: true } } };
     expect(findStageFrameDefaults(doc as never)).toEqual({
       sides: { top: 'out' },
       line: { color: '#885b80', width: 0.6 },
       rim: { color: '#2e2236', width: 0.25 },
       paper: '#ffffff',
+      expand: true,
     });
-    expect(findStageFrameDefaults({ stage: { frame: {} } } as never)).toEqual({ sides: null, line: null, rim: null, paper: null });
+    expect(findStageFrameDefaults({ stage: { frame: {} } } as never)).toEqual({ sides: null, line: null, rim: null, paper: null, expand: null });
     expect(findStageFrameDefaults({} as never)).toBeNull();
   });
 });
