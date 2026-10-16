@@ -297,7 +297,7 @@ canvas と light は Anima の絵（古い repair / masked_redraw と redraw の
 `dof_generation` は deliver の出力のうち層 asset を持つ絵だけを受け、`focus`（0〜1 の `[x, y]`）が必須です。`f_number`（1.4〜22）・`scope`（`figure` / `outline` / `backdrop` の bool）・`viewfinder`（off / on / both）の既定は `list_catalog` の最上位 `dof` 節です（[worker-protocol.md](worker-protocol.md#dof)）。
 `lens_generation` は納品の絵（deliver・dof・lens の出力、ビューファインダーを重ねた絵は除く）を受け、`strength`（-1〜1、0 不可。正は魚眼、負は逆魚眼）と `center`（0〜1 の `[x, y]`）、`shape`（`fisheye` 画面全体 / `sphere` 球面フィルター）、`radius`（sphere の円の半径、短辺比 0.05〜1）の既定は `list_catalog` の最上位 `lens` 節です。ぼかしてから曲げる順で、lens の出力に dof はかけられません（[worker-protocol.md](worker-protocol.md#lens)）。
 段階に分けるなら、透過で deliver → `stage_generation`（写真か柄に置く）→ `lighting_generation`（背景の光に合わせる）→ `dof_generation`（写真に置いた絵は写真の奥行きでぼけ、`stand_at` / `nearer` / `tilt` / `bokeh` も受ける）の順です。一度に済ませるなら `photo_generation` で、層 asset を持つ deliver の出力と、写真ページで登録した写真の short_id（`photo`）を受けます。看板にもピントを合わせたいなら `stand_at` と `focus` に看板の座標、キャラだけ映えさせるなら `focus: "subject"` のまま板を手前に置く（`place` を手前、または `nearer`）。顔にピントを合わせて体をぼかすなら `tilt`（0.3〜0.6 くらい）を付けて `focus` に顔の座標。夜の写真の街灯を玉ボケにするなら `bokeh`（0.6〜1）。既定は `list_catalog` の最上位 `photo` 節です（[worker-protocol.md](worker-protocol.md#photo)）。
-省略した option の既定は `list_catalog` の `recipes[].deliver.defaults`、dial の語（`keep_legwear`）は `recipes[].dials.deliver` です。
+省略した option の既定は `list_catalog` の `recipes[].deliver.defaults` です。
 
 `deliver_generation` の `profile`（`{name, version?}`）は、source Generation の recipe の kind `deliver` の Preset を解決して options の土台にします。
 展開は `create_request` の deliver payload と同じ処理を通ります（[deliver profile](worker-protocol.md#deliver-profile)）。

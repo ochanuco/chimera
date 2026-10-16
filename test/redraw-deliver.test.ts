@@ -60,15 +60,11 @@ describe('deliver request', () => {
     const { generation } = await createGeneration();
     const options = {
       repin: true,
-      recolor: false,
-      skin: true,
-      keep_legwear: 0.5,
       keep_scene: true,
       transparent: true,
       backdrop: 'dots',
       stroke_light: 'n',
       outlines: [{ color: '#ffffff', width: 0.4 }, { color: '#885b80', width: 1.04 }],
-      deliver_size: 1536,
       light: { scene: 'moon', from: 'w' },
       see_through: 3,
     };
@@ -77,6 +73,13 @@ describe('deliver request', () => {
     expect(full.body.kind).toBe('deliver');
     expect(full.body.payload).toEqual({ generation_id: generation.id, options });
     expect((await create('deliver', { generation_id: generation.id })).status).toBe(201);
+  });
+
+  it('rejects the removed options recolor, skin, keep_legwear and deliver_size', async () => {
+    const { generation } = await createGeneration();
+    for (const options of [{ recolor: true }, { skin: true }, { keep_legwear: 0.5 }, { keep_legwear: true }, { deliver_size: 1536 }]) {
+      expect((await create('deliver', { generation_id: generation.id, options })).status).toBe(400);
+    }
   });
 
   it('rejects unknown keys, including finalize-only and redraw-only options', async () => {

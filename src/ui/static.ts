@@ -2548,22 +2548,11 @@ export const appJs = `
       }
     }
 
-    var keepLegwearFromDial = dialGroupValue(form, 'keep_legwear');
-    var keepLegwear = keepLegwearFromDial === undefined
-      ? (checkbox('keep_legwear') ? true : null)
-      : keepLegwearFromDial;
-
     var options = {
       repin: checkbox('repin'),
-      recolor: checkbox('recolor'),
-      keep_legwear: keepLegwear,
       backdrop: backdrop,
     };
-    if (qs('input[name="skin"]', form)) options.skin = checkbox('skin');
     if (qs('input[name="keep_scene"]', form)) options.keep_scene = checkbox('keep_scene');
-
-    var sizeSelect = qs('select[name="wb_deliver_size"]', form);
-    if (sizeSelect) options.deliver_size = Number(sizeSelect.value);
 
     var editor = qs('[data-outline-editor]', form);
     if (editor) {
@@ -4619,7 +4608,7 @@ export const appJs = `
   // ---- ワークベンチ (/work/:shortId, docs/ui.md「Workbench」) ----
   var WB_PHASES = [
     { no: 1, label: '描き直し' },
-    { no: 2, label: '切り抜き・フチ' },
+    { no: 2, label: 'フチ' },
     { no: 3, label: '背景' },
     { no: 4, label: '光' },
     { no: 5, label: 'ボケ' },
@@ -5253,8 +5242,7 @@ export const appJs = `
       var input = activeInputNode();
       if (!input) return '';
       if (wb.active === 2 && input.delivered) return '納品済み';
-      // 切り抜き済みの描き直しも、3 以降は 2 の deliver が作る層を読むので 2 を通す。
-      var notDelivered = input.cutout ? '先に 2 でフチを付けてください' : '先に切り抜いてください';
+      var notDelivered = '先に 2 でフチを付けてください';
       if (wb.active === 3 && input.kind !== 'deliver') return notDelivered;
       if (wb.active === 4 && input.kind !== 'stage') return '先に背景を付けてください';
       if (wb.active === 5 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
@@ -5413,8 +5401,7 @@ export const appJs = `
     function renderPanel() {
       var phase = WB_PHASES[wb.active - 1];
       qs('[data-wb-phase-no]', root).textContent = String(wb.active);
-      var titleInput = activeInputNode();
-      qs('[data-wb-phase-title]', root).textContent = wb.active === 2 && titleInput && titleInput.cutout ? 'フチ' : phase.label;
+      qs('[data-wb-phase-title]', root).textContent = phase.label;
       qsa('[data-wb-form]', root).forEach(function (form) {
         form.hidden = Number(form.getAttribute('data-wb-form')) !== wb.active;
       });

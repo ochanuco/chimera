@@ -576,9 +576,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'list_catalog\'s recipes[].deliver.defaults is where these are published, the same values the WebUI form presets ' +
         'from, so look them up per-recipe rather than hardcoding (stroke_light "n", backdrop "dots", outlines and repin true across ' +
         'recipes). An explicit null keeps its own meaning rather than falling back to a default. Fields: ' +
-        'repin (accent-compression recolor pass), recolor (palette recolor), skin (skin pass), ' +
-        'keep_legwear (keep tights/legwear: true for the worker default weight 0.62, a number, or a word from ' +
-        'recipes[].dials.deliver), keep_scene (keep background/scene), ' +
+        'repin (accent-compression pass), keep_scene (keep background/scene), ' +
         'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
         'or a #RRGGBB color; null delivers transparent unless transparent is false), ' +
         'transparent (true is the explicit form of an alpha-cut delivery with no backdrop; false keeps a backdrop even ' +
@@ -587,16 +585,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'omitted or null = the catalog default, [] = no outline), ' +
         'stroke_light (shading of the outermost outline: n/ne/e/se/s/sw/w/nw is a light direction with a drop shadow on the far side; ' +
         '"even" (null is accepted as the same) is a uniform-width stroke), ' +
-        'deliver_size (delivered file\'s longest side), ' +
         'see_through (1-5, default 1: scales how much of the backdrop shows through see-through clothing drawn over ' +
         'the green key — 1 is the cut as solved, 3 lets three times as much through; the stored alpha cut is unchanged), ' +
         'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: the scene and light direction ' +
         'the delivery follows; from is the direction the light comes from, default "nw"). When light is omitted it is inherited from the ' +
         'nearest redraw with method "light" among the source\'s ancestors, and stroke_light follows that direction; a ' +
         'stroke_light direction different from the light\'s from fails, "even" or null combine with it. ' +
-        'Every dial-able option (keep_legwear) also accepts a word string instead of a number/true — the word ' +
-        'vocabulary for this recipe is list_catalog\'s recipes[].dials.deliver (chimera only checks the type; the worker ' +
-        'resolves the word). ' +
         'profile {name, version?} resolves a deliver Preset (list_presets kind="deliver") for the source ' +
         "Generation's recipe (latest active version when version is omitted) and uses its options as the base — " +
         'any key also given in options overrides it, explicit null included. Follow status with get_request.',

@@ -126,7 +126,7 @@ describe('readers work from Request and Generation columns', () => {
     const source = await createGeneration({ requestOverrides: { recipe } });
     const deliver = await postJson<{ id: string }>('/api/v1/requests', {
       kind: 'deliver',
-      payload: { generation_id: source.generation.id, options: { keep_legwear: 0.6 } },
+      payload: { generation_id: source.generation.id, options: { backdrop: 'dots' } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
@@ -155,7 +155,7 @@ describe('readers work from Request and Generation columns', () => {
       },
     );
     expect(profiled.status).toBe(201);
-    expect(profiled.body.payload.options).toMatchObject({ keep_legwear: 0.6 });
+    expect(profiled.body.payload.options).toMatchObject({ backdrop: 'dots' });
     expect(profiled.body.payload.profile).toEqual({ name: 'daily', version: 1 });
   });
 

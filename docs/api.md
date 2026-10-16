@@ -722,7 +722,7 @@ deliver request の `options` をまとめて一発で選ぶための Preset で
   "source_generation_id": "abc123",
   "base_fingerprint": null,
   "note": null,
-  "record": { "options": { "keep_legwear": "on", "backdrop": "dots" } },
+  "record": { "options": { "repin": true, "backdrop": "dots" } },
   "patches": [],
   "created_at": "..."
 }

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { StandardSchemaV1 } from '../lib/standard-schema';
 import { RECIPE_REF_RE } from '../lib/request-rules';
-import { deliverOptionsSchema } from './request-payloads';
+import { deliverOptionsSchema, stripRemovedDeliverOptions } from './request-payloads';
 
 export const presetKindSchema = z.enum(['pose', 'costume', 'expression', 'deliver']);
 
@@ -36,7 +36,7 @@ const presetBodyPromoteSchema = z
 
 /** kind `deliver` の本文は `deliverOptionsSchema` そのもの (docs/domain-model.md「Preset」)。base 参照も patches も持たず、
  * 各版は全文上書きでチェーンを作らない。 */
-export const presetBodyDeliverSchema = z.object({ options: deliverOptionsSchema }).strict();
+export const presetBodyDeliverSchema = z.object({ options: z.preprocess(stripRemovedDeliverOptions, deliverOptionsSchema) }).strict();
 
 export const presetBodySchema = z.union([presetBodyImportSchema, presetBodyPromoteSchema, presetBodyDeliverSchema]);
 
