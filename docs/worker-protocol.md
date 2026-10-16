@@ -653,7 +653,7 @@ worker が作って元絵に付けます（`cut` asset と同じ仕組み）。�
 `viewfinder` の `"on"` は三分割グリッド・`focus` の位置のピント枠・下部のシャッター速度と F 値のバーを重ねた画像で、
 `"both"` は重ねない画像と重ねた画像の 2 枚（`-dof` と `-viewfinder`）を出します。
 
-入力にできるのは層 asset を持つ deliver の出力と、[saturation](#saturation)・[stage](#stage)・[lighting](#lighting) の出力です。層の無い古い納品の絵、
+入力にできるのは層 asset を持つ deliver の出力と、[saturation](#saturation)・[stage](#stage)・[lighting](#lighting) の出力、切り抜き済みの描き直しの出力です。切り抜き済みの描き直しには、その redraw 自身の `depth` を使います。層の無い古い納品の絵、
 dof の出力、それ以外は worker が `failed` にします（納品し直す）。stage で写真に置いた絵（lighting を挟んでも）は
 [photo](#photo) と同じく写真の奥行きでぼかし、板の位置と高さは stage の `place` / `height` を使います。そのときだけ
 `stand_at` / `nearer` / `tilt` / `bokeh` / `focal_length`（意味と既定は photo と同じ）を受け、`scope` は使いません。それ以外の絵にこの 5 つを
@@ -698,7 +698,7 @@ dof → lens に固定します（lens は何回でも重ねられます）。
 貼ったように歪め、正の `strength` でボールのように膨らみ、負ですぼまります（`|strength|` は歪みなしとの混ぜ具合）。
 円の外は元のピクセルのままです。
 
-入力にできるのは納品の絵（deliver・dof・lens の出力）です。納品していない絵と、`viewfinder` を重ねた dof の絵
+入力にできるのは納品の絵（deliver・dof・lens の出力）と、切り抜き済みの描き直しの出力です。納品していない絵と、`viewfinder` を重ねた dof の絵
 （`"on"` の出力と `"both"` の 2 枚目）は worker が `failed` にします。lens の出力に dof はかけられません（奥行きと層が
 ずれるので、ぼかしてから曲げる）。透過納品の絵の出力も透過のままです。出力は納品の Generation（`is_delivered`）で、
 入力を `refines_generation_id` で指し、lens の入力にだけなります。photo の出力も lens の入力になります。chimera が検証するのは型だけです。
@@ -737,7 +737,7 @@ worker 実行です。写真は [写真ページ](ui.md#写真photos) で登録�
   f_number       1.4〜22、省略は 2.8
   focal_length   撮るレンズのフルサイズ換算の焦点距離の名前（catalog の `photo.focal_length.values`）。省略は "85mm"
 
-入力にできるのは層 asset（`layer-figure` / `layer-outline`）を持つ deliver か saturation の出力だけで、その背景（`layer-backdrop`）は写真に
+入力にできるのは層 asset（`layer-figure` / `layer-outline`）を持つ deliver か saturation の出力と、切り抜き済みの描き直しの出力だけで、その背景（`layer-backdrop`）は写真に
 置き換わります。写真の奥行きは写真の Generation の `depth` asset を使い、無いか古ければ worker が作って写真に付けます
 （`cut` asset と同じ仕組み）。写真は奥行きで 24 枚の層に切り、層ごとにその奥行きのレンズ形のボケをかけて奥から重ね（手前のボケた物のボケは奥の景色にかぶさって広がる）、板は行ごとの奥行きで同じボケをかけるので、
 看板と同じ奥行きに立てた板は看板と一緒にピントが合います。`tilt` を付けると板の奥行きが行ごとに変わるので、
@@ -833,8 +833,8 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
 写真に置くときは photo kind と同じ置き方（キャラとフチを 1 枚の板として拡大縮小）で、出力は写真と同じ大きさです。
 柄に置くときは納品の大きさのままで、シーンがあれば背景を deliver と同じくそのシーンの色に染め、影もシーンの色で背景に描きます。
 シーンが無ければ影はフチの層に半透明の黒として混ぜます（背景ありの納品はもう影を持っているので、
-省略時は足しません）。入力にできるのは層 asset を持つ deliver か saturation の出力だけで（ふつうは透過納品）、それ以外は worker が
-`failed` にします。出力（`-set`）は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、
+省略時は足しません）。入力にできるのは層 asset を持つ deliver か saturation の出力（ふつうは透過納品）と、切り抜き済みの描き直しの出力だけで、それ以外は worker が
+`failed` にします。切り抜き済みの描き直しを入力にしたときの影は、`shadow_from` を明示したときだけ付けます（省略は影なし）。出力（`-set`）は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、
 キャンバス大の `layer-figure` / `layer-outline` / `layer-backdrop` を asset に持ちます。写真に置いたときは写真を
 `background` の参照に持ちます。chimera が検証するのは型と、MCP では写真の Generation が在ることだけです。
 
@@ -862,8 +862,8 @@ stage で置いた絵のキャラとフチを、その背景の光に合わせ�
 `(環境光の輝度 / 0.35) ^ (0.4 × strength)` 倍、0.35〜1.15 に収める。色かぶりは strength 1 で半分）。`direction` が
 あれば、先に redraw の `light` 下塗りと同じ陰影（平らな奥行き、シルエットからの法線）を付け、明るい側を背景の
 いちばん明るい光の色で染めます。`scene` があれば代わりにそのシーンの light 下塗りの陰影と色で照らし（`direction` の既定は nw）、
-柄の背景も deliver と同じくそのシーンの色に染めます。写真の背景は変えません。入力にできるのは stage の出力と背景ありの納品で、lighting の出力
-（stage の出力からかけ直す）と透過納品は worker が `failed` にします。出力（`-lit`）は納品の Generation で、照らした
+柄の背景も deliver と同じくそのシーンの色に染めます。写真の背景は変えません。入力にできるのは stage の出力と、deliver・saturation の出力、切り抜き済みの描き直しの出力です。背景の無い入力（透過納品、切り抜き済みの描き直し）では環境光の
+合わせを飛ばし、`direction` か `scene` だけで照らします（どちらも無ければ worker が `failed` にします）。lighting の出力（stage の出力からかけ直す）は worker が `failed` にします。出力（`-lit`）は納品の Generation で、照らした
 `layer-figure` / `layer-outline` と `layer-backdrop`（シーンで柄を染めたとき以外は元のまま）を asset に持ち、[dof](#dof) の入力になります。
 
 catalog は最上位の `lighting` 節に `direction` と `strength` を公開します。
@@ -885,7 +885,7 @@ deliver の出力の彩度を圧縮する worker 実行です（ワークベン�
   strength       0〜1、省略は catalog の `saturation.strength.default`（1.0）。圧縮の曲線の補正に掛ける重みで、0 は元のまま、1 は deliver の旧 repin と同じ
 
 `options` の未知のキーは 400 です。`generation_id` は UUID / short_id のどちらでもよく、入力にできるのは kind `deliver` が作った
-層 asset（`layer-figure` / `layer-outline`）を持つ絵です。stage・lighting・dof・lens・photo の出力は worker が `failed` にします
+層 asset（`layer-figure` / `layer-outline`）を持つ絵と、切り抜き済みの描き直しの出力です。stage・lighting・dof・lens・photo の出力は worker が `failed` にします
 （chimera が検証するのは型だけです）。
 
 `layer-figure` と `layer-outline` の両方に、同じ彩度の圧縮曲線を別々にかけます（フチの色も対象）。圧縮する範囲は各層の alpha から取り、

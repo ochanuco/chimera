@@ -138,9 +138,28 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('切り抜かない');
     expect(appJs).toContain("if (!qs('input[name=\"wb_redraw_no_cut\"]', form).checked) redrawOptions.cut = true;");
     expect(appJs).not.toContain('titleInput');
-    expect(appJs).toContain("var notDelivered = '先に 2 でフチを付けてください';");
+    expect(appJs).not.toContain('先に 2 でフチを付けてください');
     expect(appJs).not.toContain('先に切り抜いてください');
     expect(appJs).toContain("node.cutout ? '/g/' + node.short_id + '/assets/cutout'");
+  });
+
+  it('lets phases 3 to 6 take a cut redraw and offers a cut-out without outlines otherwise', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    for (const phase of ['3', '4', '5', '6']) {
+      const start = html.indexOf(`data-wb-form="${phase}"`);
+      expect(html.slice(start, start + 600)).toContain('data-wb-cut-out');
+    }
+    expect(html).toContain('フチなしで切り抜く');
+    expect(appJs).toContain("return node.kind === 'redraw' && !!node.cutout;");
+    expect(appJs).toContain("if (needsCutOut()) return '切り抜かれていません';");
+    expect(appJs).toContain("var options = { transparent: true, outlines: [] };");
+    expect(appJs).toContain("'gui:workbench:deliver:' + input.short_id + ':' + crypto.randomUUID()");
+  });
+
+  it('requires a direction or a scene to light a picture without a backdrop', () => {
+    expect(appJs).toContain("return '背景が無いので、向きかシーンを選んでください';");
+    expect(appJs).toContain('!hasBackdrop(activeInputNode()) && !wb.lightingDir && !wb.lightingScene');
   });
 
   it('marks cutout on tree nodes only when the cutout asset exists', async () => {
