@@ -5239,15 +5239,39 @@ export const appJs = `
       return id ? nodeById(id) : null;
     }
 
+    function isCutRedraw(node) {
+      return node.kind === 'redraw' && !!node.cutout;
+    }
+
+    // Whether a picture is a delivery (or a cut redraw), which the finishing phases take as input without a further cut-out.
+    function isCutOut(node) {
+      return ['deliver', 'saturation'].indexOf(node.kind) >= 0 || isCutRedraw(node);
+    }
+
+    // A picture has a backdrop when it was staged, or delivered with one; a cut redraw and a transparent deliver have none.
+    function hasBackdrop(node) {
+      var guard = 0;
+      while (node && guard < 50) {
+        guard += 1;
+        var o = node.options || {};
+        if (node.kind === 'stage') return true;
+        if (node.kind === 'deliver') return !(o.transparent || o.backdrop === null);
+        if (node.kind === 'redraw') return false;
+        node = node.refines_generation_id ? nodeById(node.refines_generation_id) : null;
+      }
+      return false;
+    }
+
+    function needsCutOut() {
+      var input = activeInputNode();
+      return !!input && [3, 4, 5, 6].indexOf(wb.active) >= 0 && !isCutOut(input) && ['stage', 'lighting'].indexOf(input.kind) < 0;
+    }
+
     function unavailableText() {
       var input = activeInputNode();
       if (!input) return '';
       if (wb.active === 2 && input.delivered) return '納品済み';
-      var notDelivered = '先に 2 でフチを付けてください';
-      if (wb.active === 3 && input.kind !== 'deliver') return notDelivered;
-      if (wb.active === 4 && ['deliver', 'saturation'].indexOf(input.kind) < 0) return notDelivered;
-      if (wb.active === 5 && input.kind !== 'stage') return '先に背景を付けてください';
-      if (wb.active === 6 && ['deliver', 'saturation', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
+      if (needsCutOut()) return '切り抜かれていません';
       return '';
     }
 
@@ -5397,6 +5421,7 @@ export const appJs = `
         if (!wb.place) return '台座の位置をクリックしてください';
       }
       if (wb.active === WB_LAST && !wb.focus) return 'ピントを置いてください';
+      if (wb.active === 5 && !hasBackdrop(activeInputNode()) && !wb.lightingDir && !wb.lightingScene) return '背景が無いので、向きかシーンを選んでください';
       return null;
     }
 
@@ -5416,6 +5441,8 @@ export const appJs = `
         note.textContent = unavailable;
       }
       if (body) body.hidden = unavailable !== '';
+      var cutBtn = qs('[data-wb-cut-out]', form);
+      if (cutBtn) cutBtn.hidden = !needsCutOut();
       var blocker = runBlocker();
       var run = qs('[data-wb-run]', root);
       run.hidden = unavailable !== '' || !activeInputNode();
@@ -5679,6 +5706,36 @@ export const appJs = `
       render();
     }
 
+    // A picture that is not cut out yet gets a deliver with no outlines, which lands as a phase-2 candidate for the user to pick.
+    async function cutOut() {
+      var input = activeInputNode();
+      if (!input || !needsCutOut()) return;
+      wb.error = '';
+      var options = { transparent: true, outlines: [] };
+      try {
+        var request = await postOptionRequest('deliver', input.short_id, options, null, 'gui:workbench:deliver:' + input.short_id + ':' + crypto.randomUUID());
+        wb.pending.push({
+          request_id: request.id,
+          kind: 'deliver',
+          method: null,
+          phase: 2,
+          options: options,
+          source_generation_id: input.id,
+          status: request.status || 'queued',
+          created_at: request.created_at || '',
+        });
+        track('workbench.run', { phase: 2, kind: 'deliver', generation_id: input.short_id });
+        goStep(2);
+        if (inputOf(2) !== input.id) wb.forcedInput = input.id;
+        wb.compareId = 'p:' + request.id;
+        startPolling();
+      } catch (e) {
+        trackError('workbench.run', e, { phase: wb.active });
+        wb.error = 'deliver failed: ' + e.message;
+      }
+      render();
+    }
+
     // The tree is the source of truth; a request that left pending either produced a node or failed.
     var syncing = false;
     async function syncTree() {
@@ -5775,6 +5832,7 @@ export const appJs = `
       if (t.closest('[data-wb-skip]')) return skip();
       if (t.closest('[data-wb-adopt]')) return adopt();
       if (t.closest('[data-wb-run]')) return run();
+      if (t.closest('[data-wb-cut-out]')) return cutOut();
 
       var method = t.closest('[data-wb-method]');
       if (method) {
@@ -5815,7 +5873,7 @@ export const appJs = `
         setCompassValue(lightingDir.closest('[data-compass]'), wb.lightingDir);
         qs('[data-wb-lighting-none]', root).classList.remove('wb-pill-on');
         qs('[data-wb-lighting-dir-readout]', root).textContent = 'from: ' + wb.lightingDir;
-        return;
+        return renderPanel();
       }
       var lightingScene = t.closest('[data-wb-lighting-scene]');
       if (lightingScene) {
@@ -5823,14 +5881,14 @@ export const appJs = `
         qsa('[data-wb-lighting-scene]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === lightingScene); });
         // A scene without a chosen side lights from its default, upper left.
         if (!wb.lightingDir) qs('[data-wb-lighting-dir-readout]', root).textContent = wb.lightingScene ? 'from: nw（既定）' : 'なし';
-        return;
+        return renderPanel();
       }
       if (t.closest('[data-wb-lighting-none]')) {
         wb.lightingDir = '';
         setCompassValue(qs('[data-compass="lighting"]', root), '');
         qs('[data-wb-lighting-none]', root).classList.add('wb-pill-on');
         qs('[data-wb-lighting-dir-readout]', root).textContent = wb.lightingScene ? 'from: nw（既定）' : 'なし';
-        return;
+        return renderPanel();
       }
       var word = t.closest('[data-wb-denoise-word]');
       if (word) {

@@ -197,6 +197,9 @@ function SaturationForm({ data }: { data: WorkbenchData }) {
   return (
     <div class="wb-form" data-wb-form="3" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <button type="button" class="wb-pill" data-wb-cut-out hidden>
+        フチなしで切り抜く
+      </button>
       <div data-wb-form-body>
         <p class="wb-note">キャラとフチの彩度を圧縮します。フチの色も対象です。背景はそのままです。</p>
         <label class="wb-field">
@@ -213,6 +216,9 @@ function StageForm({ data }: { data: WorkbenchData }) {
   return (
     <div class="wb-form" data-wb-form="4" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <button type="button" class="wb-pill" data-wb-cut-out hidden>
+        フチなしで切り抜く
+      </button>
       <div data-wb-form-body>
         <div class="wb-pills" role="group" aria-label="背景の種類">
           <button type="button" class="wb-pill wb-pill-on" data-wb-stage-mode="pattern">
@@ -319,6 +325,9 @@ function LightingForm() {
   return (
     <div class="wb-form" data-wb-form="5" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <button type="button" class="wb-pill" data-wb-cut-out hidden>
+        フチなしで切り抜く
+      </button>
       <div data-wb-form-body>
         <p class="wb-note">背景の明るさと色味にキャラとフチを合わせます。向きを選ぶとその側から陰影も付けます。</p>
         <div class="wb-field">
@@ -375,6 +384,9 @@ function DofForm({ data }: { data: WorkbenchData }) {
   return (
     <div class="wb-form" data-wb-form="6" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <button type="button" class="wb-pill" data-wb-cut-out hidden>
+        フチなしで切り抜く
+      </button>
       <div data-wb-form-body>
         <DofFields dof={data.dof ?? FALLBACK_DOF} />
         <div data-wb-dof-photo hidden>
