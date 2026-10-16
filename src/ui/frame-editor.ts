@@ -22,9 +22,8 @@ export const frameJs = `
   var DEFAULT_LINE_COLOR = '#4a3152';
   // 斜線の線の柄（docs/worker-protocol.md「stage」の frame）。値は線の幅 w に対する比。
   var SLASH = { period: 2.2, thickness: 0.14, offset: 0.34 };
-  // 斜線が見える太さの下限と、斜線に切り替えたときに上げる太さ（長辺に対する %）。
+  // 斜線が見える太さの下限（長辺に対する %）。斜線に切り替えたとき、これより細ければここまで上げる。
   var SLASH_MIN_WIDTH = 1.2;
-  var SLASH_WIDTH = 1.8;
   var DEFAULT_RIM_COLOR = '#2e2236';
   var SIDE_KEYS = ['top', 'right', 'bottom', 'left'];
   // 辺の名前から [x0, y0, x1, y1] の添字へ。
@@ -866,7 +865,7 @@ export const frameJs = `
       begin();
       state.linePattern = pattern;
       if (pattern === 'slash' && state.lineWidth < SLASH_MIN_WIDTH) {
-        state.lineWidth = SLASH_WIDTH;
+        state.lineWidth = SLASH_MIN_WIDTH;
         maskDirty = true;
       }
       end();
