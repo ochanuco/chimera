@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DIAL_WORD_RE, MAX_OUTLINES, MASKED_REDRAW_MAX_DENOISE, dofScopeIssues, lensOptionsIssues, maskedRedrawOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
+import { DIAL_WORD_RE, HEX_COLOR_RE, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, MASKED_REDRAW_MAX_DENOISE, dofScopeIssues, lensOptionsIssues, maskedRedrawOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
 import { addIssues } from './issues';
 
 /** worker に渡す payload の語彙 (docs/worker-protocol.md)。kind ごとの封筒の検証は lib/request-payload.ts が引く。 */
@@ -237,8 +237,43 @@ export const maskedRedrawPayloadSchema = z
 
 const COMPASS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
 
+const frameCoord = z.number().min(-1).max(2);
+const frameRect = z.tuple([frameCoord, frameCoord, frameCoord, frameCoord]);
+const frameColor = z.string().regex(HEX_COLOR_RE);
+const frameSide = z.enum(['cut', 'out']);
+
+/** stage の frame (docs/worker-protocol.md「stage」)。座標は納品画像のキャンバスに対する分数。x0<x1 などの組み合わせは stageOptionsIssues が見る。 */
+const frameSchema = z
+  .object({
+    box: frameRect,
+    sides: z
+      .object({ top: frameSide.optional(), right: frameSide.optional(), bottom: frameSide.optional(), left: frameSide.optional() })
+      .strict()
+      .optional(),
+    line: z
+      .object({ color: frameColor.optional(), width: z.number().min(0).max(5).optional() })
+      .strict()
+      .nullable()
+      .optional(),
+    paper: frameColor.optional(),
+    canvas: frameRect.optional(),
+    strokes: z
+      .array(
+        z
+          .object({
+            mode: z.enum(['erase', 'restore']),
+            width: z.number().gt(0).max(20),
+            points: z.array(z.tuple([frameCoord, frameCoord])).min(1).max(MAX_FRAME_STROKE_POINTS),
+          })
+          .strict(),
+      )
+      .max(MAX_FRAME_STROKES)
+      .optional(),
+  })
+  .strict();
+
 /** stage（背景）の options (docs/worker-protocol.md「stage」)。photo があれば写真に place / height で置き、無ければ backdrop（柄名か #RRGGBB）に
- * shadow_from の影で置く。二組は混ぜない。入力は層 asset を持つ deliver の出力で、worker が判定する。 */
+ * shadow_from の影で置く（frame は柄の組で、人物を枠に入れる）。二組は混ぜない。入力は層 asset を持つ deliver の出力で、worker が判定する。 */
 export const stageOptionsSchema = z
   .object({
     photo: z.string().min(1).optional(),
@@ -246,6 +281,7 @@ export const stageOptionsSchema = z
     height: z.number().min(0.05).max(1.5).optional(),
     backdrop: z.string().min(1).optional(),
     shadow_from: z.enum(COMPASS).nullable().optional(),
+    frame: frameSchema.optional(),
     // 背景を染めるシーン。省略は系譜の light redraw を引き継ぎ、null はなし。
     light: z
       .object({ scene: z.enum(['sunset', 'moon']), from: z.enum(COMPASS).optional() })

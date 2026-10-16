@@ -10,6 +10,7 @@ import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
 import { findProducingRequest } from '../lib/requests';
 import { isDeliverResult } from '../lib/promote';
+import { resolveFrameSource } from '../lib/frame';
 import {
   GenerationDetailPage,
   type GenerationDetailData,
@@ -136,6 +137,7 @@ images.get('/:shortId', async (c) => {
   const canPromoteToProfile = data.rating === 'good' && (await isDeliverResult(db, generation));
 
   const producedByOptions = await findProducedByOptions(db, generation.id);
+  const frameSource = await resolveFrameSource(db, generation);
 
   const experimentRun = generation.request_id ? await getExperimentRunFamily(db, generation.request_id) : null;
   const family = await getGenerationFamily(db, generation, experimentRun);
@@ -150,6 +152,7 @@ images.get('/:shortId', async (c) => {
       requests={requests}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
+      frameable={frameSource.hasLayers}
     />,
   );
 });

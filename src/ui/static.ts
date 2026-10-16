@@ -1432,6 +1432,28 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
 .exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 
+/* ---- 枠エディタ (/frame/:shortId, docs/ui.md「枠」) ---- */
+.fr [hidden] { display: none !important; }
+.fr { padding: 0.8rem 1rem 2rem; max-width: 100%; box-sizing: border-box; }
+.fr-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1rem; margin-bottom: 0.6rem; }
+.fr-head h1 { margin: 0; font-size: 1.2rem; }
+.fr-body { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
+@media (max-width: 860px) { .fr-body { grid-template-columns: minmax(0, 1fr); } }
+.fr-stage { min-width: 0; overflow: hidden; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; display: flex; flex-direction: column; align-items: center; }
+.fr-canvas { display: block; max-width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+.fr-panel { min-width: 0; display: flex; flex-direction: column; gap: 0.8rem; }
+.fr-section h2 { margin: 0 0 0.35rem; font-size: 0.85rem; color: var(--text-dim); font-weight: 600; }
+.fr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0.35rem 0; font-size: 0.85rem; }
+.fr-row input[type=range] { flex: 1 1 8rem; min-width: 0; }
+.fr-side-label { width: 1.5rem; }
+.fr-backdrops { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.fr-backdrop { font: inherit; font-size: 0.75rem; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; padding: 0.3rem; min-width: 3.4rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); cursor: pointer; }
+.fr-backdrop img { display: block; object-fit: cover; border-radius: 3px; }
+.fr-backdrop-on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.fr-note { margin: 0.3rem 0; font-size: 0.8rem; color: var(--text-dim); }
+.fr-over { color: var(--bad); }
+.fr-submit { width: 100%; }
+
 /* ---- ワークベンチ (/work, docs/ui.md「Workbench」) と フチ / ボケの共通部品 ---- */
 .wb [hidden], .outline-editor [hidden], .dof-viewfinder [hidden] { display: none !important; }
 .wb-pill {
@@ -5478,6 +5500,12 @@ export const appJs = `
       if (dofPhoto) dofPhoto.hidden = !stagedInPhoto;
       var dofScope = qs('.dof-scope', phaseForm(WB_LAST));
       if (dofScope) dofScope.hidden = stagedInPhoto;
+      var frameLink = qs('[data-wb-frame-link]', root);
+      if (frameLink) {
+        var frameInput = wb.active === 4 ? activeInputNode() : null;
+        frameLink.hidden = !frameInput;
+        if (frameInput) frameLink.href = '/frame/' + frameInput.short_id;
+      }
       var lightNote = qs('[data-wb-light-input]', root);
       if (lightNote) {
         var on = lightInput();
@@ -6354,7 +6382,7 @@ export const appJs = `
 `;
 
 // content hash (FNV-1a): アセット URL の ?v= に使い、デプロイごとにキャッシュを破棄する
-function fnv1a(s: string): string {
+export function fnv1a(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

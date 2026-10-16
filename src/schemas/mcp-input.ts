@@ -153,6 +153,7 @@ export const stageGenerationInputSchema = z
     height: stageOptionsSchema.shape.height,
     backdrop: stageOptionsSchema.shape.backdrop,
     shadow_from: stageOptionsSchema.shape.shadow_from,
+    frame: stageOptionsSchema.shape.frame,
     light: stageOptionsSchema.shape.light,
     idempotency_key: z.string().min(1),
   })

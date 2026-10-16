@@ -503,7 +503,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "repair" ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
         'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation are the same requests with a typed input. created_by is ' +
@@ -764,12 +764,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "list_catalog backdrops pattern name or #RRGGBB, default the deliver default) with a drop shadow thrown away from " +
         'shadow_from (n/ne/e/se/s/sw/w/nw; null for none; omitted takes the delivery\'s own light, else the scene\'s), tinted to ' +
         'light ({scene: "sunset" | "moon", from?}; omitted inherits the nearest light redraw in the lineage, null for none) as a ' +
-        'delivery in that scene. The two sets do not mix. ' +
+        'delivery in that scene. frame ({box: [x0, y0, x1, y1] as fractions of the picture\'s canvas, sides?: {top, right, bottom, left: "cut" | "out"}, line?: {color?, width?} | null, paper?, canvas?, strokes?}) puts the figure in a box of the backdrop: a "cut" side crops the figure at the box edge and an "out" side lets it pop out (default top out, others cut); strokes erase or restore the figure with a brush. frame belongs to the backdrop set and is not for photo. ' +
+        'The two sets do not mix. ' +
         'The output is a delivered picture that refines the source. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: stageGenerationInputSchema,
     },
-    async ({ generation_id, photo, place, height, backdrop, shadow_from, light, idempotency_key }) => {
+    async ({ generation_id, photo, place, height, backdrop, shadow_from, frame, light, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const options: Record<string, unknown> = {};
       if (photo !== undefined) options.photo = (await resolveGenerationOr404(db, photo)).short_id;
@@ -777,6 +778,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (height !== undefined) options.height = height;
       if (backdrop !== undefined) options.backdrop = backdrop;
       if (shadow_from !== undefined) options.shadow_from = shadow_from;
+      if (frame !== undefined) options.frame = frame;
       if (light !== undefined) options.light = light;
       const { row, created } = await createRequest(
         db,

@@ -10,6 +10,12 @@ export const DIAL_WORD_RE = /^[a-z][a-z0-9-]*$/;
 
 export const MAX_OUTLINES = 6;
 
+export const MAX_FRAME_STROKES = 200;
+export const MAX_FRAME_STROKE_POINTS = 2000;
+export const MAX_FRAME_TOTAL_POINTS = 20000;
+
+export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
 /** Generic masked redraw keeps its strength in the low-to-medium inpaint range. */
 export const MASKED_REDRAW_MAX_DENOISE = 0.75;
 
@@ -63,7 +69,24 @@ export function lensOptionsIssues(options: { radius?: number; shape?: string }):
   return [];
 }
 
-/** stage は photo の組 (place / height) と柄の組 (backdrop / shadow_from / light) を混ぜない。 */
+type FrameShape = { box?: Region; canvas?: Region; strokes?: { points: unknown[] }[] };
+
+function frameIssues(frame: FrameShape): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const key of ['box', 'canvas'] as const) {
+    const rect = frame[key];
+    if (rect && !(rect[0] < rect[2] && rect[1] < rect[3])) {
+      issues.push({ message: `frame ${key} must have x0 < x1 and y0 < y1`, path: ['frame', key] });
+    }
+  }
+  const total = (frame.strokes ?? []).reduce((sum, stroke) => sum + stroke.points.length, 0);
+  if (total > MAX_FRAME_TOTAL_POINTS) {
+    issues.push({ message: `frame strokes have more than ${MAX_FRAME_TOTAL_POINTS} points in total`, path: ['frame', 'strokes'] });
+  }
+  return issues;
+}
+
+/** stage は photo の組 (place / height) と柄の組 (backdrop / shadow_from / light / frame) を混ぜない。 */
 export function stageOptionsIssues(options: {
   photo?: string;
   place?: unknown;
@@ -71,6 +94,7 @@ export function stageOptionsIssues(options: {
   backdrop?: string;
   shadow_from?: unknown;
   light?: unknown;
+  frame?: unknown;
 }): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const hasPhoto = options.photo !== undefined;
@@ -80,6 +104,10 @@ export function stageOptionsIssues(options: {
   if (hasPhoto && (options.backdrop !== undefined || options.shadow_from !== undefined || options.light !== undefined)) {
     issues.push({ message: 'backdrop / shadow_from / light are not for a photo', path: ['backdrop'] });
   }
+  if (hasPhoto && options.frame !== undefined) {
+    issues.push({ message: 'frame is not for a photo', path: ['frame'] });
+  }
+  if (options.frame !== undefined) issues.push(...frameIssues(options.frame as FrameShape));
   return issues;
 }
 
