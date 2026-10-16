@@ -61,7 +61,7 @@ function withValue(options: number[], value: number | null): number[] {
   return value !== null && !options.includes(value) ? [...options, value].sort((a, b) => a - b) : options;
 }
 
-function backdropThumbnailUrl(recipeRef: string, catalogVersion: string | null, name: string): string {
+export function backdropThumbnailUrl(recipeRef: string, catalogVersion: string | null, name: string): string {
   const q = catalogVersion ? `?v=${encodeURIComponent(catalogVersion)}` : '';
   return `/api/v1/catalogs/${encodeURIComponent(recipeRef)}/backdrops/${encodeURIComponent(name)}.png${q}`;
 }
@@ -337,6 +337,9 @@ function StageForm({ data }: { data: WorkbenchData }) {
               </button>
             </div>
           </div>
+          <a class="wb-pill" data-wb-frame-link href="#" hidden>
+            枠に入れる…
+          </a>
         </div>
 
         <div data-wb-stage-panel="photo" hidden>

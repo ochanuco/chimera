@@ -161,6 +161,7 @@ export function GenerationDetailPage({
   requests,
   canPromoteToProfile,
   producedByOptions,
+  frameable,
 }: {
   path: string;
   data: GenerationDetailData;
@@ -173,6 +174,8 @@ export function GenerationDetailPage({
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
+  /** 人物レイヤー (layer-figure / layer-outline) があり、/frame で枠に入れられる。 */
+  frameable: boolean;
 }) {
   // A refined Generation rerolls its raw source; a raw one needs a recipe-driven generate request.
   const rerollable = data.refines_generation !== null || (data.request?.kind === 'generate' && Boolean(data.request.recipe));
@@ -202,6 +205,11 @@ export function GenerationDetailPage({
             <a class="workbench-open-link" href={`/work/${data.short_id}`}>
               ワークベンチで開く
             </a>
+            {frameable ? (
+              <a class="reroll-open-link" href={`/frame/${data.short_id}`}>
+                枠に入れる
+              </a>
+            ) : null}
             {rerollable ? (
               <a class="reroll-open-link" href={`/reroll/${data.short_id}`}>
                 リロール

@@ -139,6 +139,29 @@ export function findBackdrops(doc: RecipeCatalogDoc): CatalogBackdrop[] {
   return result;
 }
 
+export interface StageFrameDefaults {
+  sides: Record<string, string> | null;
+  line: { color?: string; width?: number } | null;
+  rim: { color?: string; width?: number } | null;
+  paper: string | null;
+}
+
+/** Top-level `stage.frame` (chagama が埋める frame の既定値)。枠エディタの初期値にだけ使い、request には埋めない。セクションが無ければ null。 */
+export function findStageFrameDefaults(doc: RecipeCatalogDoc): StageFrameDefaults | null {
+  const frame = plainObject(plainObject((doc as { stage?: unknown }).stage)?.frame);
+  if (!frame) return null;
+  const stroke = (value: unknown) => {
+    const entry = plainObject(value);
+    return entry ? { color: typeof entry.color === 'string' ? entry.color : undefined, width: typeof entry.width === 'number' ? entry.width : undefined } : null;
+  };
+  return {
+    sides: plainObject(frame.sides) as Record<string, string> | null,
+    line: stroke(frame.line),
+    rim: stroke(frame.rim),
+    paper: typeof frame.paper === 'string' ? frame.paper : null,
+  };
+}
+
 /** Decodes `name`'s `data:image/png;base64,...` thumbnail to raw PNG bytes. null when `name` isn't published or the data URI is malformed — the route's caller turns that into a 404. */
 export function decodeBackdropThumbnail(doc: RecipeCatalogDoc, name: string): Uint8Array | null {
   const backdrop = findBackdrops(doc).find((b) => b.name === name);

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { appJs, styleCss } from '../ui/static';
+import { frameJs } from '../ui/frame-editor';
 import { telemetryDisabledJs, telemetryJs } from '../ui/telemetry';
 import type { AppEnv } from '../types';
 
@@ -26,6 +27,11 @@ assets.get('/style.css', (c) => {
 assets.get('/app.js', (c) => {
   c.header('Cache-Control', 'public, max-age=31536000, immutable');
   return c.body(appJs, 200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+});
+
+assets.get('/frame.js', (c) => {
+  c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  return c.body(frameJs, 200, { 'Content-Type': 'text/javascript; charset=utf-8' });
 });
 
 assets.get('/telemetry.js', (c) => {

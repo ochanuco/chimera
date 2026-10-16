@@ -21,6 +21,9 @@ import { WorkSourcesPage } from '../ui/pages/WorkSources';
 import { WorkbenchPage, type WorkbenchData, type WorkbenchPart } from '../ui/pages/Workbench';
 import { buildWorkbenchTree, findRootGeneration, getWorkbench } from '../lib/workbench';
 import { RerollPage } from '../ui/pages/Reroll';
+import { FrameEditorPage, FrameEditorUnavailablePage } from '../ui/pages/FrameEditor';
+import { backdropThumbnailUrl } from '../ui/pages/Workbench';
+import { resolveFrameSource } from '../lib/frame';
 import { getRerollState } from '../lib/reroll';
 import { StyleCheckPage, type StyleCheckNode, type StyleCheckPoseView } from '../ui/pages/StyleCheck';
 import { decodeCursor, queryTimeline } from '../lib/generations';
@@ -30,6 +33,7 @@ import { defaultRecipeRef } from '../lib/requests';
 import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
 import {
   findBackdrops,
+  findStageFrameDefaults,
   findCatalogPose,
   findDeliverBackdropColor,
   findDeliverDefaults,
@@ -566,6 +570,41 @@ pages.get('/work/:shortId', async (c) => {
     photos,
   };
   return c.html(<WorkbenchPage path={c.req.path} data={data} />);
+});
+
+pages.get('/frame/:shortId', async (c) => {
+  const db = c.env.DB;
+  const generation = await getGenerationByIdOrShortId(db, c.req.param('shortId'));
+  if (!generation) return c.html(<NotFoundPage what="Generation" />, 404);
+  const { base, initial, hasLayers } = await resolveFrameSource(db, generation);
+  if (!hasLayers) return c.html(<FrameEditorUnavailablePage path={c.req.path} shortId={generation.short_id} />, 404);
+
+  const root = await findRootGeneration(db, base);
+  const detailRes = await internalApiRequest(c, `/api/v1/generations/${root.id}`);
+  const detail = (await detailRes.json()) as { request: { recipe: string | null } | null };
+  const recipeRef = detail.request?.recipe ? defaultRecipeRef(c.env) : null;
+  const catalog = recipeRef ? await getCatalog(db, recipeRef) : null;
+  const backdrops =
+    catalog && recipeRef
+      ? findBackdrops(catalog.doc).map(({ name, label }) => ({
+          name,
+          label,
+          thumbnail: backdropThumbnailUrl(recipeRef, catalog.row.updated_at, name),
+        }))
+      : [];
+  return c.html(
+    <FrameEditorPage
+      path={c.req.path}
+      requestedShortId={generation.short_id}
+      data={{
+        base: { id: base.id, short_id: base.short_id, width: base.image_width, height: base.image_height },
+        layers: { figure: `/g/${base.short_id}/assets/layer-figure`, outline: `/g/${base.short_id}/assets/layer-outline` },
+        backdrops,
+        initial,
+        defaults: catalog ? findStageFrameDefaults(catalog.doc) : null,
+      }}
+    />,
+  );
 });
 
 pages.get('/reroll/:shortId', async (c) => {
