@@ -135,6 +135,8 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('name="wb_redraw_no_cut"');
     expect(form).toContain('切り抜かない');
     expect(appJs).toContain("if (!qs('input[name=\"wb_redraw_no_cut\"]', form).checked) redrawOptions.cut = true;");
+    expect(appJs).toContain("wb.active === 3 && titleInput && titleInput.cutout ? 'フチ' : phase.label");
+    expect(appJs).toContain("input.cutout ? '先に 3 でフチを付けてください' : '先に切り抜いてください'");
     expect(appJs).toContain("node.cutout ? '/g/' + node.short_id + '/assets/cutout'");
   });
 

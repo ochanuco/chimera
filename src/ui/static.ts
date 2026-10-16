@@ -5281,9 +5281,11 @@ export const appJs = `
       var input = activeInputNode();
       if (!input) return '';
       if (wb.active === 3 && input.delivered) return '納品済み';
-      if (wb.active === 4 && input.kind !== 'deliver') return '先に切り抜いてください';
+      // 切り抜き済みの描き直しも、4 以降は 3 の deliver が作る層を読むので 3 を通す。
+      var notDelivered = input.cutout ? '先に 3 でフチを付けてください' : '先に切り抜いてください';
+      if (wb.active === 4 && input.kind !== 'deliver') return notDelivered;
       if (wb.active === 5 && input.kind !== 'stage') return '先に背景を付けてください';
-      if (wb.active === 6 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return '先に切り抜いてください';
+      if (wb.active === 6 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
       return '';
     }
 
@@ -5444,7 +5446,8 @@ export const appJs = `
     function renderPanel() {
       var phase = WB_PHASES[wb.active - 1];
       qs('[data-wb-phase-no]', root).textContent = String(wb.active);
-      qs('[data-wb-phase-title]', root).textContent = phase.label;
+      var titleInput = activeInputNode();
+      qs('[data-wb-phase-title]', root).textContent = wb.active === 3 && titleInput && titleInput.cutout ? 'フチ' : phase.label;
       qsa('[data-wb-form]', root).forEach(function (form) {
         form.hidden = Number(form.getAttribute('data-wb-form')) !== wb.active;
       });
