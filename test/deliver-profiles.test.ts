@@ -259,9 +259,9 @@ describe('redraw/deliver options accept dial words', () => {
     expect(bad.status).toBe(400);
   });
 
-  it('deliver: the removed options recolor, skin, keep_legwear and deliver_size are rejected', async () => {
+  it('deliver: the removed options recolor, skin, keep_legwear, deliver_size and repin are rejected', async () => {
     const { generation } = await createGeneration();
-    for (const options of [{ recolor: true }, { skin: false }, { keep_legwear: 0.5 }, { keep_legwear: 'on' }, { deliver_size: 1536 }]) {
+    for (const options of [{ recolor: true }, { skin: false }, { keep_legwear: 0.5 }, { keep_legwear: 'on' }, { deliver_size: 1536 }, { repin: true }]) {
       const res = await postJson('/api/v1/requests', {
         kind: 'deliver',
         payload: { generation_id: generation.id, options },
@@ -274,7 +274,7 @@ describe('redraw/deliver options accept dial words', () => {
 
   it('MCP deliver_generation rejects the removed options', async () => {
     const { generation } = await createGeneration();
-    for (const options of [{ recolor: true }, { skin: true }, { keep_legwear: 0.5 }, { deliver_size: 1536 }]) {
+    for (const options of [{ recolor: true }, { skin: true }, { keep_legwear: 0.5 }, { deliver_size: 1536 }, { repin: true }]) {
       const tool = await mcpToolCall('deliver_generation', { generation_id: generation.id, options, idempotency_key: crypto.randomUUID() });
       expect(tool.isError).toBe(true);
     }
@@ -283,9 +283,9 @@ describe('redraw/deliver options accept dial words', () => {
   it('a stored deliver profile or payload that still carries the removed options is read without them', async () => {
     const recipe = uniqueRecipe();
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
-    const { delivered } = await createDeliverResult(recipe, { repin: true });
+    const { delivered } = await createDeliverResult(recipe, { keep_scene: true });
     await setRatingGood(delivered.id);
-    const legacy = JSON.stringify({ options: { repin: true, recolor: true, skin: false, keep_legwear: 0.6, deliver_size: 1536 } });
+    const legacy = JSON.stringify({ options: { repin: true, keep_scene: true, recolor: true, skin: false, keep_legwear: 0.6, deliver_size: 1536 } });
     const producing = await findProducingRequest(env.DB, delivered.id);
     await env.DB.prepare('UPDATE requests SET payload_json = ? WHERE id = ?')
       .bind(JSON.stringify({ generation_id: generation.id, options: JSON.parse(legacy).options }), producing!.id)
@@ -297,7 +297,7 @@ describe('redraw/deliver options accept dial words', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(promoted.status).toBe(200);
-    expect(promoted.body.record).toEqual({ options: { repin: true } });
+    expect(promoted.body.record).toEqual({ options: { keep_scene: true } });
 
     await env.DB.prepare("UPDATE presets SET body_json = ? WHERE recipe = ? AND kind = 'deliver' AND name = 'old'").bind(legacy, recipe).run();
 
@@ -308,10 +308,10 @@ describe('redraw/deliver options accept dial words', () => {
       created_by: 'gui',
     });
     expect(profiled.status).toBe(201);
-    expect(profiled.body.payload.options).toEqual({ repin: true });
+    expect(profiled.body.payload.options).toEqual({ keep_scene: true });
 
     const listed = await listDeliverProfiles(env.DB, recipe);
-    expect(listed.find((p) => p.name === 'old')?.options).toEqual({ repin: true });
+    expect(listed.find((p) => p.name === 'old')?.options).toEqual({ keep_scene: true });
   });
 });
 
@@ -320,7 +320,7 @@ describe('deliver profile resolution (createRequest)', () => {
     const recipe = uniqueRecipe();
     const { generation } = await createGeneration({ requestOverrides: { recipe } });
 
-    const { delivered } = await createDeliverResult(recipe, { backdrop: 'grid', repin: true });
+    const { delivered } = await createDeliverResult(recipe, { backdrop: 'grid', keep_scene: true });
     await setRatingGood(delivered.id);
     const promoted = await postJson<{ version: number }>('/api/v1/presets/promote-profile', {
       generation_id: delivered.id,
@@ -340,7 +340,7 @@ describe('deliver profile resolution (createRequest)', () => {
     expect(created.body.payload).toEqual({
       generation_id: generation.id,
       profile: { name: 'daily', version: 1 },
-      options: { repin: true, backdrop: null },
+      options: { keep_scene: true, backdrop: null },
     });
   });
 
@@ -433,7 +433,7 @@ describe('deliver profile resolution (createRequest)', () => {
 describe('resolvePreset for kind=deliver', () => {
   it('GET /api/v1/presets/{recipe}/deliver/{name}/{version} resolves to {options} with no patches', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { repin: true, backdrop: 'checks' });
+    const { delivered } = await createDeliverResult(recipe, { keep_scene: true, backdrop: 'checks' });
     await setRatingGood(delivered.id);
     await postJson('/api/v1/presets/promote-profile', { generation_id: delivered.id, name: 'daily', idempotency_key: crypto.randomUUID() });
 
@@ -441,7 +441,7 @@ describe('resolvePreset for kind=deliver', () => {
       `/api/v1/presets/${recipe}/deliver/daily/1`,
     );
     expect(got.status).toBe(200);
-    expect(got.body.record).toEqual({ options: { repin: true, backdrop: 'checks' } });
+    expect(got.body.record).toEqual({ options: { keep_scene: true, backdrop: 'checks' } });
     expect(got.body.patches).toEqual([]);
   });
 });
@@ -449,7 +449,7 @@ describe('resolvePreset for kind=deliver', () => {
 describe('promote_to_profile', () => {
   it('promotes a rating=good deliver-kind Generation; repeated names append the next version', async () => {
     const recipe = uniqueRecipe();
-    const { delivered } = await createDeliverResult(recipe, { repin: true, backdrop: 'checks' });
+    const { delivered } = await createDeliverResult(recipe, { keep_scene: true, backdrop: 'checks' });
     await setRatingGood(delivered.id);
 
     const v1 = await postJson<{ recipe: string; kind: string; name: string; version: number; source: string; record: unknown }>(
@@ -458,7 +458,7 @@ describe('promote_to_profile', () => {
     );
     expect(v1.status).toBe(200);
     expect(v1.body).toMatchObject({ recipe, kind: 'deliver', name: 'daily', version: 1, source: 'promote' });
-    expect(v1.body.record).toEqual({ options: { repin: true, backdrop: 'checks' } });
+    expect(v1.body.record).toEqual({ options: { keep_scene: true, backdrop: 'checks' } });
 
     const { delivered: delivered2 } = await createDeliverResult(recipe, { backdrop: 'stripes' });
     await setRatingGood(delivered2.id);
@@ -604,11 +604,11 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
   it('findDeliverDefaults extracts recipes[].deliver.defaults; null when deliver is absent or defaults is not an object', async () => {
     const recipeRef = uniqueRecipeRef();
     const recipe = uniqueRecipe();
-    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDeliverDefaults(recipe, { repin: true, stroke_light: 'n', backdrop: 'dots' }), 'PUT');
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDeliverDefaults(recipe, { keep_scene: true, stroke_light: 'n', backdrop: 'dots' }), 'PUT');
 
     const found = await getCatalog(env.DB, recipeRef);
     expect(found).not.toBeNull();
-    expect(findDeliverDefaults(found!.doc, recipe)).toEqual({ repin: true, stroke_light: 'n', backdrop: 'dots' });
+    expect(findDeliverDefaults(found!.doc, recipe)).toEqual({ keep_scene: true, stroke_light: 'n', backdrop: 'dots' });
     expect(findDeliverDefaults(found!.doc, 'nonexistent-recipe')).toBeNull();
 
     // Older catalogs never publish a `deliver` key at all — must resolve to null, not throw.
@@ -629,7 +629,7 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
 
 describe('redraw and deliver catalog sections', () => {
   const section = {
-    deliver: { defaults: { repin: true, stroke_light: 'n', backdrop: 'dots' }, backdrop_color: '#c7e5e9' },
+    deliver: { defaults: { keep_scene: true, stroke_light: 'n', backdrop: 'dots' }, backdrop_color: '#c7e5e9' },
     redraw: {
       defaults: { canvas: { denoise: 0.4, size: 2560, route: 'pixel' }, hires: { hires_denoise: 0.45 } },
       light: { scenes: ['sunset', 'moon'], from: ['n', 'nw'], default_from: 'nw' },
@@ -661,7 +661,7 @@ describe('redraw and deliver catalog sections', () => {
     const recipe = uniqueRecipe();
     const { ref } = await publish(recipe, {
       finalize: {
-        defaults: { repin: false },
+        defaults: { keep_scene: false },
         backdrop_color: '#c7e5e9',
         dof: { f_number: { min: 2.8, max: 22, default: 2.8, stops: [2.8] } },
         light: section.redraw.light,
@@ -955,7 +955,7 @@ describe('result.resolved_options (worker-written, opaque)', () => {
     const finalizeRow = await createRequest({
       kind: 'finalize',
       status: 'done',
-      payload: { generation_id: source.id, options: { denoise: 'tidy', repin: true } },
+      payload: { generation_id: source.id, options: { denoise: 'tidy', keep_scene: true } },
       parameters: { kind: 'hires-chain', base_generation: source.id },
     });
     const { generation: delivered } = await createGeneration({

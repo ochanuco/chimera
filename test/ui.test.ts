@@ -638,7 +638,7 @@ describe('Web GUI pages', () => {
 
     await postJson('/api/v1/requests', {
       kind: 'deliver',
-      payload: { generation_id: generation.id, options: { repin: true } },
+      payload: { generation_id: generation.id, options: { keep_scene: true } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
@@ -674,7 +674,7 @@ describe('Web GUI pages', () => {
     const { generation } = await createGeneration();
     const res = await postJson<{ error?: unknown }>('/api/v1/requests', {
       kind: 'finalize',
-      payload: { generation_id: generation.id, options: { repin: true } },
+      payload: { generation_id: generation.id, options: { keep_scene: true } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });

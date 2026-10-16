@@ -14,7 +14,7 @@ async function createRefinementRequest(
   const payload =
     kind === 'redraw'
       ? { generation_id: generationId, options: { method: 'canvas' } }
-      : { generation_id: generationId, options: { repin: true } };
+      : { generation_id: generationId, options: { keep_scene: true } };
   const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
     kind,
     payload,

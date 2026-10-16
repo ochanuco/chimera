@@ -5,7 +5,7 @@ beforeEach(async () => {
   await clearGenerationData();
 });
 
-type Kind = 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'stage' | 'lighting' | 'dof';
+type Kind = 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'saturation' | 'stage' | 'lighting' | 'dof';
 
 async function derive(source: { id: string; short_id: string }, kind: Kind, options?: Record<string, unknown>) {
   const { generation } = await createGeneration({
@@ -54,7 +54,8 @@ describe('GET /api/v1/generations/:id/tree', () => {
     const repair = await derive(light, 'repair', { parts: ['hands'] });
     const masked = await derive(light, 'masked_redraw', { regions: [[0, 0, 0.5, 0.5]], prompt_patch: 'x' });
     const deliver = await derive(repair, 'deliver', { backdrop: null });
-    const stage = await derive(deliver, 'stage', { backdrop: 'dots' });
+    const saturation = await derive(deliver, 'saturation', { strength: 0.5 });
+    const stage = await derive(saturation, 'stage', { backdrop: 'dots' });
     const lighting = await derive(stage, 'lighting', { strength: 0.5 });
     const dof = await derive(lighting, 'dof', { focus: [0.5, 0.5] });
     const other = await createGeneration();
@@ -64,7 +65,7 @@ describe('GET /api/v1/generations/:id/tree', () => {
     expect(fromLeaf.status).toBe(200);
     expect(fromLeaf.body.root_id).toBe(root.id);
     const byId = new Map(fromLeaf.body.nodes.map((n) => [n.id, n]));
-    expect(byId.size).toBe(10);
+    expect(byId.size).toBe(11);
     expect(byId.has(other.generation.id)).toBe(false);
 
     const expected: [{ id: string }, string, string | null, number | null, boolean][] = [
@@ -75,9 +76,10 @@ describe('GET /api/v1/generations/:id/tree', () => {
       [repair, 'repair', null, 1, false],
       [masked, 'masked_redraw', null, 1, false],
       [deliver, 'deliver', null, 2, true],
-      [stage, 'stage', null, 3, true],
-      [lighting, 'lighting', null, 4, true],
-      [dof, 'dof', null, 5, true],
+      [saturation, 'saturation', null, 3, true],
+      [stage, 'stage', null, 4, true],
+      [lighting, 'lighting', null, 5, true],
+      [dof, 'dof', null, 6, true],
     ];
     for (const [g, kind, method, phase, delivered] of expected) {
       expect(byId.get(g.id), kind).toMatchObject({ kind, method, phase, delivered });
@@ -151,7 +153,7 @@ describe('/api/v1/workbenches/:rootId', () => {
   });
 
   it.each([
-    ['a phase key outside 1..5', { '6': { skip: true } }],
+    ['a phase key outside 1..6', { '7': { skip: true } }],
     ['phase 0', { '0': { skip: true } }],
     ['skip false', { '1': { skip: false } }],
     ['an empty pick', { '1': {} }],

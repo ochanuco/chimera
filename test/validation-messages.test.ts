@@ -178,7 +178,7 @@ const REST_EXPECTED: Record<string, string> = {
   'request claim: empty kinds':
     '400 kinds: Too small: expected array to have >=1 items',
   'request claim: import is not claimable':
-    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"',
+    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"',
   'experiment create: non-integer seeds':
     '400 base_parameters.seeds: must be an array of 1-16 non-negative integers',
   'experiment create: seeds and count disagree':
@@ -228,7 +228,7 @@ const REST_EXPECTED: Record<string, string> = {
   'observation sync: records shape':
     '400 files.0.records.0.line: Too small: expected number to be >0; files.0.records.0.record: Invalid input: expected nonoptional, received undefined',
   'workbench: unknown phase key':
-    "400 picks.0: phase key must be one of 1..5, got '0'; picks.7: phase key must be one of 1..5, got '7'",
+    "400 picks.0: phase key must be one of 1..6, got '0'; picks.7: phase key must be one of 1..6, got '7'",
   'workbench: malformed picks':
     '400 picks.1.generation_id: Too small: expected string to have >=1 characters; picks.2: Invalid input',
   'workbench: extra top-level key':
@@ -263,7 +263,7 @@ const MCP_EXPECTED: Record<string, string> = {
   'create_run: bad variables':
     'Input validation error: Invalid arguments for tool create_run: variables.a: Invalid input',
   'create_request: finalize kind':
-    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"',
+    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"',
   'create_request: invalid deliver envelope':
     'Input validation error: Invalid arguments for tool create_request: payload.options.stroke_light: Invalid option: expected one of "even"|"n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw", payload: Unrecognized key: "extra"',
   'create_request: bad recipe_ref':

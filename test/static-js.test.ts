@@ -58,7 +58,7 @@ describe('served app.js', () => {
   });
 
   it('labels request kinds 描き直し / 納品 / ボケ / repair / masked redraw / finalize without defaulting new kinds to finalize', () => {
-    expect(appJs).toContain("var labels = { redraw: '描き直し', deliver: '納品', dof: 'ボケ', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };");
+    expect(appJs).toContain("var labels = { redraw: '描き直し', deliver: '納品', dof: 'ボケ', saturation: '彩度', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };");
     expect(appJs).toContain("return labels[kind] || kind || '';");
     expect(appJs).toContain('requestKindLabel(kind) + \' · \'');
     expect(appJs).toContain('kind.textContent = requestKindLabel(request.kind);');

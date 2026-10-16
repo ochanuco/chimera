@@ -59,7 +59,6 @@ describe('deliver request', () => {
   it('accepts every option and no options at all', async () => {
     const { generation } = await createGeneration();
     const options = {
-      repin: true,
       keep_scene: true,
       transparent: true,
       backdrop: 'dots',
@@ -75,9 +74,9 @@ describe('deliver request', () => {
     expect((await create('deliver', { generation_id: generation.id })).status).toBe(201);
   });
 
-  it('rejects the removed options recolor, skin, keep_legwear and deliver_size', async () => {
+  it('rejects the removed options recolor, skin, keep_legwear, deliver_size and repin', async () => {
     const { generation } = await createGeneration();
-    for (const options of [{ recolor: true }, { skin: true }, { keep_legwear: 0.5 }, { keep_legwear: true }, { deliver_size: 1536 }]) {
+    for (const options of [{ recolor: true }, { skin: true }, { keep_legwear: 0.5 }, { keep_legwear: true }, { deliver_size: 1536 }, { repin: true }]) {
       expect((await create('deliver', { generation_id: generation.id, options })).status).toBe(400);
     }
   });
@@ -226,10 +225,44 @@ describe('photo request', () => {
   });
 });
 
+describe('saturation request', () => {
+  it.each([
+    ['no options', undefined],
+    ['empty options', {}],
+    ['strength 0', { strength: 0 }],
+    ['strength 1', { strength: 1 }],
+    ['strength 0.35', { strength: 0.35 }],
+  ])('accepts %s', async (_label, options) => {
+    const { generation } = await createGeneration();
+    const res = await create('saturation', { generation_id: generation.id, ...(options === undefined ? {} : { options }) });
+    expect(res.status).toBe(201);
+    expect(res.body.kind).toBe('saturation');
+  });
+
+  it.each([
+    ['strength above 1', { options: { strength: 1.1 } }],
+    ['strength below 0', { options: { strength: -0.1 } }],
+    ['a non-numeric strength', { options: { strength: 'full' } }],
+    ['an unknown option key', { options: { strength: 1, repin: true } }],
+    ['an unknown payload key', { options: {}, bogus: 1 }],
+  ])('rejects %s', async (_label, rest) => {
+    const { generation } = await createGeneration();
+    expect((await create('saturation', { generation_id: generation.id, ...rest })).status).toBe(400);
+  });
+
+  it('is claimed by kinds filter and counts as delivered', async () => {
+    const source = await createGeneration();
+    const saturation = await create('saturation', { generation_id: source.generation.id });
+    const claim = await req('/api/v1/requests/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ worker_id: 'w', kinds: ['saturation'] }) });
+    expect(((await claim.json()) as RequestBody).id).toBe(saturation.body.id);
+    expect(isDeliveredRequest({ kind: 'saturation', parameters_json: null })).toBe(true);
+  });
+});
+
 describe('claim', () => {
   it('claims redraw and deliver by kinds filter and leaves other kinds queued', async () => {
     const { generation } = await createGeneration();
-    const finalize = await createRequest({ kind: 'finalize', status: 'queued', payload: { generation_id: generation.id, options: { repin: true } } });
+    const finalize = await createRequest({ kind: 'finalize', status: 'queued', payload: { generation_id: generation.id, options: { keep_scene: true } } });
     const redraw = await create('redraw', { generation_id: generation.id, options: { method: 'hires' } });
     const deliver = await create('deliver', { generation_id: generation.id });
 
@@ -251,7 +284,7 @@ describe('claim', () => {
 
   it('rejects creating a finalize request and names redraw and deliver', async () => {
     const { generation } = await createGeneration();
-    const res = await create('finalize', { generation_id: generation.id, options: { repin: true } });
+    const res = await create('finalize', { generation_id: generation.id, options: { keep_scene: true } });
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toMatch(/redraw.*deliver|deliver.*redraw/);
   });
@@ -324,7 +357,7 @@ describe('MCP create_request', () => {
 
     const deliver = await mcpToolCall<{ created: boolean; request: { kind: string } }>('create_request', {
       kind: 'deliver',
-      payload: { generation_id: generation.id, options: { repin: true } },
+      payload: { generation_id: generation.id, options: { keep_scene: true } },
       idempotency_key: crypto.randomUUID(),
     });
     expect(deliver.isError).toBe(false);

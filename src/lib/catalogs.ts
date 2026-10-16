@@ -109,6 +109,7 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     patches: doc.patches,
     ...('dof' in doc ? { dof: (doc as { dof?: unknown }).dof } : {}),
     ...('lens' in doc ? { lens: (doc as { lens?: unknown }).lens } : {}),
+    ...('saturation' in doc ? { saturation: (doc as { saturation?: unknown }).saturation } : {}),
     ...('photo' in doc ? { photo: (doc as { photo?: unknown }).photo } : {}),
     git_commit: doc.git_commit ?? null,
     git_branch: doc.git_branch ?? null,
@@ -356,4 +357,10 @@ export function findCatalogPose(doc: RecipeCatalogDoc, recipeName: string, poseN
     if (pose && typeof pose === 'object' && (pose as Record<string, unknown>).name === poseName) return pose;
   }
   return null;
+}
+
+/** Top-level `saturation.strength` — the default blend of the `saturation` request kind. null when absent or outside 0..1. */
+export function findSaturation(doc: RecipeCatalogDoc): { strength: number } | null {
+  const strength = plainObject(plainObject((doc as { saturation?: unknown }).saturation)?.strength)?.default;
+  return typeof strength === 'number' && strength >= 0 && strength <= 1 ? { strength } : null;
 }

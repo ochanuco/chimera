@@ -107,7 +107,7 @@ Promotion として提案し、実際のコード変更は別途 chagama
     もう一度描く plain render を requests 行として積む。GUI は prompt を書かない。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（redraw / deliver / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が
+判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が
 触るのは自分の D1 の requests 行と、写真ページ（[ui.md](ui.md#写真photos)）とワークベンチの背景フェーズがアップロードする写真（`kind = import`
 の Request・Job・Generation と R2 の original）のみです。
 

@@ -132,9 +132,10 @@ describe('createRequestSchema: unknown keys elsewhere', () => {
     const { generation } = await createGeneration();
     const strictKinds = [
       ['redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048 } }],
-      ['deliver', { generation_id: generation.id, options: { repin: true } }],
+      ['deliver', { generation_id: generation.id, options: { keep_scene: true } }],
       ['dof', { generation_id: generation.id, options: { focus: [0.5, 0.5] } }],
       ['lighting', { generation_id: generation.id }],
+      ['saturation', { generation_id: generation.id, options: { strength: 0.5 } }],
     ] as const;
     for (const [kind, payload] of strictKinds) {
       const ok = await postJson<RequestBody>('/api/v1/requests', { kind, payload, idempotency_key: crypto.randomUUID(), created_by: 'gui' });
@@ -154,7 +155,7 @@ describe('createRequestSchema: unknown keys elsewhere', () => {
     const { generation } = await createGeneration();
     const bad = await postJson<ErrorBody>('/api/v1/requests', {
       kind: 'deliver',
-      payload: { generation_id: generation.id, options: { repin: true, unknown_option: 1 } },
+      payload: { generation_id: generation.id, options: { keep_scene: true, unknown_option: 1 } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });

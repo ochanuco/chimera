@@ -32,6 +32,8 @@ export interface WorkbenchData {
   catalogVersion: string | null;
   backdropColor: string | null;
   dof: DofCatalog | null;
+  /** Catalog `saturation.strength`: the default blend of the 彩度 phase. */
+  saturation: { strength: number } | null;
   /** Photos uploaded on `/photos` (or from the 背景 phase), newest first. */
   photos: PhotoItem[];
 }
@@ -39,9 +41,10 @@ export interface WorkbenchData {
 const PHASES = [
   { no: 1, label: '描き直し' },
   { no: 2, label: 'フチ' },
-  { no: 3, label: '背景' },
-  { no: 4, label: '光' },
-  { no: 5, label: 'ボケ' },
+  { no: 3, label: '彩度' },
+  { no: 4, label: '背景' },
+  { no: 5, label: '光' },
+  { no: 6, label: 'ボケ' },
 ] as const;
 
 function numberDefault(fields: Record<string, unknown> | undefined, key: string): number | null {
@@ -165,7 +168,6 @@ function LightPanel({ data }: { data: WorkbenchData }) {
 }
 
 function DeliverForm({ data }: { data: WorkbenchData }) {
-  const defaults = data.deliverDefaults;
   return (
     <div class="wb-form" data-wb-form="2" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
@@ -181,14 +183,6 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
           <OutlineEditor outlines={data.outlines} stroke={data.strokeDefault} />
         </details>
 
-        <details class="wb-acc">
-          <summary>詳細</summary>
-          <div class="wb-acc-body">
-            <label>
-              <input type="checkbox" name="repin" checked={defaults?.repin === true} /> 彩度を圧縮する
-            </label>
-          </div>
-        </details>
         <label class="backdrop-option-plain" hidden>
           <input type="radio" name="backdrop" value="transparent" checked />
         </label>
@@ -198,10 +192,26 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
   );
 }
 
+function SaturationForm({ data }: { data: WorkbenchData }) {
+  const strength = data.saturation?.strength ?? 1;
+  return (
+    <div class="wb-form" data-wb-form="3" hidden>
+      <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <div data-wb-form-body>
+        <p class="wb-note">キャラとフチの彩度を圧縮します。フチの色も対象です。背景はそのままです。</p>
+        <label class="wb-field">
+          強さ <span class="mono" data-wb-saturation-readout>{strength}</span>
+          <input type="range" name="wb_saturation_strength" min="0" max="1" step="0.05" value={String(strength)} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function StageForm({ data }: { data: WorkbenchData }) {
   const patterns = data.backdrops.length > 0 ? data.backdrops : [{ name: 'stripes', label: '斜めストライプ' }];
   return (
-    <div class="wb-form" data-wb-form="3" hidden>
+    <div class="wb-form" data-wb-form="4" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <div class="wb-pills" role="group" aria-label="背景の種類">
@@ -307,7 +317,7 @@ function StageForm({ data }: { data: WorkbenchData }) {
 
 function LightingForm() {
   return (
-    <div class="wb-form" data-wb-form="4" hidden>
+    <div class="wb-form" data-wb-form="5" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <p class="wb-note">背景の明るさと色味にキャラとフチを合わせます。向きを選ぶとその側から陰影も付けます。</p>
@@ -363,7 +373,7 @@ function FocalLengthField({ dof }: { dof: DofCatalog }) {
 
 function DofForm({ data }: { data: WorkbenchData }) {
   return (
-    <div class="wb-form" data-wb-form="5" hidden>
+    <div class="wb-form" data-wb-form="6" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <DofFields dof={data.dof ?? FALLBACK_DOF} />
@@ -388,7 +398,7 @@ function DofForm({ data }: { data: WorkbenchData }) {
   );
 }
 
-/** `/work/:shortId`: the five-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
+/** `/work/:shortId`: the six-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
 export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchData }) {
   const initial = { tree: data.tree, picks: data.picks, at: data.at };
   return (
@@ -479,7 +489,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
             <div class="wb-panel-body">
               <div>
                 <p class="wb-note">
-                  フェーズ <span data-wb-phase-no>1</span> / 5
+                  フェーズ <span data-wb-phase-no>1</span> / 6
                 </p>
                 <h2 class="wb-panel-title">
                   <span data-wb-phase-title>描き直し</span>の候補を作る
@@ -487,6 +497,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               </div>
               <RedrawForm data={data} />
               <DeliverForm data={data} />
+              <SaturationForm data={data} />
               <StageForm data={data} />
               <LightingForm />
               <DofForm data={data} />

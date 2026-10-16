@@ -26,7 +26,6 @@ const keepRegionsField = z.array(regionSchema).optional();
 const keepStrengthField = z.number().gt(0).lt(1).optional();
 const hiresField = z.number().int().min(64).nullable().optional();
 const hiresDenoiseField = z.number().gt(0).lte(1).nullable().optional();
-const repinField = z.boolean().optional();
 const keepSceneField = z.boolean().optional();
 const transparentField = z.boolean().nullable().optional();
 const backdropField = z.string().nullable().optional();
@@ -65,7 +64,7 @@ export const redrawOptionsSchema = z.discriminatedUnion('method', [
 ]);
 
 /** 廃止した deliver option。保存済みの payload / profile 本文には残っているので、読み直すときは `stripRemovedDeliverOptions` で落とす。 */
-export const REMOVED_DELIVER_OPTIONS = ['recolor', 'skin', 'keep_legwear', 'deliver_size'] as const;
+export const REMOVED_DELIVER_OPTIONS = ['recolor', 'skin', 'keep_legwear', 'deliver_size', 'repin'] as const;
 
 export function stripRemovedDeliverOptions(options: unknown): unknown {
   if (typeof options !== 'object' || options === null || Array.isArray(options)) return options;
@@ -77,7 +76,6 @@ export function stripRemovedDeliverOptions(options: unknown): unknown {
 /** deliver の options は切り抜き後の飾りだけ (docs/worker-protocol.md「deliver」)。 */
 export const deliverOptionsSchema = z
   .object({
-    repin: repinField,
     keep_scene: keepSceneField,
     transparent: transparentField,
     backdrop: backdropField,
@@ -279,6 +277,20 @@ export const lightingPayloadSchema = z
   .object({
     generation_id: z.string().min(1),
     options: lightingOptionsSchema.optional(),
+  })
+  .strict();
+
+/** saturation（彩度）の options (docs/worker-protocol.md「saturation」)。strength は元の彩度と圧縮後の彩度の混ぜ具合。入力は deliver の出力で、worker が判定する。 */
+export const saturationOptionsSchema = z
+  .object({
+    strength: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
+export const saturationPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: saturationOptionsSchema.optional(),
   })
   .strict();
 
