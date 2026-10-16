@@ -91,7 +91,7 @@ describe('MCP deliver_generation', () => {
     const { generation } = await createGeneration();
     const call = await mcpToolCall<CreateRequestResult>('deliver_generation', {
       generation_id: generation.id,
-      options: { repin: true, backdrop: 'dots', stroke_light: 'n' },
+      options: { keep_scene: true, backdrop: 'dots', stroke_light: 'n' },
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(false);
@@ -100,7 +100,7 @@ describe('MCP deliver_generation', () => {
     expect(call.data?.request.created_by).toBe('mcp');
     expect(call.data?.request.payload).toEqual({
       generation_id: generation.short_id,
-      options: { repin: true, backdrop: 'dots', stroke_light: 'n' },
+      options: { keep_scene: true, backdrop: 'dots', stroke_light: 'n' },
     });
 
     const viaRest = await getJson<{ kind: string; created_by: string }>(`/api/v1/requests/${call.data?.request.id}`);
@@ -376,6 +376,26 @@ describe('MCP stage_generation', () => {
     }
     const list = await getJson<{ items: RequestListItem[] }>(`/api/v1/requests?generation_id=${generation.id}&kind=stage`);
     expect(list.body.items).toEqual([]);
+  });
+});
+
+describe('MCP saturation_generation', () => {
+  it('queues a saturation row and rejects bad input', async () => {
+    const { generation } = await createGeneration();
+    const call = await mcpToolCall<CreateRequestResult>('saturation_generation', {
+      generation_id: generation.id,
+      strength: 0.5,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.kind).toBe('saturation');
+    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { strength: 0.5 } });
+    const bare = await mcpToolCall<CreateRequestResult>('saturation_generation', { generation_id: generation.id, idempotency_key: crypto.randomUUID() });
+    expect(bare.data?.request.payload).toEqual({ generation_id: generation.short_id, options: {} });
+    for (const bad of [{ strength: 2 }, { strength: -0.1 }]) {
+      const rejected = await mcpToolCall('saturation_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+      expect(rejected.isError).toBe(true);
+    }
   });
 });
 

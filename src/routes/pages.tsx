@@ -39,6 +39,7 @@ import {
   findDeliverDefaults,
   findDeliverOutlines,
   findDof,
+  findSaturation,
   findRedrawDefaults,
   findRedrawDials,
   findRedrawLight,
@@ -552,6 +553,7 @@ pages.get('/work/:shortId', async (c) => {
     catalogVersion: catalog?.row.updated_at ?? null,
     backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
     dof: doc ? findDof(doc) : null,
+    saturation: doc ? findSaturation(doc) : null,
     photos,
   };
   return c.html(<WorkbenchPage path={c.req.path} data={data} />);

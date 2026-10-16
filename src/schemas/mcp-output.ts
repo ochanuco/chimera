@@ -249,6 +249,7 @@ export const mcpOutputs = {
   photo_generation: createdRequestSchema,
   stage_generation: createdRequestSchema,
   lighting_generation: createdRequestSchema,
+  saturation_generation: createdRequestSchema,
   get_request: requestSchema,
   list_requests: z.looseObject({ items: z.array(requestSchema) }),
 

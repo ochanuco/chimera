@@ -12,6 +12,7 @@ import {
   photoOptionsSchema,
   stageOptionsSchema,
   lightingOptionsSchema,
+  saturationOptionsSchema,
   deliverProfileRefSchema,
 } from './request-payloads';
 import { presetKindSchema } from './presets';
@@ -163,6 +164,13 @@ export const lightingGenerationInputSchema = z.object({
   direction: lightingOptionsSchema.shape.direction,
   strength: lightingOptionsSchema.shape.strength,
   scene: lightingOptionsSchema.shape.scene,
+  idempotency_key: z.string().min(1),
+});
+
+/** `saturation_generation` の入力。 */
+export const saturationGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  strength: saturationOptionsSchema.shape.strength,
   idempotency_key: z.string().min(1),
 });
 

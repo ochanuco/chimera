@@ -51,7 +51,7 @@ async function createRun(experimentId: string, overrides: Record<string, unknown
 function deliverRequestBody(generationId: string, overrides: Record<string, unknown> = {}) {
   return {
     kind: 'deliver',
-    payload: { generation_id: generationId, options: { repin: true } },
+    payload: { generation_id: generationId, options: { keep_scene: true } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'gui',
     ...overrides,
@@ -120,7 +120,7 @@ describe('POST /api/v1/requests', () => {
     expect(first.status).toBe(201);
     expect(first.body.kind).toBe('deliver');
     expect(first.body.status).toBe('queued');
-    expect(first.body.payload).toEqual({ generation_id: generation.id, options: { repin: true } });
+    expect(first.body.payload).toEqual({ generation_id: generation.id, options: { keep_scene: true } });
     expect((first.body as unknown as Record<string, unknown>).payload_hash).toBeUndefined();
 
     const replay = await createDeliverRequest(generation.id, { idempotency_key: key });
@@ -129,7 +129,7 @@ describe('POST /api/v1/requests', () => {
 
     const conflicting = await postJson(
       '/api/v1/requests',
-      deliverRequestBody(generation.id, { idempotency_key: key, payload: { generation_id: generation.id, options: { repin: false } } }),
+      deliverRequestBody(generation.id, { idempotency_key: key, payload: { generation_id: generation.id, options: { keep_scene: false } } }),
     );
     expect(conflicting.status).toBe(409);
   });
@@ -155,7 +155,7 @@ describe('POST /api/v1/requests', () => {
     const { generation } = await createGeneration();
     const res = await postJson<{ error: { message: string } }>('/api/v1/requests', {
       kind: 'finalize',
-      payload: { generation_id: generation.id, options: { repin: true } },
+      payload: { generation_id: generation.id, options: { keep_scene: true } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });

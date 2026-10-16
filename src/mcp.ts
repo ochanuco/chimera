@@ -62,6 +62,7 @@ import {
   idInputSchema,
   lensGenerationInputSchema,
   lightingGenerationInputSchema,
+  saturationGenerationInputSchema,
   listCatalogInputSchema,
   listExperimentsInputSchema,
   listGenerationsInputSchema,
@@ -175,7 +176,8 @@ const MCP_INSTRUCTIONS =
   'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture. To shoot a delivered ' +
   'picture like an acrylic stand on location, stand it in an uploaded photo with photo_generation, or step by step: ' +
   'deliver transparent, stage_generation (a backdrop pattern or a photo), lighting_generation (light it by the ' +
-  'backdrop), then dof_generation.\n' +
+  'backdrop), then dof_generation. To compress the saturation of a delivered picture (figure and outline, outline colours ' +
+  'included), run saturation_generation on the deliver output before stage_generation / photo_generation / dof_generation.\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
 
@@ -501,8 +503,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
         'canvas, hires or light; every method takes cut: true to cut the figure out), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}). "finalize", "repair" and "masked_redraw" can no longer ' +
-        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation are the same requests with a typed input. created_by is ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "saturation" (payload {generation_id, options?: {strength?}}). "finalize", "repair" and "masked_redraw" can no longer ' +
+        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation / saturation_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
@@ -574,9 +576,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'layer assets (figure, outline, backdrop) that dof_generation blurs. ' +
         'options is optional; an omitted field resolves to the recipe\'s published deliver default — ' +
         'list_catalog\'s recipes[].deliver.defaults is where these are published, the same values the WebUI form presets ' +
-        'from, so look them up per-recipe rather than hardcoding (stroke_light "n", backdrop "dots", outlines and repin true across ' +
+        'from, so look them up per-recipe rather than hardcoding (stroke_light "n", backdrop "dots" and outlines across ' +
         'recipes). An explicit null keeps its own meaning rather than falling back to a default. Fields: ' +
-        'repin (accent-compression pass), keep_scene (keep background/scene), ' +
+        'keep_scene (keep background/scene), ' +
         'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
         'or a #RRGGBB color; null delivers transparent unless transparent is false), ' +
         'transparent (true is the explicit form of an alpha-cut delivery with no backdrop; false keeps a backdrop even ' +
@@ -777,6 +779,35 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       );
       if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputs.stage_generation, { created, request: serializeRequest(row) });
+    },
+  );
+
+  server.registerTool(
+    'saturation_generation',
+    {
+      outputSchema: mcpOutputs.saturation_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a saturation request (docs/worker-protocol.md "saturation"): compress the saturation of a delivered picture\'s ' +
+        'figure and outline layers (outline colours included; the backdrop passes through). strength is 0-1 (default 1, the ' +
+        'catalog\'s saturation.strength): how far the original saturation is blended toward the compressed one. generation_id ' +
+        'accepts a short_id and takes a deliver output with layer assets; stage / lighting / dof / lens / photo outputs are refused. ' +
+        'The output is a delivered picture with the same layers that refines the source; stage_generation, photo_generation and ' +
+        'dof_generation may follow. Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: saturationGenerationInputSchema,
+    },
+    async ({ generation_id, strength, idempotency_key }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const options: Record<string, unknown> = {};
+      if (strength !== undefined) options.strength = strength;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'saturation', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      if (created) notifyHubInBackground(env, 'queued', row);
+      return jsonResult(mcpOutputs.saturation_generation, { created, request: serializeRequest(row) });
     },
   );
 

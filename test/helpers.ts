@@ -284,7 +284,7 @@ export function itxtChunkData(keyword: string, text: string, compressed = false)
 
 export interface TestRequestOverrides {
   id?: string;
-  kind?: 'generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof' | 'lens' | 'photo' | 'stage' | 'lighting' | 'import';
+  kind?: 'generate' | 'finalize' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'dof' | 'lens' | 'photo' | 'stage' | 'lighting' | 'saturation' | 'import';
   status?: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
   idempotency_key?: string;
   run_id?: string | null;

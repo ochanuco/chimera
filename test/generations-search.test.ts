@@ -233,14 +233,14 @@ describe('Generation search: refinement_request badge (docs/ui.md「Gallery」�
         kind,
         status: 'queued',
         created_at: createdAt,
-        payload: { generation_id: generationIdOrShortId, options: { repin: true } },
+        payload: { generation_id: generationIdOrShortId, options: { keep_scene: true } },
       });
       return body.id;
     }
     const payload =
       kind === 'redraw'
         ? { generation_id: generationIdOrShortId, options: { method: 'light', scene: 'sunset' } }
-        : { generation_id: generationIdOrShortId, options: { repin: true } };
+        : { generation_id: generationIdOrShortId, options: { keep_scene: true } };
     const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
       kind,
       payload,

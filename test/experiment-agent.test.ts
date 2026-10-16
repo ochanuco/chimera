@@ -248,6 +248,7 @@ describe('MCP server at /mcp', () => {
         'photo_generation',
         'stage_generation',
         'lighting_generation',
+        'saturation_generation',
         'get_request',
         'list_requests',
         'list_generations',
@@ -360,7 +361,7 @@ describe('MCP server at /mcp', () => {
     const { generation } = await createGeneration();
     const call = await mcpToolCall<{ created: boolean; request: { id: string; created_by: string } }>('create_request', {
       kind: 'deliver',
-      payload: { generation_id: generation.id, options: { repin: true } },
+      payload: { generation_id: generation.id, options: { keep_scene: true } },
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(false);

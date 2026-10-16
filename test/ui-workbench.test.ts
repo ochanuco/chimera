@@ -98,16 +98,16 @@ describe('GET /work/:shortId', () => {
     expect((await req('/work/nope00')).status).toBe(404);
   });
 
-  it('renders the five-phase stepper, every phase form, and the tree and picks for the client', async () => {
+  it('renders the six-phase stepper, every phase form, and the tree and picks for the client', async () => {
     const { generation: root } = await createGeneration();
     const hires = await derive(root, 'redraw', { method: 'hires' });
     expect((await postJson(`/api/v1/workbenches/${root.id}`, { picks: { '1': { generation_id: hires.id } } }, 'PUT')).status).toBe(200);
 
     const html = await (await req(`/work/${root.short_id}?at=${hires.short_id}`)).text();
     expect(html).toContain('data-workbench=');
-    for (const label of ['元絵', '1. 描き直し', '2. フチ', '3. 背景', '4. 光', '5. ボケ']) expect(html).toContain(label);
-    for (const phase of [1, 2, 3, 4, 5]) expect(html).toContain(`data-wb-form="${phase}"`);
-    expect(html).not.toContain('data-wb-form="6"');
+    for (const label of ['元絵', '1. 描き直し', '2. フチ', '3. 彩度', '4. 背景', '5. 光', '6. ボケ']) expect(html).toContain(label);
+    for (const phase of [1, 2, 3, 4, 5, 6]) expect(html).toContain(`data-wb-form="${phase}"`);
+    expect(html).not.toContain('data-wb-form="7"');
     expect(html).not.toContain('2. 部分');
     expect(html).toContain('href="/work"');
     expect(html).not.toContain('既定');
@@ -189,17 +189,28 @@ describe('GET /work/:shortId', () => {
     expect(form).toMatch(/<details class="wb-acc" open="">\s*<summary>\s*フチ/);
     expect(form).toContain('data-outline-editor');
     expect(form).toContain('一番外の陰影');
-    expect(form).toMatch(/<details class="wb-acc">\s*<summary>詳細<\/summary>/);
-    expect(form).toContain('name="repin"');
+    expect(form).not.toContain('name="repin"');
     for (const name of ['recolor', 'skin', 'keep_legwear', 'wb_deliver_size']) expect(form).not.toContain(`name="${name}"`);
     expect(appJs).not.toMatch(/recolor|keep_legwear|deliver_size|name="skin"/);
     expect(form).toContain('切り抜きは 2 回目から使い回します');
   });
 
-  it('phase 3 offers patterns with a shadow toggle, or a photo with upload, placement and height', async () => {
-    const { generation: root } = await createGeneration();
+  it('phase 3 compresses saturation with a strength slider defaulting to the catalog value', async () => {
+    const recipe = `wb-sat-${crypto.randomUUID()}`;
+    const catalog = { schema_version: 3, recipes: [{ name: recipe, poses: [] }], patches: {}, saturation: { strength: 0.6 } };
+    expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
+    const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="3"'), html.indexOf('data-wb-form="4"'));
+    expect(form).toMatch(/name="wb_saturation_strength" min="0" max="1" step="0.05" value="0.6"/);
+    expect(form).toContain('data-wb-saturation-readout');
+    expect(appJs).toContain("return { kind: 'saturation', options: { strength: rangeValue('wb_saturation_strength') } };");
+  });
+
+  it('phase 4 offers patterns with a shadow toggle, or a photo with upload, placement and height', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
     expect(form).toContain('data-wb-stage-mode="pattern"');
     expect(form).toContain('data-wb-stage-mode="photo"');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="random" checked[^>]*>\s*<span class="backdrop-option-label">ランダム/);
@@ -215,17 +226,17 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('name="wb_stage_height"');
   });
 
-  it('phase 3 lists the uploaded photos to choose from', async () => {
+  it('phase 4 lists the uploaded photos to choose from', async () => {
     const { generation: photo } = await createGeneration({ requestOverrides: { kind: 'import', parameters: { kind: 'photo' } } });
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     expect(html).toContain(`data-wb-photo="${photo.short_id}"`);
   });
 
-  it('phase 4 lights with a strength slider and an optional direction', async () => {
+  it('phase 5 lights with a strength slider and an optional direction', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="4"'), html.indexOf('data-wb-form="5"'));
+    const form = html.slice(html.indexOf('data-wb-form="5"'), html.indexOf('data-wb-form="6"'));
     expect(form).toContain('name="wb_lighting_strength"');
     expect(form).toContain('data-wb-lighting-none');
     expect(form).toContain('data-compass="lighting"');
@@ -241,7 +252,7 @@ describe('GET /work/:shortId', () => {
     expect(foot).toBeGreaterThan(body);
     expect(html.indexOf('data-wb-run')).toBeGreaterThan(foot);
     expect(html.indexOf('data-wb-error')).toBeGreaterThan(foot);
-    expect(html.indexOf('data-wb-form="5"')).toBeLessThan(foot);
+    expect(html.indexOf('data-wb-form="6"')).toBeLessThan(foot);
   });
 
   it('captions both panes with the same resolution and size text as the Generation page', () => {
@@ -281,7 +292,7 @@ describe('GET /work/:shortId', () => {
     expect(appJs).toContain("OUTLINE_COLOR_NAMES = { '#ffffff': '白', '#885b80': '紫' }");
   });
 
-  it('phase 5 has the F-number slider over the catalog stops, the three scope boxes, the viewfinder choices and the photo dials', async () => {
+  it('phase 6 has the F-number slider over the catalog stops, the three scope boxes, the viewfinder choices and the photo dials', async () => {
     const recipe = `wb-dof-${crypto.randomUUID()}`;
     const catalog = {
       schema_version: 3,
@@ -292,7 +303,7 @@ describe('GET /work/:shortId', () => {
     expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
     const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="5"'));
+    const form = html.slice(html.indexOf('data-wb-form="6"'));
     expect(form).toContain('data-dof-stops="[2.8,4,5.6,8]"');
     for (const name of ['wb_dof_tilt', 'wb_dof_nearer', 'wb_dof_bokeh', 'wb_dof_focal_length']) expect(form).toContain(`name="${name}"`);
     expect(form).toMatch(/<option value="85mm" selected/);
@@ -328,6 +339,7 @@ describe('workbench client script', () => {
     expect(appJs).toContain("method: 'light'");
     expect(appJs).toContain("kind: 'stage'");
     expect(appJs).toContain("kind: 'lighting'");
+    expect(appJs).toContain("kind: 'saturation'");
     expect(appJs).toContain('function sceneOf(node)');
     expect(appJs).toContain('stageOptions.light = null');
     expect(appJs).toContain('var WB_FRAME_BOX = [0.05, 0.05, 0.95, 0.95];');

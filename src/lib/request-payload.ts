@@ -8,6 +8,7 @@ import {
   lightingPayloadSchema,
   photoPayloadSchema,
   redrawPayloadSchema,
+  saturationPayloadSchema,
   stagePayloadSchema,
 } from '../schemas/request-payloads';
 import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE, patchesFingerprintIssues } from './request-rules';
@@ -33,6 +34,8 @@ function payloadSchemaFor(kind: PayloadKind): StandardSchemaV1 {
       return stagePayloadSchema;
     case 'lighting':
       return lightingPayloadSchema;
+    case 'saturation':
+      return saturationPayloadSchema;
     case 'generate':
       return generatePayloadSchema;
   }

@@ -2549,7 +2549,6 @@ export const appJs = `
     }
 
     var options = {
-      repin: checkbox('repin'),
       backdrop: backdrop,
     };
     if (qs('input[name="keep_scene"]', form)) options.keep_scene = checkbox('keep_scene');
@@ -2888,7 +2887,7 @@ export const appJs = `
 
   // kind 表示ラベル。src/ui/components/OptionControls.tsx の REQUEST_KIND_LABELS と同じ規則。
   function requestKindLabel(kind) {
-    var labels = { redraw: '描き直し', deliver: '納品', dof: 'ボケ', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };
+    var labels = { redraw: '描き直し', deliver: '納品', dof: 'ボケ', saturation: '彩度', repair: 'repair', masked_redraw: 'masked redraw', finalize: 'finalize' };
     return labels[kind] || kind || '';
   }
 
@@ -4609,9 +4608,10 @@ export const appJs = `
   var WB_PHASES = [
     { no: 1, label: '描き直し' },
     { no: 2, label: 'フチ' },
-    { no: 3, label: '背景' },
-    { no: 4, label: '光' },
-    { no: 5, label: 'ボケ' },
+    { no: 3, label: '彩度' },
+    { no: 4, label: '背景' },
+    { no: 5, label: '光' },
+    { no: 6, label: 'ボケ' },
   ];
   var WB_LAST = WB_PHASES.length;
   var WB_RATING_COLOR = { bad: 'var(--bad)', neutral: 'var(--neutral)', good: 'var(--good)' };
@@ -5100,6 +5100,7 @@ export const appJs = `
         var sceneLabel = o.scene === 'sunset' ? ' · 夕日' : o.scene === 'moon' ? ' · 月明かり' : '';
         return '光 ' + (o.strength !== undefined ? o.strength : '') + sceneLabel + (o.direction ? ' · from ' + o.direction : '');
       }
+      if (kind === 'saturation') return '彩度' + (o.strength !== undefined ? ' ' + o.strength : '');
       if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント') + (o.focal_length ? ' · ' + o.focal_length : '');
       if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
@@ -5196,7 +5197,7 @@ export const appJs = `
     }
 
     function stagingPhoto() {
-      return wb.active === 3 && wb.stageMode === 'photo' && !!wb.photo && unavailableText() === '';
+      return wb.active === 4 && wb.stageMode === 'photo' && !!wb.photo && unavailableText() === '';
     }
 
     function updateOverlays() {
@@ -5244,8 +5245,9 @@ export const appJs = `
       if (wb.active === 2 && input.delivered) return '納品済み';
       var notDelivered = '先に 2 でフチを付けてください';
       if (wb.active === 3 && input.kind !== 'deliver') return notDelivered;
-      if (wb.active === 4 && input.kind !== 'stage') return '先に背景を付けてください';
-      if (wb.active === 5 && ['deliver', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
+      if (wb.active === 4 && ['deliver', 'saturation'].indexOf(input.kind) < 0) return notDelivered;
+      if (wb.active === 5 && input.kind !== 'stage') return '先に背景を付けてください';
+      if (wb.active === 6 && ['deliver', 'saturation', 'stage', 'lighting'].indexOf(input.kind) < 0) return notDelivered;
       return '';
     }
 
@@ -5390,7 +5392,7 @@ export const appJs = `
     function runBlocker() {
       if (!activeInputNode()) return '入力がありません';
       if (unavailableText()) return '';
-      if (wb.active === 3 && wb.stageMode === 'photo') {
+      if (wb.active === 4 && wb.stageMode === 'photo') {
         if (!wb.photo) return '写真を選んでください';
         if (!wb.place) return '台座の位置をクリックしてください';
       }
@@ -5430,14 +5432,14 @@ export const appJs = `
       });
       var sceneBox = qs('[data-wb-stage-scene]', root);
       if (sceneBox) {
-        var scene = wb.active === 3 ? sceneOf(activeInputNode()) : null;
+        var scene = wb.active === 4 ? sceneOf(activeInputNode()) : null;
         sceneBox.hidden = !scene;
         if (scene) {
           qs('[data-wb-stage-scene-label]', root).textContent =
             'シーンの色を背景と影に付ける: ' + (WB_SCENE_LABELS[scene.scene] || scene.scene) + '（from ' + scene.from + '、1 の light から）';
         }
       }
-      if (wb.active === 3) {
+      if (wb.active === 4) {
         qsa('[data-wb-shadow]', root).forEach(function (b) {
           b.classList.toggle('wb-pill-on', (b.getAttribute('data-wb-shadow') === 'on') === wb.shadow);
         });
@@ -5448,10 +5450,10 @@ export const appJs = `
         qs('[data-wb-shadow-readout]', root).textContent = !wb.shadow
           ? ''
           : shadowDir === undefined
-            ? '3 のフチの陰影の向き'
+            ? '2 のフチの陰影の向き'
             : shadowDir
-              ? 'from ' + shadowDir + '（3 のフチの陰影と同じ）'
-              : '向きが無いので付きません（3 のフチの陰影が均一）';
+              ? 'from ' + shadowDir + '（2 のフチの陰影と同じ）'
+              : '向きが無いので付きません（2 のフチの陰影が均一）';
       }
       var dofPhoto = qs('[data-wb-dof-photo]', root);
       var stagedInPhoto = wb.active === WB_LAST && photoStaged(activeInputNode());
@@ -5460,7 +5462,7 @@ export const appJs = `
       if (dofScope) dofScope.hidden = stagedInPhoto;
       var frameLink = qs('[data-wb-frame-link]', root);
       if (frameLink) {
-        var frameInput = wb.active === 3 ? activeInputNode() : null;
+        var frameInput = wb.active === 4 ? activeInputNode() : null;
         frameLink.hidden = !frameInput;
         if (frameInput) frameLink.href = '/frame/' + frameInput.short_id;
       }
@@ -5602,6 +5604,9 @@ export const appJs = `
         return { kind: 'deliver', options: options };
       }
       if (k === 3) {
+        return { kind: 'saturation', options: { strength: rangeValue('wb_saturation_strength') } };
+      }
+      if (k === 4) {
         if (wb.stageMode === 'photo') {
           return { kind: 'stage', options: { photo: wb.photo.short_id, place: [wb.place[0], wb.place[1]], height: stageHeight() } };
         }
@@ -5619,7 +5624,7 @@ export const appJs = `
         if (sceneOf(activeInputNode()) && !sceneOn) stageOptions.light = null;
         return { kind: 'stage', options: stageOptions };
       }
-      if (k === 4) {
+      if (k === 5) {
         var lightingOptions = { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null };
         if (wb.lightingScene) lightingOptions.scene = wb.lightingScene;
         return { kind: 'lighting', options: lightingOptions };
@@ -5858,8 +5863,8 @@ export const appJs = `
     root.addEventListener('change', function (ev) {
       var radio = ev.target;
       if (radio instanceof HTMLInputElement && radio.type === 'radio' && radio.name === 'backdrop') {
-        syncBackdropColor(phaseForm(3));
-        if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(3)).focus();
+        syncBackdropColor(phaseForm(4));
+        if (radio.value === 'color') qs('input[name="backdrop_color"]', phaseForm(4)).focus();
       }
       if (radio instanceof HTMLInputElement && radio.name === 'wb_stage_scene') render();
       if (radio instanceof HTMLInputElement && radio.hasAttribute('data-wb-photo-file')) uploadStagePhoto(radio);
@@ -5906,6 +5911,7 @@ export const appJs = `
         qs('[data-wb-stage-height-readout]', root).textContent = input.value;
         updateOverlays();
       }
+      if (input.name === 'wb_saturation_strength') qs('[data-wb-saturation-readout]', root).textContent = input.value;
       if (input.name === 'wb_lighting_strength') qs('[data-wb-lighting-readout]', root).textContent = input.value;
       if (/^wb_dof_(tilt|nearer|bokeh)$/.test(input.name)) qs('[data-wb-dof-readout="' + input.name.slice(7) + '"]', root).textContent = input.value;
     });
@@ -5999,7 +6005,7 @@ export const appJs = `
       while (open < WB_LAST && pick(open)) open += 1;
       wb.active = open;
     }
-    var stageForm = phaseForm(3);
+    var stageForm = phaseForm(4);
     if (stageForm) syncBackdropColor(stageForm);
     window.addEventListener('resize', function () { fitPanel(); imagePanes().forEach(layoutPane); });
     render();

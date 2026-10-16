@@ -92,7 +92,7 @@ function generateRequestBody(overrides: Record<string, unknown> = {}) {
 async function createDeliverRequest(generationId: string) {
   return postJson<{ id: string; kind: string; status: string }>('/api/v1/requests', {
     kind: 'deliver',
-    payload: { generation_id: generationId, options: { repin: true } },
+    payload: { generation_id: generationId, options: { keep_scene: true } },
     idempotency_key: crypto.randomUUID(),
     created_by: 'gui',
   });
