@@ -260,11 +260,11 @@ function StageForm({ data }: { data: WorkbenchData }) {
           <div class="wb-field">
             影 <span class="mono" data-wb-shadow-readout></span>
             <div class="wb-pills" role="group" aria-label="影">
-              <button type="button" class="wb-pill wb-pill-on" data-wb-shadow="off">
-                影なし
-              </button>
-              <button type="button" class="wb-pill" data-wb-shadow="on">
+              <button type="button" class="wb-pill wb-pill-on" data-wb-shadow="on">
                 影あり
+              </button>
+              <button type="button" class="wb-pill" data-wb-shadow="off">
+                影なし
               </button>
             </div>
           </div>
