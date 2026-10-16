@@ -261,8 +261,13 @@ const frameSchema = z
       .nullable()
       .optional(),
     paper: frameColor.optional(),
-    canvas: frameRect.optional(),
-    expand: z.boolean().optional(),
+    canvas: z.tuple([frameCoord.nullable(), frameCoord.nullable(), frameCoord.nullable(), frameCoord.nullable()]).optional(),
+    expand: z
+      .union([
+        z.boolean(),
+        z.object({ top: z.boolean().optional(), right: z.boolean().optional(), bottom: z.boolean().optional(), left: z.boolean().optional() }).strict(),
+      ])
+      .optional(),
     strokes: z
       .array(
         z

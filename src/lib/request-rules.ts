@@ -69,13 +69,20 @@ export function lensOptionsIssues(options: { radius?: number; shape?: string }):
   return [];
 }
 
-type FrameShape = { box?: Region; canvas?: Region; strokes?: { points: unknown[] }[] };
+type FrameShape = { box?: Region; canvas?: readonly (number | null)[]; strokes?: { points: unknown[] }[] };
+
+/** canvas の null の辺は worker が自動で埋めるので、向かい合う辺が両方数のときだけ順序を見る。 */
+function rectOrdered(rect: readonly (number | null)[]): boolean {
+  const [x0, y0, x1, y1] = rect;
+  const ordered = (a: number | null | undefined, b: number | null | undefined) => a == null || b == null || a < b;
+  return ordered(x0, x1) && ordered(y0, y1);
+}
 
 function frameIssues(frame: FrameShape): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const key of ['box', 'canvas'] as const) {
     const rect = frame[key];
-    if (rect && !(rect[0] < rect[2] && rect[1] < rect[3])) {
+    if (rect && !rectOrdered(rect)) {
       issues.push({ message: `frame ${key} must have x0 < x1 and y0 < y1`, path: ['frame', key] });
     }
   }
