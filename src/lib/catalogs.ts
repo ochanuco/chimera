@@ -361,6 +361,6 @@ export function findCatalogPose(doc: RecipeCatalogDoc, recipeName: string, poseN
 
 /** Top-level `saturation.strength` — the default blend of the `saturation` request kind. null when absent or outside 0..1. */
 export function findSaturation(doc: RecipeCatalogDoc): { strength: number } | null {
-  const strength = plainObject((doc as { saturation?: unknown }).saturation)?.strength;
+  const strength = plainObject(plainObject((doc as { saturation?: unknown }).saturation)?.strength)?.default;
   return typeof strength === 'number' && strength >= 0 && strength <= 1 ? { strength } : null;
 }

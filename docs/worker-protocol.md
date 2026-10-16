@@ -882,7 +882,7 @@ deliver の出力の彩度を圧縮する worker 実行です（ワークベン�
 
   options        型
   -------------- --------------------------------------------------------------------------
-  strength       0〜1、省略は catalog の `saturation.strength`（1.0）。元の彩度と圧縮後の彩度の混ぜ具合で、0 は元のまま、1 は圧縮後そのまま
+  strength       0〜1、省略は catalog の `saturation.strength.default`（1.0）。圧縮の曲線の補正に掛ける重みで、0 は元のまま、1 は deliver の旧 repin と同じ
 
 `options` の未知のキーは 400 です。`generation_id` は UUID / short_id のどちらでもよく、入力にできるのは kind `deliver` が作った
 層 asset（`layer-figure` / `layer-outline`）を持つ絵です。stage・lighting・dof・lens・photo の出力は worker が `failed` にします
@@ -896,7 +896,7 @@ deliver の出力の彩度を圧縮する worker 実行です（ワークベン�
 入力を `refines_generation_id` で指します。deliver の出力と同じに扱われるので、続けて [stage](#stage)・[photo](#photo)・[dof](#dof) の
 入力にできます。
 
-catalog は最上位の `saturation` 節に `strength` の既定（`{"strength": 1.0}`）を公開します。ワークベンチのスライダーの初期値もここから取ります。
+catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"strength": {"min": 0, "max": 1, "default": 1.0}}`）を公開します。ワークベンチのスライダーの初期値もここから取ります。
 
 ### repair
 

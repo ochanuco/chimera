@@ -197,7 +197,7 @@ describe('GET /work/:shortId', () => {
 
   it('phase 3 compresses saturation with a strength slider defaulting to the catalog value', async () => {
     const recipe = `wb-sat-${crypto.randomUUID()}`;
-    const catalog = { schema_version: 3, recipes: [{ name: recipe, poses: [] }], patches: {}, saturation: { strength: 0.6 } };
+    const catalog = { schema_version: 3, recipes: [{ name: recipe, poses: [] }], patches: {}, saturation: { strength: { min: 0, max: 1, default: 0.6 } } };
     expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
     const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/work/${root.short_id}`)).text();
