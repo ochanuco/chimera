@@ -149,6 +149,22 @@ describe('redrawOptionsSchema', () => {
   });
 
   it.each([
+    ['canvas', { method: 'canvas', cut: true }],
+    ['hires', { method: 'hires', hires: 2048, cut: true }],
+    ['light', { method: 'light', scene: 'sunset', cut: false }],
+  ])('accepts a boolean cut on %s', (_m, options) => {
+    expect(validate(redrawOptionsSchema, options).ok).toBe(true);
+  });
+
+  it.each([
+    ['canvas', { method: 'canvas', cut: 'yes' }],
+    ['hires', { method: 'hires', cut: 1 }],
+    ['light', { method: 'light', cut: null }],
+  ])('rejects a non-boolean cut on %s', (_m, options) => {
+    expect(validate(redrawOptionsSchema, options).ok).toBe(false);
+  });
+
+  it.each([
     ['a null keep_regions', { method: 'canvas', keep_regions: null }],
     ['a rectangle outside 0..1', { method: 'canvas', keep_regions: [[0, 0, 1.2, 1]] }],
     ['a rectangle with x0 >= x1', { method: 'canvas', keep_regions: [[0.7, 0.1, 0.3, 0.4]] }],

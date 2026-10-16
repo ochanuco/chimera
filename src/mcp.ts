@@ -502,7 +502,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
-        'canvas, hires or light), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
+        'canvas, hires or light; every method takes cut: true to cut the figure out), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
         '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "repair" ' +
         '(payload {generation_id, options?}, a masked local redraw of hands/feet), or "masked_redraw" ' +
         '(payload {generation_id, options} with explicit arbitrary regions and a prompt patch). "finalize" can no longer ' +
@@ -542,7 +542,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'hires (integer >= 64, the long side in px; the pixel area is that of the standard 1024x1640 canvas at that long ' +
         'side, with the source\'s own aspect ratio) and denoise (above 0 up to 1, default 0.45; 0.35 keeps the composition). ' +
         'method "light" relights the picture: scene ("sunset" | "moon") and from (the direction the light comes from, ' +
-        'n/ne/e/se/s/sw/w/nw, default "nw"). Omitted fields resolve to the defaults published in list_catalog\'s ' +
+        'n/ne/e/se/s/sw/w/nw, default "nw"). Every method also takes cut (boolean, default false): true also cuts the figure out and attaches a transparent "cutout" asset (plus alpha / depth / cut) to the output, so a later deliver reuses the cut. Omitted fields resolve to the defaults published in list_catalog\'s ' +
         'recipes[].redraw (defaults per method, and the light scenes and directions). ' +
         'Sources: hires needs an Anima generate output (not an import without a graph, not a repair / masked_redraw / ' +
         'redraw output, not already hires-ed); canvas and light work on any Anima picture, including repair, masked_redraw ' +

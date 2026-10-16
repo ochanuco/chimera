@@ -806,6 +806,8 @@ shadow
 highlight
 part
 depth
+cutout          cut: true の redraw の出力に付く表示用の切り抜き（RGBA PNG、人物以外が透明）。
+                original は不透明のまま残る
 layer-figure    deliver の出力に付く人物の層（RGBA、alpha は切り抜き）。出力と同じ寸法
 layer-outline   deliver の出力に付くフチと落ち影の層（RGBA。何も無ければ全透明）
 layer-backdrop  deliver の出力に付く背景の層（RGB。透過納品では付けない）

@@ -62,6 +62,8 @@ export interface WorkbenchNode {
   rating: string | null;
   bookmark: boolean;
   delivered: boolean;
+  /** generation_assets に role 'cutout' (region '') がある。絵そのものは不透明のまま。 */
+  cutout: boolean;
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
@@ -90,7 +92,8 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
     .prepare(
       `${SUBTREE_CTE}
        SELECT g.id, g.short_id, g.refines_generation_id, g.rating, g.bookmark, g.created_at, g.image_width, g.image_height, g.image_size,
-              r.kind AS request_kind, r.payload_json, r.parameters_json
+              r.kind AS request_kind, r.payload_json, r.parameters_json,
+              EXISTS (SELECT 1 FROM generation_assets a WHERE a.generation_id = g.id AND a.role = 'cutout' AND a.region = '') AS has_cutout
        FROM generations g
        JOIN subtree s ON s.id = g.id
        JOIN requests r ON r.id = g.request_id
@@ -110,6 +113,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       request_kind: RequestKind;
       payload_json: string;
       parameters_json: string | null;
+      has_cutout: number;
     }>();
 
   const rows = results ?? [];
@@ -127,6 +131,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       rating: row.rating,
       bookmark: row.bookmark === 1,
       delivered: isDeliveredRequest({ kind: row.request_kind, parameters_json: row.parameters_json }),
+      cutout: row.has_cutout === 1,
       image_width: row.image_width,
       image_height: row.image_height,
       image_size: row.image_size,

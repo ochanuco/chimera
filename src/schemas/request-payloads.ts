@@ -44,6 +44,7 @@ const outlineSchema = z
   .object({ color: z.string().regex(/^#[0-9a-f]{6}$/i), width: z.number().gt(0).lte(5) })
   .strict();
 const outlinesField = z.array(outlineSchema).max(MAX_OUTLINES).nullable().optional();
+const cutField = z.boolean().optional();
 const lightSceneField = z.enum(['sunset', 'moon']);
 const lightFromField = z.enum(['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).optional();
 const lightField = z
@@ -64,10 +65,11 @@ export const redrawOptionsSchema = z.discriminatedUnion('method', [
       upscale: upscaleField,
       keep_regions: keepRegionsField,
       keep_strength: keepStrengthField,
+      cut: cutField,
     })
     .strict(),
-  z.object({ method: z.literal('hires'), hires: hiresField, denoise: hiresDenoiseField }).strict(),
-  z.object({ method: z.literal('light'), scene: lightSceneField.optional(), from: lightFromField }).strict(),
+  z.object({ method: z.literal('hires'), hires: hiresField, denoise: hiresDenoiseField, cut: cutField }).strict(),
+  z.object({ method: z.literal('light'), scene: lightSceneField.optional(), from: lightFromField, cut: cutField }).strict(),
 ]);
 
 /** deliver の options は切り抜き後の飾りだけ (docs/worker-protocol.md「deliver」)。 */
