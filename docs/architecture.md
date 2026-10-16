@@ -140,13 +140,18 @@ chimera は ComfyUI へ到達しません。GUI が積んでよいのは semanti
 generations/{generation_id}/original.png
 generations/{generation_id}/original.webp
 generations/{generation_id}/preview.webp
+generations/{generation_id}/preview-cutout.webp
 ```
 
 ComfyUI の filename は object key に利用せず、DB 上の metadata
 として保存します。
 
 `preview.webp`（長辺1024px以下）は `GET /g/{short_id}/preview` への初回リクエスト時に
-original から生成・保存されるサムネイルで、正本ではありません。GUI/API の
+original から生成・保存されるサムネイルで、正本ではありません。
+cutout asset（role `cutout`、region 空）を持つ Generation は、original（緑背景の絵）ではなく
+cutout から作った透明の WebP を別 key の `preview-cutout.webp` に保存し、`/preview` はそちらを返します
+（cutout が付く前に保存済みの `preview.webp` は消さず、使わなくなるだけです。cutout を差し替えると
+`preview-cutout.webp` を消して次の要求で作り直します）。GUI/API の
 サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
 `original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。

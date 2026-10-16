@@ -5287,7 +5287,7 @@ export const appJs = `
         var thumb = wbEl('div', 'wb-mini-thumb');
         if (item.node) {
           var img = document.createElement('img');
-          img.src = item.node.cutout ? '/g/' + item.node.short_id + '/assets/cutout' : '/g/' + item.node.short_id + '/preview';
+          img.src = '/g/' + item.node.short_id + '/preview';
           img.alt = item.node.short_id;
           thumb.appendChild(img);
           thumb.classList.toggle('wb-checker', item.node.delivered || item.node.cutout);

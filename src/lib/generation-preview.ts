@@ -19,6 +19,11 @@ export function generationPreviewR2Key(generationId: string): string {
   return `generations/${generationId}/preview.webp`;
 }
 
+/** cutout 由来の preview。original 由来の preview.webp と別 key にして、cutout が付く前に保存された preview と混ざらないようにする。 */
+export function generationCutoutPreviewR2Key(generationId: string): string {
+  return `generations/${generationId}/preview-cutout.webp`;
+}
+
 /**
  * Returns the stored preview if one exists; otherwise builds it from the original (downscaled to
  * fit 1024x1024, re-encoded as WebP) and stores it for next time. Falls back to the original bytes,
@@ -29,15 +34,24 @@ export async function loadOrCreateGenerationPreview(
   env: Bindings,
   generation: GenerationPreviewSource,
 ): Promise<GenerationPreview | null> {
-  const previewKey = generationPreviewR2Key(generation.id);
+  // cutout (透過 PNG) を持つ Generation は、original (緑背景の絵) ではなく cutout から作る。WebP は alpha を保つ。
+  const cutout = await env.DB.prepare(
+    `SELECT r2_object_key FROM generation_assets WHERE generation_id = ? AND role = 'cutout' AND region = ''`,
+  )
+    .bind(generation.id)
+    .first<{ r2_object_key: string }>();
+  const previewKey = cutout ? generationCutoutPreviewR2Key(generation.id) : generationPreviewR2Key(generation.id);
 
   const existing = await env.IMAGES.get(previewKey);
   if (existing) {
     return { body: existing.body, contentType: 'image/webp', stored: true };
   }
 
-  const original = await env.IMAGES.get(generation.r2_object_key);
+  const original =
+    (cutout && (await env.IMAGES.get(cutout.r2_object_key))) || (await env.IMAGES.get(generation.r2_object_key));
   if (!original) return null;
+  // cutout が R2 に無く original に落ちたときは、緑背景の preview を cutout 用 key に保存しない。
+  const storeKey = cutout && original.key !== cutout.r2_object_key ? generationPreviewR2Key(generation.id) : previewKey;
 
   const fallback = (body: ReadableStream): GenerationPreview => ({
     body,
@@ -55,7 +69,7 @@ export async function loadOrCreateGenerationPreview(
       .transform({ width: 1024, height: 1024, fit: 'scale-down' })
       .output({ format: 'image/webp', quality: 80 });
     const bytes = new Uint8Array(await result.response().arrayBuffer());
-    await env.IMAGES.put(previewKey, bytes, { httpMetadata: { contentType: 'image/webp' } });
+    await env.IMAGES.put(storeKey, bytes, { httpMetadata: { contentType: 'image/webp' } });
     return { body: bytes, contentType: 'image/webp', stored: true };
   } catch {
     return fallback(forFallback);

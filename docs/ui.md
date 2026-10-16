@@ -281,6 +281,10 @@ request live更新と同じ指数バックオフ（1s→2s→…上限30s）で�
 
 ### GenerationCard
 
+サムネイルは`/g/{short_id}/preview`で、cutoutを持つGenerationではその切り抜きから作った透明のWebPです
+（[architecture.md](architecture.md)「R2」）。サムネイルの背景は常に市松なので、透明部分はそのまま透けて見えます。
+ギャラリー、タイムライン、ブックマーク、Compare、ワークベンチのミニサムネイルが同じ`/preview`を使うため、どこでも切り抜きが見えます。
+
 カードはサムネイル1枚と、その下の2行（short_idとbookmarkの行、rating（bad/neutral/good）の行）です。
 short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
 変えて末尾に✓を出します。サムネイルは[Generation Detail](#generation-detail)への素のリンク
@@ -476,6 +480,10 @@ telemetry `compare.add`）。
 masked_redrawで書き換えた元のraw Generationがあるとき、小さな`--text-dim`色の
 `元 <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
 rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refines_generation`）。
+
+cutout asset（描き直しの`cut: true`が付ける透明の切り抜き）を持つGenerationは、主画像に原寸の
+`GET /g/{short_id}/assets/cutout`を市松の上に出し、画像meta欄の上に`切り抜き表示 · 元画像（緑背景）`の1行を添えます
+（`元画像`は`/g/{short_id}/image`へのリンク。originalがpurge済みなら出しません）。
 
 originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
 Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に

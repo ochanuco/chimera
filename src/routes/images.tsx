@@ -138,6 +138,11 @@ images.get('/:shortId', async (c) => {
 
   const producedByOptions = await findProducedByOptions(db, generation.id);
   const frameSource = await resolveFrameSource(db, generation);
+  const hasCutout =
+    (await db
+      .prepare(`SELECT 1 AS x FROM generation_assets WHERE generation_id = ? AND role = 'cutout' AND region = ''`)
+      .bind(generation.id)
+      .first()) !== null;
 
   const experimentRun = generation.request_id ? await getExperimentRunFamily(db, generation.request_id) : null;
   const family = await getGenerationFamily(db, generation, experimentRun);
@@ -153,6 +158,7 @@ images.get('/:shortId', async (c) => {
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
       frameable={frameSource.hasLayers}
+      hasCutout={hasCutout}
     />,
   );
 });
