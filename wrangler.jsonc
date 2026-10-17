@@ -15,16 +15,10 @@
   ],
   // requests 行の recipe_ref 既定。chagama 側の box は production ブランチだけを受ける。
   "vars": {
-    "REQUESTS_DEFAULT_RECIPE_REF": "production",
-    // 保持する original の lossless WebP 再圧縮 (src/lib/original-recompress.ts)。
-    "ORIGINAL_RECOMPRESS": "on"
+    "REQUESTS_DEFAULT_RECIPE_REF": "production"
   },
   "observability": {
     "enabled": true
-  },
-  // original 再圧縮ジョブ (src/lib/original-recompress.ts)。original は削除しない。
-  "triggers": {
-    "crons": ["*/30 * * * *"]
   },
   "d1_databases": [
     {
@@ -57,8 +51,7 @@
   // WOL_* の secret はプレビューに渡さず、プレビューから GPU 機を起こさない。
   "previews": {
     "vars": {
-      "REQUESTS_DEFAULT_RECIPE_REF": "production",
-      "ORIGINAL_RECOMPRESS": "on"
+      "REQUESTS_DEFAULT_RECIPE_REF": "production"
     },
     "d1_databases": [
       {

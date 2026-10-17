@@ -1314,9 +1314,8 @@ chimera が patch を検証するのにこれが要ります。
   「original の保持」）新しく purge されることはありませんが、すでに purge 済みの行
   （`original_purged_at` 非 null）は original を読めないので、chimera は request の作成自体を 409（`original_purged`）で拒否し、queued
   行は作られません。`generate` request（derive_request 含む）はこの制限を受けません。
-- original は保持期間を過ぎると lossless WebP に再圧縮されることがあり
-  （`docs/domain-model.md`「original の再圧縮」）、`GET /api/v1/generations/{id}/context` が
+- 古い Generation には original が lossless WebP のものがあり
+  （`docs/domain-model.md`「original の保持」）、`GET /api/v1/generations/{id}/context` が
   返す元画像は PNG とは限りません。worker は元画像の bytes を format-agnostic に扱い（PNG
   metadata の有無を前提にしない）、生成グラフが要る場面（例: hires-chain の base）は
-  常に `comfy_job.graph` から取ります。original が消える前に PNG の `prompt` chunk から
-  救出済みなので、original が WebP になっていても `comfy_job.graph` は読めます。
+  常に `comfy_job.graph` から取ります。

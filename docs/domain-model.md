@@ -695,7 +695,6 @@ summary_model
 summary_updated_at
 created_at
 original_purged_at
-original_recompress_checked_at
 image_width
 image_height
 image_size
@@ -716,23 +715,10 @@ worker が元の絵の original を読むためです。保持期間による削
 [worker-protocol.md](worker-protocol.md)）。GUI は preview を代わりに表示します（[ui.md](ui.md)）。
 cutout を持つ Generation の preview は original でなく cutout から作ります（`preview-cutout.webp`。[architecture.md](architecture.md)「R2」）。
 
-### original の再圧縮
-
-作成から30日を過ぎた Generation の original.png は、定期ジョブ (`src/lib/original-recompress.ts`、
-30分ごとの scheduled 実行。env `ORIGINAL_RECOMPRESS` が `on` のときだけ動く) が
-lossless WebP（`generations/{id}/original.webp`）へ再圧縮します。lossless
-なので不透明な画像は画素同一のまま約32%小さくなり、`r2_object_key` と `image_size` を
-新しいオブジェクトに合わせて更新します。透過を持つ PNG（IHDR の colour type が
-グレー+alpha / RGBA、または `tRNS` チャンクを持つもの）は変換しません。alpha=0 の下に
-ある RGB 値は lossless 再エンコードでも保存されず、ComfyUI の LoadImage ノードは alpha
-を捨ててその RGB を読むためです。評価済みかどうかは `original_recompress_checked_at`
-（非 NULL なら変換済み・変換不要のいずれか）で管理し、一度評価した Generation を毎回
-スキャンし直しません。
-
-original.png が再圧縮で置き換わる前には、その PNG が持つ ComfyUI の
-`prompt` text chunk（生成グラフ全体）を `comfy_jobs.graph` へ救出します。対象の Job が
-既に `graph` を持っていれば何もせず、`graph` が NULL で `prompt` chunk が読めた場合だけ
-`graph` と `render_facts_json` を書き込みます。
+ingest が保存する original は `generations/{id}/original.png` です。古い Generation には、
+lossless WebP（`generations/{id}/original.webp`）を original に持つものがあります。画素は元の PNG と
+同一で、`r2_object_key` と `image_size` がその WebP を指します。original を読む側は PNG と WebP の
+両方を受け付けます。
 
 ## Publication
 

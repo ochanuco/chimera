@@ -157,12 +157,9 @@ cutout から作った透明の WebP を別 key の `preview-cutout.webp` に保
 `original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。
 過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
 
-cron trigger `*/30 * * * *` の `scheduled` ハンドラは再圧縮ジョブ
-（`src/lib/original-recompress.ts`、`ORIGINAL_RECOMPRESS` var が `'on'` のときだけ有効。
-本番は wrangler.jsonc で `on`、省略時は無効）だけを走らせ、作成から30日を過ぎた original を
-不透明な PNG に限って lossless WebP（`original.webp`）へ変換します。Generation 1件あたり
-最悪 ~6 subrequest で、1回あたりの件数は `ORIGINAL_RECOMPRESS_BATCH_SIZE`（省略時・上限とも60）です。
-`preview.webp` と D1 行は変わりません（`docs/domain-model.md`「original の保持」「original の再圧縮」）。
+ingest が保存する original は `original.png` です。古い Generation には lossless WebP の
+`original.webp` を original に持つものがあり、original を読む側は両方を受け付けます
+（`docs/domain-model.md`「original の保持」）。
 
 ## Ingest Flow
 
