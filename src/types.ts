@@ -12,10 +12,6 @@ export interface Bindings {
   POSTHOG_KEY?: string;
   /** PostHog の api_host。省略時 https://us.i.posthog.com */
   POSTHOG_HOST?: string;
-  /** original 再圧縮ジョブの1回あたり処理件数の上限 (src/lib/original-recompress.ts)。省略時 60。 */
-  ORIGINAL_RECOMPRESS_BATCH_SIZE?: string;
-  /** 'on' で original 再圧縮ジョブ (src/lib/original-recompress.ts) を有効化。wrangler.jsonc には無く、省略時は無効。 */
-  ORIGINAL_RECOMPRESS?: string;
   /** wol API の origin と Access service token `wol_client`（いずれも `wrangler secret put`、1Password `chabatake-services/wol`）。どれか欠ければ GPU 機の起床と状態取得は無効 (src/lib/gpu-wake.ts)。 */
   WOL_BASE_URL?: string;
   WOL_CLIENT_ID?: string;
@@ -143,8 +139,6 @@ export interface GenerationRow {
   created_at: string;
   /** original.png が過去の保持期間ジョブで削除された時刻 (migrations/0023)。保持期間ジョブは廃止済みで、新たに削除されることはない。null なら未削除。 */
   original_purged_at: string | null;
-  /** 再圧縮ジョブが original を評価した時刻 (migrations/0024, src/lib/original-recompress.ts)。null なら未評価。lossless WebP に変換済みかは r2_object_key の拡張子で分かる。 */
-  original_recompress_checked_at: string | null;
   request_id: string;
   /** 仕上げ元の Generation。raw Generation は NULL。 */
   refines_generation_id: string | null;
