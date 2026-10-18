@@ -230,6 +230,8 @@ export const mcpOutputs = {
   get_generation_image: z.looseObject({
     short_id: z.string(),
     canonical_url: z.string(),
+    // 返した（返そうとした）画像: 'original' か asset の role。
+    asset: z.string(),
     inlined: z.boolean(),
     mime_type: z.string().nullable(),
     reason: z.string().nullable(),
@@ -321,6 +323,7 @@ export const mcpOutputs = {
     pose_reference: z.unknown().optional(),
     safety: safetySchema.nullable().optional(),
     original_filename: z.string().nullable().optional(),
+    assets: z.array(z.looseObject({ role: z.string(), region: z.string().nullable(), url: z.string() })).optional(),
   }),
 
   get_generation_lineage: z.looseObject({

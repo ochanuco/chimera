@@ -29,7 +29,7 @@ export const idInputSchema = z.object({ id: z.string().min(1) });
 
 export const getRunInputSchema = z.object({ run_id: z.string().min(1) });
 
-export const getGenerationImageInputSchema = z.object({ short_id: z.string().min(1), width: z.number().optional() });
+export const getGenerationImageInputSchema = z.object({ short_id: z.string().min(1), width: z.number().optional(), asset: z.string().min(1).optional() });
 
 export const attachGenerationInputSchema = z.object({ run_id: z.string().min(1), generation_id: z.string().min(1) });
 

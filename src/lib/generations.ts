@@ -1,7 +1,7 @@
 // REST (src/routes/generations.ts) と MCP tool `get_generation`/`list_generations` (src/mcp.ts) の両方がここを呼び、同じ形を返す。
 
 import { normalizeDateRange, parsePagination, resolveGenerationShortIds, toBool } from './db';
-import { canonicalGenerationUrl, generationImageUrl, generationPreviewUrl } from './serialize';
+import { canonicalGenerationUrl, generationAssetUrl, generationImageUrl, generationPreviewUrl } from './serialize';
 import { listTagsForTarget } from './tags';
 import { listPublicationsForGeneration, serializePublication } from './publications';
 import { getSafetyForGeneration, serializeSafety, type SafetySummary } from './safety';
@@ -9,7 +9,7 @@ import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
-import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationRow, RequestRow, RequestStatus } from '../types';
+import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationAssetRow, GenerationRow, RequestRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
   if (!row.semantic_json) return null;
@@ -158,12 +158,16 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const [{ context, request }, job, publications, poseReference, safetyRow] = await Promise.all([
+  const [{ context, request }, job, publications, poseReference, safetyRow, assetRows] = await Promise.all([
     loadBuiltContext(db, org, generation),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
     listPublicationsForGeneration(db, generation.id),
     getPoseReferenceOfGeneration(db, generation.id),
     getSafetyForGeneration(db, generation.id),
+    db
+      .prepare('SELECT * FROM generation_assets WHERE generation_id = ? ORDER BY role ASC, region ASC')
+      .bind(generation.id)
+      .all<GenerationAssetRow>(),
   ]);
   const renderFacts = job ? await renderFactsForJob(db, job) : null;
   const refinesGeneration = generation.refines_generation_id
@@ -192,6 +196,11 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
         }
       : null,
     original_filename: generation.original_filename,
+    assets: (assetRows.results ?? []).map((r) => ({
+      role: r.role,
+      region: r.region === '' ? null : r.region,
+      url: generationAssetUrl(org, generation.short_id, r.role, r.region),
+    })),
   };
 }
 
