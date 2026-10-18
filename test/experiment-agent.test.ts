@@ -444,6 +444,81 @@ describe('MCP get_generation_image', () => {
   });
 });
 
+describe('MCP get_generation_image asset selection', () => {
+  async function withCutout() {
+    const { generation } = await createGeneration();
+    // 幅で original(600) と cutout(400) を見分ける。どちらも既定幅 768 以下なので縮小されない。
+    await env.IMAGES.put(`generations/${generation.id}/original.png`, await makeSolidPng(600, 900, [0, 255, 0]));
+    const cutKey = `generations/${generation.id}/assets/cutout.png`;
+    await env.IMAGES.put(cutKey, await makeSolidPng(400, 600, [200, 80, 40]));
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO generation_assets (id, generation_id, role, region, r2_object_key, content_type, size, created_at, updated_at)
+       VALUES (?, ?, 'cutout', '', ?, 'image/png', 1, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), generation.id, cutKey, now, now)
+      .run();
+    return generation;
+  }
+
+  async function widthOf(data: string | undefined): Promise<number | null> {
+    const bytes = Uint8Array.from(atob(data ?? ''), (c) => c.charCodeAt(0));
+    const info = await env.IMAGE_TRANSFORM.info(new Response(bytes).body!);
+    return 'width' in info ? info.width : null;
+  }
+
+  it('defaults to the cutout when one exists', async () => {
+    const generation = await withCutout();
+    const { result, structured, isError } = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
+    expect(isError).toBe(false);
+    expect((structured as { asset: string }).asset).toBe('cutout');
+    expect(await widthOf(result?.content?.[0]?.data)).toBe(400);
+  });
+
+  it('defaults to the original when there is no cutout', async () => {
+    const { generation } = await createGeneration();
+    const { result, structured, isError } = await mcpToolCall('get_generation_image', { short_id: generation.short_id });
+    expect(isError).toBe(false);
+    expect((structured as { asset: string }).asset).toBe('original');
+  });
+
+  it('asset "original" forces the original even with a cutout', async () => {
+    const generation = await withCutout();
+    const { result, structured, isError } = await mcpToolCall('get_generation_image', {
+      short_id: generation.short_id,
+      asset: 'original',
+    });
+    expect(isError).toBe(false);
+    expect((structured as { asset: string }).asset).toBe('original');
+    expect(await widthOf(result?.content?.[0]?.data)).toBe(600);
+  });
+
+  it('errors on a role the Generation does not have', async () => {
+    const generation = await withCutout();
+    const { isError, text } = await mcpToolCall('get_generation_image', { short_id: generation.short_id, asset: 'depth' });
+    expect(isError).toBe(true);
+    expect(text).toContain('depth');
+  });
+});
+
+describe('MCP get_generation assets', () => {
+  it('lists the Generation assets with their urls', async () => {
+    const { generation } = await createGeneration();
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO generation_assets (id, generation_id, role, region, r2_object_key, content_type, size, created_at, updated_at)
+       VALUES (?, ?, 'cutout', '', 'k', 'image/png', 1, ?, ?)`,
+    )
+      .bind(crypto.randomUUID(), generation.id, now, now)
+      .run();
+    const { result, structured, isError } = await mcpToolCall('get_generation', { generation_id: generation.short_id });
+    expect(isError).toBe(false);
+    expect((structured as { assets: unknown }).assets).toEqual([
+      { role: 'cutout', region: null, url: `https://chimera.test/g/${generation.short_id}/assets/cutout` },
+    ]);
+  });
+});
+
 describe('MCP get_generation_image content-rating gate', () => {
   const putSafety = (id: string, tags: Record<string, number>) =>
     postJson(

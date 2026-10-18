@@ -130,9 +130,9 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `lighting_generation` | `generation_id, direction?, strength?, idempotency_key` | 追記 | lighting request を積む。stage の絵のキャラとフチを背景の光（露出・色味・向き）に合わせる |
 | `lens_generation` | `generation_id, center?, strength?, shape?, radius?, idempotency_key` | 追記 | lens request を積む。納品の絵を魚眼 / 逆魚眼で歪めるか、球面フィルターで円の内側を膨らませる |
 | `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
-| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / pose_reference / refines_generation 込み） |
+| `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / pose_reference / refines_generation / assets 込み） |
 | `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
-| `get_generation_image` | `short_id, width?` | 読み取り | 縮小した JPEG 画像。載らなければ canonical URL |
+| `get_generation_image` | `short_id, width?, asset?` | 読み取り | 縮小した JPEG 画像。cutout があれば既定でそちら（透過は薄い灰色に敷く）。載らなければ canonical URL |
 | `list_catalog` | `recipe_ref?` | 読み取り | 公開済み recipe catalog の要約（既定 `"production"`） |
 | `get_catalog_pose` | `recipe, pose, recipe_ref?` | 読み取り | 単一 pose のフルレコードと現行の pin |
 | `get_gpu_status` | なし | 読み取り | GPU 機の電源状態（wol API の `GET /status`）。取れなければ `state: null` と `error` |
@@ -429,7 +429,7 @@ schema と serializer のずれは、実際に呼ばれるまで表に出ませ�
 テストの `mcpToolCall` は返ってきた `structuredContent` を宣言済みの schema で parse するので、実データでのずれはテストで出ます。
 どちらも loose object のままなので、欄が増えるぶんには通ります。
 
-`get_generation_image` の `structuredContent` は画像そのものではなく `{short_id, canonical_url, inlined, mime_type, reason, verdict}` で、画像は content の image ブロックで返ります。
+`get_generation_image` の `structuredContent` は画像そのものではなく `{short_id, canonical_url, asset, inlined, mime_type, reason, verdict}` で、画像は content の image ブロックで返ります。
 
 ### prompt の折り畳み
 
@@ -445,6 +445,10 @@ REST（`GET /api/v1/generations/{id}` など）はこの折り畳みの影響を
 
 `get_generation_image` は元画像そのものではなく、Images binding で縮小して JPEG（quality 72）に再エンコードした画像を返します。
 `width` は 256〜1024 に丸め、既定は 768 です。
+`cut: true` の redraw のように cutout asset（role `cutout`）を持つ Generation は、既定で original（緑背景の絵）ではなく cutout を返します。web UI の主画像と同じ規則です。
+透過 PNG は `#f2f2f2` の下地に敷いて JPEG にします。
+`asset` に `get_generation` の `assets` にある role（`alpha` / `depth` / `cut` など）を渡すとその画像、`"original"` を渡すと original を返します。その role を持たない Generation はエラーです。`structuredContent.asset` が返した画像を示します。
+
 構図の確認には十分な解像度ですが、ピクセル単位の確認には向きません。
 
 MCP client は tools/call のレスポンスの大きさに上限を設けていることがあり、1 MiB で切る client に合わせています。

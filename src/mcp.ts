@@ -89,6 +89,9 @@ import type { Bindings } from './types';
 /** MCP client の 1 MiB レスポンス上限に合わせる。base64 化で 4/3 に膨れる分と JSON-RPC envelope の余裕を見て 700 KiB に切り詰める。 */
 const MAX_RETURNED_IMAGE_BYTES = 700 * 1024;
 
+/** 透過 PNG を JPEG に落とすときの下地。alpha=0 が黒にならないようにする。 */
+const JPEG_FLATTEN_BACKGROUND = '#f2f2f2';
+
 const DEFAULT_IMAGE_WIDTH = 768;
 const MIN_IMAGE_WIDTH = 256;
 const MAX_IMAGE_WIDTH = 1024;
@@ -371,11 +374,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'judging composition, not pixel-level inspection. width (256-1024, default 768) trades detail for a ' +
         'smaller reply. Images too large to inline return the canonical URL instead. A Generation whose original ' +
         'was purged by the retention job is served from its 1024px preview instead. A Generation whose content-rating ' +
-        'verdict is block never returns the image, only the canonical URL; get_generation still returns its data.',
+        'verdict is block never returns the image, only the canonical URL; get_generation still returns its data. ' +
+        "By default a Generation that has a cutout asset (a redraw made with cut: true) returns the transparent cutout, " +
+        'flattened onto light grey, instead of its opaque green-key original — same rule as the web UI. asset picks another ' +
+        'one: a role listed in get_generation assets (cutout, alpha, depth, cut, ...) or "original" to force the original; ' +
+        'structuredContent.asset says which was returned.',
       inputSchema: getGenerationImageInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ short_id, width }) => {
+    async ({ short_id, width, asset }) => {
       const generation = await resolveGenerationOr404(db, short_id);
       const safetyRow = await getSafetyForGeneration(db, generation.id);
       const verdict = safetyRow
@@ -383,11 +390,35 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
             .verdict
         : null;
       const canonicalUrl = canonicalGenerationUrl(origin, generation.short_id);
+      const findAsset = (role: string) =>
+        db
+          .prepare(`SELECT r2_object_key FROM generation_assets WHERE generation_id = ? AND role = ? AND region = ''`)
+          .bind(generation.id, role)
+          .first<{ r2_object_key: string }>();
+      // 指定なしは web UI / preview と同じく cutout を優先する。
+      let assetName = 'original';
+      let assetKey: string | null = null;
+      if (asset === undefined || asset === 'cutout') {
+        const cutout = await findAsset('cutout');
+        if (cutout) {
+          assetName = 'cutout';
+          assetKey = cutout.r2_object_key;
+        } else if (asset === 'cutout') {
+          throw notFound('asset cutout');
+        }
+      } else if (asset !== 'original') {
+        const row = await findAsset(asset);
+        if (!row) throw notFound(`asset ${asset}`);
+        assetName = asset;
+        assetKey = row.r2_object_key;
+      }
+
       const pointer = (reason: string) => ({
         content: [{ type: 'text' as const, text: `${reason} See ${canonicalUrl}` }],
         structuredContent: {
           short_id: generation.short_id,
           canonical_url: canonicalUrl,
+          asset: assetName,
           inlined: false,
           mime_type: null,
           reason,
@@ -398,8 +429,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       // 画像ブロックが client の内容分類器に当たると、会話ごとコネクタが止まることがある。
       if (verdict === 'block') return pointer('content-rating verdict is block; the image is not returned.');
 
-      const sourceKey = generation.original_purged_at ? generationPreviewR2Key(generation.id) : generation.r2_object_key;
-      const head = await bucket.head(sourceKey);
+      let sourceKey =
+        assetKey ?? (generation.original_purged_at ? generationPreviewR2Key(generation.id) : generation.r2_object_key);
+      let head = await bucket.head(sourceKey);
+      // cutout の実体が R2 に無いときは original に落とす（preview と同じ扱い）。
+      if (!head && assetName === 'cutout') {
+        assetName = 'original';
+        sourceKey = generation.original_purged_at ? generationPreviewR2Key(generation.id) : generation.r2_object_key;
+        head = await bucket.head(sourceKey);
+      }
       if (!head) throw notFound('image');
 
       if (head.size > MAX_TRANSFORM_INPUT_BYTES) {
@@ -416,7 +454,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       let mimeType: string;
       try {
         const result = await env.IMAGE_TRANSFORM.input(forTransform)
-          .transform({ width: clampImageWidth(width) })
+          .transform({ width: clampImageWidth(width), background: JPEG_FLATTEN_BACKGROUND })
           .output({ format: 'image/jpeg', quality: 72 });
         bytes = new Uint8Array(await result.response().arrayBuffer());
         mimeType = 'image/jpeg';
@@ -436,6 +474,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         structuredContent: {
           short_id: generation.short_id,
           canonical_url: canonicalUrl,
+          asset: assetName,
           inlined: true,
           mime_type: mimeType,
           reason: null,
@@ -954,7 +993,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'generate prompt — use derive_request from the Generation instead. ' +
         'Prompt bodies (request prompt/negative_prompt/parameters.prompt_patch/prompt patches, render_facts sampler prompts, the ComfyUI graph) are folded to a ' +
         'length marker by default (the graph becomes null with comfy_job.graph_omitted: true); pass include_prompts: true ' +
-        'only when you actually need the text.',
+        'only when you actually need the text. ' +
+        'assets lists the Generation\'s extra images as {role, region, url} (e.g. role cutout = the transparent version of a cut: true redraw); ' +
+        'get_generation_image returns the cutout by default when one exists, or any listed role via its asset argument.',
       inputSchema: getGenerationInputSchema,
       annotations: { readOnlyHint: true },
     },
