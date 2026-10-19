@@ -430,3 +430,64 @@ describe('POST /api/v1/generations/{id}/pose-reference + reference filter (docs/
     expect(res.body.error.message).toContain('cannot infer');
   });
 });
+
+describe('Generation search: model and phase', () => {
+  async function tagged(kind: string, family: string | null) {
+    const { generation } = await createGeneration({ requestOverrides: { kind: kind as never } });
+    await env.DB.prepare('UPDATE generations SET model_family = ? WHERE id = ?').bind(family, generation.id).run();
+    return generation.id;
+  }
+  const ids = async (qs: string) => (await getJson<SearchResult>(`/api/v1/generations?limit=200&${qs}`)).body.items.map((g) => g.id);
+
+  it('filters by model with OR across values and unknown = NULL', async () => {
+    const anima = await tagged('generate', 'anima');
+    const il = await tagged('generate', 'il');
+    const none = await tagged('generate', null);
+
+    const a = await ids('model=anima');
+    expect(a).toContain(anima);
+    expect(a).not.toContain(il);
+    expect(a).not.toContain(none);
+
+    const ai = await ids('model=anima,il');
+    expect(ai).toContain(anima);
+    expect(ai).toContain(il);
+    expect(ai).not.toContain(none);
+
+    const au = await ids('model=anima,unknown');
+    expect(au).toContain(anima);
+    expect(au).toContain(none);
+    expect(au).not.toContain(il);
+
+    const u = await ids('model=unknown');
+    expect(u).toContain(none);
+    expect(u).not.toContain(anima);
+  });
+
+  it('filters by phase, expanding to request kinds', async () => {
+    const gen = await tagged('generate', null);
+    const fin = await tagged('finalize', null);
+    const redraw = await tagged('redraw', null);
+    const repair = await tagged('repair', null);
+    const deliver = await tagged('deliver', null);
+
+    const g = await ids('phase=generate');
+    expect(g).toContain(gen);
+    expect(g).toContain(fin);
+    expect(g).not.toContain(redraw);
+
+    const r = await ids('phase=redraw');
+    expect(r).toEqual(expect.arrayContaining([redraw, repair]));
+    expect(r).not.toContain(deliver);
+
+    const multi = await ids('phase=redraw,deliver');
+    expect(multi).toEqual(expect.arrayContaining([redraw, repair, deliver]));
+    expect(multi).not.toContain(gen);
+  });
+
+  it('400s on invalid model or phase values', async () => {
+    expect((await getJson('/api/v1/generations?model=bogus')).status).toBe(400);
+    expect((await getJson('/api/v1/generations?model=anima,bogus')).status).toBe(400);
+    expect((await getJson('/api/v1/generations?phase=bogus')).status).toBe(400);
+  });
+});

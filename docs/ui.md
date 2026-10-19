@@ -123,6 +123,8 @@ Rating
 Bookmarked only
 公開済みのみ
 基準のみ
+モデル系統（anima / il / moss / 不明、複数選択は OR）
+フェーズ（生成 / 取り込み / redraw / deliver / saturation / stage / lighting / dof / lens / photo、複数選択は OR）
 ```
 
 「公開済みのみ」は`published=true`（[api.md](api.md#generation-search)）で、少なくとも1件
@@ -131,6 +133,13 @@ Bookmarked only
 pin されているGenerationだけに絞ります（[domain-model.md](domain-model.md#基準-render-の-pin)）。
 どちらも他のフィルタと同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの
 判定にも数えます。
+
+「モデル系統」は`model`（`anima` / `il` / `moss` / `unknown`）、「フェーズ」は`phase`で、
+チェックボックスは同じキーを繰り返して送ります（リンクはカンマ区切りの1値）。`unknown`は
+系統が決まらない Generation（`model_family`が NULL）です。フェーズはその Generation の
+Request の`kind`に対応し、`generate`は generate / finalize、`redraw`は redraw / repair /
+masked_redraw、それ以外は同名の kind です（対応表は`src/lib/phases.ts`）。どちらも
+[api.md](api.md#generation-search)の絞り込みで、タイムラインと枠範囲にも同じ値が渡ります。
 
 Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはパネルに置かず、
 `GET /api/v1/generations`のqueryとしてMCP/APIから使います（[api.md](api.md#generation-search)）。
@@ -240,7 +249,7 @@ barより下です。レールがあるページではブラウザのスクロ�
 
 #### 新着
 
-対象は`ids`・Tag・Rating・Bookmarked only・公開済みのみ・基準のみのいずれも指定していない既定表示だけで
+対象は`ids`・Tag・Rating・Bookmarked only・公開済みのみ・基準のみ・モデル系統・フェーズのいずれも指定していない既定表示だけで
 （`view`・`bad`は絞り込みに数えません）、その条件下でだけクライアントはviewer WebSocket
 （`/api/v1/requests/ws`、[worker-protocol.md](worker-protocol.md#段階-3-workerhub)）を開き
 （[Generation Detail](#generation-detail)のRequestsで説明したrequest live接続を共有します）、

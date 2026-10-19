@@ -1,6 +1,8 @@
 import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { dateLabel, slotKeyOf, slotRangeLabel } from '../../lib/timeline';
+import { MODEL_FILTER_LABELS, MODEL_FILTER_VALUES } from '../../lib/model-family';
+import { PHASE_LABELS, PHASES } from '../../lib/phases';
 import { ViewSwitch, type GalleryView } from '../components/ViewSwitch';
 
 export interface GalleryItem extends GenerationCardData {
@@ -17,6 +19,10 @@ export interface GalleryFilters {
   bookmark?: string;
   published?: string;
   reference?: string;
+  /** カンマ区切り (model_family の OR)。 */
+  model?: string;
+  /** カンマ区切り (フェーズの OR)。 */
+  phase?: string;
 }
 
 /** Every currently-active query param (view/bad included), used as the base for the view/bad/load-more links. */
@@ -30,12 +36,18 @@ function activeParams(filters: GalleryFilters): URLSearchParams {
   if (filters.bookmark) params.set('bookmark', filters.bookmark);
   if (filters.published) params.set('published', filters.published);
   if (filters.reference) params.set('reference', filters.reference);
+  if (filters.model) params.set('model', filters.model);
+  if (filters.phase) params.set('phase', filters.phase);
   return params;
 }
 
 /** Gallery live insertion (docs/ui.md「Gallery」) is active only when no ids / panel filter narrows the grid — `view`/`bad` don't disqualify it. */
 function galleryLiveEligible(filters: GalleryFilters): boolean {
-  return !filters.ids && !filters.tag && !filters.rating && !filters.bookmark && !filters.published && !filters.reference;
+  return !filters.ids && !filters.tag && !filters.rating && !filters.bookmark && !filters.published && !filters.reference && !filters.model && !filters.phase;
+}
+
+function selectedValues(csv: string | undefined): string[] {
+  return csv ? csv.split(',') : [];
 }
 
 function badToggleHref(filters: GalleryFilters): string {
@@ -57,7 +69,7 @@ function FilterIcon() {
 }
 
 function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
-  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published || filters.reference);
+  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published || filters.reference || filters.model || filters.phase);
   return (
     <div class="gallery-toolbar">
       <ViewSwitch basePath="/gallery" current={filters.view} params={activeParams(filters)} />
@@ -106,6 +118,24 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
             <input type="checkbox" name="reference" value="true" checked={filters.reference === 'true'} />
             基準のみ
           </label>
+          <fieldset class="checkbox-group">
+            <legend>モデル系統</legend>
+            {MODEL_FILTER_VALUES.map((m) => (
+              <label class="checkbox-field">
+                <input type="checkbox" name="model" value={m} checked={selectedValues(filters.model).includes(m)} />
+                {MODEL_FILTER_LABELS[m]}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset class="checkbox-group">
+            <legend>フェーズ</legend>
+            {PHASES.map((p) => (
+              <label class="checkbox-field">
+                <input type="checkbox" name="phase" value={p} checked={selectedValues(filters.phase).includes(p)} />
+                {PHASE_LABELS[p]}
+              </label>
+            ))}
+          </fieldset>
           <button type="submit">検索</button>
         </form>
       </details>

@@ -130,8 +130,13 @@ pages.get('/gallery', async (c) => {
   const bad = q.bad === '1';
   const ids = q.ids?.trim() || undefined;
 
+  // チェックボックス群は同じキーを繰り返して送る。カンマ区切りの 1 値 (リンクの復元) も受ける。
+  const multi = (key: string) => [...new Set(c.req.queries(key)?.flatMap((v) => v.split(',')).map((v) => v.trim()).filter(Boolean))].join(',') || undefined;
+
   const filters: GalleryFilters = {
     view,
+    model: multi('model'),
+    phase: multi('phase'),
     bad,
     ids,
     tag: q.tag || undefined,
@@ -155,6 +160,8 @@ pages.get('/gallery', async (c) => {
   if (filters.bookmark) apiParams.set('bookmark', filters.bookmark);
   if (filters.published) apiParams.set('published', filters.published);
   if (filters.reference) apiParams.set('reference', filters.reference);
+  if (filters.model) apiParams.set('model', filters.model);
+  if (filters.phase) apiParams.set('phase', filters.phase);
   // タイムライン (docs/ui.md「Gallery」) は一覧と同じ絞り込みで枚数を数える。ids 指定では出さない。
   const timelineQuery = ids ? undefined : apiParams.toString();
   if (!ids && q.partial === '1' && (q.slot_from || q.slot_to)) {

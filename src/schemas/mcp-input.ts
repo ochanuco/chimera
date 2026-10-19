@@ -3,6 +3,8 @@
 
 import { z } from 'zod';
 import { createExperimentRunSchema, experimentStatusSchema, jsonObject, patchesSchema } from './experiments';
+import { MODEL_FILTER_VALUES } from '../lib/model-family';
+import { PHASES } from '../lib/phases';
 import { creatableRequestKindSchema, requestKindFilterSchema, requestStatusSchema } from './requests';
 import {
   redrawOptionsSchema,
@@ -205,6 +207,8 @@ export const listGenerationsInputSchema = z.object({
   rating: z.enum(['bad', 'neutral', 'good']).optional(),
   bookmark: z.boolean().optional(),
   character: z.string().min(1).optional(),
+  model: z.array(z.enum(MODEL_FILTER_VALUES)).min(1).optional(),
+  phase: z.array(z.enum(PHASES)).min(1).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
   limit: z.number().int().min(1).optional(),

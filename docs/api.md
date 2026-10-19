@@ -1273,11 +1273,20 @@ comfy_prompt_id
 original_filename
 origin
 exclude_rating
+model
+phase
 ids
 cursor
 after
 created_before
 ```
+
+`model`と`phase`はカンマ区切りの複数指定（どれかに一致）です。`model`は`anima` / `il` / `moss` /
+`unknown`（`generations.model_family`が NULL、[domain-model.md](domain-model.md#generation)）で、
+`phase`は`generate`（kind が generate / finalize）・`import`・`redraw`（redraw / repair /
+masked_redraw）・`deliver`・`saturation`・`stage`・`lighting`・`dof`・`lens`・`photo`で、Generation の
+Request の`kind`に対応します。範囲外の値は400です。MCP `list_generations`は同名の配列入力
+`model` / `phase`を受けます。
 
 `cursor`は古い方向、`after`は新しい方向のカーソルで、`after=<カーソル>`はそのカーソルが指す
 Generationより新しいものを`limit`件、新しい順で返します。`created_before=<UTC ISO>`は`created_at`が
@@ -1464,7 +1473,7 @@ GET /api/v1/generations/timeline
 
 Generation Searchと同じ絞り込みquery（`character` / `tag` / `published` / `reference` / `from` /
 `to` / `rating` / `bookmark` / `comfy_prompt_id` / `original_filename` / `origin` /
-`exclude_rating` / `ids`）を受け取り、条件に合う枚数をJST（UTC+9）の15分枠ごとに新しい順で返します。
+`exclude_rating` / `model` / `phase` / `ids`）を受け取り、条件に合う枚数をJST（UTC+9）の15分枠ごとに新しい順で返します。
 `cursor` / `after` / `created_before` / `limit`は使いません。枠のないものは含みません。
 
 ``` json

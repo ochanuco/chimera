@@ -229,6 +229,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-size: 0.85rem;
 }
 .filter-form .checkbox-field { flex-direction: row; align-items: center; gap: 0.4rem; }
+.filter-form .checkbox-group { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; border: 0; margin: 0; padding: 0; min-width: 0; }
+.filter-form .checkbox-group legend { font-size: 0.75rem; color: var(--text-dim); padding: 0; margin-bottom: 0.25rem; }
 .filter-form-lookup {
   flex-basis: 100%;
   display: flex;

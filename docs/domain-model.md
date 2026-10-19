@@ -670,6 +670,13 @@ controlnet / seed / output のキャッシュ、`version` フィールドで抽�
 `refines_generation_id` は仕上げ元の Generation です。ingest 時に Job の `source_generation_id` から写し、raw の
 Generation は NULL です。
 
+`model_family`は`anima` / `il` / `moss`のいずれか、決まらなければ NULL です。ingest 時に決め、
+raw の Generation は Job の`render_facts_json`の`checkpoints`（無ければ`graph`から抽出）の全名を
+小文字にして、`moss`を含めば`moss`、`anima`を含み`animagine`を含まないものがあれば`anima`、
+checkpoint が1つ以上あれば`il`の順で判定します（`src/lib/model-family.ts`）。仕上げ済みの
+Generation（`refines_generation_id`あり）は仕上げ元の`model_family`をそのまま引き継ぎます。
+Gallery の`model`絞り込みが使います（`unknown`は NULL）。
+
 MVPでは1 Generationにつき Character は0..1です。
 
 主な属性:
@@ -679,6 +686,7 @@ id
 short_id
 request_id
 refines_generation_id
+model_family
 comfy_job_id
 character_id
 seed
