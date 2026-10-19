@@ -931,7 +931,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
         '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, ' +
         "derive_request) assumes you already have one. Filters mirror the gallery's own " +
-        'filters (character, tag, rating, bookmark, created_at range) and combine freely; published=true is the ' +
+        'filters (character, tag, rating, bookmark, model family, phase, created_at range) and combine freely; ' +
+        'model (anima / il / moss / unknown) and phase (generate, import, redraw, deliver, saturation, stage, lighting, dof, lens, photo) each take a list and match any of it; published=true is the ' +
         "delivered-look index — every look that was posted, each still carrying its look:<pose> tag; reference=true " +
         "is the pose basis-render index — every Generation currently pinned via set_pose_reference. rating is " +
         "written by the human only, never by an agent — read it as the human's verdict on the image, not something " +
@@ -941,9 +942,11 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       inputSchema: listGenerationsInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ tag, published, reference, rating, bookmark, character, from, to, limit, offset }) => {
+    async ({ tag, published, reference, rating, bookmark, character, model, phase, from, to, limit, offset }) => {
       const query: Record<string, string | undefined> = {
         tag,
+        model: model?.join(','),
+        phase: phase?.join(','),
         rating,
         character,
         from,

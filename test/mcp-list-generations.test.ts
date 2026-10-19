@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { createGeneration, mcpToolCall, postJson } from './helpers';
 
@@ -147,3 +148,24 @@ interface GenerationWithDrawnPose {
   pose_reference: { recipe: string; pose: string } | null;
   request: { drawn_pose: { recipe: string; pose: string; reference: unknown } | null } | null;
 }
+
+describe('list_generations model / phase filters', () => {
+  it('accepts array inputs and rejects unknown values', async () => {
+    const a = await createGeneration();
+    await env.DB.prepare("UPDATE generations SET model_family = 'moss' WHERE id = ?").bind(a.generation.id).run();
+    const b = await createGeneration();
+    await env.DB.prepare("UPDATE generations SET model_family = 'il' WHERE id = ?").bind(b.generation.id).run();
+
+    const hit = await mcpToolCall<ListResult>('list_generations', { model: ['moss', 'anima'], phase: ['generate'], limit: 200 });
+    expect(hit.isError).toBe(false);
+    const shorts = hit.data!.items.map((i) => i.short_id);
+    expect(shorts).toContain(a.generation.short_id);
+    expect(shorts).not.toContain(b.generation.short_id);
+
+    const miss = await mcpToolCall<ListResult>('list_generations', { phase: ['deliver'], limit: 200 });
+    expect(miss.data!.items.map((i) => i.short_id)).not.toContain(a.generation.short_id);
+
+    const bad = await mcpToolCall('list_generations', { model: ['bogus'] });
+    expect(bad.isError).toBe(true);
+  });
+});

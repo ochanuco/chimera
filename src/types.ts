@@ -142,6 +142,8 @@ export interface GenerationRow {
   request_id: string;
   /** 仕上げ元の Generation。raw Generation は NULL。 */
   refines_generation_id: string | null;
+  /** 'moss' | 'anima' | 'il'。checkpoint 名から決め、仕上げ済みは元から引き継ぐ。不明は NULL (migrations/0050)。 */
+  model_family: string | null;
 }
 
 export interface GenerationAssetRow {

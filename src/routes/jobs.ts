@@ -7,11 +7,31 @@ import { badRequest, notFound } from '../lib/errors';
 import { canonicalGenerationUrl, serializeJob } from '../lib/serialize';
 import { parsePngDimensions } from '../lib/image-meta';
 import { extractRenderFacts } from '../lib/render-facts';
+import { modelFamilyOf, type ModelFamily } from '../lib/model-family';
 import { notifyHubGeneration, runInBackground } from '../lib/hub-notify';
 import { parseOrThrow } from '../lib/validate';
 import type { AppEnv, ComfyJobRow, GenerationRow } from '../types';
 
 export const jobs = new Hono<AppEnv>();
+
+function jobModelFamily(job: ComfyJobRow): ModelFamily | null {
+  let checkpoints: string[] | null = null;
+  if (job.render_facts_json) {
+    try {
+      checkpoints = (JSON.parse(job.render_facts_json) as { checkpoints?: string[] }).checkpoints ?? null;
+    } catch {
+      // 壊れたキャッシュは graph から取り直す。
+    }
+  }
+  if (!checkpoints && job.graph) {
+    try {
+      checkpoints = extractRenderFacts(JSON.parse(job.graph)).checkpoints;
+    } catch {
+      // graph が壊れていれば系統は不明のまま。
+    }
+  }
+  return checkpoints ? modelFamilyOf(checkpoints) : null;
+}
 
 async function getJobOr404(db: D1Database, id: string): Promise<ComfyJobRow> {
   const row = await db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(id).first<ComfyJobRow>();
@@ -124,6 +144,12 @@ jobs.post('/:jobId/generations', async (c) => {
   const r2ObjectKey = `generations/${id}/original.png`;
   const now = nowIso();
 
+  // 仕上げ済みは元の系統を引き継ぐ。raw は Job の checkpoint から決める。
+  const modelFamily = job.source_generation_id
+    ? ((await db.prepare('SELECT model_family FROM generations WHERE id = ?').bind(job.source_generation_id).first<{ model_family: string | null }>())
+        ?.model_family ?? null)
+    : jobModelFamily(job);
+
   // D1 first: the row fixes the ID/R2 key before any R2 write, so a failure at either
   // store never orphans an object, and retries converge on the same row and key.
   try {
@@ -132,8 +158,8 @@ jobs.post('/:jobId/generations', async (c) => {
         `INSERT INTO generations (id, short_id, comfy_job_id, character_id, seed, original_filename,
           comfy_output_index, r2_object_key, image_width, image_height, image_size, note, rating, bookmark,
           semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at,
-          request_id, refines_generation_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)`,
+          request_id, refines_generation_id, model_family)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -150,6 +176,7 @@ jobs.post('/:jobId/generations', async (c) => {
         now,
         job.request_id ?? null,
         job.source_generation_id ?? null,
+        modelFamily,
       )
       .run();
   } catch (err) {

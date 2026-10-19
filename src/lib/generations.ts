@@ -9,6 +9,8 @@ import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
 import { badRequest } from './errors';
+import { MODEL_FILTER_VALUES } from './model-family';
+import { isPhase, PHASE_KINDS, PHASES, type Phase } from './phases';
 import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationAssetRow, GenerationRow, RequestRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
@@ -365,6 +367,10 @@ export function decodeCursor(raw: string): GenerationCursor {
   }
 }
 
+function splitFilterList(raw: string): string[] {
+  return [...new Set(raw.split(',').map((v) => v.trim()).filter(Boolean))];
+}
+
 /** 一覧と timeline で共有する絞り込み条件。ページング (cursor / after / created_before) は含めない。 */
 function buildGenerationFilter(query: Record<string, string | undefined>): { conditions: string[]; binds: unknown[] } {
   const conditions: string[] = [];
@@ -435,6 +441,26 @@ function buildGenerationFilter(query: Record<string, string | undefined>): { con
     } else {
       throw badRequest('origin must be "raw" or "refined"');
     }
+  }
+  if (query.model) {
+    const values = splitFilterList(query.model);
+    const invalid = values.filter((v) => !(MODEL_FILTER_VALUES as readonly string[]).includes(v));
+    if (invalid.length > 0 || values.length === 0) throw badRequest(`model must be a comma-separated list of ${MODEL_FILTER_VALUES.join(', ')}`);
+    const families = values.filter((v) => v !== 'unknown');
+    const parts: string[] = [];
+    if (families.length > 0) {
+      parts.push('g.model_family IN (SELECT value FROM json_each(?))');
+      binds.push(JSON.stringify(families));
+    }
+    if (values.includes('unknown')) parts.push('g.model_family IS NULL');
+    conditions.push(`(${parts.join(' OR ')})`);
+  }
+  if (query.phase) {
+    const values = splitFilterList(query.phase);
+    if (values.length === 0 || !values.every(isPhase)) throw badRequest(`phase must be a comma-separated list of ${PHASES.join(', ')}`);
+    const kinds = values.flatMap((v) => PHASE_KINDS[v as Phase]);
+    conditions.push('g.request_id IN (SELECT id FROM requests WHERE kind IN (SELECT value FROM json_each(?)))');
+    binds.push(JSON.stringify(kinds));
   }
   if (query.ids) {
     const idTokens = parseIdsParam(query.ids);

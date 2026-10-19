@@ -519,6 +519,36 @@ describe('Web GUI pages', () => {
     expect(tagHtml).not.toContain('data-gallery-live="true"');
   });
 
+  it('GET /gallery renders model/phase checkbox groups, keeps checked state, filters, and disables live insertion', async () => {
+    const { generation } = await createGeneration();
+    await env.DB.prepare("UPDATE generations SET model_family = 'anima' WHERE id = ?").bind(generation.id).run();
+    const other = await createGeneration();
+    await env.DB.prepare("UPDATE generations SET model_family = 'il' WHERE id = ?").bind(other.generation.id).run();
+
+    const plain = await (await req('/gallery?limit=200')).text();
+    expect(plain).toContain('name="model" value="anima"');
+    expect(plain).toContain('name="model" value="unknown"');
+    expect(plain).toContain('name="phase" value="redraw"');
+    expect(plain).not.toMatch(/name="model" value="anima" checked/);
+
+    const repeated = await (await req('/gallery?model=anima&model=moss&phase=generate&limit=200')).text();
+    expect(repeated).toMatch(/name="model" value="anima" checked/);
+    expect(repeated).toMatch(/name="model" value="moss" checked/);
+    expect(repeated).not.toMatch(/name="model" value="il" checked/);
+    expect(repeated).toMatch(/name="phase" value="generate" checked/);
+    expect(repeated).toContain(generation.short_id);
+    expect(repeated).not.toContain(other.generation.short_id);
+    expect(repeated).not.toContain('data-gallery-live="true"');
+    expect(repeated).toContain('model=anima%2Cmoss');
+
+    const comma = await (await req('/gallery?model=anima,il&limit=200')).text();
+    expect(comma).toMatch(/name="model" value="il" checked/);
+    expect(comma).toContain(other.generation.short_id);
+
+    const phaseOnly = await (await req('/gallery?phase=photo&limit=200')).text();
+    expect(phaseOnly).not.toContain('data-gallery-live="true"');
+  });
+
   it('GET /gallery?partial=1 returns a cards fragment without a document wrapper', async () => {
     await createGeneration();
     const res = await req('/gallery?partial=1&limit=200');
