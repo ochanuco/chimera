@@ -515,7 +515,9 @@ export async function queryGenerations(
   // (offset ベースのページングと keyset ページングを混在させない)。
   const { results } = await db
     .prepare(
-      `SELECT g.*, ch.name AS character_name, json_group_array(t.name) AS tag_names_json,
+      // tags を JOIN + GROUP BY g.id で集めると、LIMIT の前に全 generations を集約してしまう (created_at の索引で止まれない)。
+      `SELECT g.*, ch.name AS character_name,
+         (SELECT json_group_array(t.name) FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id) AS tag_names_json,
          rg.short_id AS refines_generation_short_id,
          EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published,
          gs.model AS safety_model, gs.rating_json AS safety_rating_json, gs.tags_json AS safety_tags_json, gs.rated_at AS safety_rated_at,
@@ -523,12 +525,9 @@ export async function queryGenerations(
          (SELECT pr.name FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_pose
        FROM generations g
        LEFT JOIN characters ch ON ch.id = g.character_id
-       LEFT JOIN generation_tags gt ON gt.generation_id = g.id
-       LEFT JOIN tags t ON t.id = gt.tag_id
        LEFT JOIN generations rg ON rg.id = g.refines_generation_id
        LEFT JOIN generation_safety gs ON gs.generation_id = g.id
        ${where}
-       GROUP BY g.id
        ORDER BY g.created_at ${afterCursor ? 'ASC' : 'DESC'}, g.id ${afterCursor ? 'ASC' : 'DESC'}
        LIMIT ? OFFSET ?`,
     )
