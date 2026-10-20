@@ -1606,12 +1606,13 @@ MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — こ�
 ## 絵柄チェック
 
 ``` text
-POST /api/v1/style-check/{recipe}
+POST /api/v1/style-check/{recipe}   {pose?}
 ```
 
-`/check`（[ui.md](ui.md#絵柄チェック)）の「今の既定で描く」ボタンが呼ぶ窓口です。body
-はありません。`recipe` の代表ポーズ一覧（`src/lib/style-check.ts` の `STYLE_CHECK_POSES`、
-今は `yukari` のみ）を pin を持つものだけ対象に、MCP `plain_render` と同じ組み立て
+`/check`（[ui.md](ui.md#絵柄チェック)）の`pin 済みを全部描き直す`ボタンと各行の`今のコードで描き直す`ボタンが呼ぶ窓口です。
+body は省略でき、`pose` を渡すとそのポーズだけを対象にします。省略時の対象は、公開済みカタログの
+`recipe` のポーズとPresetだけに存在するポーズ（`src/lib/style-check.ts` の `listStyleCheckPoseNames`）のうち
+pin を持つもの全部です。MCP `plain_render` と同じ組み立て
 （`buildPlainRenderRequest` → `createRequest`）で `kind = generate` の request を積みます。
 `created_by` は `'gui'` 固定、idempotency key は
 `style-check:<recipe>:<pose>:<sha256>` です。sha256 は pin の seed・pose の Preset・カタログ上の
@@ -1623,14 +1624,13 @@ git commit は含みません。描画内容が同じ間の連打は積み直さ
 ``` json
 {
   "results": [
-    { "framing": "bust", "pose": "bust", "skipped": null, "created": true, "request_id": "...", "status": "queued" },
-    { "framing": "full", "pose": "dance", "skipped": "no_pin", "created": null, "request_id": null, "status": null }
+    { "pose": "bust", "skipped": null, "created": true, "request_id": "...", "status": "queued" },
+    { "pose": "dance", "skipped": "no_pin", "created": null, "request_id": null, "status": null }
   ]
 }
 ```
 
-pin が無いポーズは `skipped: "no_pin"` で、request は積まれません。`recipe` に代表ポーズの
-定義が無ければ `results` は空配列です。常に 200 を返します（行ごとの skip/replay は
+pin が無いポーズは `skipped: "no_pin"` で、request は積まれません。常に 200 を返します（行ごとの skip/replay は
 エラーではありません）。
 
 ## Tags

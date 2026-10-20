@@ -1,19 +1,21 @@
 import { Hono } from 'hono';
+import { styleCheckRenderSchema } from '../schemas/style-check';
 import { renderStyleCheck } from '../lib/style-check';
 import { notifyHub, runInBackground } from '../lib/hub-notify';
+import { parseOrThrow } from '../lib/validate';
 import type { AppEnv } from '../types';
 
 export const styleCheck = new Hono<AppEnv>();
 
-// 絵柄チェックの唯一の書き込み窓口。何を描くかは STYLE_CHECK_POSES の固定リストと pin だけで決まる
+// 絵柄チェックの唯一の書き込み窓口。何を描くかは pin と recipe 既定だけで決まる
 // — GUI は prompt を書かない(docs/worker-protocol.md「GUI」の不変条件)。
 styleCheck.post('/:recipe', async (c) => {
   const recipe = c.req.param('recipe');
-  const { results, createdRequests } = await renderStyleCheck(c.env.DB, c.env, recipe);
+  const body = parseOrThrow(styleCheckRenderSchema, await c.req.json().catch(() => ({})));
+  const { results, createdRequests } = await renderStyleCheck(c.env.DB, c.env, recipe, body.pose);
   for (const row of createdRequests) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json({
     results: results.map((r) => ({
-      framing: r.framing,
       pose: r.pose,
       skipped: r.skipped ?? null,
       created: r.created ?? null,

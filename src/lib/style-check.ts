@@ -1,37 +1,41 @@
-// 絵柄チェック (docs/ui.md「絵柄チェック」): 代表ポーズを今のカタログ既定で並べ、pin から絵柄がずれていないか
+// 絵柄チェック (docs/ui.md「絵柄チェック」): recipe の全ポーズについて pin と今のカタログのずれ (ドリフト) を並べ、
 // 人間が見比べる。生成は plain_render (lib/plain-render.ts) と同じ経路 — このファイルは「どのポーズを並べるか」
-// の正本と、既存 request を探す/積むだけの薄い層。
+// の導出と、既存 request を探す/積むだけの薄い層。
 
 import { buildPlainRenderRequest } from './plain-render';
 import { findCatalogPose, getCatalog } from './catalogs';
-import { getPresetRow } from './presets';
+import { getPresetRow, listPresets } from './presets';
 import { stableStringify } from './json-canonical';
-import { createRequest, defaultRecipeRef } from './requests';
+import { createRequest, defaultRecipeRef, resolveDerivationSource } from './requests';
 import { getCurrentReference, referenceView, type PresetReferenceView } from './preset-references';
-import type { RequestRow } from '../types';
-
-export interface StyleCheckPose {
-  framing: string;
-  pose: string;
-}
+import { getGenerationByIdOrShortId } from './db';
+import { diffFactSummaries, renderFactsForJob, type FactDiffEntry } from './render-facts';
+import type { ComfyJobRow, RequestRow } from '../types';
 
 /** /check が対象にする recipe。今は yukari だけ (docs/ui.md「絵柄チェック」)。 */
 export const STYLE_CHECK_RECIPE = 'yukari';
 
-/**
- * recipe ごとの代表ポーズ一覧 — 絵柄チェックの唯一の正本。各 pose は Preset として存在し pin を持っている
- * ことを前提にする (無ければ「pin 無し」表示になり描けない)。
- */
-export const STYLE_CHECK_POSES: Record<string, StyleCheckPose[]> = {
-  [STYLE_CHECK_RECIPE]: [
-    { framing: 'bust', pose: 'bust' },
-    { framing: 'cowboy', pose: 'coffee' },
-    { framing: 'cowboy', pose: 'gao' },
-    { framing: 'full', pose: 'step' },
-    { framing: 'full', pose: 'dance' },
-    { framing: 'full', pose: 'anyo' },
-  ],
-};
+/** カタログの pose 名 + Preset だけに存在する pose (昇格した pose。lib/plain-render.ts) の和集合を名前順に。 */
+export async function listStyleCheckPoseNames(db: D1Database, recipe: string, recipeRef: string): Promise<string[]> {
+  const names = new Set<string>();
+  const catalog = await getCatalog(db, recipeRef);
+  const poses = (catalog?.doc.recipes.find((r) => r.name === recipe) as { poses?: unknown[] } | undefined)?.poses ?? [];
+  for (const pose of poses) {
+    const name = typeof pose === 'string' ? pose : (pose as { name?: unknown } | null)?.name;
+    if (typeof name === 'string') names.add(name);
+  }
+  for (const preset of await listPresets(db, { recipe, kind: 'pose' })) names.add(preset.name);
+  return Array.from(names).sort();
+}
+
+export type DriftState = 'match' | 'drift' | 'unknown' | 'no_pin';
+
+/** pin の Request と カタログ pose の fingerprint を突き合わせる。どちらかが無ければ判定不可。 */
+export function driftState(hasPin: boolean, pinFingerprint: string | null, catalogFingerprint: string | null): DriftState {
+  if (!hasPin) return 'no_pin';
+  if (!pinFingerprint || !catalogFingerprint) return 'unknown';
+  return pinFingerprint === catalogFingerprint ? 'match' : 'drift';
+}
 
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -68,18 +72,45 @@ export async function styleCheckIdempotencyKey(
 }
 
 export interface StyleCheckRow {
-  framing: string;
   pose: string;
-  /** 現在の pin。無ければこの pose の行は描けない (GET /check「pin 無し」)。 */
+  /** 現在の pin。無ければこの pose の行は描けない (GET /check「pin なし」)。 */
   pin: PresetReferenceView | null;
+  drift: DriftState;
+  /** drift のときだけ: pin を描いた実際の prompt (baseline) とカタログの pose の prompt (arm) の差。 */
+  prompt_diff: FactDiffEntry[];
   /** pin があるときだけ埋まる、今の描画内容での style-check idempotency key。 */
   idempotency_key: string | null;
   /** その key に一致する既存 request。無ければ「まだ描いていない」。 */
   request: RequestRow | null;
 }
 
+async function pinDrift(
+  db: D1Database,
+  pin: PresetReferenceView,
+  catalogPose: unknown,
+): Promise<{ drift: DriftState; diff: FactDiffEntry[] }> {
+  const generation = await getGenerationByIdOrShortId(db, pin.generation_id);
+  if (!generation) return { drift: 'unknown', diff: [] };
+  const { generation: raw, request } = await resolveDerivationSource(db, generation);
+  const catalogFingerprint = (catalogPose as { fingerprint?: unknown } | null)?.fingerprint;
+  const drift = driftState(true, request.pose_fingerprint, typeof catalogFingerprint === 'string' ? catalogFingerprint : null);
+  if (drift !== 'drift') return { drift, diff: [] };
+
+  const job = await db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(raw.comfy_job_id).first<ComfyJobRow>();
+  const facts = job ? await renderFactsForJob(db, job) : null;
+  const baseline: Record<string, string | null> = {};
+  const arm: Record<string, string | null> = {};
+  for (const key of ['positive', 'negative'] as const) {
+    const catalogValue = (catalogPose as Record<string, unknown>)[key];
+    if (typeof catalogValue !== 'string') continue;
+    baseline[key] = facts?.samplers[0]?.prompt[key] ?? null;
+    arm[key] = catalogValue;
+  }
+  return { drift, diff: diffFactSummaries(baseline, arm) };
+}
+
 /**
- * GET /check が描く行データ: pose ごとに現在の pin と、今の描画内容での plain render
+ * GET /check が描く行データ: pose ごとに現在の pin、ドリフト判定、今の描画内容での plain render
  * request (あれば) を集める。何も積まない — 既存の request を探すだけ (createRequest は呼ばない)。
  */
 export async function loadStyleCheckRows(
@@ -87,23 +118,26 @@ export async function loadStyleCheckRows(
   recipe: string,
   recipeRef: string,
 ): Promise<StyleCheckRow[]> {
-  const poses = STYLE_CHECK_POSES[recipe] ?? [];
+  const catalog = await getCatalog(db, recipeRef);
   const rows: StyleCheckRow[] = [];
-  for (const { framing, pose } of poses) {
+  for (const pose of await listStyleCheckPoseNames(db, recipe, recipeRef)) {
     const pin = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
     let idempotencyKey: string | null = null;
     let request: RequestRow | null = null;
+    let drift: DriftState = 'no_pin';
+    let promptDiff: FactDiffEntry[] = [];
     if (pin) {
       idempotencyKey = await styleCheckIdempotencyKey(db, recipeRef, recipe, pose, pin.seed);
       request = await db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(idempotencyKey).first<RequestRow>();
+      const catalogPose = catalog ? findCatalogPose(catalog.doc, recipe, pose) : null;
+      ({ drift, diff: promptDiff } = await pinDrift(db, pin, catalogPose));
     }
-    rows.push({ framing, pose, pin, idempotency_key: idempotencyKey, request });
+    rows.push({ pose, pin, drift, prompt_diff: promptDiff, idempotency_key: idempotencyKey, request });
   }
   return rows;
 }
 
 export interface StyleCheckRenderResult {
-  framing: string;
   pose: string;
   skipped?: 'no_pin';
   created?: boolean;
@@ -119,7 +153,7 @@ export interface RenderStyleCheckResult {
 }
 
 /**
- * POST /api/v1/style-check/{recipe}: pin を持つ代表ポーズごとに、MCP `plain_render` と同じ組み立て
+ * POST /api/v1/style-check/{recipe}: pin を持つ全ポーズ (`pose` 指定ならその 1 つ) について、MCP `plain_render` と同じ組み立て
  * (buildPlainRenderRequest → createRequest) で kind=generate を積む。default idempotency key なので、
  * 同じ catalog commit への連打は何も作らず既存行を返す (created: false)。pin が無い pose は skip される。
  */
@@ -127,16 +161,17 @@ export async function renderStyleCheck(
   db: D1Database,
   env: { REQUESTS_DEFAULT_RECIPE_REF?: string },
   recipe: string,
+  onlyPose?: string,
 ): Promise<RenderStyleCheckResult> {
   const recipeRef = defaultRecipeRef(env);
-  const poses = STYLE_CHECK_POSES[recipe] ?? [];
+  const poses = onlyPose ? [onlyPose] : await listStyleCheckPoseNames(db, recipe, recipeRef);
   const results: StyleCheckRenderResult[] = [];
   const createdRequests: RequestRow[] = [];
 
-  for (const { framing, pose } of poses) {
+  for (const pose of poses) {
     const pin = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
     if (!pin) {
-      results.push({ framing, pose, skipped: 'no_pin' });
+      results.push({ pose, skipped: 'no_pin' });
       continue;
     }
 
@@ -148,7 +183,7 @@ export async function renderStyleCheck(
       { defaultRecipeRef: recipeRef },
     );
     if (created) createdRequests.push(row);
-    results.push({ framing, pose, created, request_id: row.id, status: row.status });
+    results.push({ pose, created, request_id: row.id, status: row.status });
   }
 
   return { recipe_ref: recipeRef, results, createdRequests };

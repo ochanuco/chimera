@@ -1171,8 +1171,22 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .style-check-render-btn:disabled { opacity: 0.6; cursor: default; }
 .style-check-title { margin: 0; font-size: 1.1rem; }
-.style-check-any-id { display: flex; gap: 0.4rem; }
-.style-check-any-id input { width: 10rem; }
+.style-check-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.sc-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.sc-row { display: grid; grid-template-columns: 10rem 9rem 12rem 1fr; gap: 0.75rem; align-items: start; padding: 0.6rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; }
+.sc-name { display: flex; flex-direction: column; gap: 0.3rem; }
+.sc-pin a, .sc-result a.sc-thumb { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; color: var(--text-dim); }
+.sc-pin img, .sc-result img { width: 100%; max-height: 9rem; object-fit: contain; background: var(--bg); border-radius: 4px; }
+.sc-empty { color: var(--text-dim); font-size: 0.85rem; }
+.sc-result { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; }
+.sc-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.sc-drift { font-size: 0.75rem; padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid var(--border); width: fit-content; }
+.sc-drift-match { color: var(--good); }
+.sc-drift-drift { color: var(--bad); }
+.sc-drift-unknown { color: var(--text-dim); }
+.sc-diff { grid-column: 1 / -1; font-size: 0.8rem; }
+.sc-diff pre { white-space: pre-wrap; margin: 0.2rem 0; }
+@media (max-width: 800px) { .sc-row { grid-template-columns: 1fr 1fr; } }
 
 
 .hidden { display: none !important; }
@@ -2640,92 +2654,65 @@ export const appJs = `
     });
   }
 
-  // 絵柄チェック (/check): ワークベンチと同じ比較ペイン (wbViewer) に、左 = pin (または任意の ID)、右 = そのポーズの最新の plain render を出す。
+  // 絵柄チェック (/check): recipe の全 pose を 1 行ずつ並べる。左の pin と、そのポーズの最新の plain render (右) を見比べ、
+  // 描き直しと「good にして基準にする」(rating good → pose-reference) だけを呼ぶ。実行中の request は 3 秒ごとに取り直す。
   function initStyleCheck() {
     var root = qs('[data-style-check]');
     if (!root) return;
     var initial = {};
     try { initial = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { initial = {}; }
     var recipe = root.getAttribute('data-recipe');
-    var sc = { poses: initial.poses || [], active: 0, override: null, cursor: null, loupe: { on: true, zoom: 3 }, timer: null };
-    var viewer = wbViewer(root, sc);
-    viewer.trackCursor();
+    var sc = { poses: initial.poses || [], timer: null };
 
-    var wanted = new URLSearchParams(location.search).get('pose');
-    sc.poses.forEach(function (p, i) { if (p.pose === wanted) sc.active = i; });
-
-    function current() {
-      return sc.poses[sc.active] || null;
-    }
-
-    function hint(p) {
-      if (!p.pin) return 'pin 無し';
-      if (!p.request) return '未描画';
-      if (p.request.status === 'done' && !p.result) return 'done';
-      return p.request.status;
-    }
-
-    function setEmpty(pane, text) {
-      pane.setAttribute('data-wb-key', 'none');
-      pane.removeAttribute('data-wb-imgpane');
-      pane.textContent = '';
-      pane.classList.remove('wb-checker');
-      pane.appendChild(wbEl('div', 'wb-empty', text));
-    }
-
-    function render() {
-      var p = current();
-      qsa('[data-sc-pose]', root).forEach(function (btn, i) {
-        btn.classList.toggle('wb-step-on', i === sc.active);
-        qs('[data-sc-hint]', btn).textContent = hint(sc.poses[i]);
-      });
-      if (!p) return;
-
-      var left = sc.override || p.pin;
-      var leftPane = qs('[data-wb-input-pane]', root);
-      if (left) viewer.fillPane(leftPane, left.id, 'input', left, null);
-      else setEmpty(leftPane, 'pin 無し');
-      qs('[data-sc-left-cap]', root).textContent = left ? captionWithMeta((sc.override ? '比較 ' : 'pin ') + left.short_id, left) : 'pin';
-      qs('[data-sc-left-reset]', root).hidden = !sc.override;
-
-      var rightPane = qs('[data-wb-cmp-pane]', root);
-      var rating = qs('[data-wb-rating]', root);
-      if (p.result) {
-        viewer.fillPane(rightPane, p.result.id, 'cmp', p.result, null);
-        qs('[data-sc-right-cap]', root).textContent = captionWithMeta('最新 ' + p.result.short_id, p.result);
-        rating.setAttribute('data-generation-id', p.result.id);
-        applyRatingToGroups(p.result.id, p.result.rating);
-      } else {
-        var message = !p.pin ? '' : !p.request ? '未描画'
-          : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
-          : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
-        setEmpty(rightPane, message);
-        qs('[data-sc-right-cap]', root).textContent = '最新' + (p.request ? ' ' + p.request.status : '');
-      }
-      rating.hidden = !p.result;
-
-      qs('[data-sc-replace-pin]', root).disabled = !(p.pin && p.result && p.pin.id !== p.result.id);
-      var link = qs('[data-sc-compare-link]', root);
-      link.hidden = !(p.pin && p.result);
-      if (!link.hidden) link.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
-      viewer.updateCrosshair();
-    }
-
-    function selectPose(i) {
-      sc.active = i;
-      sc.override = null;
-      var url = new URL(location.href);
-      url.searchParams.set('pose', sc.poses[i].pose);
-      history.replaceState(null, '', url);
-      render();
+    function poseOf(name) {
+      return sc.poses.find(function (p) { return p.pose === name; }) || null;
     }
 
     function nodeOf(g) {
-      return { id: g.id, short_id: g.short_id, rating: g.rating || null, delivered: false, image_width: g.image_width, image_height: g.image_height, image_size: g.image_size };
+      return { id: g.id, short_id: g.short_id, seed: g.seed == null ? null : g.seed, rating: g.rating || null };
+    }
+
+    function renderResult(p) {
+      var cell = qsa('[data-sc-pose]', root).filter(function (el) { return el.getAttribute('data-sc-pose') === p.pose; }).map(function (el) { return qs('[data-sc-result]', el); })[0];
+      if (!cell) return;
+      cell.textContent = '';
+      if (!p.pin) return;
+      if (p.result) {
+        var link = wbEl('a', 'sc-thumb');
+        link.href = '/g/' + p.result.short_id;
+        var img = document.createElement('img');
+        img.src = '/g/' + p.result.short_id + '/preview';
+        img.alt = p.result.short_id;
+        link.appendChild(img);
+        link.appendChild(wbEl('span', 'mono', p.result.short_id + ' · seed ' + (p.result.seed == null ? '-' : p.result.seed)));
+        cell.appendChild(link);
+        var same = p.result.id === p.pin.id;
+        var adopt = wbEl('button', 'wb-pill', same ? 'pin と同じ絵' : 'good にして基準にする');
+        adopt.type = 'button';
+        adopt.setAttribute('data-sc-adopt', '');
+        adopt.disabled = same;
+        cell.appendChild(adopt);
+        var compare = wbEl('a', 'wb-pill', '/compare で開く');
+        compare.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
+        cell.appendChild(compare);
+        return;
+      }
+      var message = !p.request ? '未描画'
+        : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
+        : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
+      cell.appendChild(wbEl('span', 'sc-empty', message));
+    }
+
+    function renderAll() {
+      sc.poses.forEach(renderResult);
+    }
+
+    function isPending(p) {
+      return p.request && (p.request.status === 'queued' || p.request.status === 'running' || (p.request.status === 'done' && !p.result));
     }
 
     async function syncRequests() {
-      var pending = sc.poses.filter(function (p) { return p.request && (p.request.status === 'queued' || p.request.status === 'running' || (p.request.status === 'done' && !p.result)); });
+      var pending = sc.poses.filter(isPending);
       if (pending.length === 0) {
         clearInterval(sc.timer);
         sc.timer = null;
@@ -2740,92 +2727,65 @@ export const appJs = `
           var id = r.status === 'done' && r.result && r.result.generation_ids ? r.result.generation_ids[0] : null;
           if (id) p.result = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
         } catch (e) { /* retry on the next tick */ }
+        renderResult(p);
       }
-      render();
     }
 
     function startPolling() {
       if (!sc.timer) sc.timer = setInterval(syncRequests, 3000);
     }
 
+    async function enqueue(pose, button) {
+      var label = button.textContent;
+      button.disabled = true;
+      button.textContent = '送信中…';
+      try {
+        var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST', pose ? { pose: pose } : {});
+        (result.results || []).forEach(function (item) {
+          var p = poseOf(item.pose);
+          if (!p || item.skipped || (!item.created && item.status === 'done')) return;
+          p.request = { id: item.request_id, status: item.status, error: null };
+          p.result = null;
+          renderResult(p);
+        });
+        startPolling();
+        track('style_check.render', { recipe: recipe, pose: pose || null });
+      } catch (e) {
+        trackError('style_check.render', e, { recipe: recipe, pose: pose || null });
+        alert('描画できません: ' + e.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+
     root.addEventListener('click', async function (ev) {
       var t = ev.target.closest ? ev.target : null;
       if (!t) return;
-      var poseBtn = t.closest('[data-sc-pose]');
-      if (poseBtn) {
-        var idx = sc.poses.findIndex(function (p) { return p.pose === poseBtn.getAttribute('data-sc-pose'); });
-        if (idx >= 0) selectPose(idx);
-        return;
-      }
-      if (t.closest('[data-sc-left-reset]')) {
-        sc.override = null;
-        return render();
-      }
-      var renderBtn = t.closest('[data-style-check-render]');
-      if (renderBtn) {
-        var label = renderBtn.textContent;
-        renderBtn.disabled = true;
-        renderBtn.textContent = '送信中…';
-        try {
-          var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST');
-          (result.results || []).forEach(function (item) {
-            var p = sc.poses.find(function (q) { return q.pose === item.pose; });
-            if (!p || item.skipped || (!item.created && item.status === 'done')) return;
-            p.request = { id: item.request_id, status: item.status, error: null };
-            p.result = null;
-          });
-          render();
-          startPolling();
-          track('style_check.render', { recipe: recipe });
-        } catch (e) {
-          trackError('style_check.render', e, { recipe: recipe });
-          alert('描画できません: ' + e.message);
-        } finally {
-          renderBtn.disabled = false;
-          renderBtn.textContent = label;
-        }
-        return;
-      }
-      if (t.closest('[data-sc-replace-pin]')) {
-        var q = current();
-        if (!q || !q.result) return;
-        if (!confirm(q.pose + ' の pin を ' + q.result.short_id + ' に差し替えます。以後の絵柄チェックはこの絵の seed で描きます。')) return;
-        try {
-          await api('/api/v1/generations/' + q.result.id + '/pose-reference', 'POST', {});
-          q.pin = q.result;
-          sc.override = null;
-          render();
-          track('pose_reference.set', { generation_id: q.result.id, from: 'style_check' });
-        } catch (e) {
-          trackError('pose_reference.set', e, { generation_id: q.result.id });
-          alert('基準にできません: ' + e.message);
-        }
-      }
-    });
-
-    root.addEventListener('submit', async function (ev) {
-      var form = ev.target.closest ? ev.target.closest('[data-sc-any-id]') : null;
-      if (!form) return;
-      ev.preventDefault();
-      var id = form.elements.id.value.trim();
-      if (!id) return;
+      var all = t.closest('[data-style-check-render]');
+      if (all) return enqueue(null, all);
+      var row = t.closest('[data-sc-pose]');
+      var p = row ? poseOf(row.getAttribute('data-sc-pose')) : null;
+      if (!p) return;
+      var one = t.closest('[data-sc-render-pose]');
+      if (one) return enqueue(p.pose, one);
+      var adopt = t.closest('[data-sc-adopt]');
+      if (!adopt || !p.result) return;
+      if (!confirm(p.pose + ' の ' + p.result.short_id + ' を good にして、pin を差し替えます。以後の絵柄チェックはこの絵の seed で描きます。')) return;
+      adopt.disabled = true;
       try {
-        sc.override = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
-        form.elements.id.value = '';
-        render();
+        await api('/api/v1/generations/' + p.result.id + '/rating', 'PUT', { rating: 'good' });
+        await api('/api/v1/generations/' + p.result.id + '/pose-reference', 'POST', {});
+        track('style_check.adopt', { generation_id: p.result.id, pose: p.pose });
+        location.reload();
       } catch (e) {
-        alert('その ID の絵がありません: ' + id);
+        adopt.disabled = false;
+        trackError('style_check.adopt', e, { generation_id: p.result.id });
+        alert('基準にできません: ' + e.message);
       }
     });
 
-    document.addEventListener('chimera:rating', function (ev) {
-      sc.poses.forEach(function (p) {
-        [p.pin, p.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
-      });
-      if (sc.override && sc.override.id === ev.detail.id) sc.override.rating = ev.detail.rating;
-    });
-
-    render();
+    renderAll();
     startPolling();
   }
 

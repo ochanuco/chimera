@@ -435,17 +435,18 @@ pages.get('/check', async (c) => {
   const { results: nodeRows } = wanted.length
     ? await c.env.DB
         .prepare(
-          `SELECT id, short_id, rating, image_width, image_height, image_size FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
+          `SELECT id, short_id, seed, rating FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
         )
         .bind(JSON.stringify(wanted))
-        .all<Omit<StyleCheckNode, 'delivered'>>()
+        .all<StyleCheckNode>()
     : { results: [] };
-  const nodeById = new Map((nodeRows ?? []).map((n) => [n.id, { ...n, delivered: false as const }]));
+  const nodeById = new Map((nodeRows ?? []).map((n) => [n.id, n]));
 
   const poses: StyleCheckPoseView[] = rows.map((row, i) => ({
-    framing: row.framing,
     pose: row.pose,
     pin: row.pin ? nodeById.get(row.pin.generation_id) ?? null : null,
+    drift: row.drift,
+    prompt_diff: row.prompt_diff,
     request: row.request ? { id: row.request.id, status: row.request.status, error: row.request.error } : null,
     result: resultIds[i] ? nodeById.get(resultIds[i]!) ?? null : null,
   }));

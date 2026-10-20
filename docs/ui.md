@@ -806,44 +806,45 @@ GUI が決めるのは箱の位置・辺・ブラシの幾何だけで、prompt 
 
 ## 絵柄チェック
 
-`/check`。recipe既定のprompt/paramsが、pin済みの絵柄からずれていないか人間が見比べる
-ページです。対象recipe・代表ポーズの一覧は`src/lib/style-check.ts`の`STYLE_CHECK_POSES`
-が正本で、現在は`yukari`だけです。
+`/check`。recipeの全ポーズについて、pinが今のカタログからずれていないかを一覧で確かめ、ずれたポーズのpinを直すページです。
+対象recipeは`src/lib/style-check.ts`の`STYLE_CHECK_RECIPE`で、現在は`yukari`だけです。
 
-``` text
-framing   pose
-bust      bust
-cowboy    coffee
-cowboy    gao
-full      step
-full      dance
-full      anyo
-```
+ポーズの一覧は、公開済みカタログのposeと、Presetにだけ存在するpose（昇格したpose、`src/lib/plain-render.ts`）の和集合を名前順に並べたものです。
+pinが無いポーズも並び、`pin なし`と出します。1ポーズが1行で、行は次を持ちます。
 
-[ワークベンチ](#workbench)の比較ペイン（`入力` / `候補`と同じ2枚並び・十字線・ルーペ）で1ポーズずつ見比べます。
-
--   上部のバー: ポーズのボタン（`bust (bust)`のように`framing (pose)`）をワークベンチのステッパーと同じ形で並べ、各ボタンに状態を出します。
-    `pin 無し` / `未描画` / `queued` / `running` / `done` / `failed`。押すとそのポーズに切り替え、URLを`?pose=<pose>`に書き換えます
-    （既定は先頭のポーズ、不明な値も先頭）。
--   左: そのposeの現在のpin（`preset_references`、`getCurrentReference` / `referenceView`）。pinが無ければ「pin 無し」とだけ出し、右は描けません。
-    見出しはワークベンチと同じ書式の画像meta（`1536×1536 · 2.9 MB`）を添えます。
--   右: 今の描画内容での、そのposeの最新のplain render。idempotency key
+-   ポーズ名とドリフト状態。
+-   pin: 現在のpin（`preset_references`、`getCurrentReference` / `referenceView`）のサムネイル（`/g/<short_id>`へのリンク）とseed。
+-   最新の描き直し結果。今の描画内容でのidempotency key
     (`style-check:<recipe>:<pose>:<sha256>`、`src/lib/style-check.ts`の
-    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ「未描画」と案内します。
+    `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ`未描画`と出します。
     ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
     カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
     git commit・generated_at・patches・backdropsは入れないので、docsや納品の既定だけの
-    変更・worker再起動ではkeyが変わらず、右は空になりません。requestがqueued/runningなら待機中 / 処理中の表示で、
-    ページを開いている間は3秒ごとにrequestを取り直し、doneになればその結果Generationを出します。見出しに画像metaを添え、
-    結果があるときは`bad` / `neutral` / `good`の評価ボタン（ワークベンチの評価と同じ`PUT /api/v1/generations/{id}/rating`）を出します。
--   `pin を差し替える`: 最新の結果を、そのposeのpin（基準にする）にします。確認ダイアログのあと
-    `POST /api/v1/generations/{id}/pose-reference`を呼びます。結果がまだ無いか、すでにpinと同じ絵のときは押せません。
-    結果は同じseedで描かれているので、差し替えてもkeyは変わらず、右の結果はそのまま残ります。
--   `任意 ID と比較`: 入力したshort_id（またはid）の絵を、pinの代わりに左へ出します（見出しは`比較 <short_id>`）。`pin に戻す`で戻り、
-    ポーズを切り替えても戻ります。見つからなければalertします。
--   pinと結果の両方が揃ったときは`/compare で開く`リンク（`/compare?ids=<pinのshort_id>,<結果のshort_id>`）を出します。
+    変更・worker再起動ではkeyが変わらず、結果は空になりません。結果があればサムネイル（`/g/<short_id>`へのリンク）とseedを出します。
+-   `今のコードで描き直す`: そのポーズだけを描き直します。pinが無いときは押せません。
+-   `good にして基準にする`: 結果が出ているときだけ押せます（pinと同じ絵のときは押せません）。確認ダイアログのあと、
+    その結果のratingを`good`にし（`PUT /api/v1/generations/{id}/rating`）、続けてpinを差し替え
+    （`POST /api/v1/generations/{id}/pose-reference`）、ページを読み込み直します。結果は同じseedで描かれているので、差し替えてもkeyは変わりません。
+-   `/compare で開く`リンク（`/compare?ids=<pinのshort_id>,<結果のshort_id>`）。結果があるときだけ出します。
 
-ページ上部の`今の既定で描く`ボタンが`POST /api/v1/style-check/{recipe}`
+#### ドリフト状態
+
+描画せずに判定します。比較するのは、pinのGeneration（`resolveDerivationSource`で遡った、仕上げ元のないGeneration）のRequestが持つ
+`pose_fingerprint`と、カタログのposeレコードの`fingerprint`（`sha256:<hex>`、chagamaが公開する。[domain-model.md](domain-model.md#基準-render-の-pin)の
+`requests.pose_fingerprint`と同じ値）です。
+
+``` text
+一致       2つが等しい
+ドリフト   2つが異なる
+判定不可   カタログのposeにfingerprintが無い / pinのRequestにfingerprintが無い / poseがカタログに無い（Presetだけのpose）
+pin なし   pinが無い
+```
+
+ドリフトの行には、pinを描いた実際のprompt（pinのGenerationを描いたJobのrender_factsのpositive / negative。`renderFactsForJob`）と、カタログのposeの
+`positive` / `negative`との差（`diffFactSummaries`、トークン単位の`promptDelta`）を折りたたみで出します。全文も開けます。
+カタログのposeがその文字列を持たないキーは比べません。
+
+ページ上部の`pin 済みを全部描き直す`ボタンと各行の`今のコードで描き直す`ボタンが`POST /api/v1/style-check/{recipe}`
 （[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに、MCP
 `plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
 gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
@@ -851,19 +852,14 @@ keyが上と同じなので、描画内容が同じ間の連打は積み直さ�
 （`created: false`）。
 
 recipe_refが`REQUESTS_DEFAULT_RECIPE_REF`（既定`production`）のカタログを
-`PUT /api/v1/catalogs/{recipe_ref}`で公開した直後にも、同じ描画をバックグラウンドで自動で
+`PUT /api/v1/catalogs/{recipe_ref}`で公開した直後にも、pin済みの全ポーズについて同じ描画をバックグラウンドで自動で
 積みます。描画内容が変わったposeだけがcreatedになり、commitだけの変更や同じカタログの
 再公開は何も積みません。失敗してもPUTは失敗しません。
 
-積んだ直後は応答のrequest idをその場の右カラムに挿し込むだけで、reloadしません
-（`data-style-check-slot="<pose>"`の要素を差し替える）。以後のrunning/doneは他ページと
-同じ`[data-request-id]`のWebSocket購読（`registerRequestElement` /
-`requestLiveApplyStatus`）で反映されます — [Requests](#generation-detail)の
-`request-status-list`と同じく、doneでstatusが変わり結果Generationへのリンクが添わります。
-GenerationCard（サムネイル）への差し替えは次のGET `/check`（reload）で反映されます。
+queued / runningのrequestがある間は、ページが3秒ごとにrequestを取り直し、doneになればその行の結果を差し替えます（reload不要）。
 
-絵柄チェックが書き込むのはこのplain renderのrequest行だけで、pinそのものは変更しません
-（pinの変更はGeneration Detailの「基準にする」、[domain-model.md](domain-model.md#基準-render-の-pin)）。
+絵柄チェックが書き込むのはplain renderのrequest行と、`good にして基準にする`によるratingとpinだけです。GUIはpromptを書きません
+（pinの変更はGeneration Detailの「基準にする」と同じ窓口、[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
 ## Experiment View
 
