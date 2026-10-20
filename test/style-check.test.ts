@@ -362,4 +362,19 @@ describe('GET /check', () => {
     const bustPose = (await checkPoses()).poses.find((p) => p.pose === 'bust')!;
     expect(bustPose.pin!.short_id).toBe(rerender.generation.short_id);
   });
+
+  it('opens the compare viewer for ?pose= and leaves it closed for no or an unknown pose', async () => {
+    await publishAndImport('feed003');
+    await pinPose('bust');
+
+    const open = await (await req('/check?pose=bust')).text();
+    expect(open).toMatch(/class="sc-viewer wb"[^>]*data-sc-viewer/);
+    expect(open).not.toMatch(/data-sc-viewer="true" hidden/);
+    expect(open).toMatch(/data-scv-name="true">bust</);
+
+    for (const url of ['/check', '/check?pose=nonexistent']) {
+      const closed = await (await req(url)).text();
+      expect(closed).toMatch(/data-sc-viewer="true" hidden/);
+    }
+  });
 });

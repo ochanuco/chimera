@@ -1186,6 +1186,10 @@ details.section .section-body { margin-top: 0.6rem; }
 .sc-drift-unknown { color: var(--text-dim); }
 .sc-diff { grid-column: 1 / -1; font-size: 0.8rem; }
 .sc-diff pre { white-space: pre-wrap; margin: 0.2rem 0; }
+.sc-row { cursor: pointer; }
+.sc-viewer { position: fixed; inset: 0; z-index: 100; overflow: auto; background: var(--bg); padding: 0.75rem 1rem; --wb-pane-h: calc(100vh - 11rem); }
+.sc-viewer[hidden], .sc-viewer [hidden] { display: none !important; }
+.sc-viewer-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
 @media (max-width: 800px) { .sc-row { grid-template-columns: 1fr 1fr; } }
 
 
@@ -2656,20 +2660,110 @@ export const appJs = `
 
   // 絵柄チェック (/check): recipe の全 pose を 1 行ずつ並べる。左の pin と、そのポーズの最新の plain render (右) を見比べ、
   // 描き直しと「good にして基準にする」(rating good → pose-reference) だけを呼ぶ。実行中の request は 3 秒ごとに取り直す。
+  // 行を押すとワークベンチと同じ比較ペイン (wbViewer) の大きな 2 枚並びを開く。開いている pose は ?pose= に載せる。
   function initStyleCheck() {
     var root = qs('[data-style-check]');
     if (!root) return;
     var initial = {};
     try { initial = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { initial = {}; }
     var recipe = root.getAttribute('data-recipe');
-    var sc = { poses: initial.poses || [], timer: null };
+    var sc = { poses: initial.poses || [], timer: null, active: null, cursor: null, loupe: { on: true, zoom: 3 } };
+    var viewerEl = qs('[data-sc-viewer]', root);
+    var viewer = wbViewer(viewerEl, sc);
+    viewer.trackCursor();
 
     function poseOf(name) {
       return sc.poses.find(function (p) { return p.pose === name; }) || null;
     }
 
     function nodeOf(g) {
-      return { id: g.id, short_id: g.short_id, seed: g.seed == null ? null : g.seed, rating: g.rating || null };
+      return { id: g.id, short_id: g.short_id, seed: g.seed == null ? null : g.seed, rating: g.rating || null, delivered: false, image_width: g.image_width, image_height: g.image_height, image_size: g.image_size };
+    }
+
+    function seedText(n) {
+      return n.short_id + ' · seed ' + (n.seed == null ? '-' : n.seed);
+    }
+
+    function emptyPane(pane, text) {
+      pane.setAttribute('data-wb-key', 'none');
+      pane.removeAttribute('data-wb-imgpane');
+      pane.textContent = '';
+      pane.classList.remove('wb-checker');
+      pane.appendChild(wbEl('div', 'wb-empty', text));
+    }
+
+    function resultMessage(p) {
+      return !p.pin ? '' : !p.request ? '未描画'
+        : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
+        : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
+    }
+
+    function renderViewer() {
+      var p = sc.active ? poseOf(sc.active) : null;
+      viewerEl.hidden = !p;
+      document.body.style.overflow = p ? 'hidden' : '';
+      if (!p) return;
+      qs('[data-scv-name]', viewerEl).textContent = p.pose;
+      var rowDrift = qsa('[data-sc-pose]', root).filter(function (el) { return el.getAttribute('data-sc-pose') === p.pose; }).map(function (el) { return qs('[data-sc-drift]', el); })[0];
+      var drift = qs('[data-scv-drift]', viewerEl);
+      drift.className = rowDrift.className;
+      drift.textContent = rowDrift.textContent;
+
+      var leftPane = qs('[data-wb-input-pane]', viewerEl);
+      if (p.pin) viewer.fillPane(leftPane, p.pin.id, 'input', p.pin, null);
+      else emptyPane(leftPane, 'pin なし');
+      qs('[data-scv-left-cap]', viewerEl).textContent = p.pin ? captionWithMeta('pin ' + seedText(p.pin), p.pin) : 'pin';
+
+      var rightPane = qs('[data-wb-cmp-pane]', viewerEl);
+      var rating = qs('[data-wb-rating]', viewerEl);
+      if (p.result) {
+        viewer.fillPane(rightPane, p.result.id, 'cmp', p.result, null);
+        qs('[data-scv-right-cap]', viewerEl).textContent = captionWithMeta('最新 ' + seedText(p.result), p.result);
+        rating.setAttribute('data-generation-id', p.result.id);
+        applyRatingToGroups(p.result.id, p.result.rating);
+      } else {
+        emptyPane(rightPane, resultMessage(p));
+        qs('[data-scv-right-cap]', viewerEl).textContent = '最新' + (p.request ? ' ' + p.request.status : '');
+      }
+      rating.hidden = !p.result;
+
+      qs('[data-scv-render]', viewerEl).disabled = !p.pin;
+      qs('[data-scv-adopt]', viewerEl).disabled = !(p.pin && p.result && p.pin.id !== p.result.id);
+      var link = qs('[data-scv-compare-link]', viewerEl);
+      link.hidden = !(p.pin && p.result);
+      if (!link.hidden) link.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
+      viewer.updateCrosshair();
+    }
+
+    function writeUrl(name, push) {
+      var url = new URL(location.href);
+      if (name) url.searchParams.set('pose', name);
+      else url.searchParams.delete('pose');
+      if (push) history.pushState({ scViewer: true }, '', url);
+      else history.replaceState(history.state, '', url);
+    }
+
+    function openViewer(name) {
+      var opening = !sc.active;
+      sc.active = name;
+      writeUrl(name, opening);
+      renderViewer();
+    }
+
+    function closeViewer() {
+      if (!sc.active) return;
+      if (history.state && history.state.scViewer) {
+        history.back();
+        return;
+      }
+      sc.active = null;
+      writeUrl(null, false);
+      renderViewer();
+    }
+
+    function stepViewer(delta) {
+      var i = sc.poses.findIndex(function (q) { return q.pose === sc.active; }) + delta;
+      if (i >= 0 && i < sc.poses.length) openViewer(sc.poses[i].pose);
     }
 
     function renderResult(p) {
@@ -2697,14 +2791,12 @@ export const appJs = `
         cell.appendChild(compare);
         return;
       }
-      var message = !p.request ? '未描画'
-        : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
-        : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
-      cell.appendChild(wbEl('span', 'sc-empty', message));
+      cell.appendChild(wbEl('span', 'sc-empty', resultMessage(p)));
     }
 
     function renderAll() {
       sc.poses.forEach(renderResult);
+      renderViewer();
     }
 
     function isPending(p) {
@@ -2729,6 +2821,7 @@ export const appJs = `
         } catch (e) { /* retry on the next tick */ }
         renderResult(p);
       }
+      renderViewer();
     }
 
     function startPolling() {
@@ -2748,6 +2841,7 @@ export const appJs = `
           p.result = null;
           renderResult(p);
         });
+        renderViewer();
         startPolling();
         track('style_check.render', { recipe: recipe, pose: pose || null });
       } catch (e) {
@@ -2759,9 +2853,36 @@ export const appJs = `
       }
     }
 
+    async function adopt(p, button) {
+      if (!p || !p.result) return;
+      if (!confirm(p.pose + ' の ' + p.result.short_id + ' を good にして、pin を差し替えます。以後の絵柄チェックはこの絵の seed で描きます。')) return;
+      button.disabled = true;
+      try {
+        await api('/api/v1/generations/' + p.result.id + '/rating', 'PUT', { rating: 'good' });
+        await api('/api/v1/generations/' + p.result.id + '/pose-reference', 'POST', {});
+        track('style_check.adopt', { generation_id: p.result.id, pose: p.pose });
+        location.reload();
+      } catch (e) {
+        button.disabled = false;
+        trackError('style_check.adopt', e, { generation_id: p.result.id });
+        alert('基準にできません: ' + e.message);
+      }
+    }
+
     root.addEventListener('click', async function (ev) {
       var t = ev.target.closest ? ev.target : null;
       if (!t) return;
+      if (viewerEl.contains(t)) {
+        var scvActive = sc.active ? poseOf(sc.active) : null;
+        if (t.closest('[data-scv-close]')) return closeViewer();
+        var step = t.closest('[data-scv-step]');
+        if (step) return stepViewer(Number(step.getAttribute('data-scv-step')));
+        var scvRender = t.closest('[data-scv-render]');
+        if (scvRender && scvActive) return enqueue(scvActive.pose, scvRender);
+        var scvAdopt = t.closest('[data-scv-adopt]');
+        if (scvAdopt) return adopt(scvActive, scvAdopt);
+        return;
+      }
       var all = t.closest('[data-style-check-render]');
       if (all) return enqueue(null, all);
       var row = t.closest('[data-sc-pose]');
@@ -2769,22 +2890,37 @@ export const appJs = `
       if (!p) return;
       var one = t.closest('[data-sc-render-pose]');
       if (one) return enqueue(p.pose, one);
-      var adopt = t.closest('[data-sc-adopt]');
-      if (!adopt || !p.result) return;
-      if (!confirm(p.pose + ' の ' + p.result.short_id + ' を good にして、pin を差し替えます。以後の絵柄チェックはこの絵の seed で描きます。')) return;
-      adopt.disabled = true;
-      try {
-        await api('/api/v1/generations/' + p.result.id + '/rating', 'PUT', { rating: 'good' });
-        await api('/api/v1/generations/' + p.result.id + '/pose-reference', 'POST', {});
-        track('style_check.adopt', { generation_id: p.result.id, pose: p.pose });
-        location.reload();
-      } catch (e) {
-        adopt.disabled = false;
-        trackError('style_check.adopt', e, { generation_id: p.result.id });
-        alert('基準にできません: ' + e.message);
-      }
+      var adoptBtn = t.closest('[data-sc-adopt]');
+      if (adoptBtn) return adopt(p, adoptBtn);
+      if (t.closest('button, summary, details, input, a.wb-pill')) return;
+      if (ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+      ev.preventDefault();
+      openViewer(p.pose);
     });
 
+    document.addEventListener('keydown', function (ev) {
+      if (!sc.active || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      var t = ev.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (ev.key === 'Escape') closeViewer();
+      else if (ev.key === 'ArrowLeft' || ev.key === 'k') stepViewer(-1);
+      else if (ev.key === 'ArrowRight' || ev.key === 'j') stepViewer(1);
+    });
+
+    window.addEventListener('popstate', function () {
+      var name = new URLSearchParams(location.search).get('pose');
+      sc.active = name && poseOf(name) ? name : null;
+      renderViewer();
+    });
+
+    document.addEventListener('chimera:rating', function (ev) {
+      sc.poses.forEach(function (q) {
+        [q.pin, q.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
+      });
+    });
+
+    var wantedPose = new URLSearchParams(location.search).get('pose');
+    if (wantedPose && poseOf(wantedPose)) sc.active = wantedPose;
     renderAll();
     startPolling();
   }

@@ -76,6 +76,17 @@ describe('served app.js', () => {
     expect(appJs).toContain("api('/api/v1/generations/' + p.result.id + '/pose-reference', 'POST', {})");
   });
 
+  it('opens the style check compare viewer from a row, keeps it in ?pose=, and closes / steps with the keyboard', () => {
+    expect(appJs).toContain('var viewer = wbViewer(viewerEl, sc);');
+    expect(appJs).toContain('openViewer(p.pose);');
+    expect(appJs).toContain("url.searchParams.set('pose', name);");
+    expect(appJs).toContain("url.searchParams.delete('pose');");
+    expect(appJs).toContain("window.addEventListener('popstate'");
+    expect(appJs).toContain("if (ev.key === 'Escape') closeViewer();");
+    expect(appJs).toContain("ev.key === 'ArrowLeft' || ev.key === 'k'");
+    expect(appJs).toContain("ev.key === 'ArrowRight' || ev.key === 'j'");
+  });
+
   it('drives the reroll screen from the workbench viewer and the shared caption actions, polling its own endpoint', () => {
     expect(appJs).toContain('function initReroll()');
     expect(appJs).toContain('var viewer = wbViewer(root, rr);');
