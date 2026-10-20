@@ -226,6 +226,7 @@ export const mcpOutputs = {
       }),
     ),
     created: z.boolean(),
+    skipped: z.array(z.looseObject({ pose: z.string(), reason: z.string() })),
   }),
 
   create_run: z.looseObject({

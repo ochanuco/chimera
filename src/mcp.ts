@@ -312,17 +312,19 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Non-destructive: only adds a new Experiment and its Runs. Never deletes or overwrites existing data. Idempotent by idempotency_key. ' +
         'Applies ONE patch set to every pinned pose of a recipe, each pose drawn at its own pin seed (set_pose_reference), so each result is comparable to its pin. ' +
         'One Experiment, one Run per pose; no control arm — the baseline is the pin itself. ' +
-        'poses defaults to every pose of the recipe that has a current pin; an explicit list is rejected if any of its poses has no pin (the error lists them). ' +
+        'poses defaults to every pose of the recipe that has a current pin and a pose Preset; pinned poses without a Preset are left out and reported in skipped [{pose, reason}]. ' +
+        'An explicit list is rejected if any of its poses has no pin or no pose Preset (the error lists them). ' +
+        'All checks run before anything is written, so a rejected call leaves no Experiment, Run or Request behind. ' +
         'patches: same vocabulary and checks as create_experiment arm patches, each {target, op, reason, value/old by op}; ' +
         'use per-part targets "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
         'The results sit next to the pins in the /check compare viewer (check_url), and the experiment page shows them as a row with poses as columns. ' +
         'Retrying with the same idempotency_key returns the original Experiment and Runs with created=false; the same key with different poses is a 409. ' +
-        'Returns the Experiment (id, short_id, url, compare_url, check_url) and per pose the Run id, seed, request_id and request_short_id.',
+        'Returns the Experiment (id, short_id, url, compare_url, check_url) and per pose the Run id, seed, request_id and request_short_id, and skipped.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: sweepPatchInputSchema,
     },
     async (input) => {
-      const { experiment, runs, created } = await createPoseSweep(db, input, { recipeRef: defaultRecipeRef(env) });
+      const { experiment, runs, created, skipped } = await createPoseSweep(db, input, { recipeRef: defaultRecipeRef(env) });
       const outRuns = [];
       for (const run of runs) {
         let requestShortId: string | null = null;
@@ -344,6 +346,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         },
         runs: outRuns,
         created,
+        skipped,
       });
     },
   );

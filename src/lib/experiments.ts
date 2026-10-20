@@ -18,7 +18,7 @@ import { resolveRequestRenderFacts } from './render-facts';
 import { runOverridePose } from './experiment-rules';
 import { listCurrentReferences } from './preset-references';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
-import { pinPresets } from './presets';
+import { getPresetRow, pinPresets } from './presets';
 import { assertPatchGrammar, assertPatchLists } from './patch-grammar';
 import { createUniqueRequestShortId, createUniqueShortId } from './shortid';
 import {
@@ -657,9 +657,14 @@ export interface PoseSweepInput {
   name: string;
   description?: string;
   patches: JsonObject[];
-  /** 省略時は recipe の現在の pin を持つ全 pose。 */
+  /** 省略時は recipe の現在の pin と pose Preset の両方を持つ全 pose。 */
   poses?: string[];
   idempotency_key: string;
+}
+
+export interface PoseSweepSkip {
+  pose: string;
+  reason: string;
 }
 
 export interface PoseSweepRun {
@@ -683,21 +688,39 @@ function poseOfRun(run: ExperimentRunRow): string | null {
  * sweep_patch MCP tool の本体: 1 つの patch 集合を recipe の pin 済み pose ぜんぶに、その pose の pin の seed で当てる。
  * Experiment 1 件に pose ごとの Run を 1 件ずつ作る (control は作らない。基準は pin 自身)。
  * pose 0 の Run が既にあれば再送とみなし、足りない pose だけを補う。既存の pose 構成が今回と食い違うなら 409。
+ * pin と pose Preset の検査、patches の検査は、Experiment・Run・Request を一つも書く前にすべて済ませる。
+ * 省略時の pose から pin だけがあって Preset が無いものを外し、skipped で返す。
  */
 export async function createPoseSweep(
   db: D1Database,
   input: PoseSweepInput,
   options: CreateExperimentRunOptions = {},
-): Promise<{ experiment: ExperimentRow; runs: PoseSweepRun[]; created: boolean }> {
+): Promise<{ experiment: ExperimentRow; runs: PoseSweepRun[]; created: boolean; skipped: PoseSweepSkip[] }> {
   const { recipe, patches, idempotency_key: key } = input;
   const pins = await listCurrentReferences(db, { recipe, kind: 'pose' });
   const pinOf = (pose: string) => pins.get([recipe, 'pose', pose].join(' ')) ?? null;
 
-  const poses = input.poses ?? Array.from(pins.keys(), (k) => k.slice(`${recipe} pose `.length)).sort();
-  if (poses.length === 0) throw badRequest(`recipe '${recipe}' has no pinned pose to sweep`);
-  const unpinned = poses.filter((pose) => !pinOf(pose));
-  if (unpinned.length > 0) {
-    throw badRequest(`poses without a current pin: ${unpinned.join(', ')}. Pin them with set_pose_reference or drop them from poses`);
+  const hasPreset = async (pose: string) => (await getPresetRow(db, recipe, 'pose', pose)) !== null;
+  const skipped: PoseSweepSkip[] = [];
+  let poses: string[];
+  if (input.poses) {
+    poses = input.poses;
+    const unpinned = poses.filter((pose) => !pinOf(pose));
+    if (unpinned.length > 0) {
+      throw badRequest(`poses without a current pin: ${unpinned.join(', ')}. Pin them with set_pose_reference or drop them from poses`);
+    }
+    const unpreset: string[] = [];
+    for (const pose of poses) if (!(await hasPreset(pose))) unpreset.push(pose);
+    if (unpreset.length > 0) {
+      throw badRequest(`poses without a pose Preset: ${unpreset.join(', ')}. Drop them from poses`);
+    }
+  } else {
+    poses = [];
+    for (const pose of Array.from(pins.keys(), (k) => k.slice(`${recipe} pose `.length)).sort()) {
+      if (await hasPreset(pose)) poses.push(pose);
+      else skipped.push({ pose, reason: 'no pose Preset' });
+    }
+    if (poses.length === 0) throw badRequest(`recipe '${recipe}' has no pinned pose with a pose Preset to sweep`);
   }
 
   const first = await findRunByIdempotencyKey(db, poseIdempotencyKey(key, 0));
@@ -741,7 +764,7 @@ export async function createPoseSweep(
     );
     runs.push({ row: result.row, pose, seed, request_id: result.request_id, created: result.created });
   }
-  return { experiment, runs, created: first === null };
+  return { experiment, runs, created: first === null, skipped };
 }
 
 export interface UpdateExperimentRunInput {
