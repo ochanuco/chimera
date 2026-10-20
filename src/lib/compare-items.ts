@@ -1,6 +1,7 @@
 // /compare と Experiment Detail の Compare 表が共有する、Generation 行 -> CompareItem の組み立て。
 
 import { MAX_GENERATION_IDS, queryGenerations } from './generations';
+import { runOverridePose } from './experiment-rules';
 import { parseJsonArray } from './preset-references';
 import { renderFactsForJob } from './render-facts';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
@@ -104,9 +105,11 @@ export interface ExperimentCompareRun {
 export type ExperimentMatrixCell = GenerationCardData;
 
 export interface ExperimentMatrix {
-  /** seed 列。base_parameters.seeds の順、続けて Run の Generation にだけ現れる seed（出現順）。 */
+  /** seed 列。base_parameters.seeds の順、続けて Run の Generation にだけ現れる seed（出現順）。pose sweep では空。 */
   seeds: number[];
-  /** Run を run_index 順に 1 行。cells は seeds と同じ順で、Generation が無ければ null。 */
+  /** 列見出し。seed 列は seed の文字列、pose sweep は pose 名（Run ごとに自分の pose と seed を持つため列は pose）。 */
+  columns: string[];
+  /** Run を run_index 順に 1 行。cells は columns と同じ順で、Generation が無ければ null。pose sweep は全 Run で 1 行。 */
   rows: { label: string; cells: (ExperimentMatrixCell | null)[] }[];
 }
 
@@ -181,14 +184,17 @@ export async function buildExperimentCompare(
   }
   const generationsOf = (run: ExperimentCompareRun) => (run.request ? generationsByRequest.get(run.request.id) ?? [] : []);
 
+  const poseSweep = columns.length > 0 && columns.every((run) => runOverridePose(run.overrides) !== null);
   const seeds: number[] = [];
-  for (const run of columns) {
-    for (const g of generationsOf(run)) {
-      if (g.seed !== null && !seeds.includes(g.seed)) seeds.push(g.seed);
+  if (!poseSweep) {
+    for (const run of columns) {
+      for (const g of generationsOf(run)) {
+        if (g.seed !== null && !seeds.includes(g.seed)) seeds.push(g.seed);
+      }
     }
   }
 
-  const matrixSeeds = [...new Set([...baseSeeds(baseParameters), ...seeds])];
+  const matrixSeeds = poseSweep ? [] : [...new Set([...baseSeeds(baseParameters), ...seeds])];
   const headerOf = (run: ExperimentCompareRun) => {
     const arm = run.variables?.arm;
     return arm !== undefined ? String(arm) : `#${run.run_index}`;
@@ -205,19 +211,24 @@ export async function buildExperimentCompare(
   );
   for (const page of cardPages) for (const item of page.items) cardById.set(item.id, item);
 
-  const matrix: ExperimentMatrix = {
-    seeds: matrixSeeds,
-    rows: columns.map((run) => ({
-      label: headerOf(run),
-      cells: matrixSeeds.map((seed) => {
-        const g = generationsOf(run).find((row) => row.seed === seed);
-        return (g ? cardById.get(g.id) : undefined) ?? null;
-      }),
-    })),
-  };
+  const cardOf = (g: GenerationRow | undefined) => (g ? cardById.get(g.id) : undefined) ?? null;
+  const matrix: ExperimentMatrix = poseSweep
+    ? {
+        seeds: [],
+        columns: columns.map((run) => runOverridePose(run.overrides)!),
+        rows: [{ label: 'sweep', cells: columns.map((run) => cardOf(generationsOf(run)[0])) }],
+      }
+    : {
+        seeds: matrixSeeds,
+        columns: matrixSeeds.map(String),
+        rows: columns.map((run) => ({
+          label: headerOf(run),
+          cells: matrixSeeds.map((seed) => cardOf(generationsOf(run).find((row) => row.seed === seed))),
+        })),
+      };
 
   const firstGeneration = columns.map((run) => generationsOf(run)[0]).find((g) => g !== undefined);
-  const selectedSeed = seedQuery ?? baseSeeds(baseParameters)[0] ?? firstGeneration?.seed ?? null;
+  const selectedSeed = poseSweep ? null : seedQuery ?? baseSeeds(baseParameters)[0] ?? firstGeneration?.seed ?? null;
 
   const chosen = columns.map((run) => {
     const rows = generationsOf(run);

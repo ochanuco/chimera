@@ -29,8 +29,10 @@ export function patchesShapeIssues(patches: unknown, basePath: IssuePath): Valid
   return issues;
 }
 
+const OVERRIDE_KEYS = ['patches', 'parameters', 'seeds'];
+
 export function overridesIssues(value: Record<string, unknown>): ValidationIssue[] {
-  const unexpected = Object.keys(value).filter((k) => k !== 'patches');
+  const unexpected = Object.keys(value).filter((k) => !OVERRIDE_KEYS.includes(k));
   if (unexpected.length > 0) {
     return [
       {
@@ -41,8 +43,31 @@ export function overridesIssues(value: Record<string, unknown>): ValidationIssue
       },
     ];
   }
-  if (!('patches' in value)) return [];
-  return patchesShapeIssues(value.patches, ['patches']);
+  const issues: ValidationIssue[] = [];
+  if ('patches' in value) issues.push(...patchesShapeIssues(value.patches, ['patches']));
+  if ('parameters' in value) {
+    const parameters = value.parameters;
+    const isObject = typeof parameters === 'object' && parameters !== null && !Array.isArray(parameters);
+    const keys = isObject ? Object.keys(parameters as object) : [];
+    const pose = isObject ? (parameters as Record<string, unknown>).pose : undefined;
+    if (!isObject || keys.length !== 1 || typeof pose !== 'string' || pose.length === 0) {
+      issues.push({ message: 'must be {"pose": "<pose name>"}; pose is the only parameter a Run may override', path: ['parameters'] });
+    }
+  }
+  if ('seeds' in value) {
+    const seeds = value.seeds;
+    if (!isSeedList(seeds) || seeds.length !== 1) {
+      issues.push({ message: 'must be an array of exactly one non-negative integer', path: ['seeds'] });
+    }
+  }
+  return issues;
+}
+
+/** Run の overrides が持つ pose (pose sweep の Run)。無ければ null。 */
+export function runOverridePose(overrides: Record<string, unknown>): string | null {
+  const parameters = overrides.parameters;
+  const pose = typeof parameters === 'object' && parameters !== null ? (parameters as { pose?: unknown }).pose : undefined;
+  return typeof pose === 'string' && pose.length > 0 ? pose : null;
 }
 
 /** seeds は 1〜16 個の非負整数。 */

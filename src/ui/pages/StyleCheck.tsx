@@ -36,6 +36,14 @@ export interface StyleCheckPoseView {
   request: StyleCheckRequest | null;
   /** Filled when the request is done and its Generation resolves. */
   result: StyleCheckNode | null;
+  /** Sweep mode only: the pose is not part of the sweep. */
+  excluded: boolean;
+}
+
+export interface StyleCheckSweep {
+  short_id: string;
+  name: string;
+  patches: unknown[];
 }
 
 export const DRIFT_LABELS: Record<StyleCheckDrift, string> = {
@@ -51,6 +59,7 @@ export function StyleCheckPage({
   gitCommit,
   poses,
   selectedPose,
+  sweep,
 }: {
   path: string;
   recipe: string;
@@ -58,17 +67,33 @@ export function StyleCheckPage({
   poses: StyleCheckPoseView[];
   /** `?pose=`: the pose whose compare viewer is open. */
   selectedPose: string | null;
+  /** `?sweep=`: show that pose sweep's results on the right instead of the latest plain render. */
+  sweep: StyleCheckSweep | null;
 }) {
   const selected = poses.find((p) => p.pose === selectedPose) ?? null;
   return (
     <Layout title="絵柄チェック" path={path}>
-      <div class="style-check" data-style-check data-recipe={recipe} data-initial={JSON.stringify({ poses })}>
+      <div class="style-check" data-style-check data-recipe={recipe} data-initial={JSON.stringify({ poses, sweep })}>
         <div class="style-check-head">
           <h1 class="style-check-title">絵柄チェック</h1>
-          <button type="button" class="style-check-render-btn" data-style-check-render>
-            pin 済みを全部描き直す
-          </button>
+          {sweep ? null : (
+            <button type="button" class="style-check-render-btn" data-style-check-render>
+              pin 済みを全部描き直す
+            </button>
+          )}
         </div>
+        {sweep ? (
+          <section class="sc-sweep" data-sc-sweep>
+            <p>
+              sweep: <strong>{sweep.name}</strong> · <a href={`/experiments/${sweep.short_id}`}>実験ページ</a> ·{' '}
+              <a href="/check">通常の一覧に戻る</a>
+            </p>
+            <details>
+              <summary>patches ({sweep.patches.length})</summary>
+              <pre>{JSON.stringify(sweep.patches, null, 2)}</pre>
+            </details>
+          </section>
+        ) : null}
         <p class="image-meta">
           {recipe} · {poses.length} pose · 今のカタログ commit: <code>{gitCommit ?? '-'}</code>
         </p>
@@ -96,9 +121,11 @@ export function StyleCheckPage({
               </div>
               <div class="sc-result" data-sc-result></div>
               <div class="sc-actions">
-                <button type="button" class="wb-pill" data-sc-render-pose disabled={!p.pin}>
-                  今のコードで描き直す
-                </button>
+                {sweep ? null : (
+                  <button type="button" class="wb-pill" data-sc-render-pose disabled={!p.pin}>
+                    今のコードで描き直す
+                  </button>
+                )}
               </div>
               {p.prompt_diff.length > 0 ? (
                 <details class="sc-diff">
@@ -138,10 +165,10 @@ export function StyleCheckPage({
               {selected ? DRIFT_LABELS[selected.drift] : ''}
             </span>
             <span class="sc-viewer-actions">
-              <button type="button" class="wb-pill" data-scv-render>
+              <button type="button" class="wb-pill" data-scv-render hidden={sweep !== null}>
                 今のコードで描き直す
               </button>
-              <button type="button" class="wb-pill" data-scv-adopt>
+              <button type="button" class="wb-pill" data-scv-adopt hidden={sweep !== null}>
                 good にして基準にする
               </button>
               <a class="wb-pill" data-scv-compare-link hidden>

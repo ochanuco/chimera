@@ -827,6 +827,12 @@ pinが無いポーズも並び、`pin なし`と出します。1ポーズが1行
     （`POST /api/v1/generations/{id}/pose-reference`）、ページを読み込み直します。結果は同じseedで描かれているので、差し替えてもkeyは変わりません。
 -   `/compare で開く`リンク（`/compare?ids=<pinのshort_id>,<結果のshort_id>`）。結果があるときだけ出します。
 
+`/check?sweep=<experimentのshort_id>`は、右側を「最新の描き直し」から「そのpose sweep（MCP `sweep_patch`、[experiment-agent.md](experiment-agent.md#sweep_patch)）の結果」に替えます。
+sweepのRunが無いposeは`対象外`と出し、sweepのRunが生成中の間は同じ3秒ごとの取り直しで埋まります。
+ページ上部にsweepの名前、patches（読み取り専用の折りたたみ）、実験ページへのリンクを出します。
+sweepの結果はplain renderではないので、`pin 済みを全部描き直す`、`今のコードで描き直す`、`good にして基準にする`は出しません（`set_pose_reference`が拒否する絵のため）。
+`?pose=`は`?sweep=`と併用できます。`?sweep=`がsweepでないExperimentを指すときは404です。GUIがsweepを作ることはなく、patchesはMCPから作られたものを表示するだけです。
+
 #### 比較ビューア
 
 行（サムネイルを含む）を押すと、画面いっぱいの比較ビューアが開きます。[ワークベンチ](#workbench)と同じ比較ペイン（2枚並び・十字線・ルーペ）で、
@@ -908,6 +914,7 @@ Run（行）× seed（列）のマトリクスで、Experimentが描いた全Gen
     マトリクス全体のGenerationをまとめて`queryGenerations`で引いたもの（100件ごとに1回）です。
     そのseedのGenerationがまだ無い（生成中・失敗）セルは、カードと同じ外寸の「生成待ち」の破線枠にします。
 -   Runが1件でも出します（1行×seed数のセル）。
+-   pose sweep（全Runが`overrides.parameters.pose`を持つExperiment）は、Runごとにposeとseedが違うので、列をposeにした1行で出します。見出しはpose名、セルはそのRunの結果の最初のGeneration（pinのseedで描いたもの）です。
 
 マトリクスの下に、seed別の詳細として、Runを列にした[Compare](#compare)の表
 （`#experiment-compare-detail`）を、Runが2件以上あるときだけ置きます。

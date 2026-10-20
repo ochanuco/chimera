@@ -117,11 +117,17 @@ JSON blob です。評価軸は Experiment や評価者ごとに変わるため�
 patch の意味づけは chagama 側の唯一の実装に集約され、chimera 側に翻訳層を持ちません。
 chimera が見るのは次の2つだけです。
 
--   封筒の形。`overrides` は `{}` か `{"patches": [...]}` のどちらかで、それ以外の
-    トップレベルキーは400で拒否します。各 patch は `target` / `op` / `reason` を持つ
-    オブジェクトで、いずれも非空文字列であることまでを検証します（`reason` は全 patch で必須）。
-    base_parameters 相当の生成パラメータ（`pose` / `costume` など）が overrides に紛れ込む
-    事故を型で防ぐのが目的です。
+-   封筒の形。`overrides` は `{}` か `{"patches": [...]}` で、pose sweep の Run だけが
+    これに `"parameters": {"pose": "<pose 名>"}` と `"seeds": [<seed>]`（seed は1つだけ）を足せます。
+    それ以外のトップレベルキーと、`parameters` の `pose` 以外のキーは400で拒否します。各 patch は
+    `target` / `op` / `reason` を持つオブジェクトで、いずれも非空文字列であることまでを検証します
+    （`reason` は全 patch で必須）。base_parameters 相当の生成パラメータ（`costume` など）が
+    overrides に紛れ込む事故を型で防ぐのが目的です。
+-   pose sweep。Experiment の `base_parameters` は pose も seed も持たず、Run が自分の pose と seed を
+    `overrides` に持つ Experiment を pose sweep と呼びます（専用のカラムやフラグは持たず、Run の
+    `overrides.parameters.pose` で判別します）。Run の generate payload は、`overrides.parameters.pose` と
+    `overrides.seeds` があればそれを Experiment の共有値より優先し、worker に渡す
+    `experiment.overrides` には `patches` だけを残します。pose も seed も持たない Run は従来どおりです。
 -   文法。Run の作成時に限り、`overrides.patches` を chagama がカタログの `patches` ブロックに
     公開する文法（target の class ごとの op、op ごとの `value` / `old`、許可キー）で検査します
     （[generation-request.md「作成時の文法検査」](generation-request.md#作成時の文法検査)）。カタログや文法が

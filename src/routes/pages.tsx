@@ -30,7 +30,7 @@ import { decodeCursor, queryTimeline } from '../lib/generations';
 import { slotEndIso, slotStartIso } from '../lib/timeline';
 import { buildCompareItems, buildExperimentCompare, parseSeedQuery } from '../lib/compare-items';
 import { defaultRecipeRef } from '../lib/requests';
-import { STYLE_CHECK_RECIPE, loadStyleCheckRows } from '../lib/style-check';
+import { STYLE_CHECK_RECIPE, loadPoseSweep, loadStyleCheckRows } from '../lib/style-check';
 import {
   findBackdrops,
   findStageFrameDefaults,
@@ -429,6 +429,9 @@ pages.get('/check', async (c) => {
   const gitCommit = catalog?.row.git_commit ?? null;
 
   const rows = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
+  const sweepParam = c.req.query('sweep');
+  const sweep = sweepParam ? await loadPoseSweep(c.env.DB, sweepParam) : null;
+  if (sweep) for (const row of rows) row.request = sweep.requests.get(row.pose) ?? null;
 
   const resultIds = rows.map((r) => (r.request ? resolveDoneGenerationId(r.request) : null));
   const wanted = Array.from(new Set([...rows.map((r) => r.pin?.generation_id ?? null), ...resultIds].filter((id): id is string => Boolean(id))));
@@ -449,9 +452,19 @@ pages.get('/check', async (c) => {
     prompt_diff: row.prompt_diff,
     request: row.request ? { id: row.request.id, status: row.request.status, error: row.request.error } : null,
     result: resultIds[i] ? nodeById.get(resultIds[i]!) ?? null : null,
+    excluded: sweep ? !sweep.requests.has(row.pose) : false,
   }));
 
-  return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} poses={poses} selectedPose={c.req.query('pose') ?? null} />);
+  return c.html(
+    <StyleCheckPage
+      path={c.req.path}
+      recipe={recipe}
+      gitCommit={gitCommit}
+      poses={poses}
+      selectedPose={c.req.query('pose') ?? null}
+      sweep={sweep ? { short_id: sweep.short_id, name: sweep.name, patches: sweep.patches } : null}
+    />,
+  );
 });
 
 pages.get('/stats', async (c) => {

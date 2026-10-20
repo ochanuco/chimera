@@ -9,6 +9,10 @@ import { stableStringify } from './json-canonical';
 import { createRequest, defaultRecipeRef, resolveDerivationSource } from './requests';
 import { getCurrentReference, referenceView, type PresetReferenceView } from './preset-references';
 import { getGenerationByIdOrShortId } from './db';
+import { runOverridePose } from './experiment-rules';
+import { getExperimentOr404, listRuns } from './experiments';
+import { notFound } from './errors';
+import { parseJsonObjectOrNull } from './overrides';
 import { diffFactSummaries, renderFactsForJob, type FactDiffEntry } from './render-facts';
 import type { ComfyJobRow, RequestRow } from '../types';
 
@@ -187,4 +191,38 @@ export async function renderStyleCheck(
   }
 
   return { recipe_ref: recipeRef, results, createdRequests };
+}
+
+export interface PoseSweepView {
+  short_id: string;
+  name: string;
+  /** どの Run も同じ patch 集合を持つので、先頭の Run のものを読み取り専用で見せる。 */
+  patches: unknown[];
+  /** pose ごとの、その Run の最新の request (generate)。 */
+  requests: Map<string, RequestRow>;
+}
+
+/**
+ * GET /check?sweep=<experiment short_id>: pose sweep (sweep_patch の Experiment) の Run を pose で引く。
+ * 何も積まない。pose を持つ Run が 1 つも無い Experiment は sweep ではないので 404。
+ */
+export async function loadPoseSweep(db: D1Database, idOrShortId: string): Promise<PoseSweepView> {
+  const experiment = await getExperimentOr404(db, idOrShortId);
+  const runs = (await listRuns(db, experiment.id)).flatMap((run) => {
+    const overrides = parseJsonObjectOrNull(run.overrides_json) ?? {};
+    const pose = runOverridePose(overrides);
+    return pose ? [{ run, pose, overrides }] : [];
+  });
+  if (runs.length === 0) throw notFound('pose sweep');
+
+  const requests = new Map<string, RequestRow>();
+  for (const { run, pose } of runs) {
+    const request = await db
+      .prepare("SELECT * FROM requests WHERE run_id = ? AND kind = 'generate' ORDER BY created_at DESC, id DESC LIMIT 1")
+      .bind(run.id)
+      .first<RequestRow>();
+    if (request) requests.set(pose, request);
+  }
+  const patches = runs[0]!.overrides.patches;
+  return { short_id: experiment.short_id, name: experiment.name, patches: Array.isArray(patches) ? patches : [], requests };
 }

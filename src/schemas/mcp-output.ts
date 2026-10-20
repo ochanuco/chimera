@@ -208,6 +208,26 @@ export const mcpOutputs = {
     created: z.boolean(),
   }),
 
+  sweep_patch: z.looseObject({
+    experiment: z.looseObject({
+      id: z.string(),
+      short_id: z.string(),
+      url: z.string(),
+      compare_url: z.string(),
+      check_url: z.string(),
+    }),
+    runs: z.array(
+      z.looseObject({
+        id: z.string(),
+        pose: z.string(),
+        seed: z.number(),
+        request_id: z.string().nullable(),
+        request_short_id: z.string().nullable(),
+      }),
+    ),
+    created: z.boolean(),
+  }),
+
   create_run: z.looseObject({
     created: z.boolean(),
     run: runSchema.extend({ request_id: z.string().nullable().optional() }),

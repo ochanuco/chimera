@@ -39,10 +39,18 @@ export async function canonicalPayloadHash(kind: string, payload: unknown): Prom
 /** ExperimentRun 由来の generate payload。comfy-recipes の watch.build_request と同じ request.json v1 形式にする（語彙は解釈せず base_parameters を詰め替えるだけ）。 */
 export function buildRunRequestPayload(experiment: ExperimentRow, run: ExperimentRunRow): JsonObject {
   const baseParameters = parseJsonObject(experiment.base_parameters_json) as JsonObject & { count?: unknown; seeds?: unknown };
-  const { count, seeds, ...parameters } = baseParameters;
+  const { count, seeds, ...baseRest } = baseParameters;
+  // pose sweep の Run は overrides に自分の pose と seed を持ち、Experiment の共有値より優先する。
+  const { parameters: runParameters, seeds: runSeeds, ...workerOverrides } = parseJsonObject(run.overrides_json) as JsonObject & {
+    parameters?: { pose?: unknown };
+    seeds?: unknown;
+  };
+  const parameters = typeof runParameters?.pose === 'string' ? { ...baseRest, pose: runParameters.pose } : baseRest;
   const instruction = run.objective ?? `run #${run.run_index} of ${experiment.name}`;
-  // seeds は全 Run で共有する request.seeds になり、件数は seeds で決まる (docs/generation-request.md「Seeds」)。
-  const sharedSeeds = Array.isArray(seeds) && seeds.length > 0 && seeds.every((n) => Number.isInteger(n) && n >= 0) ? (seeds as number[]) : null;
+  // seeds は Run の overrides.seeds、無ければ全 Run で共有する base_parameters.seeds が request.seeds になり、件数は seeds で決まる (docs/generation-request.md「Seeds」)。
+  const validSeeds = (value: unknown): number[] | null =>
+    Array.isArray(value) && value.length > 0 && value.every((n) => Number.isInteger(n) && n >= 0) ? (value as number[]) : null;
+  const sharedSeeds = validSeeds(runSeeds) ?? validSeeds(seeds);
   const requestBody: JsonObject = sharedSeeds
     ? { instruction, count: sharedSeeds.length, seeds: sharedSeeds }
     : { instruction, count: typeof count === 'number' ? count : 1 };
@@ -54,7 +62,7 @@ export function buildRunRequestPayload(experiment: ExperimentRow, run: Experimen
     experiment: {
       experiment_id: experiment.id,
       run_id: run.id,
-      overrides: parseJsonObject(run.overrides_json),
+      overrides: workerOverrides,
     },
   };
   // base_generation_id は「再現(rebuild)対象」で、pose/outfit の構図参照とは purpose が違う (docs/generation-request.md)。

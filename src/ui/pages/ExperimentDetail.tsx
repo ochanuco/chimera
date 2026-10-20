@@ -542,7 +542,7 @@ function renderExpFactsTable(runs: ExperimentDetailRun[], baseline: ExperimentDe
   );
 }
 
-/** Run（行）× seed（列）の全 Generation。 */
+/** Run（行）× seed（列）の全 Generation。pose sweep は 1 行 × pose（列）。 */
 function renderExperimentMatrix(matrix: ExperimentMatrix, omittedRuns: number) {
   return (
     <section id="experiment-compare" class="exp-compare">
@@ -555,8 +555,8 @@ function renderExperimentMatrix(matrix: ExperimentMatrix, omittedRuns: number) {
           <thead>
             <tr>
               <th></th>
-              {matrix.seeds.map((seed) => (
-                <th class="exp-matrix-seed">{seed}</th>
+              {matrix.columns.map((column) => (
+                <th class="exp-matrix-seed">{column}</th>
               ))}
             </tr>
           </thead>
