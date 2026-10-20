@@ -3,7 +3,7 @@
 // の導出と、既存 request を探す/積むだけの薄い層。
 
 import { buildPlainRenderRequest } from './plain-render';
-import { findCatalogPose, getCatalog } from './catalogs';
+import { findCatalogPose, getCatalog, type CatalogWithDoc } from './catalogs';
 import { getPresetRow, listPresets } from './presets';
 import { stableStringify } from './json-canonical';
 import { createRequest, defaultRecipeRef, resolveDerivationSource } from './requests';
@@ -20,9 +20,8 @@ import type { ComfyJobRow, RequestRow } from '../types';
 export const STYLE_CHECK_RECIPE = 'yukari';
 
 /** カタログの pose 名 + Preset だけに存在する pose (昇格した pose。lib/plain-render.ts) の和集合を名前順に。 */
-export async function listStyleCheckPoseNames(db: D1Database, recipe: string, recipeRef: string): Promise<string[]> {
+export async function listStyleCheckPoseNames(db: D1Database, recipe: string, catalog: CatalogWithDoc | null): Promise<string[]> {
   const names = new Set<string>();
-  const catalog = await getCatalog(db, recipeRef);
   const poses = (catalog?.doc.recipes.find((r) => r.name === recipe) as { poses?: unknown[] } | undefined)?.poses ?? [];
   for (const pose of poses) {
     const name = typeof pose === 'string' ? pose : (pose as { name?: unknown } | null)?.name;
@@ -55,12 +54,11 @@ async function sha256Hex(text: string): Promise<string> {
  */
 export async function styleCheckIdempotencyKey(
   db: D1Database,
-  recipeRef: string,
+  catalog: CatalogWithDoc | null,
   recipe: string,
   pose: string,
   seed: number,
 ): Promise<string> {
-  const catalog = await getCatalog(db, recipeRef);
   const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as Record<string, unknown> | undefined;
   const { poses: _poses, dials: _dials, redraw: _redraw, deliver: _deliver, finalize: _finalize, ...recipeLevel } = recipeEntry ?? {};
   const preset = await getPresetRow(db, recipe, 'pose', pose);
@@ -123,22 +121,22 @@ export async function loadStyleCheckRows(
   recipeRef: string,
 ): Promise<StyleCheckRow[]> {
   const catalog = await getCatalog(db, recipeRef);
-  const rows: StyleCheckRow[] = [];
-  for (const pose of await listStyleCheckPoseNames(db, recipe, recipeRef)) {
-    const pin = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
-    let idempotencyKey: string | null = null;
-    let request: RequestRow | null = null;
-    let drift: DriftState = 'no_pin';
-    let promptDiff: FactDiffEntry[] = [];
-    if (pin) {
-      idempotencyKey = await styleCheckIdempotencyKey(db, recipeRef, recipe, pose, pin.seed);
-      request = await db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(idempotencyKey).first<RequestRow>();
+  // pose ごとに数往復の D1 クエリがあり、直列だと pose 数に比例して遅くなるので並列に引く。
+  return Promise.all(
+    (await listStyleCheckPoseNames(db, recipe, catalog)).map(async (pose): Promise<StyleCheckRow> => {
+      const pin = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
+      if (!pin) return { pose, pin, drift: 'no_pin', prompt_diff: [], idempotency_key: null, request: null };
       const catalogPose = catalog ? findCatalogPose(catalog.doc, recipe, pose) : null;
-      ({ drift, diff: promptDiff } = await pinDrift(db, pin, catalogPose));
-    }
-    rows.push({ pose, pin, drift, prompt_diff: promptDiff, idempotency_key: idempotencyKey, request });
-  }
-  return rows;
+      const [{ idempotencyKey, request }, { drift, diff }] = await Promise.all([
+        styleCheckIdempotencyKey(db, catalog, recipe, pose, pin.seed).then(async (idempotencyKey) => ({
+          idempotencyKey,
+          request: await db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(idempotencyKey).first<RequestRow>(),
+        })),
+        pinDrift(db, pin, catalogPose),
+      ]);
+      return { pose, pin, drift, prompt_diff: diff, idempotency_key: idempotencyKey, request };
+    }),
+  );
 }
 
 export interface StyleCheckRenderResult {
@@ -168,7 +166,8 @@ export async function renderStyleCheck(
   onlyPose?: string,
 ): Promise<RenderStyleCheckResult> {
   const recipeRef = defaultRecipeRef(env);
-  const poses = onlyPose ? [onlyPose] : await listStyleCheckPoseNames(db, recipe, recipeRef);
+  const catalog = await getCatalog(db, recipeRef);
+  const poses = onlyPose ? [onlyPose] : await listStyleCheckPoseNames(db, recipe, catalog);
   const results: StyleCheckRenderResult[] = [];
   const createdRequests: RequestRow[] = [];
 
@@ -179,7 +178,7 @@ export async function renderStyleCheck(
       continue;
     }
 
-    const key = await styleCheckIdempotencyKey(db, recipeRef, recipe, pose, pin.seed);
+    const key = await styleCheckIdempotencyKey(db, catalog, recipe, pose, pin.seed);
     const built = await buildPlainRenderRequest(db, { recipe, pose, recipe_ref: recipeRef, idempotency_key: key });
     const { row, created } = await createRequest(
       db,

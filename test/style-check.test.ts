@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { styleCheckIdempotencyKey } from '../src/lib/style-check';
+import { getCatalog } from '../src/lib/catalogs';
 import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
 // STYLE_CHECK_RECIPE (src/lib/style-check.ts) hardcodes 'yukari', and defaultRecipeRef
@@ -162,7 +163,7 @@ describe('style-check content key', () => {
   });
 
   async function keyFor(pose: string, seed: number): Promise<string> {
-    return styleCheckIdempotencyKey(env.DB, RECIPE_REF, RECIPE, pose, seed);
+    return styleCheckIdempotencyKey(env.DB, await getCatalog(env.DB, RECIPE_REF), RECIPE, pose, seed);
   }
 
   it('stays the same across a catalog commit change and changes when the pose prompt changes', async () => {
