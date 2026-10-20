@@ -183,6 +183,10 @@ pages.get('/gallery', async (c) => {
   else if (q.cursor) apiParams.set('cursor', q.cursor);
   else if (atEnd) apiParams.set('created_before', atEnd);
 
+  // 枠の集計は一覧と独立した全件集計なので、一覧の取得と並べて走らせる。
+  const timelinePromise =
+    timelineQuery === undefined || q.partial === '1' ? undefined : queryTimeline(c.env.DB, Object.fromEntries(new URLSearchParams(timelineQuery)));
+
   type GalleryPageData = { items: GalleryItem[]; total: number; next_cursor: string | null; newer_cursor?: string | null };
   let genData: GalleryPageData;
   if (q.cursor && q.until && !q.after) {
@@ -206,7 +210,7 @@ pages.get('/gallery', async (c) => {
     );
   }
 
-  const timeline = timelineQuery === undefined ? undefined : await queryTimeline(c.env.DB, Object.fromEntries(new URLSearchParams(timelineQuery)));
+  const timeline = await timelinePromise;
 
   return c.html(
     <GalleryPage
