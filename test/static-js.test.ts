@@ -69,13 +69,11 @@ describe('served app.js', () => {
     expect(appJs).toContain('var regions = regionsFor(form);');
   });
 
-  it('drives the style check from the workbench viewer: pose picker, pin replacement with confirm, and an any-ID left pane', () => {
-    expect(appJs).toContain('function wbViewer(root, wb)');
-    expect(appJs).toContain('var viewer = wbViewer(root, sc);');
-    expect(appJs).toContain("api('/api/v1/generations/' + q.result.id + '/pose-reference', 'POST', {})");
-    expect(appJs).toContain("url.searchParams.set('pose', sc.poses[i].pose);");
+  it('drives the style check as a pose list: per-pose re-render, and good + repin as two existing calls', () => {
+    expect(appJs).toContain('function initStyleCheck()');
     expect(appJs).toContain("'/api/v1/style-check/' + encodeURIComponent(recipe)");
-    expect(appJs).not.toContain('data-style-check-compare-add');
+    expect(appJs).toContain("api('/api/v1/generations/' + p.result.id + '/rating', 'PUT', { rating: 'good' })");
+    expect(appJs).toContain("api('/api/v1/generations/' + p.result.id + '/pose-reference', 'POST', {})");
   });
 
   it('drives the reroll screen from the workbench viewer and the shared caption actions, polling its own endpoint', () => {

@@ -3,13 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { styleCheckIdempotencyKey } from '../src/lib/style-check';
 import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
-// STYLE_CHECK_RECIPE/POSES (src/lib/style-check.ts) hardcode 'yukari', and defaultRecipeRef
+// STYLE_CHECK_RECIPE (src/lib/style-check.ts) hardcodes 'yukari', and defaultRecipeRef
 // falls back to 'production' when REQUESTS_DEFAULT_RECIPE_REF is unset — so both are fixed
 // here rather than uniqued per test like other suites do.
 const RECIPE = 'yukari';
 const RECIPE_REF = 'production';
 
-function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at camera', delivery: Record<string, unknown> = {}) {
+function sampleCatalog(
+  gitCommit: string,
+  bustPrompt = 'bust up, looking at camera',
+  delivery: Record<string, unknown> = {},
+  bustExtra: Record<string, unknown> = {},
+  extraPoses: string[] = [],
+) {
   return {
     schema_version: 1,
     recipes: [
@@ -17,8 +23,9 @@ function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at came
         name: RECIPE,
         ...delivery,
         poses: [
-          { name: 'bust', prompt: bustPrompt },
+          { name: 'bust', prompt: bustPrompt, ...bustExtra },
           { name: 'coffee', prompt: 'holding cup, cowboy shot' },
+          ...extraPoses.map((name) => ({ name, prompt: `${name} pose` })),
         ],
         costumes: [{ name: 'default', prompt: 'plain roomwear' }],
       },
@@ -30,8 +37,14 @@ function sampleCatalog(gitCommit: string, bustPrompt = 'bust up, looking at came
   };
 }
 
-async function publishAndImport(gitCommit: string, bustPrompt?: string, delivery?: Record<string, unknown>): Promise<void> {
-  const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(gitCommit, bustPrompt, delivery), 'PUT');
+async function publishAndImport(
+  gitCommit: string,
+  bustPrompt?: string,
+  delivery?: Record<string, unknown>,
+  bustExtra?: Record<string, unknown>,
+  extraPoses?: string[],
+): Promise<void> {
+  const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(gitCommit, bustPrompt, delivery, bustExtra, extraPoses), 'PUT');
   expect(put.status).toBe(200);
   const imported = await postJson<{ imported: unknown[] }>('/api/v1/presets/import', { recipe_ref: RECIPE_REF });
   expect(imported.status).toBe(200);
@@ -74,7 +87,6 @@ async function pinPose(pose: string): Promise<{ generationId: string; shortId: s
 }
 
 interface StyleCheckPostItem {
-  framing: string;
   pose: string;
   skipped: string | null;
   created: boolean | null;
@@ -110,6 +122,16 @@ describe('POST /api/v1/style-check/:recipe', () => {
     const bustReplay = second.body.results.find((r) => r.pose === 'bust');
     expect(bustReplay!.created).toBe(false);
     expect(bustReplay!.request_id).toBe(bustResult!.request_id);
+  });
+
+  it('renders only the named pose when the body carries one', async () => {
+    await publishAndImport('abc1234');
+    await pinPose('bust');
+    await pinPose('coffee');
+
+    const res = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { pose: 'coffee' });
+    expect(res.body.results.map((r) => r.pose)).toEqual(['coffee']);
+    expect(res.body.results[0]!.created).toBe(true);
   });
 
   it('skips a pose with no pin and reports it', async () => {
@@ -216,76 +238,128 @@ describe('GET /check', () => {
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
-  /** The poses the page hands its client script. */
-  async function checkPoses(query = ''): Promise<{ html: string; poses: { pose: string; pin: { short_id: string } | null; request: { id: string; status: string } | null; result: { short_id: string } | null }[] }> {
-    const html = await (await req(`/check${query}`)).text();
-    const initial = html.match(/data-initial="([^"]*)"/)![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-    return { html, poses: (JSON.parse(initial) as { poses: never[] }).poses };
+  interface CheckPose {
+    pose: string;
+    pin: { short_id: string } | null;
+    drift: string;
+    prompt_diff: { column: string; baseline: string | null; arm: string | null }[];
+    request: { id: string; status: string } | null;
+    result: { short_id: string } | null;
   }
 
-  it('hints "pin 無し" for an unpinned pose and "未描画" for a pinned pose with no render yet, then the queued status once one is enqueued', async () => {
-    await publishAndImport('def5678');
+  /** The poses the page hands its client script. */
+  async function checkPoses(): Promise<{ html: string; poses: CheckPose[] }> {
+    const html = await (await req('/check')).text();
+    const initial = html.match(/data-initial="([^"]*)"/)![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    return { html, poses: (JSON.parse(initial) as { poses: CheckPose[] }).poses };
+  }
+
+  async function setFingerprint(generationId: string, fingerprint: string, positive?: string): Promise<void> {
+    await env.DB.prepare(
+      'UPDATE requests SET pose_fingerprint = ? WHERE id = (SELECT request_id FROM generations WHERE id = ?)',
+    )
+      .bind(fingerprint, generationId)
+      .run();
+    if (positive !== undefined) {
+      const facts = {
+        version: 2,
+        checkpoints: [],
+        models: { clip: [], vae: null },
+        samplers: [{ node_id: '1', steps: null, cfg: null, sampler_name: null, scheduler: null, denoise: null, seed: null, prompt: { positive, negative: null }, latent: null }],
+        canvas: null,
+        loras: [],
+        controlnets: [],
+        seed: null,
+        output: { filename_prefix: null },
+      };
+      await env.DB.prepare(
+        'UPDATE comfy_jobs SET render_facts_json = ? WHERE id = (SELECT comfy_job_id FROM generations WHERE id = ?)',
+      )
+        .bind(JSON.stringify(facts), generationId)
+        .run();
+    }
+  }
+
+  it('lists every catalog pose and every preset-only pose by name, and marks unpinned ones "pin なし"', async () => {
+    await publishAndImport('def5678', undefined, undefined, undefined, ['promoted']);
+    const put = await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog('def5679', undefined, undefined, undefined, ['catalogonly']), 'PUT');
+    expect(put.status).toBe(200);
     const bust = await pinPose('bust');
 
-    const before = await req('/check');
-    expect(before.status).toBe(200);
     const { html, poses } = await checkPoses();
+    expect(poses.map((p) => p.pose)).toEqual(['bust', 'catalogonly', 'coffee', 'promoted']);
     expect(poses.find((p) => p.pose === 'bust')).toMatchObject({ pin: { short_id: bust.shortId }, request: null, result: null });
-    expect(poses.find((p) => p.pose === 'coffee')!.pin).toBeNull();
-    expect(html).toContain('>未描画</span>');
-    expect(html).toContain('>pin 無し</span>');
-
-    const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
-    const bustResult = render.body.results.find((r) => r.pose === 'bust');
-    expect(bustResult!.created).toBe(true);
-
-    const after = await checkPoses();
-    expect(after.poses.find((p) => p.pose === 'bust')!.request).toMatchObject({ id: bustResult!.request_id, status: 'queued' });
-    expect(after.html).toContain('>queued</span>');
+    expect(poses.find((p) => p.pose === 'coffee')).toMatchObject({ pin: null, drift: 'no_pin' });
+    expect(html).toContain('>pin なし</span>');
+    expect(html).toContain('pin 済みを全部描き直す');
+    expect(html).toContain('今のコードで描き直す');
   });
 
-  it('keeps showing the existing render after a catalog commit change with the same pose content, with the pose picker and the any-ID form', async () => {
-    await publishAndImport('aaa1111');
-    await pinPose('bust');
-    const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
-    const bustResult = render.body.results.find((r) => r.pose === 'bust')!;
+  it('computes drift from the pin request fingerprint against the catalog pose fingerprint', async () => {
+    await publishAndImport('fp00001', undefined, undefined, { fingerprint: 'sha256:aaa' });
+    const bust = await pinPose('bust');
 
-    await publishAndImport('bbb2222');
-    const { html, poses } = await checkPoses();
-    expect(poses.find((p) => p.pose === 'bust')!.request!.id).toBe(bustResult.request_id);
-    expect(html).toContain('data-sc-pose="bust"');
-    expect(html).toContain('data-sc-any-id');
-    expect(html).toContain('pin を差し替える');
-    expect(html).toContain('今の既定で描く');
+    await setFingerprint(bust.generationId, 'sha256:aaa');
+    expect((await checkPoses()).poses.find((p) => p.pose === 'bust')).toMatchObject({ drift: 'match', prompt_diff: [] });
+
+    await setFingerprint(bust.generationId, 'sha256:bbb');
+    expect((await checkPoses()).poses.find((p) => p.pose === 'bust')!.drift).toBe('drift');
+
+    await env.DB.prepare('UPDATE requests SET pose_fingerprint = NULL WHERE id = (SELECT request_id FROM generations WHERE id = ?)')
+      .bind(bust.generationId)
+      .run();
+    expect((await checkPoses()).poses.find((p) => p.pose === 'bust')!.drift).toBe('unknown');
+
+    await setFingerprint(bust.generationId, 'sha256:aaa');
+    await publishAndImport('fp00002');
+    expect((await checkPoses()).poses.find((p) => p.pose === 'bust')!.drift).toBe('unknown');
   });
 
-  it('hands the resulting generation to the page once the plain-render request is done', async () => {
+  it('diffs the pin prompt against the catalog pose prompt only on drift', async () => {
+    await publishAndImport('fp00003', undefined, undefined, { fingerprint: 'sha256:new', positive: 'bust, smiling' });
+    const bust = await pinPose('bust');
+    await setFingerprint(bust.generationId, 'sha256:old', 'bust');
+
+    const row = (await checkPoses()).poses.find((p) => p.pose === 'bust')!;
+    expect(row.drift).toBe('drift');
+    expect(row.prompt_diff).toMatchObject([{ column: 'positive', baseline: 'bust', arm: 'bust, smiling' }]);
+  });
+
+  it('shows the queued status once a render is enqueued, and hands the generation to the page once it is done', async () => {
     await publishAndImport('feed001');
     const bust = await pinPose('bust');
 
-    const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, {});
-    const bustResult = render.body.results.find((r) => r.pose === 'bust')!;
+    const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { pose: 'bust' });
+    const bustResult = render.body.results[0]!;
+    expect((await checkPoses()).poses.find((p) => p.pose === 'bust')!.request).toMatchObject({ id: bustResult.request_id, status: 'queued' });
 
     const claimed = await claim(`worker-${crypto.randomUUID()}`);
-    expect(claimed.status).toBe(200);
     expect(claimed.body!.id).toBe(bustResult.request_id);
-
     const resultGen = await createGeneration({ requestOverrides: { recipe: RECIPE, parameters: { pose: 'bust' } } });
     const doneRes = await postJson(
       `/api/v1/requests/${bustResult.request_id}`,
-      {
-        status: 'done',
-        worker_id: claimed.body!.worker_id,
-        result: { generation_ids: [resultGen.generation.id] },
-      },
+      { status: 'done', worker_id: claimed.body!.worker_id, result: { generation_ids: [resultGen.generation.id] } },
       'PATCH',
     );
     expect(doneRes.status).toBe(200);
 
-    const { poses } = await checkPoses('?pose=bust');
-    const bustPose = poses.find((p) => p.pose === 'bust')!;
+    const bustPose = (await checkPoses()).poses.find((p) => p.pose === 'bust')!;
     expect(bustPose.pin!.short_id).toBe(bust.shortId);
     expect(bustPose.result!.short_id).toBe(resultGen.generation.short_id);
     expect(bustPose.request!.status).toBe('done');
+  });
+
+  it('good + repin: rating the re-render good then posting pose-reference moves the pin to it', async () => {
+    await publishAndImport('feed002');
+    await pinPose('bust');
+    const rerender = await createGeneration({ requestOverrides: { recipe: RECIPE, parameters: { pose: 'bust' } } });
+
+    const rated = await postJson(`/api/v1/generations/${rerender.generation.id}/rating`, { rating: 'good' }, 'PUT');
+    expect(rated.status).toBe(200);
+    const repin = await postJson(`/api/v1/generations/${rerender.generation.id}/pose-reference`, {});
+    expect(repin.status).toBe(201);
+
+    const bustPose = (await checkPoses()).poses.find((p) => p.pose === 'bust')!;
+    expect(bustPose.pin!.short_id).toBe(rerender.generation.short_id);
   });
 });

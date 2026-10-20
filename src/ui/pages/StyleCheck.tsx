@@ -1,14 +1,10 @@
 import { Layout } from '../layout';
 
-/** The slice of a Generation the compare panes and captions need; matches a workbench node where they overlap. */
 export interface StyleCheckNode {
   id: string;
   short_id: string;
+  seed: number | null;
   rating: 'bad' | 'neutral' | 'good' | null;
-  delivered: false;
-  image_width: number | null;
-  image_height: number | null;
-  image_size: number | null;
 }
 
 export interface StyleCheckRequest {
@@ -17,23 +13,34 @@ export interface StyleCheckRequest {
   error: string | null;
 }
 
+export type StyleCheckDrift = 'match' | 'drift' | 'unknown' | 'no_pin';
+
+export interface StyleCheckPromptDiff {
+  column: string;
+  baseline: string | null;
+  arm: string | null;
+  delta?: string;
+}
+
 export interface StyleCheckPoseView {
-  framing: string;
   pose: string;
   /** null: the pose has no pin, so it cannot be drawn. */
   pin: StyleCheckNode | null;
+  drift: StyleCheckDrift;
+  /** Only for drift: the pin's actual prompt (baseline) against the catalog pose's (arm). */
+  prompt_diff: StyleCheckPromptDiff[];
   /** The plain render at the current render content, once enqueued. */
   request: StyleCheckRequest | null;
   /** Filled when the request is done and its Generation resolves. */
   result: StyleCheckNode | null;
 }
 
-export function styleCheckHint(p: Pick<StyleCheckPoseView, 'pin' | 'request' | 'result'>): string {
-  if (!p.pin) return 'pin 無し';
-  if (!p.request) return '未描画';
-  if (p.request.status === 'done' && !p.result) return 'done';
-  return p.request.status;
-}
+export const DRIFT_LABELS: Record<StyleCheckDrift, string> = {
+  match: '一致',
+  drift: 'ドリフト',
+  unknown: '判定不可',
+  no_pin: 'pin なし',
+};
 
 export function StyleCheckPage({
   path,
@@ -47,91 +54,63 @@ export function StyleCheckPage({
   poses: StyleCheckPoseView[];
 }) {
   return (
-    <Layout title="絵柄チェック" fullBleed path={path}>
-      <div class="wb style-check" data-style-check data-recipe={recipe} data-initial={JSON.stringify({ poses })}>
-        <div class="wb-head">
+    <Layout title="絵柄チェック" path={path}>
+      <div class="style-check" data-style-check data-recipe={recipe} data-initial={JSON.stringify({ poses })}>
+        <div class="style-check-head">
           <h1 class="style-check-title">絵柄チェック</h1>
-          <nav class="wb-steps-nav" aria-label="ポーズ">
-            <ol class="wb-steps">
-              {poses.map((p, i) => (
-                <li>
-                  {i > 0 ? (
-                    <span class="wb-step-sep" aria-hidden="true">
-                      ›
-                    </span>
-                  ) : null}
-                  <button type="button" class="wb-step" data-sc-pose={p.pose}>
-                    <span class="wb-step-label">
-                      {p.framing} ({p.pose})
-                    </span>
-                    <span class="wb-step-kind mono" data-sc-hint>
-                      {styleCheckHint(p)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </nav>
-          <button type="button" class="style-check-render-btn" data-style-check-render data-recipe={recipe}>
-            今の既定で描く
+          <button type="button" class="style-check-render-btn" data-style-check-render>
+            pin 済みを全部描き直す
           </button>
         </div>
         <p class="image-meta">
-          {recipe} · 今のカタログ commit: <code>{gitCommit ?? '-'}</code>
+          {recipe} · {poses.length} pose · 今のカタログ commit: <code>{gitCommit ?? '-'}</code>
         </p>
 
-        <div class="wb-main">
-          <section class="wb-compare" aria-label="比較">
-            <div class="wb-pair" data-wb-pair>
-              <figure class="wb-fig">
-                <figcaption class="wb-cap">
-                  <span data-sc-left-cap></span>
-                  <button type="button" class="wb-pill" data-sc-left-reset hidden>
-                    pin に戻す
-                  </button>
-                </figcaption>
-                <div class="wb-pane" data-wb-input-pane></div>
-              </figure>
-              <figure class="wb-fig">
-                <figcaption class="wb-cap">
-                  <span data-sc-right-cap></span>
-                  <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
-                    {(['bad', 'neutral', 'good'] as const).map((r) => (
-                      <button type="button" class="rate-btn" data-rating={r}>
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </figcaption>
-                <div class="wb-pane" data-wb-cmp-pane></div>
-              </figure>
-            </div>
-
-            <div class="wb-controls">
-              <div class="wb-pills" role="group" aria-label="ルーペ">
-                <button type="button" class="wb-pill wb-pill-on" data-wb-loupe-toggle title="z で切り替え">
-                  ルーペ
-                </button>
-                {[2, 3, 5, 8].map((z) => (
-                  <button type="button" class="wb-pill" data-wb-loupe-zoom={String(z)} title="[ ] で倍率">
-                    ×{z}
-                  </button>
-                ))}
+        <div class="sc-list">
+          {poses.map((p) => (
+            <article class="sc-row" data-sc-pose={p.pose}>
+              <div class="sc-name">
+                <span class="mono">{p.pose}</span>
+                <span class={`sc-drift sc-drift-${p.drift}`} data-sc-drift>
+                  {DRIFT_LABELS[p.drift]}
+                </span>
               </div>
-              <button type="button" class="wb-pill" data-sc-replace-pin>
-                pin を差し替える
-              </button>
-              <form class="style-check-any-id" data-sc-any-id>
-                <input type="text" name="id" placeholder="short_id" aria-label="左に出す ID" autocomplete="off" />
-                <button type="submit" class="wb-pill">
-                  任意 ID と比較
+              <div class="sc-pin">
+                {p.pin ? (
+                  <a href={`/g/${p.pin.short_id}`}>
+                    <img src={`/g/${p.pin.short_id}/preview`} alt={p.pin.short_id} loading="lazy" />
+                    <span class="mono">
+                      {p.pin.short_id} · seed {p.pin.seed ?? '-'}
+                    </span>
+                  </a>
+                ) : (
+                  <span class="sc-empty">pin なし</span>
+                )}
+              </div>
+              <div class="sc-result" data-sc-result></div>
+              <div class="sc-actions">
+                <button type="button" class="wb-pill" data-sc-render-pose disabled={!p.pin}>
+                  今のコードで描き直す
                 </button>
-              </form>
-              <a class="wb-pill" data-sc-compare-link hidden>
-                /compare で開く
-              </a>
-            </div>
-          </section>
+              </div>
+              {p.prompt_diff.length > 0 ? (
+                <details class="sc-diff">
+                  <summary>prompt の差 (pin → カタログ)</summary>
+                  {p.prompt_diff.map((d) => (
+                    <div>
+                      <strong>{d.column}</strong>
+                      {d.delta ? <pre>{d.delta}</pre> : null}
+                      <details>
+                        <summary>全文</summary>
+                        <pre>pin: {d.baseline ?? '(none)'}</pre>
+                        <pre>catalog: {d.arm ?? '(none)'}</pre>
+                      </details>
+                    </div>
+                  ))}
+                </details>
+              ) : null}
+            </article>
+          ))}
         </div>
       </div>
     </Layout>

@@ -103,8 +103,8 @@ Promotion として提案し、実際のコード変更は別途 chagama
 -   semantic 判断を伴わない再実行（redraw / deliver）を requests 行として積む。
 -   リロール（[ui.md](ui.md#リロール)）: 元絵の generate payload を seed だけ変えて 4 枚振り直す
     `kind = generate` を requests 行として積む。recipe も prompt も触らない。
--   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 代表ポーズの pin を、今のカタログ既定で
-    もう一度描く plain render を requests 行として積む。GUI は prompt を書かない。
+-   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 全ポーズの pin のドリフトを一覧し、pin を今のカタログ既定で
+    もう一度描く plain render を requests 行として積む。結果を good にして pin を差し替えることもできる。GUI は prompt を書かない。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
 判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が

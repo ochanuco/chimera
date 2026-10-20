@@ -1047,9 +1047,9 @@ worker は requests だけを見ます。
   request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `lighting` / `dof`、`created_by = gui`）から積む。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
-- 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 代表ポーズ (`src/lib/style-check.ts`
-  の `STYLE_CHECK_POSES`) の pin を、今のカタログ既定でもう一度描く。`POST
-  /api/v1/style-check/{recipe}` が pin を持つ pose ごとに `buildPlainRenderRequest`（MCP
+- 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 全ポーズ（カタログの pose と Preset だけの pose、`src/lib/style-check.ts`
+  の `listStyleCheckPoseNames`）の pin を、今のカタログ既定でもう一度描く。`POST
+  /api/v1/style-check/{recipe}` が pin を持つ pose ごと（body の `pose` で 1 つに絞れる）に `buildPlainRenderRequest`（MCP
   `plain_render` と同じ組み立て — pin の seed・recipe 既定のまま patches なし）で
   `kind = generate` を積む（`created_by = gui`）。GUI は prompt を一切書かない。pin が無い
   pose は skip され、応答にその旨が残る。idempotency key は描画内容のハッシュ
