@@ -112,7 +112,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `list_experiments` | `status?` | 読み取り | Experiment の一覧。各行に base_recipe / base_parameters / base_generation_id / run_count / latest_run |
 | `get_experiment` | `id` | 読み取り | `GET /api/v1/experiments/{id}` と同じ形（runs / promotions / tags 込み） |
 | `create_experiment` | `name, recipe, parameters?, seeds?, base_generation_id?, character_id?, description?, arms, idempotency_key` | 追記 | Experiment を1件と、arm ごとの Run を作る。各 Run が requests 行を自動起票する。Experiment の `url` / `compare_url` と、arm ごとの Run id・`request_id`・`request_short_id` を返す |
-| `sweep_patch` | `recipe, name, patches, poses?, description?, idempotency_key` | 追記 | 1つの patch 集合を recipe の pin 済みの全 pose に、その pose の pin の seed で当てる。Experiment を1件と pose ごとの Run を作る。Experiment の `url` / `compare_url` / `check_url` と、pose ごとの Run id・`seed`・`request_id`・`request_short_id` を返す |
+| `sweep_patch` | `recipe, name, patches, poses?, description?, idempotency_key` | 追記 | 1つの patch 集合を recipe の pin 済みの全 pose に、その pose の pin の seed で当てる。Experiment を1件と pose ごとの Run を作る。Experiment の `url` / `compare_url` / `check_url` と、pose ごとの Run id・`seed`・`request_id`・`request_short_id`、対象から外した pose の `skipped` を返す |
 | `create_run` | `experiment_id, overrides, objective?, parent_run_id?, idempotency_key?, variables?` | 追記 | Run を1件作る。自動起票した requests 行の id を `run.request_id` に返す |
 | `get_run` | `run_id` | 読み取り | Run、所属 Experiment の要約、結果 Request の Generation 一覧 |
 | `attach_generation` | `run_id, generation_id` | 追記 | Run の代表 Generation を記録する |
@@ -356,9 +356,12 @@ Run の `idempotency_key` は `{idempotency_key}:arm:{index}`、`objective` は 
 }
 ```
 
-`poses` を省くと、recipe の現在の pin（`preset_references`）を持つ pose すべてが対象です。
-`poses` を渡すときに pin の無い pose が含まれていれば、その pose を列挙した tool error にして何も作りません。
-pin が1つも無い recipe も tool error です。
+`poses` を省くと、recipe の現在の pin（`preset_references`）と pose Preset の両方を持つ pose すべてが対象です。
+pin があっても pose Preset が無い pose は対象から外し、結果の `skipped`（`[{ pose, reason }]`）に載せます。
+`poses` を渡すときに pin か pose Preset の無い pose が含まれていれば、その pose を列挙した tool error にして何も作りません。
+対象の pose が1つも残らない recipe も tool error です。
+
+pose・pin・Preset・patches の検査はすべて何かを書く前に済ませるので、検査で落ちた呼び出しは Experiment も Run も request も残しません。
 
 Experiment を1件作り、pose ごとに Run を1件ずつ作ります。control の Run は作りません。基準は pin 自身です。
 Run の `overrides` は `{ "patches": patches, "parameters": { "pose": pose }, "seeds": [pin の seed] }`、`objective` は pose 名、

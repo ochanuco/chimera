@@ -13,9 +13,9 @@ interface SweepResult {
   created: boolean;
 }
 
-async function publishCatalog(): Promise<void> {
+async function publishCatalog(patches: unknown = {}): Promise<void> {
   const catalog = {
-    schema_version: 1,
+    schema_version: 3,
     recipes: [
       {
         name: RECIPE,
@@ -26,7 +26,7 @@ async function publishCatalog(): Promise<void> {
         costumes: [{ name: 'default', prompt: 'plain roomwear' }],
       },
     ],
-    patches: {},
+    patches,
     git_commit: 'sweep01',
     git_branch: 'main',
     generated_at: '2026-10-20T00:00:00.000Z',
@@ -136,6 +136,55 @@ describe('sweep_patch MCP tool', () => {
     const bad = await mcpToolCall('sweep_patch', sweepInput({ poses: ['bust', 'ghost', 'phantom'] }));
     expect(bad.isError).toBe(true);
     expect(JSON.stringify(bad)).toContain('ghost, phantom');
+  });
+
+  async function dropPosePreset(pose: string): Promise<void> {
+    await env.DB.prepare("DELETE FROM presets WHERE recipe = ? AND kind = 'pose' AND name = ?").bind(RECIPE, pose).run();
+  }
+
+  async function counts() {
+    const row = await env.DB.prepare(
+      'SELECT (SELECT COUNT(*) FROM experiments) AS experiments, (SELECT COUNT(*) FROM experiment_runs) AS runs, (SELECT COUNT(*) FROM requests) AS requests',
+    ).first<Record<string, number>>();
+    return row;
+  }
+
+  it('skips a pinned pose without a pose Preset by default and reports it', async () => {
+    const bust = await pinPose('bust');
+    await pinPose('coffee');
+    await dropPosePreset('coffee');
+    const call = await mcpToolCall<SweepResult & { skipped: { pose: string; reason: string }[] }>('sweep_patch', sweepInput());
+    expect(call.isError).toBe(false);
+    expect(call.data!.runs.map((r) => [r.pose, r.seed])).toEqual([['bust', bust.seed]]);
+    expect(call.data!.skipped).toEqual([{ pose: 'coffee', reason: 'no pose Preset' }]);
+  });
+
+  it('rejects an explicit pose without a pose Preset and writes nothing', async () => {
+    await pinPose('bust');
+    await pinPose('coffee');
+    await dropPosePreset('coffee');
+    const before = await counts();
+    const call = await mcpToolCall('sweep_patch', sweepInput({ poses: ['bust', 'coffee'] }));
+    expect(call.isError).toBe(true);
+    expect(JSON.stringify(call)).toContain('coffee');
+    expect(await counts()).toEqual(before);
+  });
+
+  it('writes nothing when validation fails on a later check', async () => {
+    await pinPose('bust');
+    await pinPose('coffee');
+    await publishCatalog({
+      keys: ['target', 'op', 'value', 'old', 'reason'],
+      text: { targets: ['prompt.positive'], part_target: 'prompt.positive.<part>', ops: { replace: ['old', 'value'] } },
+      number: { 'render.cfg': { op: 'set', constraints: '> 0' } },
+    });
+    const before = await counts();
+    const call = await mcpToolCall(
+      'sweep_patch',
+      sweepInput({ patches: [{ target: 'prompt.positive.expression', op: 'replace', value: 'smile', reason: 'old is missing' }] }),
+    );
+    expect(call.isError).toBe(true);
+    expect(await counts()).toEqual(before);
   });
 
   it('fails when the recipe has no pinned pose', async () => {
