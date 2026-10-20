@@ -15,6 +15,8 @@ import { badRequest, conflict, notFound } from './errors';
 import { listTagsForTarget } from './tags';
 import { isUuid, uuidv7 } from './uuidv7';
 import { resolveRequestRenderFacts } from './render-facts';
+import { runOverridePose } from './experiment-rules';
+import { listCurrentReferences } from './preset-references';
 import { buildRunRequestPayload, canonicalPayloadHash } from './requests';
 import { pinPresets } from './presets';
 import { assertPatchGrammar, assertPatchLists } from './patch-grammar';
@@ -646,6 +648,98 @@ export async function createExperimentWithArms(
       { ...options, patchesChecked: true },
     );
     runs.push({ row: result.row, arm: arm.label, request_id: result.request_id, created: result.created });
+  }
+  return { experiment, runs, created: first === null };
+}
+
+export interface PoseSweepInput {
+  recipe: string;
+  name: string;
+  description?: string;
+  patches: JsonObject[];
+  /** 省略時は recipe の現在の pin を持つ全 pose。 */
+  poses?: string[];
+  idempotency_key: string;
+}
+
+export interface PoseSweepRun {
+  row: ExperimentRunRow;
+  pose: string;
+  seed: number;
+  request_id: string | null;
+  created: boolean;
+}
+
+function poseIdempotencyKey(key: string, index: number): string {
+  return `${key}:pose:${index}`;
+}
+
+/** 既存 Run の overrides.parameters.pose。pose sweep の Run でなければ null。 */
+function poseOfRun(run: ExperimentRunRow): string | null {
+  return runOverridePose(parseJsonObjectOrNull(run.overrides_json) ?? {});
+}
+
+/**
+ * sweep_patch MCP tool の本体: 1 つの patch 集合を recipe の pin 済み pose ぜんぶに、その pose の pin の seed で当てる。
+ * Experiment 1 件に pose ごとの Run を 1 件ずつ作る (control は作らない。基準は pin 自身)。
+ * pose 0 の Run が既にあれば再送とみなし、足りない pose だけを補う。既存の pose 構成が今回と食い違うなら 409。
+ */
+export async function createPoseSweep(
+  db: D1Database,
+  input: PoseSweepInput,
+  options: CreateExperimentRunOptions = {},
+): Promise<{ experiment: ExperimentRow; runs: PoseSweepRun[]; created: boolean }> {
+  const { recipe, patches, idempotency_key: key } = input;
+  const pins = await listCurrentReferences(db, { recipe, kind: 'pose' });
+  const pinOf = (pose: string) => pins.get([recipe, 'pose', pose].join(' ')) ?? null;
+
+  const poses = input.poses ?? Array.from(pins.keys(), (k) => k.slice(`${recipe} pose `.length)).sort();
+  if (poses.length === 0) throw badRequest(`recipe '${recipe}' has no pinned pose to sweep`);
+  const unpinned = poses.filter((pose) => !pinOf(pose));
+  if (unpinned.length > 0) {
+    throw badRequest(`poses without a current pin: ${unpinned.join(', ')}. Pin them with set_pose_reference or drop them from poses`);
+  }
+
+  const first = await findRunByIdempotencyKey(db, poseIdempotencyKey(key, 0));
+  let experiment: ExperimentRow | null = null;
+  const existingKeys = new Set<string>();
+  if (first) {
+    experiment = await getExperimentOr404(db, first.experiment_id);
+    const prefix = `${key}:pose:`;
+    const existing = (await listRuns(db, experiment.id)).filter((r) => r.idempotency_key?.startsWith(prefix));
+    const matches = existing.every((r) => {
+      const index = poses.findIndex((_, i) => poseIdempotencyKey(key, i) === r.idempotency_key);
+      return index >= 0 && poseOfRun(r) === poses[index];
+    });
+    if (!matches) throw conflict(`idempotency_key '${key}' was already used for a different set of poses`);
+    for (const r of existing) if (r.idempotency_key) existingKeys.add(r.idempotency_key);
+  }
+
+  if (existingKeys.size < poses.length) {
+    await assertPatchLists(db, options.recipeRef ?? 'production', [{ patches, basePath: ['patches'] }]);
+  }
+  experiment ??= await createExperiment(db, {
+    name: input.name,
+    description: input.description,
+    base_recipe: recipe,
+    base_parameters: {},
+  });
+
+  const runs: PoseSweepRun[] = [];
+  for (const [index, pose] of poses.entries()) {
+    const seed = pinOf(pose)!.seed;
+    const result = await createExperimentRun(
+      db,
+      experiment,
+      {
+        overrides: { patches, parameters: { pose }, seeds: [seed] },
+        objective: pose,
+        variables: { arm: pose, pose },
+        idempotency_key: poseIdempotencyKey(key, index),
+      },
+      { ...options, patchesChecked: true },
+    );
+    runs.push({ row: result.row, pose, seed, request_id: result.request_id, created: result.created });
   }
   return { experiment, runs, created: first === null };
 }

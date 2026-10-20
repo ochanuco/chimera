@@ -247,6 +247,7 @@ describe('MCP server at /mcp', () => {
         'lens_generation',
         'photo_generation',
         'stage_generation',
+        'sweep_patch',
         'lighting_generation',
         'saturation_generation',
         'get_request',

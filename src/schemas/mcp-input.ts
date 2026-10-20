@@ -75,6 +75,15 @@ export const createExperimentInputSchema = z
   })
   .superRefine((value, ctx) => addIssues(ctx, createExperimentInputIssues(value)));
 
+export const sweepPatchInputSchema = z.object({
+  recipe: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  patches: patchesSchema.min(1),
+  poses: z.array(z.string().min(1)).min(1).optional(),
+  idempotency_key: z.string().min(1),
+});
+
 export const createRunInputSchema = createExperimentRunSchema
   .pick({ overrides: true, objective: true, parent_run_id: true, idempotency_key: true, variables: true })
   .extend({ experiment_id: z.string().min(1) });

@@ -9,6 +9,7 @@ import { generatePayloadPatches } from './lib/patch-grammar';
 import {
   createExperimentRun,
   createExperimentWithArms,
+  createPoseSweep,
   getExperimentDetail,
   getExperimentOr404,
   getRunOr404,
@@ -46,6 +47,7 @@ import { presetPromoteRequestSchema, presetPromoteProfileRequestSchema } from '.
 import {
   attachGenerationInputSchema,
   createExperimentInputSchema,
+  sweepPatchInputSchema,
   createRequestInputSchema,
   createRunInputSchema,
   deliverGenerationInputSchema,
@@ -182,7 +184,9 @@ const MCP_INSTRUCTIONS =
   'backdrop), then dof_generation. To compress the saturation of a delivered picture (figure and outline, outline colours ' +
   'included), run saturation_generation on the deliver output before stage_generation / photo_generation / dof_generation.\n' +
   '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
-  'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.';
+  'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.\n' +
+  '7. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
+  'Open the returned check_url to see each result next to its pin.';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
@@ -294,6 +298,50 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const url = canonicalExperimentUrl(origin, experiment.short_id);
       return jsonResult(mcpOutputs.create_experiment, {
         experiment: { id: experiment.id, short_id: experiment.short_id, url, compare_url: `${url}#experiment-compare` },
+        runs: outRuns,
+        created,
+      });
+    },
+  );
+
+  server.registerTool(
+    'sweep_patch',
+    {
+      outputSchema: mcpOutputs.sweep_patch,
+      description:
+        'Non-destructive: only adds a new Experiment and its Runs. Never deletes or overwrites existing data. Idempotent by idempotency_key. ' +
+        'Applies ONE patch set to every pinned pose of a recipe, each pose drawn at its own pin seed (set_pose_reference), so each result is comparable to its pin. ' +
+        'One Experiment, one Run per pose; no control arm — the baseline is the pin itself. ' +
+        'poses defaults to every pose of the recipe that has a current pin; an explicit list is rejected if any of its poses has no pin (the error lists them). ' +
+        'patches: same vocabulary and checks as create_experiment arm patches, each {target, op, reason, value/old by op}; ' +
+        'use per-part targets "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
+        'The results sit next to the pins in the /check compare viewer (check_url), and the experiment page shows them as a row with poses as columns. ' +
+        'Retrying with the same idempotency_key returns the original Experiment and Runs with created=false; the same key with different poses is a 409. ' +
+        'Returns the Experiment (id, short_id, url, compare_url, check_url) and per pose the Run id, seed, request_id and request_short_id.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: sweepPatchInputSchema,
+    },
+    async (input) => {
+      const { experiment, runs, created } = await createPoseSweep(db, input, { recipeRef: defaultRecipeRef(env) });
+      const outRuns = [];
+      for (const run of runs) {
+        let requestShortId: string | null = null;
+        if (run.request_id) {
+          const requestRow = await getRequestOr404(db, run.request_id);
+          requestShortId = requestRow.short_id;
+          if (run.created) notifyHubInBackground(env, 'queued', requestRow);
+        }
+        outRuns.push({ id: run.row.id, pose: run.pose, seed: run.seed, request_id: run.request_id, request_short_id: requestShortId });
+      }
+      const url = canonicalExperimentUrl(origin, experiment.short_id);
+      return jsonResult(mcpOutputs.sweep_patch, {
+        experiment: {
+          id: experiment.id,
+          short_id: experiment.short_id,
+          url,
+          compare_url: `${url}#experiment-compare`,
+          check_url: `${origin}/check?sweep=${experiment.short_id}`,
+        },
         runs: outRuns,
         created,
       });

@@ -1184,6 +1184,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .sc-drift-match { color: var(--good); }
 .sc-drift-drift { color: var(--bad); }
 .sc-drift-unknown { color: var(--text-dim); }
+.sc-sweep { margin: 0.5rem 0; font-size: 0.85rem; }
+.sc-sweep pre { white-space: pre-wrap; margin: 0.2rem 0; }
 .sc-diff { grid-column: 1 / -1; font-size: 0.8rem; }
 .sc-diff pre { white-space: pre-wrap; margin: 0.2rem 0; }
 .sc-row { cursor: pointer; }
@@ -2661,13 +2663,14 @@ export const appJs = `
   // 絵柄チェック (/check): recipe の全 pose を 1 行ずつ並べる。左の pin と、そのポーズの最新の plain render (右) を見比べ、
   // 描き直しと「good にして基準にする」(rating good → pose-reference) だけを呼ぶ。実行中の request は 3 秒ごとに取り直す。
   // 行を押すとワークベンチと同じ比較ペイン (wbViewer) の大きな 2 枚並びを開く。開いている pose は ?pose= に載せる。
+  // ?sweep= のときは右を sweep の結果に替える。sweep の結果は plain render ではないので、描き直しと「good にして基準にする」は出さない。
   function initStyleCheck() {
     var root = qs('[data-style-check]');
     if (!root) return;
     var initial = {};
     try { initial = JSON.parse(root.getAttribute('data-initial') || '{}'); } catch (e) { initial = {}; }
     var recipe = root.getAttribute('data-recipe');
-    var sc = { poses: initial.poses || [], timer: null, active: null, cursor: null, loupe: { on: true, zoom: 3 } };
+    var sc = { poses: initial.poses || [], sweep: initial.sweep || null, timer: null, active: null, cursor: null, loupe: { on: true, zoom: 3 } };
     var viewerEl = qs('[data-sc-viewer]', root);
     var viewer = wbViewer(viewerEl, sc);
     viewer.trackCursor();
@@ -2693,7 +2696,7 @@ export const appJs = `
     }
 
     function resultMessage(p) {
-      return !p.pin ? '' : !p.request ? '未描画'
+      return !p.pin ? '' : p.excluded ? '対象外' : !p.request ? '未描画'
         : p.request.status === 'queued' ? '待機中…' : p.request.status === 'running' ? '処理中…'
         : p.request.status === 'failed' ? '失敗: ' + (p.request.error || '') : p.request.status;
     }
@@ -2713,22 +2716,23 @@ export const appJs = `
       if (p.pin) viewer.fillPane(leftPane, p.pin.id, 'input', p.pin, null);
       else emptyPane(leftPane, 'pin なし');
       qs('[data-scv-left-cap]', viewerEl).textContent = p.pin ? captionWithMeta('pin ' + seedText(p.pin), p.pin) : 'pin';
+      var latestLabel = sc.sweep ? 'sweep' : '最新';
 
       var rightPane = qs('[data-wb-cmp-pane]', viewerEl);
       var rating = qs('[data-wb-rating]', viewerEl);
       if (p.result) {
         viewer.fillPane(rightPane, p.result.id, 'cmp', p.result, null);
-        qs('[data-scv-right-cap]', viewerEl).textContent = captionWithMeta('最新 ' + seedText(p.result), p.result);
+        qs('[data-scv-right-cap]', viewerEl).textContent = captionWithMeta(latestLabel + ' ' + seedText(p.result), p.result);
         rating.setAttribute('data-generation-id', p.result.id);
         applyRatingToGroups(p.result.id, p.result.rating);
       } else {
         emptyPane(rightPane, resultMessage(p));
-        qs('[data-scv-right-cap]', viewerEl).textContent = '最新' + (p.request ? ' ' + p.request.status : '');
+        qs('[data-scv-right-cap]', viewerEl).textContent = latestLabel + (p.excluded ? ' 対象外' : p.request ? ' ' + p.request.status : '');
       }
       rating.hidden = !p.result;
 
       qs('[data-scv-render]', viewerEl).disabled = !p.pin;
-      qs('[data-scv-adopt]', viewerEl).disabled = !(p.pin && p.result && p.pin.id !== p.result.id);
+      qs('[data-scv-adopt]', viewerEl).disabled = sc.sweep !== null || !(p.pin && p.result && p.pin.id !== p.result.id);
       var link = qs('[data-scv-compare-link]', viewerEl);
       link.hidden = !(p.pin && p.result);
       if (!link.hidden) link.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
@@ -2780,12 +2784,14 @@ export const appJs = `
         link.appendChild(img);
         link.appendChild(wbEl('span', 'mono', p.result.short_id + ' · seed ' + (p.result.seed == null ? '-' : p.result.seed)));
         cell.appendChild(link);
-        var same = p.result.id === p.pin.id;
-        var adopt = wbEl('button', 'wb-pill', same ? 'pin と同じ絵' : 'good にして基準にする');
-        adopt.type = 'button';
-        adopt.setAttribute('data-sc-adopt', '');
-        adopt.disabled = same;
-        cell.appendChild(adopt);
+        if (!sc.sweep) {
+          var same = p.result.id === p.pin.id;
+          var adopt = wbEl('button', 'wb-pill', same ? 'pin と同じ絵' : 'good にして基準にする');
+          adopt.type = 'button';
+          adopt.setAttribute('data-sc-adopt', '');
+          adopt.disabled = same;
+          cell.appendChild(adopt);
+        }
         var compare = wbEl('a', 'wb-pill', '/compare で開く');
         compare.href = '/compare?ids=' + encodeURIComponent(p.pin.short_id) + ',' + encodeURIComponent(p.result.short_id);
         cell.appendChild(compare);
