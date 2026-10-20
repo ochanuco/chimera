@@ -5,6 +5,9 @@ export interface StyleCheckNode {
   short_id: string;
   seed: number | null;
   rating: 'bad' | 'neutral' | 'good' | null;
+  image_width: number | null;
+  image_height: number | null;
+  image_size: number | null;
 }
 
 export interface StyleCheckRequest {
@@ -47,12 +50,16 @@ export function StyleCheckPage({
   recipe,
   gitCommit,
   poses,
+  selectedPose,
 }: {
   path: string;
   recipe: string;
   gitCommit: string | null;
   poses: StyleCheckPoseView[];
+  /** `?pose=`: the pose whose compare viewer is open. */
+  selectedPose: string | null;
 }) {
+  const selected = poses.find((p) => p.pose === selectedPose) ?? null;
   return (
     <Layout title="絵柄チェック" path={path}>
       <div class="style-check" data-style-check data-recipe={recipe} data-initial={JSON.stringify({ poses })}>
@@ -111,6 +118,72 @@ export function StyleCheckPage({
               ) : null}
             </article>
           ))}
+        </div>
+
+        <div class="sc-viewer wb" data-sc-viewer hidden={!selected}>
+          <div class="wb-head">
+            <button type="button" class="wb-pill" data-scv-close title="Esc">
+              一覧に戻る
+            </button>
+            <button type="button" class="wb-pill" data-scv-step="-1" title="← / k">
+              ‹ 前
+            </button>
+            <button type="button" class="wb-pill" data-scv-step="1" title="→ / j">
+              次 ›
+            </button>
+            <span class="mono" data-scv-name>
+              {selected?.pose}
+            </span>
+            <span class={`sc-drift sc-drift-${selected?.drift ?? 'unknown'}`} data-scv-drift>
+              {selected ? DRIFT_LABELS[selected.drift] : ''}
+            </span>
+            <span class="sc-viewer-actions">
+              <button type="button" class="wb-pill" data-scv-render>
+                今のコードで描き直す
+              </button>
+              <button type="button" class="wb-pill" data-scv-adopt>
+                good にして基準にする
+              </button>
+              <a class="wb-pill" data-scv-compare-link hidden>
+                /compare で開く
+              </a>
+            </span>
+          </div>
+          <section class="wb-compare" aria-label="比較">
+            <div class="wb-pair" data-wb-pair>
+              <figure class="wb-fig">
+                <figcaption class="wb-cap">
+                  <span data-scv-left-cap></span>
+                </figcaption>
+                <div class="wb-pane" data-wb-input-pane></div>
+              </figure>
+              <figure class="wb-fig">
+                <figcaption class="wb-cap">
+                  <span data-scv-right-cap></span>
+                  <div class="rating-group wb-rating" data-wb-rating role="group" aria-label="評価" hidden>
+                    {(['bad', 'neutral', 'good'] as const).map((r) => (
+                      <button type="button" class="rate-btn" data-rating={r}>
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </figcaption>
+                <div class="wb-pane" data-wb-cmp-pane></div>
+              </figure>
+            </div>
+            <div class="wb-controls">
+              <div class="wb-pills" role="group" aria-label="ルーペ">
+                <button type="button" class="wb-pill wb-pill-on" data-wb-loupe-toggle title="z で切り替え">
+                  ルーペ
+                </button>
+                {[2, 3, 5, 8].map((z) => (
+                  <button type="button" class="wb-pill" data-wb-loupe-zoom={String(z)} title="[ ] で倍率">
+                    ×{z}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </Layout>

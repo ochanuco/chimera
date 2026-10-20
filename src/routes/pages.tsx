@@ -435,7 +435,7 @@ pages.get('/check', async (c) => {
   const { results: nodeRows } = wanted.length
     ? await c.env.DB
         .prepare(
-          `SELECT id, short_id, seed, rating FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
+          `SELECT id, short_id, seed, rating, image_width, image_height, image_size FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
         )
         .bind(JSON.stringify(wanted))
         .all<StyleCheckNode>()
@@ -451,7 +451,7 @@ pages.get('/check', async (c) => {
     result: resultIds[i] ? nodeById.get(resultIds[i]!) ?? null : null,
   }));
 
-  return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} poses={poses} />);
+  return c.html(<StyleCheckPage path={c.req.path} recipe={recipe} gitCommit={gitCommit} poses={poses} selectedPose={c.req.query('pose') ?? null} />);
 });
 
 pages.get('/stats', async (c) => {
