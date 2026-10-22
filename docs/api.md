@@ -844,7 +844,7 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
 MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
 `parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、
-`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（`light` / method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明 / `shape` / sphere の `radius`）と `photo`（各 option の既定と説明）と `stage` / `lighting`（各 option の既定と説明）、git
+`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明 / `shape` / sphere の `radius`）と `photo`（各 option の既定と説明）と `stage` / `lighting`（各 option の既定と説明）、git
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
@@ -855,8 +855,8 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 描いたかとその pin は `get_generation` の `request.drawn_pose`
 （[Generation Context](#generation-context)）で分かります。
 
-`dials` は `{ redraw?: {optionKey: {word: number}}, deliver?: {...}, patches?: {...} }` の
-形で、redraw / deliver の options にある dial-able キーごとの word → number です
+`dials` は `{ deliver?: {...}, patches?: {...} }` の
+形で、deliver の options にある dial-able キーごとの word → number です
 （[worker-protocol.md](worker-protocol.md#deliver-profile)）。chimera は語彙も数値も
 検証せず、GUI がボタンに出す表示にだけ使います。worker へは number に解決せず word を
 そのまま渡し、word の実在確認と number への解決は worker の責務です。
@@ -1390,8 +1390,8 @@ GET /api/v1/generations/{id}/tree
 ```
 
 -   `kind`: その Generation を作った Request の kind（元絵は `generate`、import した元絵は `import`）
--   `method`: kind が `redraw` のときの `options.method`（`canvas` / `hires` / `light`）、それ以外は `null`
--   `phase`: ワークベンチのフェーズ。redraw（`canvas` / `hires` / `light`）= 1、`deliver` = 2、`saturation` = 3、`stage` = 4、`lighting` = 5、`dof` = 6。
+-   `method`: kind が `redraw` のときの `options.method`（新しい行は `hires` だけ。古い行は `canvas` / `light` も読める）、それ以外は `null`
+-   `phase`: ワークベンチのフェーズ。redraw（`hires`、古い行の `canvas` / `light`）= 1、`deliver` = 2、`saturation` = 3、`stage` = 4、`lighting` = 5、`dof` = 6。
     作れなくなった `repair` / `masked_redraw` の既存の行は 1（描き直しの候補）。元絵と対応しない kind（`lens` / `photo` を含む）は `null`
 -   `options`: 作った Request の `payload.options`（元絵と options の無い kind は `null`）
 -   `delivered`: 納品の絵か（`dof` / `lens` / `photo` / `stage` / `lighting` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）

@@ -239,7 +239,7 @@ describe('Generation search: refinement_request badge (docs/ui.md「Gallery」�
     }
     const payload =
       kind === 'redraw'
-        ? { generation_id: generationIdOrShortId, options: { method: 'light', scene: 'sunset' } }
+        ? { generation_id: generationIdOrShortId, options: { method: 'hires', hires: 2048 } }
         : { generation_id: generationIdOrShortId, options: { keep_scene: true } };
     const created = await postJson<{ id: string; status: string }>('/api/v1/requests', {
       kind,

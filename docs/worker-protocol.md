@@ -464,8 +464,7 @@ finalize の出力 Generation は納品済みの絵として扱い、redraw / de
 
 ### redraw
 
-既存 Generation の絵そのものを描き直す worker 実行です。1 request で行う絵の変更は
-`method` で選ぶ 1 つだけで、複数の操作は redraw を重ねます。出力は絵の Generation 1 枚で、
+既存 Generation を同じ seed で大きく描き直す worker 実行です。`method` は `"hires"` だけで、出力は絵の Generation 1 枚で、
 入力の Generation を `refines_generation_id` で指し、そのまま次の redraw /
 deliver の入力にできます。
 
@@ -480,35 +479,19 @@ deliver の入力にできます。
 ```
 
 `generation_id` は UUID / short_id のどちらでもよく、`options` は必須です。`profile` は受けません。
-`method` ごとに受けるキーが決まっていて、別の method のキーや未知のキーは 400 です。
+`method` は `"hires"` で、未知のキーと `canvas` / `light` などほかの method は 400 です。
 
-  method   options                                                                          意味
-  -------- --------------------------------------------------------------------------------- -------------------------------------------
-  canvas   denoise, size, route, finalizer, upscale, keep_regions, keep_strength, cut       キャンバス全体を描き直す
-  hires    hires, denoise, cut                                                              同じ seed で大きく描き直す
-  light    scene, from, cut                                                                 光を入れ直す
+  options   型
+  --------- --------------------------------------------------------------------------------
+  hires     64 以上の integer、必須（worker に既定がない。標準 canvas（1024x1640）の長辺を hires にしたときの画素数を元絵の縦横比のまま満たす大きさ。2048 は縦長 1280x2048、正方形 約 1616 四方。ワークベンチは 2048 / 2560 / 3072 を出し、既定は 2048）
+  denoise   null \| number (0, 1]（同 seed の pass の denoise。null か省略は 0.45 で線まで描き直す、0.35 なら構図を保つ）
+  cut       boolean（省略は false。true は描き直しの出力を切り抜く。null は不可）
 
-  options         型
-  --------------- --------------------------------------------------------------------------
-  denoise (canvas)  null \| number \| word（null は recipe 既定。word の語彙は catalog の `recipes[].dials.redraw`）
-  size            null \| integer（描き直しの長辺）
-  route           null \| "latent" \| "pixel"（null は recipe 既定）
-  finalizer       null \| string
-  upscale         null \| "bicubic" \| "nearest-exact" \| "bilinear" \| "lanczos"
-  keep_regions    array\<[x0, y0, x1, y1]\>（width/height に対する分数。x0<x1 かつ y0<y1。この矩形の中だけ元の絵をぼかした mask 越しに残す。null は不可で、無しはキー省略で表す）
-  keep_strength   number（0 より大きく 1 未満。`keep_regions` の中に描き直しがどれだけ触るか、worker 既定 0.25。null は不可）
-  hires           null \| 64 以上の integer（標準 canvas（1024x1640）の長辺を hires にしたときの画素数を元絵の縦横比のまま満たす大きさ。2048 は縦長 1280x2048、正方形 約 1616 四方）
-  denoise (hires) null \| number (0, 1]（同 seed の pass の denoise。null は 0.45 で線まで描き直す、0.35 なら構図を保つ）
-  scene           "sunset" \| "moon"（light のとき省略可。省略時は worker の既定）
-  cut             boolean（全 method で受ける。省略は false で従来どおり。true は描き直しの出力を切り抜く。null は不可）
-  from            "n" \| "ne" \| "e" \| "se" \| "s" \| "sw" \| "w" \| "nw"（光が来る向き。worker 既定 `"nw"`）
-
-chimera が検証するのは型と method の組み合わせだけで、画像に対する妥当性は worker が判定して
+chimera が検証するのは型と必須キーだけで、画像に対する妥当性は worker が判定して
 `failed` にします。受けられる入力は次のとおりです。
 
-- hires: Anima（recipe `yukari`）の generate の出力だけ。graph の無い import 画像、古い repair / masked_redraw と redraw の出力、すでに hires 済みの graph は `failed`。元の ComfyUI graph に LatentUpscale と同じ seed の KSampler を足すので、prompt・LoRA・seed は graph のままです
-- canvas と light: Anima の絵。古い repair / masked_redraw と redraw の出力も含む
-- どの method も、納品済みの絵（deliver / 古い finalize の出力、`deliver_only` の repair、`hires-chain` の出力）と LayerDiffuse 由来の絵は受けず、Anima 以外の recipe の絵は描き直せません
+- Anima（recipe `yukari`）の generate の出力だけ。graph の無い import 画像、古い repair / masked_redraw と redraw の出力、すでに hires 済みの graph は `failed`。元の ComfyUI graph に LatentUpscale と同じ seed の KSampler を足すので、prompt・LoRA・seed は graph のままです
+- 納品済みの絵（deliver / 古い finalize の出力、`deliver_only` の repair、`hires-chain` の出力）と LayerDiffuse 由来の絵は受けず、Anima 以外の recipe の絵は描き直せません
 
 `cut: true` の出力 Generation には、`alpha`（8 bit グレー PNG）・`depth`・`cut`（json）に加えて
 表示用の `cutout`（RGBA PNG。人物以外が透明で、前景色は推定する）が付きます。
@@ -516,10 +499,7 @@ original は不透明な絵のままで、deliver の入力はこちらです。
 出力は納品ではなく、`is_delivered` は変わりません。この出力への deliver は既存の使い回しの規則（同じ条件なら切り抜き直さない）でこの切り抜きを使うので、
 切り抜き済みの描き直しの後の deliver は切り抜きをやり直しません。MCP / API の既定は `cut` なしで、ワークベンチだけが既定で `cut: true` を送ります。
 
-word は `^[a-z][a-z0-9-]*$` にマッチする文字列で、実在確認と number への解決は worker が行います
-（未知の word は `failed`）。catalog は `recipes[].redraw` に `light`
-（`{"scenes": ["sunset", "moon"], "from": ["e", "n", "ne", "nw", "s", "se", "sw", "w"], "default_from": "nw"}`）と
-method ごとの既定 `defaults`（`canvas`: `denoise` / `size` / `route`、`hires`: `hires_denoise`）を公開し、
+catalog は `recipes[].redraw` に `defaults`（`hires`: `hires_denoise`）を公開し、
 chimera の WebUI フォームのプリセットもここから取っています。
 
 ### deliver

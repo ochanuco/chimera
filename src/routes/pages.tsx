@@ -41,8 +41,6 @@ import {
   findDof,
   findSaturation,
   findRedrawDefaults,
-  findRedrawDials,
-  findRedrawLight,
   getCatalog,
 } from '../lib/catalogs';
 import type { RecipeCatalogDoc } from '../schemas/catalogs';
@@ -559,7 +557,6 @@ pages.get('/work/:shortId', async (c) => {
   const doc = catalog && recipe ? catalog.doc : null;
   const deliverDefaults = doc && recipe ? findDeliverDefaults(doc, recipe) : null;
   const catalogStroke = typeof deliverDefaults?.stroke_light === 'string' ? deliverDefaults.stroke_light : 'even';
-  const lightFrom = doc && recipe ? findRedrawLight(doc, recipe) : null;
   const strokeDefault = catalogStroke === 'even' || ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'].includes(catalogStroke) ? catalogStroke : 'even';
 
   const data: WorkbenchData = {
@@ -568,8 +565,6 @@ pages.get('/work/:shortId', async (c) => {
     picks: workbench.picks,
     at: c.req.query('at') || null,
     redrawDefaults: doc && recipe ? findRedrawDefaults(doc, recipe) : null,
-    redrawDials: doc && recipe ? findRedrawDials(doc, recipe) : null,
-    light: lightFrom,
     deliverDefaults,
     outlines: doc && recipe ? findDeliverOutlines(doc, recipe) : null,
     strokeDefault,

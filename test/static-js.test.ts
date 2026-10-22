@@ -18,26 +18,6 @@ describe('served app.js', () => {
     expect(appJs).toContain('/pose-reference');
   });
 
-  it('resolves a tri-state dial group\'s "on" mode to boolean true, not the word "on"', () => {
-    expect(appJs).toContain("if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;");
-  });
-
-  it('redrawOptionsFrom builds exactly one method per request and omits blank fields', () => {
-    expect(appJs).toContain('function redrawOptionsFrom(form)');
-    expect(appJs).toContain("var hires = { method: 'hires', hires: Number(qs('select[name=\"hires\"]', form).value) };");
-    expect(appJs).toContain("if (hiresDenoise !== '') hires.denoise = Number(hiresDenoise);");
-    expect(appJs).toContain("return { method: 'light', scene: qs('select[name=\"light_scene\"]', form).value, from: lightFromSelect(form).value };");
-    expect(appJs).toContain("var options = { method: 'canvas' };");
-    expect(appJs).toContain("if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);");
-    expect(appJs).toContain("if (sizeRaw !== '') options.size = Number(sizeRaw);");
-    expect(appJs).toContain("if (route !== '') options.route = route;");
-  });
-
-  it('redrawOptionsFrom sends keep_regions only with drawn regions, and keep_strength only alongside them', () => {
-    expect(appJs).toContain('var regions = regionsFor(form);\n    if (regions.length > 0) {\n      options.keep_regions = regions;');
-    expect(appJs).toContain("if (keepStrengthRaw !== '') options.keep_strength = Number(keepStrengthRaw);");
-  });
-
   it('edits the outline list in place: add, remove, reorder, reset to the catalog default, and a stroke shading of even or a direction', () => {
     expect(appJs).toContain('function outlinesFrom(editor)');
     expect(appJs).toContain("t.closest('[data-outline-add]')");
@@ -62,11 +42,6 @@ describe('served app.js', () => {
     expect(appJs).toContain("return labels[kind] || kind || '';");
     expect(appJs).toContain('requestKindLabel(kind) + \' · \'');
     expect(appJs).toContain('kind.textContent = requestKindLabel(request.kind);');
-  });
-
-  it('redrawOptionsFrom reads keep regions from the per-form region-drawing state', () => {
-    expect(appJs).toContain('function regionsFor(form)');
-    expect(appJs).toContain('var regions = regionsFor(form);');
   });
 
   it('drives the style check as a pose list: per-pose re-render, and good + repin as two existing calls', () => {

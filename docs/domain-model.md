@@ -932,7 +932,7 @@ picks_json          TEXT NOT NULL          {"1": {"generation_id": "<id>"} | {"s
 created_at / updated_at
 ```
 
-フェーズは 1 描き直し（redraw の hires / canvas / light。作れなくなった古い repair / masked_redraw もここに置く）、2 切り抜き・フチ（deliver）、
+フェーズは 1 描き直し（redraw の hires。古い行の canvas / light と、作れなくなった repair / masked_redraw もここに置く）、2 切り抜き・フチ（deliver）、
 3 彩度（saturation）、4 背景（stage）、5 光（lighting）、6 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
 採用は木のどこかの Generation を指すだけで、Generation 側には何も書きません。木の取得と保存の API は
 [api.md](api.md#generation-tree) です。

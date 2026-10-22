@@ -119,15 +119,17 @@ describe('GET /work/:shortId', () => {
     expect(data.at).toBe(hires.short_id);
   });
 
-  it('phase 1 offers hires first, canvas and light with their options', async () => {
+  it('phase 1 offers only hires, with a long side of 2048 by default', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
     const form = html.slice(html.indexOf('data-wb-form="1"'), html.indexOf('data-wb-form="2"'));
-    expect(form.indexOf('data-wb-method="hires"')).toBeLessThan(form.indexOf('data-wb-method="canvas"'));
     expect(form).toContain('name="wb_hires"');
+    expect(form).toContain('<option value="2048" selected="">');
     expect(form).toContain('name="wb_hires_denoise"');
-    expect(form).toContain('name="wb_denoise"');
-    expect(form).toContain('name="wb_size"');
+    for (const gone of ['data-wb-method', 'name="wb_denoise"', 'name="wb_size"', 'data-wb-scene', 'data-wb-light-input']) {
+      expect(form).not.toContain(gone);
+    }
+    expect(html).not.toContain('light（夕日・月明かり）');
   });
 
   it('phase 1 offers a no-cut checkbox and sends cut: true unless it is checked', async () => {
@@ -186,17 +188,6 @@ describe('GET /work/:shortId', () => {
     expect(byId.get(cut.short_id)).toBe(true);
     expect(byId.get(plain.short_id)).toBe(false);
     expect(byId.get(root.short_id)).toBe(false);
-  });
-
-  it('phase 1 light lists the catalog light scenes with an eight-direction compass', async () => {
-    const { generation: root } = await createGeneration();
-    const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-method-panel="light"'), html.indexOf('data-wb-form="2"'));
-    expect(form).toContain('data-wb-light-input');
-    expect(html).toContain('light（夕日・月明かり）');
-    expect(form).toContain('data-wb-scene="sunset"');
-    expect(form).toContain('data-wb-scene="moon"');
-    for (const dir of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) expect(form).toContain(`data-compass-dir="${dir}"`);
   });
 
   it('phase 2 cuts out transparent with the outline editor open and finishing controls in closed details', async () => {
@@ -355,7 +346,7 @@ describe('workbench client script', () => {
     expect(appJs).not.toContain("kind: 'repair'");
     expect(appJs).toContain("kind: 'dof'");
     expect(appJs).toContain("kind: 'deliver'");
-    expect(appJs).toContain("method: 'light'");
+    expect(appJs).toContain("var redrawOptions = { method: 'hires', hires: Number(");
     expect(appJs).toContain("kind: 'stage'");
     expect(appJs).toContain("kind: 'lighting'");
     expect(appJs).toContain("kind: 'saturation'");

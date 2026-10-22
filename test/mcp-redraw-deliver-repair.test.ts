@@ -15,7 +15,7 @@ describe('MCP redraw_generation', () => {
     const { generation } = await createGeneration();
     const call = await mcpToolCall<CreateRequestResult>('redraw_generation', {
       generation_id: generation.id,
-      options: { method: 'canvas', denoise: 0.55, size: 2048 },
+      options: { method: 'hires', hires: 2048, denoise: 0.55 },
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(false);
@@ -24,7 +24,7 @@ describe('MCP redraw_generation', () => {
     expect(call.data?.request.created_by).toBe('mcp');
     expect(call.data?.request.payload).toEqual({
       generation_id: generation.short_id,
-      options: { method: 'canvas', denoise: 0.55, size: 2048 },
+      options: { method: 'hires', hires: 2048, denoise: 0.55 },
     });
 
     const viaRest = await getJson<{ kind: string; created_by: string }>(`/api/v1/requests/${call.data?.request.id}`);
@@ -35,7 +35,7 @@ describe('MCP redraw_generation', () => {
 
   it.each([
     [{ method: 'hires', hires: 2048, denoise: 0.35 }],
-    [{ method: 'light', scene: 'moon', from: 'ne' }],
+    [{ method: 'hires', hires: 3072, cut: true }],
   ])('stores method options %j in the payload', async (options) => {
     const { generation } = await createGeneration();
     const call = await mcpToolCall<CreateRequestResult>('redraw_generation', {
@@ -47,9 +47,17 @@ describe('MCP redraw_generation', () => {
     expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options });
   });
 
-  it('requires a method and rejects options of another method', async () => {
+  it('requires method hires with a hires size and rejects other methods and options', async () => {
     const { generation } = await createGeneration();
-    for (const options of [undefined, { denoise: 0.5 }, { method: 'hires', route: 'latent' }, { method: 'light', scene: 'noon' }]) {
+    const rejected = [
+      undefined,
+      { denoise: 0.5 },
+      { method: 'hires' },
+      { method: 'hires', hires: 2048, route: 'latent' },
+      { method: 'canvas', denoise: 0.5 },
+      { method: 'light', scene: 'moon' },
+    ];
+    for (const options of rejected) {
       const call = await mcpToolCall('redraw_generation', {
         generation_id: generation.id,
         ...(options ? { options } : {}),
@@ -64,7 +72,7 @@ describe('MCP redraw_generation', () => {
   it('replays the same idempotency_key as created: false', async () => {
     const { generation } = await createGeneration();
     const key = crypto.randomUUID();
-    const input = { generation_id: generation.id, options: { method: 'canvas' }, idempotency_key: key };
+    const input = { generation_id: generation.id, options: { method: 'hires', hires: 2048 }, idempotency_key: key };
 
     const first = await mcpToolCall<CreateRequestResult>('redraw_generation', input);
     expect(first.isError).toBe(false);
@@ -79,7 +87,7 @@ describe('MCP redraw_generation', () => {
   it('404s as a tool error for an unknown generation', async () => {
     const call = await mcpToolCall('redraw_generation', {
       generation_id: 'does-not-exist',
-      options: { method: 'canvas' },
+      options: { method: 'hires', hires: 2048 },
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(true);
@@ -187,7 +195,7 @@ describe('MCP create_request kinds', () => {
   });
 
   it.each([
-    ['redraw', { method: 'light', scene: 'moon' }],
+    ['redraw', { method: 'hires', hires: 2048 }],
     ['deliver', { backdrop: 'stripes' }],
   ])('creates a %s row through create_request', async (kind, options) => {
     const { generation } = await createGeneration();

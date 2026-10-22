@@ -571,7 +571,7 @@ URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入�
 
 `仕上げの解決値`セクションは、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
 だけ出します。workerが解決した値（resolved）を1項目1行の表にし（`dof`はF値・ピント位置・ボケの範囲・
-ファインダーの行に分け、`stroke_light`・`light`・`backdrop`はDeliverフォームと同じ語で、redrawの`method`・`scene`・`from`・`keep_regions`も表示。古いfinalizeの行もそのまま読めます）、
+ファインダーの行に分け、`stroke_light`・`light`・`backdrop`はDeliverフォームと同じ語で、redrawの`method`・`scene`・`from`・`keep_regions`も表示（古いcanvas / lightの行を含む）。古いfinalizeの行もそのまま読めます）、
 要求した`options`（requested）とresolvedの生JSONは既定で畳んだ`Raw JSON`に入れます。
 
 親・子・兄弟は、FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、
@@ -717,9 +717,8 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     右の欄の高さはフェーズによらず一定で、フォームは欄の中で独立してスクロールし、実行ボタン（右寄せ）とエラー表示は欄の下端に固定されるので、
     実行ボタンの位置は全フェーズで同じです
     （幅900px以下の縦積みでは、スクロール位置に関係なく画面の下端に固定されます）。
-    1 描き直し: `hires`（先頭）/ `canvas` / `light（夕日・月明かり）`。hires は長辺と denoise、canvas は denoise（catalogの`dials.redraw.denoise`の語があれば値を入れるボタン付き）と寸法、
-    light は catalogの`redraw.light.scenes`と8方向のコンパス。light は選択中の候補が hires の出力ならその上に、それ以外は元絵に当て、どちらに当てるかを欄に出します。
-    どの method も既定で `cut: true` を送り、候補は切り抜かれた（透明の）絵として市松の上に出ます。`切り抜かない`にチェックを入れると `cut` を送らず、不透明の絵のままです。
+    1 描き直し: `hires` だけ。長辺（2048 / 2560 / 3072、既定 2048）と denoise を選びます。
+    既定で `cut: true` を送り、候補は切り抜かれた（透明の）絵として市松の上に出ます。`切り抜かない`にチェックを入れると `cut` を送らず、不透明の絵のままです。
     2 フチ: 透過の deliver（`transparent: true`）だけを積みます（描き直しで切り抜き済みの入力は切り抜き直さず、フチの候補だけが増えます。切り抜き済みでない入力は、この 2 で初めて切り抜きます）。開いた`フチ`（見出しの右に現在のフチを`白 0.8 + 紫 3`のように色の名前（白・紫以外は色コード）と幅で要約し、
     向きの陰影のときは`· 陰影 nw`を添える。[フチのリスト](#フチのリスト)を編集すると即座に更新。既定はcatalogのフチ）、切り抜きの注記。
     入力が納品済みなら実行できません。

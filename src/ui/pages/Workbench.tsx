@@ -1,12 +1,9 @@
 import { Layout } from '../layout';
 import type { WorkbenchPicks } from '../../schemas/workbenches';
 import type { WorkbenchTree } from '../../lib/workbench';
-import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults, RedrawLight } from '../../lib/catalogs';
-import type { Dials } from '../option-forms';
-import { dialWordsFor } from '../option-forms';
+import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults } from '../../lib/catalogs';
 import { Compass, OutlineEditor } from '../components/OutlineEditor';
 import { DofFields, FALLBACK_DOF } from '../components/DofFields';
-import { LIGHT_SCENE_LABELS } from '../components/OptionControls';
 import { CapActions } from '../components/CapActions';
 import { PHOTO_MAX_SIDE, type PhotoItem } from '../../lib/photos';
 
@@ -22,8 +19,6 @@ export interface WorkbenchData {
   /** Short id from `?at=`: the Generation to preselect. */
   at: string | null;
   redrawDefaults: RedrawDefaults | null;
-  redrawDials: Dials | null;
-  light: RedrawLight | null;
   deliverDefaults: DeliverDefaults | null;
   outlines: DeliverOutlines | null;
   strokeDefault: string;
@@ -61,108 +56,34 @@ export function backdropThumbnailUrl(recipeRef: string, catalogVersion: string |
   return `/api/v1/catalogs/${encodeURIComponent(recipeRef)}/backdrops/${encodeURIComponent(name)}.png${q}`;
 }
 
-function DenoiseWords({ dials }: { dials: Dials | null }) {
-  const words = dialWordsFor(dials, 'denoise');
-  if (!words) return null;
-  return (
-    <div class="wb-words" data-wb-denoise-words>
-      {Object.entries(words).map(([word, value]) => (
-        <button type="button" class="wb-pill" data-wb-denoise-word={String(value)}>
-          {word} <span class="mono">{value}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function RedrawForm({ data }: { data: WorkbenchData }) {
-  const canvas = data.redrawDefaults?.canvas;
-  const hires = data.redrawDefaults?.hires;
-  const canvasDenoise = numberDefault(canvas, 'denoise') ?? 0.4;
-  const canvasSize = numberDefault(canvas, 'size') ?? 2560;
-  const hiresDenoise = numberDefault(hires, 'hires_denoise') ?? 0.45;
-  const sizes = withValue([2048, 2560], canvasSize);
+  const hiresDenoise = numberDefault(data.redrawDefaults?.hires, 'hires_denoise') ?? 0.45;
   const hiresDenoises = withValue([0.35, 0.45, 0.55], hiresDenoise);
   return (
     <div class="wb-form" data-wb-form="1" hidden>
-      <div class="wb-pills" role="group" aria-label="方法">
-        <button type="button" class="wb-pill wb-pill-on" data-wb-method="hires">
-          hires
-        </button>
-        <button type="button" class="wb-pill" data-wb-method="canvas">
-          canvas
-        </button>
-        <button type="button" class="wb-pill" data-wb-method="light">
-          light（夕日・月明かり）
-        </button>
-      </div>
-      <div data-wb-method-panel="hires">
-        <label class="wb-field">
-          長辺（px）
-          <select name="wb_hires">
-            <option value="2048" selected>
-              2048
+      <label class="wb-field">
+        長辺（px）
+        <select name="wb_hires">
+          <option value="2048" selected>
+            2048
+          </option>
+          <option value="2560">2560</option>
+          <option value="3072">3072</option>
+        </select>
+      </label>
+      <label class="wb-field">
+        denoise
+        <select name="wb_hires_denoise">
+          {hiresDenoises.map((v) => (
+            <option value={String(v)} selected={v === hiresDenoise}>
+              {v}
             </option>
-            <option value="2560">2560</option>
-            <option value="3072">3072</option>
-          </select>
-        </label>
-        <label class="wb-field">
-          denoise
-          <select name="wb_hires_denoise">
-            {hiresDenoises.map((v) => (
-              <option value={String(v)} selected={v === hiresDenoise}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div data-wb-method-panel="canvas" hidden>
-        <label class="wb-field">
-          denoise <span class="mono" data-wb-denoise-readout>{canvasDenoise}</span>
-          <input type="range" name="wb_denoise" min="0.2" max="0.8" step="0.05" value={String(canvasDenoise)} />
-        </label>
-        <DenoiseWords dials={data.redrawDials} />
-        <label class="wb-field">
-          寸法（長辺）
-          <select name="wb_size">
-            {sizes.map((v) => (
-              <option value={String(v)} selected={v === canvasSize}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <LightPanel data={data} />
+          ))}
+        </select>
+      </label>
       <label class="wb-field">
         <input type="checkbox" name="wb_redraw_no_cut" /> 切り抜かない
       </label>
-    </div>
-  );
-}
-
-function LightPanel({ data }: { data: WorkbenchData }) {
-  const scenes = data.light ? data.light.scenes : Object.keys(LIGHT_SCENE_LABELS);
-  const from = data.light ? data.light.defaultFrom : 'nw';
-  return (
-    <div data-wb-method-panel="light" hidden>
-      <p class="wb-note" data-wb-light-input></p>
-      <div class="wb-field">
-        scene
-        <div class="wb-pills" role="group" aria-label="scene">
-          {scenes.map((scene, i) => (
-            <button type="button" class={`wb-pill${i === 0 ? ' wb-pill-on' : ''}`} data-wb-scene={scene}>
-              {LIGHT_SCENE_LABELS[scene] ?? scene} <span class="mono">{scene}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div class="wb-field">
-        光の向き <span class="mono" data-wb-light-readout>from: {from}</span>
-        <Compass name="light" value={from} />
-      </div>
     </div>
   );
 }

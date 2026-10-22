@@ -43,7 +43,7 @@ describe('a Generation whose original was purged earlier stays readable', () => 
   });
 
   it.each([
-    ['redraw', { options: { method: 'canvas' } }],
+    ['redraw', { options: { method: 'hires', hires: 2048 } }],
     ['deliver', {}],
   ])('creating a %s request 409s with original_purged', async (kind, extra) => {
     const { generation } = await purgedGeneration();

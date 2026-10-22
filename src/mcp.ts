@@ -591,8 +591,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       description:
         "Non-destructive: only appends one new queued draft row to the requests table. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
-        'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options.method is ' +
-        'canvas, hires or light; every method takes cut: true to cut the figure out), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
+        'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options is ' +
+        '{method: "hires", hires, denoise?, cut?}; hires (long side in px, >= 64) is required), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
         '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "saturation" (payload {generation_id, options?: {strength?}}). "finalize", "repair" and "masked_redraw" can no longer ' +
         'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation / saturation_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
@@ -619,22 +619,16 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.redraw_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
-        'Enqueue a redraw request (docs/worker-protocol.md "redraw"): the worker redraws the source picture in exactly ' +
-        'one way, chosen by options.method; chain redraw requests for more than one operation. Its output Generations record ' +
+        'Enqueue a redraw request (docs/worker-protocol.md "redraw"): the worker redraws the source picture at a larger ' +
+        'size. Its output Generations record ' +
         'the source Generation as the one they refine (refines_generation). generation_id accepts a short_id. ' +
-        'method "canvas" re-renders the whole canvas: denoise (strength, number or a word from list_catalog\'s ' +
-        'recipes[].dials.redraw), size (longest side), route ("latent" or "pixel"), finalizer, upscale ' +
-        '(bicubic/nearest-exact/bilinear/lanczos), keep_regions ([x0,y0,x1,y1] fraction rectangles the redraw keeps close ' +
-        'to the source, through a feathered mask; omit rather than null) and keep_strength (above 0 and below 1, only ' +
-        'with keep_regions). method "hires" re-renders the stored ComfyUI graph at the same seed at a larger size: ' +
-        'hires (integer >= 64, the long side in px; the pixel area is that of the standard 1024x1640 canvas at that long ' +
-        'side, with the source\'s own aspect ratio) and denoise (above 0 up to 1, default 0.45; 0.35 keeps the composition). ' +
-        'method "light" relights the picture: scene ("sunset" | "moon") and from (the direction the light comes from, ' +
-        'n/ne/e/se/s/sw/w/nw, default "nw"). Every method also takes cut (boolean, default false): true also cuts the figure out and attaches a transparent "cutout" asset (plus alpha / depth / cut) to the output, so a later deliver reuses the cut. Omitted fields resolve to the defaults published in list_catalog\'s ' +
-        'recipes[].redraw (defaults per method, and the light scenes and directions). ' +
-        'Sources: hires needs an Anima generate output (not an import without a graph, not an older repair / masked_redraw / ' +
-        'redraw output, not already hires-ed); canvas and light work on any Anima picture, including older repair, masked_redraw ' +
-        'and redraw outputs. Neither accepts an already delivered picture or a LayerDiffuse-derived one, and a picture ' +
+        'Only method "hires" exists: it re-renders the stored ComfyUI graph at the same seed at a larger size. ' +
+        'hires is required (integer >= 64, the long side in px; the Workbench offers 2048 / 2560 / 3072, 2048 by default; ' +
+        'the pixel area is that of the standard 1024x1640 canvas at that long side, with the source\'s own aspect ratio); ' +
+        'denoise is optional (above 0 up to 1, default 0.45; 0.35 keeps the composition). ' +
+        'cut (boolean, default false): true also cuts the figure out and attaches a transparent "cutout" asset (plus alpha / depth / cut) to the output, so a later deliver reuses the cut. ' +
+        'Source: an Anima generate output (not an import without a graph, not an older repair / masked_redraw / ' +
+        'redraw output, not already hires-ed, not an already delivered or LayerDiffuse-derived picture); a picture ' +
         'from a non-Anima recipe cannot be redrawn. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: redrawGenerationInputSchema,
@@ -1168,10 +1162,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
         'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
-        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for redraw/deliver ' +
-        'dial-able options, keyed by the option name — the word vocabulary redraw_generation/deliver_generation accept ' +
+        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for deliver ' +
+        'dial-able options, keyed by the option name — the word vocabulary deliver_generation accepts ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
-        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus, F-number and focal_length defaults) and `redraw` (light scenes and directions, per-method defaults), the top-level `backdrops` ' +
+        'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus, F-number and focal_length defaults) and `redraw` (the hires default denoise), the top-level `backdrops` ' +
         'name/label list (deliver_generation\'s backdrop pattern ' +
         'choices; omitted when the catalog has none), and git info. No prompt bodies — use get_catalog_pose for a ' +
         'single pose\'s full record.',
