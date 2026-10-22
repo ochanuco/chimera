@@ -35,6 +35,9 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['request create: stage photo with backdrop', 'POST', '/api/v1/requests', requestCase('stage', optionsPayload({ photo: 'p', backdrop: 'dots', shadow_from: 'n' }))],
   ['request create: repair', 'POST', '/api/v1/requests', requestCase('repair', optionsPayload({ parts: ['hands'] }))],
   ['request create: redraw method missing', 'POST', '/api/v1/requests', requestCase('redraw', optionsPayload({ denoise: 0.5 }))],
+  ['request create: redraw canvas', 'POST', '/api/v1/requests', requestCase('redraw', optionsPayload({ method: 'canvas' }))],
+  ['request create: redraw light', 'POST', '/api/v1/requests', requestCase('redraw', optionsPayload({ method: 'light', scene: 'moon' }))],
+  ['request create: redraw hires without hires', 'POST', '/api/v1/requests', requestCase('redraw', optionsPayload({ method: 'hires' }))],
   ['request create: deliver outlines over the limit', 'POST', '/api/v1/requests', requestCase('deliver', optionsPayload({ outlines: Array.from({ length: 7 }, () => ({ color: '#ffffff', width: 1 })) }))],
   ['request create: bad recipe_ref', 'POST', '/api/v1/requests', requestCase('lighting', { generation_id: MISSING_ID }, { recipe_ref: '-bad' })],
   ['request claim: empty kinds', 'POST', '/api/v1/requests/claim', { worker_id: 'w', kinds: [] }],
@@ -170,7 +173,12 @@ const REST_EXPECTED: Record<string, string> = {
   'request create: repair':
     "400 kind: kinds 'repair' and 'masked_redraw' can no longer be created: use 'redraw' to change the picture (the partial-fix feature was removed)",
   'request create: redraw method missing':
-    "400 payload.options.method: Invalid discriminator value. Expected 'canvas' | 'hires' | 'light'",
+    '400 payload.options.method: Invalid input: expected "hires"; payload.options.hires: Invalid input: expected number, received undefined',
+  'request create: redraw canvas':
+    '400 payload.options.method: Invalid input: expected "hires"; payload.options.hires: Invalid input: expected number, received undefined',
+  'request create: redraw light':
+    '400 payload.options.method: Invalid input: expected "hires"; payload.options.hires: Invalid input: expected number, received undefined; payload.options: Unrecognized key: "scene"',
+  'request create: redraw hires without hires': '400 payload.options.hires: Invalid input: expected number, received undefined',
   'request create: deliver outlines over the limit':
     '400 payload.options.outlines: Too big: expected array to have <=6 items',
   'request create: bad recipe_ref':

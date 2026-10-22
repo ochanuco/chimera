@@ -25,10 +25,8 @@ function create(kind: string, payload: unknown) {
 
 describe('redraw request', () => {
   it.each([
-    ['canvas', { method: 'canvas', denoise: 'light', size: 2048, route: 'latent', finalizer: 'x', upscale: 'lanczos', keep_regions: [[0.1, 0.1, 0.5, 0.5]], keep_strength: 0.4 }],
-    ['canvas with numeric denoise and nulls', { method: 'canvas', denoise: 0.5, size: null, route: null }],
     ['hires', { method: 'hires', hires: 3072, denoise: 0.45 }],
-    ['light', { method: 'light', scene: 'sunset', from: 'ne' }],
+    ['hires with cut', { method: 'hires', hires: 2048, cut: true }],
   ])('accepts method %s', async (_name, options) => {
     const { generation } = await createGeneration();
     const res = await create('redraw', { generation_id: generation.short_id, options });
@@ -36,6 +34,16 @@ describe('redraw request', () => {
     expect(res.body.kind).toBe('redraw');
     expect(res.body.status).toBe('queued');
     expect(res.body.payload).toEqual({ generation_id: generation.short_id, options });
+  });
+
+  it.each([
+    ['canvas', { method: 'canvas', denoise: 0.5 }],
+    ['light', { method: 'light', scene: 'sunset' }],
+    ['hires without hires', { method: 'hires' }],
+    ['hires with a null hires', { method: 'hires', hires: null }],
+  ])('rejects method %s', async (_name, options) => {
+    const { generation } = await createGeneration();
+    expect((await create('redraw', { generation_id: generation.id, options })).status).toBe(400);
   });
 
   it('rejects a missing method, a missing options and an unknown method', async () => {
@@ -47,11 +55,9 @@ describe('redraw request', () => {
 
   it('rejects unknown keys and options of another method', async () => {
     const { generation } = await createGeneration();
-    expect((await create('redraw', { generation_id: generation.id, options: { method: 'canvas', bogus: 1 } })).status).toBe(400);
-    expect((await create('redraw', { generation_id: generation.id, options: { method: 'canvas', hires: 3072 } })).status).toBe(400);
-    expect((await create('redraw', { generation_id: generation.id, options: { method: 'hires', denoise: 'light' } })).status).toBe(400);
-    expect((await create('redraw', { generation_id: generation.id, options: { method: 'light', scene: 'noon' } })).status).toBe(400);
-    expect((await create('redraw', { generation_id: generation.id, options: { method: 'light' }, profile: { name: 'x' } })).status).toBe(400);
+    expect((await create('redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048, bogus: 1 } })).status).toBe(400);
+    expect((await create('redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048, denoise: 'light' } })).status).toBe(400);
+    expect((await create('redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048 }, profile: { name: 'x' } })).status).toBe(400);
   });
 });
 
@@ -263,7 +269,7 @@ describe('claim', () => {
   it('claims redraw and deliver by kinds filter and leaves other kinds queued', async () => {
     const { generation } = await createGeneration();
     const finalize = await createRequest({ kind: 'finalize', status: 'queued', payload: { generation_id: generation.id, options: { keep_scene: true } } });
-    const redraw = await create('redraw', { generation_id: generation.id, options: { method: 'hires' } });
+    const redraw = await create('redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048 } });
     const deliver = await create('deliver', { generation_id: generation.id });
 
     const claim = async (kinds: string[]) => {
@@ -349,7 +355,7 @@ describe('MCP create_request', () => {
     const { generation } = await createGeneration();
     const redraw = await mcpToolCall<{ created: boolean; request: { kind: string } }>('create_request', {
       kind: 'redraw',
-      payload: { generation_id: generation.id, options: { method: 'light', scene: 'moon' } },
+      payload: { generation_id: generation.id, options: { method: 'hires', hires: 2048 } },
       idempotency_key: crypto.randomUUID(),
     });
     expect(redraw.isError).toBe(false);

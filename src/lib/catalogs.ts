@@ -205,11 +205,6 @@ export function findDeliverDials(doc: RecipeCatalogDoc, recipeName: string): Rec
   return findDials(doc, recipeName, 'deliver');
 }
 
-/** `recipes[].dials.redraw` for one recipe name — the word -> number map RedrawFields renders as buttons. null when absent. */
-export function findRedrawDials(doc: RecipeCatalogDoc, recipeName: string): Record<string, Record<string, number>> | null {
-  return findDials(doc, recipeName, 'redraw');
-}
-
 export type DeliverDefaults = Record<string, unknown>;
 
 /** `recipes[].deliver.defaults` for one recipe name — the booleans DeliverFields presets its checkboxes from. null when the catalog, recipe, or its deliver.defaults are absent. */
@@ -219,7 +214,7 @@ export function findDeliverDefaults(doc: RecipeCatalogDoc, recipeName: string): 
 
 export type RedrawDefaults = Record<string, Record<string, unknown>>;
 
-/** `recipes[].redraw.defaults` for one recipe name — per-method initial values (`canvas`: denoise/size/route, `hires`: hires_denoise). null when absent. */
+/** `recipes[].redraw.defaults` for one recipe name — per-method initial values (`hires`: hires_denoise). null when absent. */
 export function findRedrawDefaults(doc: RecipeCatalogDoc, recipeName: string): RedrawDefaults | null {
   const defaults = plainObject(plainObject(findRecipe(doc, recipeName)?.redraw)?.defaults);
   if (!defaults) return null;
@@ -327,23 +322,6 @@ export function findDeliverOutlines(doc: RecipeCatalogDoc, recipeName: string): 
   const maxCount = typeof outlines.max_count === 'number' ? outlines.max_count : MAX_OUTLINES;
   const maxWidth = typeof outlines.max_width === 'number' ? outlines.max_width : 5;
   return { default: list, maxCount, maxWidth };
-}
-
-export interface RedrawLight {
-  scenes: string[];
-  from: string[];
-  defaultFrom: string;
-}
-
-/** `recipes[].redraw.light` for one recipe name — the scenes and light directions the redraw `light` method and the deliver `light` field render as selects. null when absent or malformed (no scenes, no directions, or default_from outside from). */
-export function findRedrawLight(doc: RecipeCatalogDoc, recipeName: string): RedrawLight | null {
-  const light = plainObject(plainObject(findRecipe(doc, recipeName)?.redraw)?.light);
-  if (!light) return null;
-  const { scenes, from } = light;
-  const isNames = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every((s) => typeof s === 'string');
-  if (!isNames(scenes) || !isNames(from)) return null;
-  if (typeof light.default_from !== 'string' || !from.includes(light.default_from)) return null;
-  return { scenes, from, defaultFrom: light.default_from };
 }
 
 /** Looks up a single pose record (full body, prompts included) by recipe name + pose name. Either miss returns null. */

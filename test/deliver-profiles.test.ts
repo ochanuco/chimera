@@ -9,9 +9,7 @@ import {
   findDeliverOutlines,
   findDof,
   findDeliverBackdropColor,
-  findRedrawDials,
   findRedrawDefaults,
-  findRedrawLight,
 } from '../src/lib/catalogs';
 import { findProducingRequest } from '../src/lib/requests';
 import { deliverOptionsSchema, redrawOptionsSchema } from '../src/schemas/request-payloads';
@@ -143,49 +141,27 @@ describe('catalog dials passthrough', () => {
 });
 
 describe('redrawOptionsSchema', () => {
-  it('accepts keep_regions rectangles and a keep_strength between 0 and 1 on canvas', () => {
-    expect(validate(redrawOptionsSchema, { method: 'canvas', keep_regions: [[0.3, 0.1, 0.7, 0.4]], keep_strength: 0.25 }).ok).toBe(true);
+  it('accepts hires with a required long side, an optional denoise and an optional boolean cut', () => {
+    expect(validate(redrawOptionsSchema, { method: 'hires', hires: 2048 }).ok).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'hires', hires: 2048, denoise: 0.45, cut: true }).ok).toBe(true);
+    expect(validate(redrawOptionsSchema, { method: 'hires', hires: 2048, denoise: null }).ok).toBe(true);
   });
 
   it.each([
-    ['canvas', { method: 'canvas', cut: true }],
-    ['hires', { method: 'hires', hires: 2048, cut: true }],
-    ['light', { method: 'light', scene: 'sunset', cut: false }],
-  ])('accepts a boolean cut on %s', (_m, options) => {
-    expect(validate(redrawOptionsSchema, options).ok).toBe(true);
-  });
-
-  it.each([
-    ['canvas', { method: 'canvas', cut: 'yes' }],
-    ['hires', { method: 'hires', cut: 1 }],
-    ['light', { method: 'light', cut: null }],
-  ])('rejects a non-boolean cut on %s', (_m, options) => {
-    expect(validate(redrawOptionsSchema, options).ok).toBe(false);
-  });
-
-  it.each([
-    ['a null keep_regions', { method: 'canvas', keep_regions: null }],
-    ['a rectangle outside 0..1', { method: 'canvas', keep_regions: [[0, 0, 1.2, 1]] }],
-    ['a rectangle with x0 >= x1', { method: 'canvas', keep_regions: [[0.7, 0.1, 0.3, 0.4]] }],
-    ['keep_strength 0', { method: 'canvas', keep_strength: 0 }],
-    ['keep_strength 1', { method: 'canvas', keep_strength: 1 }],
-    ['a null keep_strength', { method: 'canvas', keep_strength: null }],
+    ['hires omitted', { method: 'hires' }],
+    ['a null hires', { method: 'hires', hires: null }],
+    ['a non-boolean cut', { method: 'hires', hires: 2048, cut: 1 }],
     ['a non-integer hires', { method: 'hires', hires: 2048.5 }],
     ['a string hires', { method: 'hires', hires: '2048' }],
     ['a hires below 64', { method: 'hires', hires: 32 }],
     ['hires denoise 0', { method: 'hires', hires: 2048, denoise: 0 }],
     ['hires denoise above 1', { method: 'hires', hires: 2048, denoise: 1.1 }],
+    ['method canvas', { method: 'canvas', denoise: 0.4 }],
+    ['method light', { method: 'light', scene: 'sunset' }],
     ['an unknown method', { method: 'repin' }],
     ['no method', { denoise: 0.4 }],
   ])('rejects %s', (_label, options) => {
     expect(validate(redrawOptionsSchema, options).ok).toBe(false);
-  });
-
-  it('accepts hires with or without a denoise, and each light form', () => {
-    expect(validate(redrawOptionsSchema, { method: 'hires', hires: 2048, denoise: 0.45 }).ok).toBe(true);
-    expect(validate(redrawOptionsSchema, { method: 'hires', hires: null }).ok).toBe(true);
-    expect(validate(redrawOptionsSchema, { method: 'light', scene: 'sunset' }).ok).toBe(true);
-    expect(validate(redrawOptionsSchema, { method: 'light', scene: 'moon', from: 'ne' }).ok).toBe(true);
   });
 });
 
@@ -239,26 +215,7 @@ describe('deliverOptionsSchema', () => {
   });
 });
 
-describe('redraw/deliver options accept dial words', () => {
-  it('redraw canvas: denoise accepts a word; reject a malformed string', async () => {
-    const { generation } = await createGeneration();
-    const ok = await postJson('/api/v1/requests', {
-      kind: 'redraw',
-      payload: { generation_id: generation.id, options: { method: 'canvas', denoise: 'tidy' } },
-      idempotency_key: crypto.randomUUID(),
-      created_by: 'gui',
-    });
-    expect(ok.status).toBe(201);
-
-    const bad = await postJson('/api/v1/requests', {
-      kind: 'redraw',
-      payload: { generation_id: generation.id, options: { method: 'canvas', denoise: 'Tidy!' } },
-      idempotency_key: crypto.randomUUID(),
-      created_by: 'gui',
-    });
-    expect(bad.status).toBe(400);
-  });
-
+describe('deliver options', () => {
   it('deliver: the removed options recolor, skin, keep_legwear, deliver_size and repin are rejected', async () => {
     const { generation } = await createGeneration();
     for (const options of [{ recolor: true }, { skin: false }, { keep_legwear: 0.5 }, { keep_legwear: 'on' }, { deliver_size: 1536 }, { repin: true }]) {
@@ -588,7 +545,7 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
     expect(profiles).toEqual([]);
   });
 
-  it('findDeliverDials / findRedrawDials extract recipes[].dials.deliver / .redraw; null when recipe/dials are absent', async () => {
+  it('findDeliverDials extracts recipes[].dials.deliver; null when recipe/dials are absent', async () => {
     const recipeRef = uniqueRecipeRef();
     const recipe = uniqueRecipe();
     await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithDials(recipe), 'PUT');
@@ -596,9 +553,7 @@ describe('lib helpers for the UI (listDeliverProfiles / findDeliverDials)', () =
     const found = await getCatalog(env.DB, recipeRef);
     expect(found).not.toBeNull();
     expect(findDeliverDials(found!.doc, recipe)).toEqual({ keep_legwear: { on: 0.62 } });
-    expect(findRedrawDials(found!.doc, recipe)).toEqual({ denoise: { tidy: 0.65, heavy: 0.8 } });
     expect(findDeliverDials(found!.doc, 'nonexistent-recipe')).toBeNull();
-    expect(findRedrawDials(found!.doc, 'nonexistent-recipe')).toBeNull();
   });
 
   it('findDeliverDefaults extracts recipes[].deliver.defaults; null when deliver is absent or defaults is not an object', async () => {
@@ -654,7 +609,6 @@ describe('redraw and deliver catalog sections', () => {
     expect(findDeliverDefaults(doc, recipe)).toEqual(section.deliver.defaults);
     expect(findDeliverBackdropColor(doc, recipe)).toBe('#c7e5e9');
     expect(findRedrawDefaults(doc, recipe)).toEqual(section.redraw.defaults);
-    expect(findRedrawLight(doc, recipe)).toEqual({ scenes: ['sunset', 'moon'], from: ['n', 'nw'], defaultFrom: 'nw' });
   });
 
   it('does not read the legacy recipes[].finalize.* sections', async () => {
@@ -671,8 +625,6 @@ describe('redraw and deliver catalog sections', () => {
     const doc = (await getCatalog(env.DB, ref))!.doc;
     expect(findDeliverDefaults(doc, recipe)).toBeNull();
     expect(findDeliverBackdropColor(doc, recipe)).toBeNull();
-    expect(findRedrawLight(doc, recipe)).toBeNull();
-    expect(findRedrawDials(doc, recipe)).toBeNull();
     expect(findDeliverDials(doc, recipe)).toBeNull();
   });
 
@@ -786,35 +738,6 @@ describe('findDeliverOutlines', () => {
   });
 });
 
-describe('findRedrawLight', () => {
-  const light = { scenes: ['sunset', 'moon'], from: ['e', 'n', 'ne', 'nw', 's', 'se', 'sw', 'w'], default_from: 'nw' };
-
-  async function lookup(value: unknown) {
-    const ref = uniqueRecipeRef();
-    const name = uniqueRecipe();
-    await postJson(`/api/v1/catalogs/${ref}`, { schema_version: 1, recipes: [{ name, poses: [], redraw: { light: value } }], patches: {} }, 'PUT');
-    return findRedrawLight((await getCatalog(env.DB, ref))!.doc, name);
-  }
-
-  it('parses the published shape; null when absent or malformed', async () => {
-    expect(await lookup(light)).toEqual({ scenes: light.scenes, from: light.from, defaultFrom: 'nw' });
-    expect(await lookup(undefined)).toBeNull();
-    for (const bad of [
-      { ...light, scenes: [] },
-      { ...light, scenes: 'sunset' },
-      { ...light, from: [] },
-      { ...light, default_from: 'x' },
-      { ...light, default_from: undefined },
-      'sunset',
-    ]) {
-      expect(await lookup(bad)).toBeNull();
-    }
-    const ref = uniqueRecipeRef();
-    await postJson(`/api/v1/catalogs/${ref}`, { schema_version: 1, recipes: [{ name: 'only', poses: [], redraw: { light } }], patches: {} }, 'PUT');
-    expect(findRedrawLight((await getCatalog(env.DB, ref))!.doc, 'nonexistent-recipe')).toBeNull();
-  });
-});
-
 describe('list_presets / get_preset accept kind=deliver', () => {
   it('list_presets kind=deliver and get_preset match the REST routes', async () => {
     const recipe = uniqueRecipe();
@@ -914,40 +837,36 @@ describe('result.resolved_options (worker-written, opaque)', () => {
     expect(sourceHtml).toContain('&quot;keep_legwear&quot;:0.62');
   });
 
-  it('a redraw output renders its resolved method options as rows', async () => {
-    const recipe = uniqueRecipe();
-    const { generation: source } = await createGeneration({ requestOverrides: { recipe } });
-    const redrawReq = await postJson<{ id: string }>('/api/v1/requests', {
-      kind: 'redraw',
-      payload: { generation_id: source.id, options: { method: 'light', scene: 'moon' } },
-      idempotency_key: crypto.randomUUID(),
-      created_by: 'gui',
-    });
-    const claimed = await req('/api/v1/requests/claim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ worker_id: `worker-${crypto.randomUUID()}` }),
-    });
-    const claimedBody = (await claimed.json()) as { worker_id: string };
+  async function storedRedraw(options: Record<string, unknown>, resolved: Record<string, unknown>) {
+    const { generation: source } = await createGeneration();
+    const row = await createRequest({ kind: 'redraw', status: 'done', payload: { generation_id: source.id, options } });
     const { generation: redrawn } = await createGeneration({
-      requestId: redrawReq.body.id,
-      requestOverrides: { recipe },
+      requestId: row.body.id,
       jobOverrides: { source_generation_id: source.id },
     });
-    await postJson(
-      `/api/v1/requests/${redrawReq.body.id}`,
-      {
-        status: 'done',
-        worker_id: claimedBody.worker_id,
-        result: { generation_ids: [redrawn.id], resolved_options: { method: 'light', scene: 'moon', from: 'nw' } },
-      },
-      'PATCH',
-    );
+    await env.DB.prepare('UPDATE requests SET result_json = ? WHERE id = ?')
+      .bind(JSON.stringify({ generation_ids: [redrawn.id], resolved_options: resolved }), row.body.id)
+      .run();
+    return redrawn;
+  }
 
+  it('a stored light redraw still renders its resolved method options as rows', async () => {
+    const redrawn = await storedRedraw({ method: 'light', scene: 'moon' }, { method: 'light', scene: 'moon', from: 'nw' });
     const html = await (await req(`/g/${redrawn.short_id}`)).text();
     expect(html).toContain('<td>方法</td><td>light</td>');
     expect(html).toContain('<td>光源</td><td>月明かり</td>');
     expect(html).toContain('<td>光の向き</td><td>左上から</td>');
+  });
+
+  it('a stored canvas redraw still renders its resolved method options as rows', async () => {
+    const redrawn = await storedRedraw(
+      { method: 'canvas', denoise: 0.5, keep_regions: [[0.1, 0.1, 0.5, 0.5]] },
+      { method: 'canvas', denoise: 0.5, size: 2560, route: 'pixel', keep_regions: [[0.1, 0.1, 0.5, 0.5]], keep_strength: 0.3 },
+    );
+    const html = await (await req(`/g/${redrawn.short_id}`)).text();
+    expect(html).toContain('<td>方法</td><td>canvas</td>');
+    expect(html).toContain('<td>残す範囲</td><td>1 箇所</td>');
+    expect(html).toContain('<td>route</td><td>pixel</td>');
   });
 
   it('an old finalize Generation still renders its resolved options', async () => {

@@ -674,7 +674,7 @@ describe('Web GUI pages', () => {
     });
     await postJson('/api/v1/requests', {
       kind: 'redraw',
-      payload: { generation_id: generation.id, options: { method: 'canvas' } },
+      payload: { generation_id: generation.id, options: { method: 'hires', hires: 2048 } },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });

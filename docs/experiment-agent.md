@@ -122,7 +122,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `get_request` | `id, include_prompts?` | 読み取り | requests 行1件（payload、done / failed 後は result / error） |
 | `list_requests` | `status?, kind?, run_id?, include_prompts?` | 読み取り | requests 行の一覧（`kind` は `import` も指定できる）。claim はしない |
 | `derive_request` | `from_generation_id, instruction, count?, seeds?, parameters?, patches?, replace_patches?, semantic, reference?, identity_override?, idempotency_key, recipe_ref?` | 追記 | 既存 Generation を起点にした generate request を積む |
-| `redraw_generation` | `generation_id, options, idempotency_key` | 追記 | redraw request を積む。`options.method`（canvas / hires / light）が必須で、1 request に 1 操作 |
+| `redraw_generation` | `generation_id, options, idempotency_key` | 追記 | redraw request を積む。`options` は `{method: "hires", hires, denoise?, cut?}` で、`hires`（長辺 px、64 以上）が必須 |
 | `deliver_generation` | `generation_id, options?, profile?, idempotency_key` | 追記 | deliver request を積む。切り抜いて背景・フチのリスト（`outlines`）などを付ける（絵は変えない） |
 | `dof_generation` | `generation_id, focus, f_number?, scope?, viewfinder?, idempotency_key` | 追記 | dof request を積む。納品の絵の層をぼかす |
 | `photo_generation` | `generation_id, photo, place?, height?, stand_at?, nearer?, tilt?, focus?, f_number?, bokeh?, idempotency_key` | 追記 | photo request を積む。納品の絵を写真にアクスタとして立て、奥行きでぼかす |
@@ -161,7 +161,7 @@ Generation を取る tool は、`generation_id` に UUID と short_id のどち�
 どちらも `recipe_ref` を省略すると `"production"` を見ます。
 
 `list_catalog` は prompt 本文を含みません。
-返すのは recipe ごとの pose / costume / expression の名前、recipe が持つ場合は `parts` と `identity_tags`、parameters、patches の語彙、redraw / deliver の dial 語彙（`dials`）、`deliver`（`defaults` / `dof` / `stroke_light` / `backdrop_color`。`deliver_generation` が省略した option をどう解決するか）と `redraw`（`light` の scene / 方位と method ごとの `defaults`）、backdrop の一覧（`backdrops`）、git 情報です。
+返すのは recipe ごとの pose / costume / expression の名前、recipe が持つ場合は `parts` と `identity_tags`、parameters、patches の語彙、deliver の dial 語彙（`dials`）、`deliver`（`defaults` / `dof` / `stroke_light` / `backdrop_color`。`deliver_generation` が省略した option をどう解決するか）と `redraw`（hires の既定 denoise を持つ `defaults`）、backdrop の一覧（`backdrops`）、git 情報です。
 特定の pose の中身が要るときだけ `get_catalog_pose` でフルレコードを引きます。
 パーツに分かれた recipe なら `parts` は順序付きの `{name, text}` の列で、text を連結すると positive prompt になります。
 `reference` はその pose の現行の pin で、無ければ `null` です。
@@ -288,9 +288,8 @@ options は REST の payload と同じ zod スキーマで検証します。
 どれも出力は source Generation を仕上げ元（`refines_generation_id`）とする Generation として記録されます。
 options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[redraw](worker-protocol.md#redraw)」「[deliver](worker-protocol.md#deliver)」節が正本です。
 
-`redraw_generation` は絵を変える操作を `options.method` で 1 つだけ選びます。`canvas`（キャンバス全体の描き直し）、`hires`（同じ seed で大きく描き直す。Anima の generate の出力だけ）、`light`（光の入れ直し）で、method ごとに受けるキーが違います。
-canvas と light は Anima の絵（古い repair / masked_redraw と redraw の出力を含む）に使え、どの method も納品済みの絵は受けません。
-省略した値の既定は `list_catalog` の `recipes[].redraw`、dial の語は `recipes[].dials.redraw` です。
+`redraw_generation` は同じ seed で大きく描き直します。受ける method は `hires` だけで、長辺を `hires`（64 以上の整数、必須。ワークベンチは 2048 / 2560 / 3072）で渡します。`denoise` は省略すると 0.45 です。
+入力は Anima の generate の出力だけで、納品済みの絵は受けません。
 
 `deliver_generation` は切り抜いて背景・フチのリスト・光源などを付けます。`outlines` は内側から外側へ最大 6 本の `{color, width}` で、省略は catalog の既定、`[]` はフチなしです。ボケは `dof_generation` が別 request で付けます。
 切り抜きの asset（alpha / depth / cut）は最初の deliver が作って入力の Generation に付け、同じ絵への次の deliver は使い回します。

@@ -1,30 +1,13 @@
 import { z } from 'zod';
-import { DIAL_WORD_RE, HEX_COLOR_RE, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
+import { HEX_COLOR_RE, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
 import { addIssues } from './issues';
 
 /** worker に渡す payload の語彙 (docs/worker-protocol.md)。kind ごとの封筒の検証は lib/request-payload.ts が引く。 */
 export const jsonObject = z.record(z.string(), z.unknown());
 
-const dialWord = z.string().regex(DIAL_WORD_RE);
-
-/** region は width/height に対する分数の矩形 [x0,y0,x1,y1] (x0<x1, y0<y1)。 */
-const regionSchema = z
-  .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
-  .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, {
-    message: 'region must have x0 < x1 and y0 < y1',
-  });
-
 /** redraw / deliver の options は worker の引数に 1 対 1 で写す (docs/worker-protocol.md「redraw」「deliver」)。
  * 組み合わせの妥当性は worker が判定して failed にする — chimera は型だけ見る。 */
-const denoiseField = z.union([z.number(), dialWord]).nullable().optional();
-const routeField = z.enum(['latent', 'pixel']).nullable().optional();
-const finalizerField = z.string().nullable().optional();
-const sizeField = z.number().int().nullable().optional();
-const upscaleField = z.enum(['bicubic', 'nearest-exact', 'bilinear', 'lanczos']).nullable().optional();
-// worker は keep_regions / keep_strength の null を型エラーにするので、他の option と違い nullable にしない。
-const keepRegionsField = z.array(regionSchema).optional();
-const keepStrengthField = z.number().gt(0).lt(1).optional();
-const hiresField = z.number().int().min(64).nullable().optional();
+const hiresField = z.number().int().min(64);
 const hiresDenoiseField = z.number().gt(0).lte(1).nullable().optional();
 const keepSceneField = z.boolean().optional();
 const transparentField = z.boolean().nullable().optional();
@@ -44,24 +27,10 @@ const lightField = z
   .nullable()
   .optional();
 
-/** redraw の options は絵を変える 1 つの method だけを選ぶ (docs/worker-protocol.md「redraw」)。 */
-export const redrawOptionsSchema = z.discriminatedUnion('method', [
-  z
-    .object({
-      method: z.literal('canvas'),
-      denoise: denoiseField,
-      size: sizeField,
-      route: routeField,
-      finalizer: finalizerField,
-      upscale: upscaleField,
-      keep_regions: keepRegionsField,
-      keep_strength: keepStrengthField,
-      cut: cutField,
-    })
-    .strict(),
-  z.object({ method: z.literal('hires'), hires: hiresField, denoise: hiresDenoiseField, cut: cutField }).strict(),
-  z.object({ method: z.literal('light'), scene: lightSceneField.optional(), from: lightFromField, cut: cutField }).strict(),
-]);
+/** redraw の options は hires だけ (docs/worker-protocol.md「redraw」)。hires は worker に既定が無いので必須。 */
+export const redrawOptionsSchema = z
+  .object({ method: z.literal('hires'), hires: hiresField, denoise: hiresDenoiseField, cut: cutField })
+  .strict();
 
 /** 廃止した deliver option。保存済みの payload / profile 本文には残っているので、読み直すときは `stripRemovedDeliverOptions` で落とす。 */
 export const REMOVED_DELIVER_OPTIONS = ['recolor', 'skin', 'keep_legwear', 'deliver_size', 'repin'] as const;

@@ -1676,7 +1676,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-note { margin: 0; font-size: 0.8rem; color: var(--text-dim); }
 .wb-unavailable { padding: 0.7rem; border-radius: 8px; background: rgba(184, 171, 95, 0.15); color: var(--text); font-size: 0.85rem; }
 .wb-error { margin: 0; color: var(--bad); font-size: 0.85rem; }
-.wb-form, .wb-form > [data-wb-form-body], .wb-form > [data-wb-method-panel] { display: flex; flex-direction: column; gap: 0.7rem; }
+.wb-form, .wb-form > [data-wb-form-body] { display: flex; flex-direction: column; gap: 0.7rem; }
 .wb-pills, .wb-words { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .wb-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
 .wb-field select, .wb-field input[type="text"] {
@@ -2313,22 +2313,6 @@ export const appJs = `
     });
   }
 
-  // dial group state lives in data-dial-mode: 'default'/'off' (no value sent), a word (sent as
-  // that string), or 'custom' (read the number input).
-  function dialGroupValue(form, key) {
-    var group = qs('[data-dial-key="' + key + '"]', form);
-    if (!group) return undefined; // no dial-group rendered for this key -> caller falls back to the plain input
-    var mode = group.getAttribute('data-dial-mode') || 'default';
-    if (mode === 'default' || mode === 'off') return null;
-    if (mode === 'custom') {
-      var input = qs('.dial-custom-input', group);
-      var raw = input ? input.value : '';
-      return raw === '' ? null : Number(raw);
-    }
-    if (group.classList.contains('dial-group-tristate') && mode === 'on') return true;
-    return mode; // the word itself, e.g. 'tidy'
-  }
-
   // ---- フチ (outline list) editor ----
   function outlineRows(editor) {
     return qsa('[data-outline-row]', editor);
@@ -2464,15 +2448,6 @@ export const appJs = `
     });
   }
 
-  // State keyed by the form itself in a WeakMap, since a set
-  // of rectangles has no single DOM home; redrawOptionsFrom reads it back via regionsFor(form).
-  var repairRegionState = new WeakMap(); // form -> { img, overlay, regions: [[x0,y0,x1,y1], ...] }
-
-  function regionsFor(form) {
-    var state = repairRegionState.get(form);
-    return state ? state.regions : [];
-  }
-
   function dofSlider(form) {
     return qs('input[name="dof_f_stop"]', form);
   }
@@ -2508,45 +2483,6 @@ export const appJs = `
     var slider = dofSlider(form);
     var stops = dofStopsFor(form);
     return slider && stops.length > 0 ? stops[Number(slider.value)] : undefined;
-  }
-
-  function redrawMethod(form) {
-    var checked = qs('input[name="redraw_method"]:checked', form);
-    return checked ? checked.value : 'canvas';
-  }
-
-  // worker-protocol.md「redraw」: exactly one method per request. Blank fields are omitted so the
-  // recipe default applies. Returns null when the form can't become options.
-  function redrawOptionsFrom(form) {
-    var method = redrawMethod(form);
-    if (method === 'hires') {
-      var hires = { method: 'hires', hires: Number(qs('select[name="hires"]', form).value) };
-      var hiresDenoise = qs('input[name="hires_denoise"]', form).value;
-      if (hiresDenoise !== '') hires.denoise = Number(hiresDenoise);
-      return hires;
-    }
-    if (method === 'light') {
-      return { method: 'light', scene: qs('select[name="light_scene"]', form).value, from: lightFromSelect(form).value };
-    }
-    var options = { method: 'canvas' };
-    var denoiseFromDial = dialGroupValue(form, 'denoise');
-    if (denoiseFromDial === undefined) {
-      var denoiseRaw = qs('input[name="denoise"]', form).value;
-      if (denoiseRaw !== '') options.denoise = Number(denoiseRaw);
-    } else if (denoiseFromDial !== null) {
-      options.denoise = denoiseFromDial;
-    }
-    var sizeRaw = qs('input[name="size"]', form).value;
-    if (sizeRaw !== '') options.size = Number(sizeRaw);
-    var route = qs('select[name="route"]', form).value;
-    if (route !== '') options.route = route;
-    var regions = regionsFor(form);
-    if (regions.length > 0) {
-      options.keep_regions = regions;
-      var keepStrengthRaw = qs('input[name="keep_strength"]', form).value;
-      if (keepStrengthRaw !== '') options.keep_strength = Number(keepStrengthRaw);
-    }
-    return options;
   }
 
   // worker-protocol.md「deliver」. Returns null when the form can't become options; quiet mode
@@ -5379,18 +5315,6 @@ export const appJs = `
       return '';
     }
 
-    // A light redraw stands on the compared hires candidate when there is one, so hires → light stays one phase.
-    function lightInput() {
-      var cmp = candidateByKey(1, wb.compareId);
-      if (cmp && cmp.node && cmp.node.kind === 'redraw' && cmp.node.method === 'hires') return cmp.node;
-      return inputOf(1) ? nodeById(inputOf(1)) : null;
-    }
-
-    function runInput() {
-      if (wb.active === 1 && currentMethod() === 'light') return lightInput();
-      return activeInputNode();
-    }
-
     function renderSteps() {
       qsa('[data-wb-step]', root).forEach(function (btn) {
         var k = Number(btn.getAttribute('data-wb-step'));
@@ -5597,11 +5521,6 @@ export const appJs = `
         frameLink.hidden = !frameInput;
         if (frameInput) frameLink.href = '/frame/' + frameInput.short_id;
       }
-      var lightNote = qs('[data-wb-light-input]', root);
-      if (lightNote) {
-        var on = lightInput();
-        lightNote.textContent = on && on.id !== inputOf(1) ? 'hires の候補 ' + on.short_id + ' に光を当てます' : '元絵に光を当てます（hires の候補を選ぶとその上に当てます）';
-      }
       var errorEl = qs('[data-wb-error]', root);
       errorEl.hidden = wb.error === '';
       errorEl.textContent = wb.error;
@@ -5701,11 +5620,6 @@ export const appJs = `
       return qs('[data-wb-form="' + k + '"]', root);
     }
 
-    function currentMethod() {
-      var on = qs('[data-wb-method].wb-pill-on', root);
-      return on ? on.getAttribute('data-wb-method') : 'hires';
-    }
-
     function rangeValue(name) {
       return Number(qs('input[name="' + name + '"]', root).value);
     }
@@ -5715,16 +5629,7 @@ export const appJs = `
       var k = wb.active;
       var form = phaseForm(k);
       if (k === 1) {
-        var method = currentMethod();
-        var redrawOptions;
-        if (method === 'canvas') {
-          redrawOptions = { method: 'canvas', denoise: Number(qs('input[name="wb_denoise"]', form).value), size: Number(qs('select[name="wb_size"]', form).value) };
-        } else if (method === 'light') {
-          var scene = qs('[data-wb-scene].wb-pill-on', form);
-          redrawOptions = { method: 'light', scene: scene.getAttribute('data-wb-scene'), from: qs('[data-compass="light"]', form).getAttribute('data-value') };
-        } else {
-          redrawOptions = { method: 'hires', hires: Number(qs('select[name="wb_hires"]', form).value), denoise: Number(qs('select[name="wb_hires_denoise"]', form).value) };
-        }
+        var redrawOptions = { method: 'hires', hires: Number(qs('select[name="wb_hires"]', form).value), denoise: Number(qs('select[name="wb_hires_denoise"]', form).value) };
         if (!qs('input[name="wb_redraw_no_cut"]', form).checked) redrawOptions.cut = true;
         return { kind: 'redraw', options: redrawOptions };
       }
@@ -5780,7 +5685,7 @@ export const appJs = `
     }
 
     async function run() {
-      var input = runInput();
+      var input = activeInputNode();
       if (!input || runBlocker() !== null) return;
       wb.error = '';
       var built = buildRun();
@@ -5938,13 +5843,6 @@ export const appJs = `
       if (t.closest('[data-wb-run]')) return run();
       if (t.closest('[data-wb-cut-out]')) return cutOut();
 
-      var method = t.closest('[data-wb-method]');
-      if (method) {
-        var m = method.getAttribute('data-wb-method');
-        qsa('[data-wb-method]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === method); });
-        qsa('[data-wb-method-panel]', root).forEach(function (p) { p.hidden = p.getAttribute('data-wb-method-panel') !== m; });
-        return renderPanel();
-      }
       var stageMode = t.closest('[data-wb-stage-mode]');
       if (stageMode) {
         wb.stageMode = stageMode.getAttribute('data-wb-stage-mode');
@@ -5993,25 +5891,6 @@ export const appJs = `
         qs('[data-wb-lighting-none]', root).classList.add('wb-pill-on');
         qs('[data-wb-lighting-dir-readout]', root).textContent = wb.lightingScene ? 'from: nw（既定）' : 'なし';
         return renderPanel();
-      }
-      var word = t.closest('[data-wb-denoise-word]');
-      if (word) {
-        var range = qs('input[name="wb_denoise"]', root);
-        range.value = word.getAttribute('data-wb-denoise-word');
-        qs('[data-wb-denoise-readout]', root).textContent = range.value;
-        return;
-      }
-      var scene = t.closest('[data-wb-scene]');
-      if (scene) {
-        qsa('[data-wb-scene]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b === scene); });
-        return;
-      }
-      var dir = t.closest('[data-compass="light"] [data-compass-dir]');
-      if (dir) {
-        var value = dir.getAttribute('data-compass-dir');
-        setCompassValue(dir.closest('[data-compass]'), value);
-        qs('[data-wb-light-readout]', root).textContent = 'from: ' + value;
-        return;
       }
       // initBookmark on document does the request; the node follows so a re-render keeps the new state.
       var bm = t.closest('[data-wb-bookmark]');
@@ -6066,7 +5945,6 @@ export const appJs = `
     root.addEventListener('input', function (ev) {
       var input = ev.target;
       if (!(input instanceof HTMLInputElement)) return;
-      if (input.name === 'wb_denoise') qs('[data-wb-denoise-readout]', root).textContent = input.value;
       if (input.name === 'dof_f_stop') qs('[data-dof-f-readout]', root).textContent = 'f/' + dofFNumber(phaseForm(WB_LAST));
       if (input.name === 'dof_f_stop') updateOverlays();
       if (input.name === 'wb_stage_height') {
