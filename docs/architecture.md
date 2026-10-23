@@ -152,7 +152,9 @@ original から生成・保存されるサムネイルで、正本ではあり�
 cutout asset（role `cutout`、region 空）を持つ Generation は、original（緑背景の絵）ではなく
 cutout から作った透明の WebP を別 key の `preview-cutout.webp` に保存し、`/preview` はそちらを返します
 （cutout が付く前に保存済みの `preview.webp` は消さず、使わなくなるだけです。cutout を差し替えると
-`preview-cutout.webp` を消して次の要求で作り直します）。GUI/API の
+`preview-cutout.webp` を消して次の要求で作り直します）。worker は ingest の後に asset を付けてから
+request を終えるため、生成元の request が `done` / `failed` / `cancelled` になるまでの `/preview` は
+`Cache-Control: no-store` で返し、ブラウザに緑背景の preview を残しません。GUI/API の
 サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
 `original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。

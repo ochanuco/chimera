@@ -41,6 +41,20 @@ describe('GET /g/:short_id/preview', () => {
     expect(res.status).toBe(404);
   });
 
+  it('is not cached while the producing request is unfinished, and immutable once it is done', async () => {
+    const { request, generation } = await createGeneration();
+    await env.IMAGES.put(`generations/${generation.id}/original.png`, await makeSolidPng(1600, 2400, [0, 255, 0]));
+    await env.DB.prepare(`UPDATE requests SET status = 'running' WHERE id = ?`).bind(request.id).run();
+
+    const running = await req(`/g/${generation.short_id}/preview`);
+    expect(running.status).toBe(200);
+    expect(running.headers.get('Cache-Control')).toBe('no-store');
+
+    await env.DB.prepare(`UPDATE requests SET status = 'done' WHERE id = ?`).bind(request.id).run();
+    const done = await req(`/g/${generation.short_id}/preview`);
+    expect(done.headers.get('Cache-Control')).toBe('private, max-age=31536000, immutable');
+  });
+
   it('404s when neither the preview nor the original exists', async () => {
     const { generation } = await createGeneration();
     await env.IMAGES.delete(`generations/${generation.id}/original.png`);
