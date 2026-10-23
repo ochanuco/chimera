@@ -1584,6 +1584,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .work-filter-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .work-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.9rem; }
+.work-grid .card-extra { justify-content: space-between; }
 .work-source {
   display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem; border-radius: 10px;
   border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text);
@@ -1597,11 +1598,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .photo-name { color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
-.work-rating { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--border); color: var(--text); }
 .work-state { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
 .work-state-done { border-color: var(--good); color: var(--good); }
-.work-rating-good { background: var(--good); color: #0c1a10; }
-.work-rating-bad { background: var(--bad); color: #200a08; }
 .work-source-recipe { font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
 .work-pager { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
 
@@ -1675,13 +1673,13 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .wb-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .wb-strip { display: flex; gap: 0.25rem; overflow-x: auto; flex: 1 1 14rem; min-width: 0; padding: 0.15rem; }
-.wb-mini { position: relative; flex: none; padding: 2px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer; }
-.wb-mini-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-.wb-mini-thumb { width: 2.75rem; height: 3.5rem; border-radius: 4px; overflow: hidden; background: #000; }
-.wb-mini-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.wb-mini-rate { display: block; height: 4px; margin-top: 2px; border-radius: 2px; }
-.wb-mini-adopted { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
-.wb-mini-running { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); font-size: 0.8rem; color: var(--neutral); }
+/* 候補の帯は共通カード（compact）を横に並べる。サムネイルは高さを詰める。 */
+.wb-strip .card { flex: none; width: 6.5rem; }
+.wb-strip .card .thumb-link { aspect-ratio: auto; height: 4.5rem; }
+.wb-strip .wb-mini-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.wb-mini-pending { position: relative; min-height: 4.5rem; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+.wb-mini-adopted { position: absolute; z-index: 2; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+.wb-mini-running { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); font-size: 0.8rem; color: var(--neutral); }
 .wb-adopt {
   font: inherit; font-size: 0.9rem; font-weight: 700; min-height: 2.5rem; padding: 0 1rem; border: 0; border-radius: 10px;
   background: var(--accent); color: #10131c; cursor: pointer;
@@ -1956,7 +1954,7 @@ export const appJs = `
   }
 
   // <template data-generation-card-template>（GenerationCardTemplate）を複製して値を埋める。マークアップの正は JSX の GenerationCard だけ。
-  // g は { id, short_id, rating, bookmark, refines_generation_short_id? }。opts.compact で小さい版、opts.href でサムネイルの行き先。
+  // g は { id, short_id, rating, bookmark, refines_generation_short_id か refines_generation_id }。opts.compact で小さい版、opts.href でサムネイルの行き先。
   function buildGenerationCard(g, opts) {
     opts = opts || {};
     const tpl = qs('template[data-generation-card-template]');
@@ -1978,7 +1976,7 @@ export const appJs = `
     work.href = '/work/' + g.short_id;
     work.setAttribute('aria-label', 'Open ' + g.short_id + ' in workbench');
     const reroll = qs('[data-card-link="reroll"]', card);
-    if (g.refines_generation_short_id) {
+    if (g.refines_generation_short_id || g.refines_generation_id) {
       reroll.remove();
     } else {
       reroll.href = '/reroll/' + g.short_id;
@@ -4735,7 +4733,6 @@ export const appJs = `
     { no: 6, label: 'ボケ' },
   ];
   var WB_LAST = WB_PHASES.length;
-  var WB_RATING_COLOR = { bad: 'var(--bad)', neutral: 'var(--neutral)', good: 'var(--good)' };
 
   function wbEl(tag, cls, text) {
     var el = document.createElement(tag);
@@ -5412,26 +5409,24 @@ export const appJs = `
       strip.textContent = '';
       var adopted = pick(wb.active);
       list.forEach(function (item) {
-        var btn = wbEl('button', 'wb-mini' + (item.key === wb.compareId ? ' wb-mini-on' : ''));
-        btn.type = 'button';
-        btn.setAttribute('data-wb-pick', item.key);
-        btn.title = itemKind(item) + ' · ' + itemSummary(item);
-        btn.setAttribute('aria-label', btn.title);
-        var thumb = wbEl('div', 'wb-mini-thumb');
+        var label = itemKind(item) + ' · ' + itemSummary(item);
+        var card;
         if (item.node) {
-          var img = document.createElement('img');
-          img.src = '/g/' + item.node.short_id + '/preview';
-          img.alt = item.node.short_id;
-          thumb.appendChild(img);
-          thumb.classList.toggle('wb-checker', item.node.delivered || item.node.cutout);
+          card = buildGenerationCard(item.node, { compact: true });
+          var link = qs('.thumb-link', card);
+          link.setAttribute('data-wb-pick', item.key);
+          link.title = label;
+          if (adopted && !adopted.skip && adopted.generation_id === item.node.id) link.appendChild(wbEl('span', 'wb-mini-adopted'));
+        } else {
+          card = wbEl('button', 'card card-compact wb-mini-pending');
+          card.type = 'button';
+          card.setAttribute('data-wb-pick', item.key);
+          card.title = label;
+          card.setAttribute('aria-label', label);
         }
-        btn.appendChild(thumb);
-        var bar = wbEl('span', 'wb-mini-rate');
-        bar.style.background = item.node && item.node.rating ? WB_RATING_COLOR[item.node.rating] : 'transparent';
-        btn.appendChild(bar);
-        if (item.node && adopted && !adopted.skip && adopted.generation_id === item.node.id) btn.appendChild(wbEl('span', 'wb-mini-adopted'));
-        if (item.pending) btn.appendChild(wbEl('span', 'wb-mini-running', '…'));
-        strip.appendChild(btn);
+        if (item.key === wb.compareId) card.classList.add('wb-mini-on');
+        if (item.pending) card.appendChild(wbEl('span', 'wb-mini-running', '…'));
+        strip.appendChild(card);
       });
     }
 
@@ -5903,6 +5898,11 @@ export const appJs = `
       render();
     });
 
+    document.addEventListener('chimera:bookmark', function (ev) {
+      var n = ev.detail.kind === 'generations' ? nodeById(ev.detail.id) : null;
+      if (n) n.bookmark = ev.detail.bookmarked;
+    });
+
     // ---- events ----
     root.addEventListener('click', function (ev) {
       var t = ev.target.closest ? ev.target : null;
@@ -5911,6 +5911,8 @@ export const appJs = `
       if (step && !step.disabled) return goStep(Number(step.getAttribute('data-wb-step')));
       var picked = t.closest('[data-wb-pick]');
       if (picked) {
+        if (picked.tagName === 'A' && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) return;
+        ev.preventDefault();
         wb.compareId = picked.getAttribute('data-wb-pick');
         return render();
       }

@@ -5,6 +5,7 @@ import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults } fro
 import { Compass, OutlineEditor } from '../components/OutlineEditor';
 import { DofFields, FALLBACK_DOF } from '../components/DofFields';
 import { CapActions } from '../components/CapActions';
+import { GenerationCardTemplate } from '../components/GenerationCard';
 import { PHOTO_MAX_SIDE, type PhotoItem } from '../../lib/photos';
 
 export interface BackdropOption {
@@ -336,6 +337,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
   const initial = { tree: data.tree, picks: data.picks, at: data.at };
   return (
     <Layout title={`ワークベンチ ${data.root.short_id}`} fullBleed path={path}>
+      <GenerationCardTemplate />
       <div class="wb" data-workbench data-root-id={data.root.id} data-root-short-id={data.root.short_id} data-initial={JSON.stringify(initial)}>
         <div class="wb-head">
           <a class="wb-back" href="/work">
