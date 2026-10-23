@@ -16,10 +16,11 @@ import { createJobSchema } from '../schemas/jobs';
 import { buildRequestJobs, createRequestJob, putResolution } from '../lib/request-resolution';
 import { notifyHub, notifyHubWorkerSeen, runInBackground } from '../lib/hub-notify';
 import { viewerWs } from './worker-hub';
+import { deleteSettledReferenceImages, referenceImageKey } from '../lib/reference-images';
 import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
 import { nowIso, parsePagination } from '../lib/db';
-import { badRequest } from '../lib/errors';
+import { badRequest, notFound } from '../lib/errors';
 import { generatePayloadPatches } from '../lib/patch-grammar';
 import { parseOrThrow, validate } from '../lib/validate';
 import type { AppEnv, RequestKind, RequestStatus } from '../types';
@@ -86,6 +87,7 @@ requests.post('/claim', async (c) => {
       Promise.all(requeued.map((r) => notifyHub(env, r.status === 'failed' ? 'status' : 'queued', r))),
     ),
   );
+  await deleteSettledReferenceImages(env.IMAGES, requeued);
   if (row) runInBackground(c, notifyHub(c.env, 'status', row));
   if (!row) return c.body(null, 204);
   return c.json(serializeRequest(row), 200);
@@ -144,8 +146,26 @@ requests.patch('/:id', async (c) => {
   const db = c.env.DB;
   const row = await getRequestOr404(db, c.req.param('id'));
   const updated = await updateRequest(db, row, body);
+  await deleteSettledReferenceImages(c.env.IMAGES, [updated]);
   if (updated.status === 'done' || updated.status === 'failed' || updated.status === 'cancelled') {
     runInBackground(c, notifyHub(c.env, 'status', updated));
   }
   return c.json(serializeRequest(updated));
+});
+
+/** worker が参考画像を読む。kind reference 以外と、画像が無い（消した・置く前）ときは 404。 */
+requests.get('/:id/reference-image', async (c) => {
+  const row = await getRequestOr404(c.env.DB, c.req.param('id'));
+  if (row.kind !== 'reference') throw notFound('reference image');
+  const object = await c.env.IMAGES.get(referenceImageKey(row.id));
+  if (!object) throw notFound('reference image');
+  return c.body(object.body, 200, { 'Content-Type': object.httpMetadata?.contentType ?? 'application/octet-stream' });
+});
+
+/** worker が使い終えた参考画像を消す。冪等で、画像が無くても 204。 */
+requests.delete('/:id/reference-image', async (c) => {
+  const row = await getRequestOr404(c.env.DB, c.req.param('id'));
+  if (row.kind !== 'reference') throw notFound('reference image');
+  await c.env.IMAGES.delete(referenceImageKey(row.id));
+  return c.body(null, 204);
 });

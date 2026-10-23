@@ -263,6 +263,14 @@ export const saturationPayloadSchema = z
   })
   .strict();
 
+/** reference（参考画像から描く）の payload (docs/worker-protocol.md「reference」)。画像は R2 の `references/{request_id}` にあり、payload は持たない。 */
+export const referencePayloadSchema = z
+  .object({
+    recipe: z.string().min(1),
+    seed: z.number().int().min(0).optional(),
+  })
+  .strict();
+
 /** generate の payload は request.json v1 をそのまま包む (generation-request.md)。この schema が検証するのは封筒の形だけで、中身の語彙は見ない (`generation.patches` の文法だけは作成時に lib/patch-grammar.ts が見る)。 */
 export const generatePayloadSchema = z
   .object({

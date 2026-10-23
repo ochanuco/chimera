@@ -20,6 +20,10 @@
   "observability": {
     "enabled": true
   },
+  // 参考画像の一時領域 references/ の掃除 (src/lib/reference-images.ts の sweepReferenceImages)。
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

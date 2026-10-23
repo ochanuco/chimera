@@ -522,7 +522,7 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / lens / photo / stage / lighting / saturation / import で、finalize・repair・masked_redraw は 400（redraw か deliver を使う。repair / masked_redraw は部分描き直し機能の廃止で作れない）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / lens / photo / stage / lighting / saturation / reference / import で、finalize・repair・masked_redraw は 400（redraw か deliver を使う。repair / masked_redraw は部分描き直し機能の廃止で作れない）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
@@ -531,7 +531,12 @@ PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe /
 POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・lens・photo・stage・lighting・saturation（と古い repair・masked_redraw・finalize）は source_generation_id 必須
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
 PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告（best-effort）。200 { ok: true } / 404 / 400。下記「Timings」
+GET    /api/v1/requests/{id}/reference-image  kind=reference の参考画像。200（画像）/ 404（画像が無い・kind が違う）
+DELETE /api/v1/requests/{id}/reference-image  参考画像を消す。204（無くても）/ 404（Request が無い・kind が違う）
+POST   /api/v1/references          multipart（image 必須・seed 任意・idempotency_key 必須）で kind=reference を積み、画像を R2 に置く。201 / 200(再送) / 409(同じキーで別の seed) / 400
 ```
+
+参考画像の口の契約は [worker-protocol.md「Create Reference」「Reference Image」](worker-protocol.md#create-reference) が正本です。
 
 `GET` のクエリパラメータ:
 

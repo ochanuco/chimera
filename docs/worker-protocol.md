@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation | reference
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -136,7 +136,7 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
 Token）を区別せず、いずれも全 `kind` を積めます（finalize / repair / masked_redraw を除く）。「GUI が積んでよいのは redraw / deliver /
-stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）だけ」は GUI のコードがそれらの form / ボタンしか
+stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）、参考画像から描く reference だけ」は GUI のコードがそれらの form / ボタンしか
 持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
@@ -207,7 +207,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。`kinds` に `finalize` や `import` を入れると 400 です。
@@ -268,6 +268,36 @@ worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要はあ�
 ``` text
 GET /api/v1/requests/{id}
 ```
+
+### Create Reference
+
+``` text
+POST /api/v1/references
+Content-Type: multipart/form-data
+```
+
+  field            型
+  ---------------- --------------------------------------------------------------------------
+  image            必須。png / jpeg / webp（先頭のバイト列で判定）、20 MiB まで
+  seed             任意。0 以上の整数の文字列。空文字は省略と同じ
+  idempotency_key  必須
+
+`kind = reference` の Request（`created_by = gui`、payload `{"recipe": "yukari", "seed"?: int}`）を作り、画像を
+R2 の `references/{request_id}` に置きます。順序は ingest と同じ D1 INSERT → R2 PUT です。Generation は作りません。
+応答は Create Request と同じ形の Request 行で、新規は 201、同じキー・同じ seed の再送は 200、同じキーで seed が違えば 409 です。
+再送は、行を作った後に PUT が落ちて画像が無いときだけ置き直します（終端の Request には置き直しません）。
+画像の中身は再送の一致判定に使いません。
+
+### Reference Image
+
+``` text
+GET    /api/v1/requests/{id}/reference-image
+DELETE /api/v1/requests/{id}/reference-image
+```
+
+worker が参考画像を読み、使い終えたら消すための口です。GET は置いたときの Content-Type で画像を返し、
+画像が無ければ（消した後・置く前）404 です。DELETE は冪等で、画像が無くても 204 です。
+Request が無いときと、`kind` が reference でないときはどちらも 404 です。
 
 ### Timings
 
@@ -878,6 +908,62 @@ deliver の出力の彩度を圧縮する worker 実行です（ワークベン�
 
 catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"strength": {"min": 0, "max": 1, "default": 1.0}}`）を公開します。ワークベンチのスライダーの初期値もここから取ります。
 
+### reference
+
+参考画像の構図・仕草・表情・レッグウェアを recipe に当てて 1 枚描く worker 実行です。worker は画像をタグに読み替えて
+通常の [generate](#generate) を積むだけで、自分では描きません。描くのは積んだ generate で、普通の Generation になります。
+
+``` json
+{
+  "kind": "reference",
+  "payload": { "recipe": "yukari", "seed": 123456 }
+}
+```
+
+  payload        型
+  -------------- --------------------------------------------------------------------------
+  recipe         当てる recipe の名前
+  seed           0 以上の整数、省略可。積む generate の seed で、省略時は worker が乱数で決める
+
+payload の未知のキーは 400 です。参考画像は payload に持たず、R2 の `references/{request_id}` に置きます。
+GUI は [Create Reference](#create-reference) で Request と画像を一緒に作ります。`POST /api/v1/requests` でも
+`kind = reference` を積めますが、画像が無いので worker は読めません。
+
+worker は claim した reference を次の順に処理します。
+
+1. 参考画像を [Reference Image](#reference-image) の GET で読む
+2. タグに読み替え、recipe の pose と part patch を組む
+3. `kind = generate` を積む（`created_by = system`、`idempotency_key = reference:{reference の request id}`）。
+   再実行で同じキーを送れば既存の generate が 200 で返るので、generate は 1 件にとどまる
+4. reference を done にする
+5. 参考画像を DELETE する。失敗して retry に回すときは消さない
+
+chimera も reference の Request が done / failed / cancelled になった時点で参考画像を消します。PATCH の done / failed / cancelled、
+release で `attempt >= max_attempts` になった failed、heartbeat 途絶で failed になった行（claim の直前と WorkerHub の alarm）の
+全てが対象で、queued に戻る遷移では消しません。どの経路でも消し損ねたものは、置かれてから 24 時間を過ぎると
+cron（1 時間ごと）が消します（[architecture.md「R2」](architecture.md#r2)）。
+
+done の `result` は次の形です。`generation_ids` は常に空で、絵は `generate_request_id` の Request が作ります。
+
+``` json
+{
+  "generation_ids": [],
+  "generate_request_id": "0192d3a8-…",
+  "pose": "bust",
+  "applied": { "framing_tags": ["(from above:1.3)", "(upper body:1.3)"], "gesture": ["hand on own cheek"], "mouth": ["smile"] },
+  "dropped": ["on floor", "shoe soles"]
+}
+```
+
+  result               型
+  -------------------- --------------------------------------------------------------------------
+  generate_request_id  積んだ generate の Request id
+  pose                 当てた pose の名前
+  applied              part 名 → その part に当てたタグの配列。当てなかった part は持たない
+  dropped              tagger が残したが当てなかったタグの配列
+
+chimera はこの result を GUI の表示に読むだけで、検証はしません。画像そのものとそのハッシュはどこにも記録しません。
+
 ### repair
 
 部分描き直し機能の廃止により、`kind = repair` は作れません（`POST /api/v1/requests` も MCP `create_request` も 400）。
@@ -896,7 +982,7 @@ worker は queued の行を従来の契約のまま取れます。
 
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
-  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
+  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`、[reference](#reference) が積む generate は `reference:{reference の request id}`
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
 
@@ -1025,6 +1111,8 @@ worker は requests だけを見ます。
 
 - Generation Detail には積む form が無く、最新 request の status（queued / running / done / failed）と、done なら出力 Generation へのリンクを出す。
   request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `lighting` / `dof`、`created_by = gui`）から積む。
+- 参考画像 (`/references`, [ui.md](ui.md#参考画像references)): 画像と任意の seed を [Create Reference](#create-reference) に送り、
+  `kind = reference` を積む（`created_by = gui`）。GUI は prompt を書かない。done の result（当てたタグ・外したタグ・generate の Request id）を表示する。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 全ポーズ（カタログの pose と Preset だけの pose、`src/lib/style-check.ts`

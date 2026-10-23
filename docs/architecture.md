@@ -106,11 +106,14 @@ Promotion として提案し、実際のコード変更は別途 chagama
 -   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 全ポーズの pin のドリフトを一覧し、pin を今のカタログ既定で
     もう一度描く plain render を requests 行として積む。結果を good にして pin を差し替えることもできる。GUI は prompt を書かない。
     `/check?sweep=` は MCP `sweep_patch` が積んだ pose ごとの Run の結果を pin の隣に出すだけで、GUI は patches を書かない。
+-   参考画像（[ui.md](ui.md#参考画像references)）: 画像と任意の seed を渡して `kind = reference` を requests 行として積む。
+    GUI は prompt を書かない。タグを選び generate を組むのは worker。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）だけで、GUI が
+判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）、参考画像から描く
+reference だけで、GUI が
 触るのは自分の D1 の requests 行と、写真ページ（[ui.md](ui.md#写真photos)）とワークベンチの背景フェーズがアップロードする写真（`kind = import`
-の Request・Job・Generation と R2 の original）のみです。
+の Request・Job・Generation と R2 の original）と、参考画像ページがアップロードする参考画像（R2 の `references/{request_id}`）のみです。
 
 ## Storage
 
@@ -142,6 +145,7 @@ generations/{generation_id}/original.png
 generations/{generation_id}/original.webp
 generations/{generation_id}/preview.webp
 generations/{generation_id}/preview-cutout.webp
+references/{request_id}
 ```
 
 ComfyUI の filename は object key に利用せず、DB 上の metadata
@@ -159,6 +163,13 @@ request を終えるため、生成元の request が `done` / `failed` / `cance
 
 `original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。
 過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
+
+`references/{request_id}` は例外で、消すための一時領域です。kind `reference` の Request の参考画像を
+`POST /api/v1/references` が置き（D1 INSERT → R2 PUT の順）、worker が読み終えたら消します。chimera も
+その Request が done / failed / cancelled になった時点で消し（retry で queued に戻るときは残す）、
+cron trigger `0 * * * *` の `scheduled` ハンドラが置かれてから 24 時間を過ぎたものを消します
+（`src/lib/reference-images.ts`）。参考画像は Generation にならず、画像そのものもハッシュも D1 に残しません
+（[worker-protocol.md「reference」](worker-protocol.md#reference)）。
 
 ingest が保存する original は `original.png` です。古い Generation には lossless WebP の
 `original.webp` を original に持つものがあり、original を読む側は両方を受け付けます

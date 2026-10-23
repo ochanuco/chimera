@@ -15,6 +15,7 @@ import {
   type WakeState,
 } from './lib/gpu-wake';
 import { queuedAgeForWake, requeueStaleRunning } from './lib/requests';
+import { deleteSettledReferenceImages } from './lib/reference-images';
 import type { Bindings, RequestKind } from './types';
 
 type Role = 'worker' | 'viewer';
@@ -199,7 +200,7 @@ export class WorkerHub extends DurableObject<Bindings> {
   private async handleHello(ws: WebSocket, body: { worker_id?: unknown; kinds?: unknown }): Promise<void> {
     const workerId = typeof body.worker_id === 'string' ? body.worker_id : null;
     const kinds = Array.isArray(body.kinds)
-      ? body.kinds.filter((k): k is RequestKind => k === 'generate' || k === 'redraw' || k === 'repair' || k === 'masked_redraw' || k === 'deliver' || k === 'dof' || k === 'lens' || k === 'photo' || k === 'stage' || k === 'lighting' || k === 'saturation')
+      ? body.kinds.filter((k): k is RequestKind => k === 'generate' || k === 'redraw' || k === 'repair' || k === 'masked_redraw' || k === 'deliver' || k === 'dof' || k === 'lens' || k === 'photo' || k === 'stage' || k === 'lighting' || k === 'saturation' || k === 'reference')
       : null;
     const prev = readAttachment(ws) as WorkerAttachment | null;
     const attachment: WorkerAttachment = {
@@ -410,6 +411,7 @@ export class WorkerHub extends DurableObject<Bindings> {
   /** stale running を回収し (claimRequest と同じ規則)、GPU 機の起床を進める。 */
   async alarm(): Promise<void> {
     const rows = await requeueStaleRunning(this.env.DB, nowIso());
+    await deleteSettledReferenceImages(this.env.IMAGES, rows);
     for (const row of rows) {
       if (row.status === 'queued') {
         const workers = this.ctx.getWebSockets('worker').filter((ws) => acceptsKind(readAttachment(ws) as WorkerAttachment | null, row.kind));

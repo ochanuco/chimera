@@ -14,7 +14,9 @@ import { BookmarkCards, BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
 import { StatsPage } from '../ui/pages/Stats';
 import { PhotosPage } from '../ui/pages/Photos';
+import { ReferencesPage } from '../ui/pages/References';
 import { listPhotos } from '../lib/photos';
+import { listReferences } from '../lib/references';
 import { getStats, STATS_PERIODS, type StatsCold, type StatsPeriod } from '../lib/stats';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
@@ -498,6 +500,10 @@ pages.get('/stats', async (c) => {
 
 pages.get('/photos', async (c) => {
   return c.html(<PhotosPage path={c.req.path} items={await listPhotos(c.env.DB)} />);
+});
+
+pages.get('/references', async (c) => {
+  return c.html(<ReferencesPage path={c.req.path} items={await listReferences(c.env.DB)} />);
 });
 
 pages.get('/compare', async (c) => {

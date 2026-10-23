@@ -8,6 +8,7 @@ import {
   lightingPayloadSchema,
   photoPayloadSchema,
   redrawPayloadSchema,
+  referencePayloadSchema,
   saturationPayloadSchema,
   stagePayloadSchema,
 } from '../schemas/request-payloads';
@@ -36,6 +37,8 @@ function payloadSchemaFor(kind: PayloadKind): StandardSchemaV1 {
       return lightingPayloadSchema;
     case 'saturation':
       return saturationPayloadSchema;
+    case 'reference':
+      return referencePayloadSchema;
     case 'generate':
       return generatePayloadSchema;
   }

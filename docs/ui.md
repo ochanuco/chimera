@@ -14,7 +14,7 @@ Progressive disclosure
 ```
 
 Web GUI は ComfyUI へ到達せず、prompt も書きません。GUI が積むのは semantic 判断を伴わない
-再実行（redraw / deliver）と、[絵柄チェック](#絵柄チェック)の pin 再描画の requests 行だけで、
+再実行（redraw / deliver）と、[絵柄チェック](#絵柄チェック)の pin 再描画と、[参考画像](#参考画像references)から描く reference の requests 行だけで、
 Compare は semantic metadata の diff を表示するところまでです（不変条件の正本は
 [architecture.md](architecture.md#web-gui)、requests の契約は [worker-protocol.md](worker-protocol.md)）。
 
@@ -27,17 +27,17 @@ Chimera
 ギャラリー
 ブックマーク
 ワークベンチ
-その他（実験 / 絵柄チェック / 統計）
+その他（実験 / 絵柄チェック / 写真 / 参考画像 / 統計）
 ```
 
 `その他` は `<details><summary>`によるドロップダウンです。開くと
-`実験` `絵柄チェック` `統計` の3リンクを持つパネルが summary の直下に現れます。
+`実験` `絵柄チェック` `写真` `参考画像` `統計` の5リンクを持つパネルが summary の直下に現れます。
 パネル外クリックまたは
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
 var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/work` 配下（`/work/{short_id}`含む）ではワークベンチ、`/experiments` 配下
-（`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`・`/stats`では`More`のsummaryが
+（`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`・`/stats`・`/photos`・`/references`では`More`のsummaryが
 アクティブになります。`/compare`はグリッドから入る
 導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
@@ -1068,6 +1068,18 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 -   一覧: `parameters.kind = photo` の import の Generation を新しい順に最大 60 件、サムネイルと short_id（コピーボタン付き）で出します。
     この short_id を `photo_generation` の `photo` に渡します
 -   GUI は写真を登録するだけで、photo request は積みません（MCP / REST から積む）。ワークベンチの背景フェーズからも同じ手順で登録できます
+
+## 参考画像（/references）
+
+参考画像の構図・仕草・表情・レッグウェアを yukari に当てて 1 枚描くページです（[worker-protocol.md「reference」](worker-protocol.md#reference)）。ナビの「その他」から入ります。
+
+-   アップロード欄はファイルと任意の seed だけで、補足文は置きません。ブラウザが写真と同じく向き（EXIF）を直し、長辺 3072px まで
+    縮めて PNG にしてから、`POST /api/v1/references` で `kind = reference` の Request を積みます。idempotency_key はボタン押下ごとに
+    `gui:reference:{uuid}` を 1 つ作り、同じ押下の再送に使い回します（ファイルか seed を変えると作り直します）
+-   一覧: reference の Request を新しい順に最大 30 件。行は short_id・status・seed・作成時刻と、worker が積んだ generate への
+    リンク（Generation ができていればサムネイルと short_id、まだなら generate の short_id と status）を出します。failed なら error も出します
+-   詳細（行を開く）: worker が done の result に書いた pose、part ごとの当てたタグ、外したタグ（打ち消し線）を出します
+-   GUI は prompt を書きません。タグを選んで prompt を組むのは worker で、GUI は画像と seed を渡すだけです
 
 ## Bookmarks
 
