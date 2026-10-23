@@ -20,7 +20,7 @@ import {
 import { GenerationCard } from '../ui/components/GenerationCard';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { getImageMeta, formatImageMetaText, type ImageMeta } from '../lib/image-meta';
-import type { AppEnv, GenerationAssetRow, GenerationRow } from '../types';
+import type { AppEnv, GenerationAssetRow, GenerationRow, RequestStatus } from '../types';
 import type { Context } from 'hono';
 
 export const images = new Hono<AppEnv>();
@@ -192,10 +192,22 @@ images.get('/:shortId/preview', async (c) => {
   const preview = await loadOrCreateGenerationPreview(c.env, generation);
   if (!preview) throw notFound('image');
 
+  // worker は ingest の後に cutout などの asset を付けてから request を終える。終わる前の preview は
+  // cutout 由来に変わりうるので、ブラウザに immutable で持たせない。
+  const producing = await db
+    .prepare('SELECT r.status FROM comfy_jobs j JOIN requests r ON r.id = j.request_id WHERE j.id = ?')
+    .bind(generation.comfy_job_id)
+    .first<{ status: RequestStatus }>();
+  const settled = !producing || producing.status === 'done' || producing.status === 'failed' || producing.status === 'cancelled';
+
   return new Response(preview.body, {
     headers: {
       'Content-Type': preview.contentType,
-      'Cache-Control': preview.stored ? 'private, max-age=31536000, immutable' : 'private, max-age=300',
+      'Cache-Control': !settled
+        ? 'no-store'
+        : preview.stored
+          ? 'private, max-age=31536000, immutable'
+          : 'private, max-age=300',
     },
   });
 });
