@@ -299,6 +299,18 @@ request live更新と同じ指数バックオフ（1s→2s→…上限30s）で�
 
 ### GenerationCard
 
+Generation のサムネイルはどのページも`GenerationCard`（`src/ui/components/GenerationCard.tsx`）で出します。ギャラリー・ブックマーク・
+Compare の列・実験のマトリクスと Run・[絵柄チェック](#絵柄チェック)の pin と結果・[`/work`](#work)・ワークベンチの候補の帯が使い、
+どこでも short_id のコピー・bookmark・rating をその場で操作できます。rating / bookmark / コピーは class と data 属性を拾う
+ページ共通の委譲ハンドラが動かすので、カードごとの JS はありません。bookmark を切り替えると同じ Generation の bookmark ボタンを
+すべて揃え、`chimera:bookmark` を投げます（rating の`chimera:rating`と同じ）。
+
+-   `compact`: 帯や行に並べる小さい版。行の文字とボタンを詰め、`✎` / `↻` は省きます。幅は置く側が決めます。
+-   `href`: サムネイルの行き先。既定は`/g/{short_id}`、`/work`では`/work/{short_id}`です。
+-   子要素: カードの下端に足す行（`card-extra`）。絵柄チェックの seed、`/work`の状態と recipe に使います。
+-   JS で組むカード（ワークベンチの帯・絵柄チェックの結果）は、ページに置いた`<template data-generation-card-template>`
+    （`GenerationCardTemplate`）を`buildGenerationCard`が複製して値を埋めます。マークアップの正は JSX の`GenerationCard`だけです。
+
 サムネイルは`/g/{short_id}/preview`で、cutoutを持つGenerationではその切り抜きから作った透明のWebPです
 （[architecture.md](architecture.md)「R2」）。サムネイルの背景は常に市松なので、透明部分はそのまま透けて見えます。
 ギャラリー、タイムライン、ブックマーク、Compare、ワークベンチのミニサムネイルが同じ`/preview`を使うため、どこでも切り抜きが見えます。
@@ -696,9 +708,9 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
 
 手を入れた元絵（`refines_generation_id`が無い Generation のうち、仕上げ先の Generation を持つか、保存済みの`workbenches`行がある物）を
 最終更新の新しい順（子孫の最新`created_at`と`workbenches.updated_at`の遅い方）に24枚ずつ並べる再開画面です。未着手の Generation は出ません。
-各カードに状態を出します。`しかかり`は納品済みの子孫がまだ無いもの、`完成`は子孫に納品済み（`isDeliveredRequest`と同じ判定: deliver / dof / lens / finalize、
+カードは[GenerationCard](#generationcard)で、下端の行に状態と recipe を出します。`しかかり`は納品済みの子孫がまだ無いもの、`完成`は子孫に納品済み（`isDeliveredRequest`と同じ判定: deliver / dof / lens / finalize、
 または deliver / hires-chain / deliver_only の repair）があるものです。状態（`すべて` / `しかかり` / `完成`、`?state=wip|done`）とrecipeの
-絞り込みピルがあり、ページは`?page=`の前へ / 次へで送ります。カードをクリックすると`/work/{short_id}`へ進みます。
+絞り込みピルがあり、ページは`?page=`の前へ / 次へで送ります。カードのサムネイルをクリックすると`/work/{short_id}`へ進みます。
 新しく始めるときはギャラリーか`/g/{id}`の`ワークベンチで開く`から入る旨を冒頭に書いています。空のときは「作業中の絵がありません」を出します。
 
 ### `/work/{short_id}`
@@ -716,7 +728,7 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     初期状態はオンで、`z`で切り替え、`[` / `]`で倍率を下げる / 上げます（入力欄にフォーカスがある間は効きません）。オンオフと倍率はブラウザに保存されます。
     `入力`と`候補`の見出し、および全部並べたときの各タイルの見出しに、画像の寸法とサイズを`1536×1536 · 2.9 MB`の形で添えます（Generation Detailの画像meta欄と同じ書式。
     サイズが未記録の画像と処理中の候補には出しません）。
-    候補のサムネイル帯（評価の色の帯・採用の点・処理中の`…`）、比べ方の切り替え、`スキップ`、`次へ`（6では`完成`）、
+    候補のサムネイル帯（compact の[GenerationCard](#generationcard)。サムネイルを押すと候補を選び、rating / bookmark はその場で付けられます。採用の点・処理中の`…`を重ねます）、比べ方の切り替え、`スキップ`、`次へ`（6では`完成`）、
     採用が6まで済んだときの`完成しました。`の文言。入力欄と候補欄の見出しにはそれぞれ、その絵の short_id（押すとコピー）、詳細（`/g/<short_id>`）へのリンク`詳細`、`bad` / `neutral` / `good`、🔖が並びます。
     現在の評価を押すと外し（`PUT /api/v1/generations/{id}/rating`）、🔖はブックマークを足し外しします（`PUT` / `DELETE /api/v1/generations/{id}/bookmark`）。
 -   候補: フェーズ k の候補は、フェーズが k で`refines_generation_id`がフェーズ k の入力であるツリーのノード（`GET /api/v1/generations/{root}/tree`）と、
@@ -821,14 +833,14 @@ GUI が決めるのは箱の位置・辺・ブラシの幾何だけで、prompt 
 pinが無いポーズも並び、`pin なし`と出します。1ポーズが1行で、行は次を持ちます。
 
 -   ポーズ名とドリフト状態。
--   pin: 現在のpin（`preset_references`、`getCurrentReference` / `referenceView`）のサムネイル（`/g/<short_id>`へのリンク）とseed。
+-   pin: 現在のpin（`preset_references`、`getCurrentReference` / `referenceView`）を compact の[GenerationCard](#generationcard)で出し、下端に seed を足します。
 -   最新の描き直し結果。今の描画内容でのidempotency key
     (`style-check:<recipe>:<pose>:<sha256>`、`src/lib/style-check.ts`の
     `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ`未描画`と出します。
     ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
     カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
     git commit・generated_at・patches・backdropsは入れないので、docsや納品の既定だけの
-    変更・worker再起動ではkeyが変わらず、結果は空になりません。結果があればサムネイル（`/g/<short_id>`へのリンク）とseedを出します。
+    変更・worker再起動ではkeyが変わらず、結果は空になりません。結果があれば pin と同じカード（seed 付き）を出します。
 -   `今のコードで描き直す`: そのポーズだけを描き直します。pinが無いときは押せません。
 -   `good にして基準にする`: 結果が出ているときだけ押せます（pinと同じ絵のときは押せません）。確認ダイアログのあと、
     その結果のratingを`good`にし（`PUT /api/v1/generations/{id}/rating`）、続けてpinを差し替え
