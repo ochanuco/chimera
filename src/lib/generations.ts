@@ -396,6 +396,13 @@ function buildGenerationFilter(query: Record<string, string | undefined>): { con
   } else if (query.published === 'false') {
     conditions.push('NOT EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
   }
+  if (query.tip === 'true' || query.tip === 'false') {
+    // 続きが bad だけなら行き止まりと同じ (bad は既定で隠れるので、元まで消えると連鎖ごと見えなくなる)。
+    const continued = "EXISTS (SELECT 1 FROM generations c WHERE c.refines_generation_id = g.id AND (c.rating IS NULL OR c.rating != 'bad'))";
+    conditions.push(query.tip === 'true' ? `NOT ${continued}` : continued);
+  } else if (query.tip !== undefined) {
+    throw badRequest('tip must be "true" or "false"');
+  }
   if (query.reference === 'true') {
     conditions.push('EXISTS (SELECT 1 FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL)');
   } else if (query.reference === 'false') {

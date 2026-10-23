@@ -2,7 +2,7 @@ import { Layout } from '../layout';
 import { GenerationCard, type GenerationCardData } from '../components/GenerationCard';
 import { dateLabel, slotKeyOf, slotRangeLabel } from '../../lib/timeline';
 import { MODEL_FILTER_LABELS, MODEL_FILTER_VALUES } from '../../lib/model-family';
-import { PHASE_LABELS, PHASES } from '../../lib/phases';
+import { PHASE_CHAIN, PHASE_EXTRA, PHASE_LABELS, type Phase } from '../../lib/phases';
 import { ViewSwitch, type GalleryView } from '../components/ViewSwitch';
 
 export interface GalleryItem extends GenerationCardData {
@@ -13,6 +13,8 @@ export interface GalleryItem extends GenerationCardData {
 export interface GalleryFilters {
   view: GalleryView;
   bad: boolean;
+  /** 続きを作った Generation を隠し、仕上げの連鎖の先端だけを出す。 */
+  tip: boolean;
   ids?: string;
   tag?: string;
   rating?: string;
@@ -30,6 +32,7 @@ function activeParams(filters: GalleryFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.view !== 'all') params.set('view', filters.view);
   if (filters.bad) params.set('bad', '1');
+  if (filters.tip) params.set('tip', '1');
   if (filters.ids) params.set('ids', filters.ids);
   if (filters.tag) params.set('tag', filters.tag);
   if (filters.rating) params.set('rating', filters.rating);
@@ -41,7 +44,7 @@ function activeParams(filters: GalleryFilters): URLSearchParams {
   return params;
 }
 
-/** Gallery live insertion (docs/ui.md「Gallery」) is active only when no ids / panel filter narrows the grid — `view`/`bad` don't disqualify it. */
+/** Gallery live insertion (docs/ui.md「Gallery」) is active only when no ids / panel filter narrows the grid — `view`/`bad`/`tip` don't disqualify it. */
 function galleryLiveEligible(filters: GalleryFilters): boolean {
   return !filters.ids && !filters.tag && !filters.rating && !filters.bookmark && !filters.published && !filters.reference && !filters.model && !filters.phase;
 }
@@ -50,11 +53,12 @@ function selectedValues(csv: string | undefined): string[] {
   return csv ? csv.split(',') : [];
 }
 
-function badToggleHref(filters: GalleryFilters): string {
+function toggleHref(filters: GalleryFilters, key: 'bad' | 'tip'): string {
   const params = activeParams(filters);
-  if (filters.bad) params.delete('bad');
-  else params.set('bad', '1');
-  return `/gallery?${params.toString()}`;
+  if (filters[key]) params.delete(key);
+  else params.set(key, '1');
+  const query = params.toString();
+  return query ? `/gallery?${query}` : '/gallery';
 }
 
 function FilterIcon() {
@@ -68,14 +72,68 @@ function FilterIcon() {
   );
 }
 
+/** `phase` から `phase` を 1 つ足し引きしたギャラリーの URL。ほかの絞り込みと view / bad は保つ。 */
+function phaseToggleHref(filters: GalleryFilters, phase: Phase | null): string {
+  const params = activeParams(filters);
+  const selected = selectedValues(filters.phase);
+  const next = phase === null ? [] : selected.includes(phase) ? selected.filter((p) => p !== phase) : [...selected, phase];
+  if (next.length > 0) params.set('phase', next.join(','));
+  else params.delete('phase');
+  const query = params.toString();
+  return query ? `/gallery?${query}` : '/gallery';
+}
+
+function PhaseButton({ filters, phase }: { filters: GalleryFilters; phase: Phase }) {
+  const on = selectedValues(filters.phase).includes(phase);
+  return (
+    <a class="phase-chip" href={phaseToggleHref(filters, phase)} aria-pressed={on ? 'true' : 'false'} data-phase={phase}>
+      {PHASE_LABELS[phase]}
+    </a>
+  );
+}
+
+/** フェーズの複数選択（OR）。押すたびにその値を `phase` に足し引きする。 */
+function PhaseBar({ filters }: { filters: GalleryFilters }) {
+  return (
+    <nav class="phase-bar" aria-label="フェーズ">
+      <ol class="phase-chain">
+        {PHASE_CHAIN.map((phase, i) => (
+          <li>
+            {i > 0 ? (
+              <span class="phase-sep" aria-hidden="true">
+                ›
+              </span>
+            ) : null}
+            <PhaseButton filters={filters} phase={phase} />
+          </li>
+        ))}
+      </ol>
+      <div class="phase-extra">
+        {PHASE_EXTRA.map((phase) => (
+          <PhaseButton filters={filters} phase={phase} />
+        ))}
+      </div>
+      {filters.phase ? (
+        <a class="phase-clear" href={phaseToggleHref(filters, null)}>
+          解除
+        </a>
+      ) : null}
+    </nav>
+  );
+}
+
 function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
-  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published || filters.reference || filters.model || filters.phase);
+  const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published || filters.reference || filters.model);
   return (
     <div class="gallery-toolbar">
       <ViewSwitch basePath="/gallery" current={filters.view} params={activeParams(filters)} />
-      <a class="bad-toggle" href={badToggleHref(filters)} aria-pressed={filters.bad ? 'true' : 'false'}>
+      <a class="bad-toggle" href={toggleHref(filters, 'bad')} aria-pressed={filters.bad ? 'true' : 'false'}>
         <span class="bad-toggle-box" aria-hidden="true"></span>
         bad も表示
+      </a>
+      <a class="bad-toggle" href={toggleHref(filters, 'tip')} aria-pressed={filters.tip ? 'true' : 'false'} data-tip-toggle>
+        <span class="bad-toggle-box" aria-hidden="true"></span>
+        途中を隠す
       </a>
       <details class="filter-panel" open={hasActiveFilter}>
         <summary>
@@ -85,6 +143,8 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
         <form class="filter-form" method="get" action="/gallery">
           <input type="hidden" name="view" value={filters.view} />
           {filters.bad ? <input type="hidden" name="bad" value="1" /> : null}
+          {filters.tip ? <input type="hidden" name="tip" value="1" /> : null}
+          {filters.phase ? <input type="hidden" name="phase" value={filters.phase} /> : null}
           <label>
             ID（複数可）
             <textarea name="ids" rows={1}>
@@ -127,18 +187,10 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
               </label>
             ))}
           </fieldset>
-          <fieldset class="checkbox-group">
-            <legend>フェーズ</legend>
-            {PHASES.map((p) => (
-              <label class="checkbox-field">
-                <input type="checkbox" name="phase" value={p} checked={selectedValues(filters.phase).includes(p)} />
-                {PHASE_LABELS[p]}
-              </label>
-            ))}
-          </fieldset>
           <button type="submit">検索</button>
         </form>
       </details>
+      <PhaseBar filters={filters} />
     </div>
   );
 }
@@ -277,6 +329,7 @@ export function GalleryPage({
             data-gallery-grid
             data-hide-bad={!filters.bad && !filters.ids ? 'true' : undefined}
             data-gallery-view={filters.view}
+            data-gallery-tip={filters.tip ? 'true' : undefined}
             data-gallery-live={galleryLiveEligible(filters) ? 'true' : undefined}
             data-timeline-query={timelineQuery}
             data-gallery-at={at}

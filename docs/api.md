@@ -1265,6 +1265,7 @@ character
 tag
 published
 reference
+tip
 from
 to
 rating
@@ -1343,6 +1344,10 @@ Gallery live insertion カードフラグメント）も同じフィールドを
 `reference=true|false` は、いずれかの pose の現行の基準 render として pin されているか
 （`preset_references` の `superseded_at IS NULL` 行）で絞り込みます
 （[Pose Reference Pin](#pose-reference-pin)参照）。
+
+`tip=true|false` は仕上げの連鎖の先端かどうかで絞り込みます。`true` はその Generation を仕上げ元
+（`refines_generation_id`）にする rating が bad でない Generation が無いもの、`false` はあるものです。
+続きが bad だけの Generation を先端に数えるのは、bad が既定で隠れる一覧で連鎖ごと見えなくならないためです。
 
 `origin=raw|refined` は raw Generation（`refines_generation_short_id` が null）/ 仕上げ済み
 （redraw / deliver / 古い repair / masked_redraw / finalize）の出力のどちらかに絞ります。省略時は両方を返します。
@@ -1493,7 +1498,7 @@ Galleryのスケルトンを実カードで置き換えるためのUIルート�
 `slot_from`（古い方の枠）から`slot_to`（新しい方の枠）まで、両端を含む枠のキー
 （[Generation Timeline](#generation-timeline)の`slot`と同じ形式）に`created_at`が入るGenerationを、
 見出しやリンクを付けず`.card`だけのHTMLとして新しい順に返します。`GET /gallery`と同じ絞り込み
-（`view` / `bad` / `tag` / `rating` / `bookmark` / `published` / `reference`）を受け取り、
+（`view` / `bad` / `tip` / `tag` / `rating` / `bookmark` / `published` / `reference` / `model` / `phase`）を受け取り、
 `GET /api/v1/generations/timeline`の同じ絞り込みの枚数と一致します。枚数が多くても切り詰めず
 全件（上限2000件）を返します。`partial=1`がないとき・`ids`があるときは無視します。`slot_from` / `slot_to`の
 どちらかが枠のキーでない（欠けている場合も含む）とき、`slot_from`が`slot_to`より新しいときは400です。

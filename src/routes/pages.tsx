@@ -126,6 +126,7 @@ pages.get('/gallery', async (c) => {
 
   const view = parseGalleryView(q.view, 'all');
   const bad = q.bad === '1';
+  const tip = q.tip === '1';
   const ids = q.ids?.trim() || undefined;
 
   // チェックボックス群は同じキーを繰り返して送る。カンマ区切りの 1 値 (リンクの復元) も受ける。
@@ -136,6 +137,7 @@ pages.get('/gallery', async (c) => {
     model: multi('model'),
     phase: multi('phase'),
     bad,
+    tip,
     ids,
     tag: q.tag || undefined,
     rating: q.rating || undefined,
@@ -152,6 +154,7 @@ pages.get('/gallery', async (c) => {
   } else {
     if (view !== 'all') apiParams.set('origin', view);
     if (!bad) apiParams.set('exclude_rating', 'bad');
+    if (tip) apiParams.set('tip', 'true');
   }
   if (filters.tag) apiParams.set('tag', filters.tag);
   if (filters.rating) apiParams.set('rating', filters.rating);

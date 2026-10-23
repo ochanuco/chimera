@@ -519,7 +519,7 @@ describe('Web GUI pages', () => {
     expect(tagHtml).not.toContain('data-gallery-live="true"');
   });
 
-  it('GET /gallery renders model/phase checkbox groups, keeps checked state, filters, and disables live insertion', async () => {
+  it('GET /gallery renders model checkboxes and phase toggle buttons, keeps selected state, filters, and disables live insertion', async () => {
     const { generation } = await createGeneration();
     await env.DB.prepare("UPDATE generations SET model_family = 'anima' WHERE id = ?").bind(generation.id).run();
     const other = await createGeneration();
@@ -528,14 +528,16 @@ describe('Web GUI pages', () => {
     const plain = await (await req('/gallery?limit=200')).text();
     expect(plain).toContain('name="model" value="anima"');
     expect(plain).toContain('name="model" value="unknown"');
-    expect(plain).toContain('name="phase" value="redraw"');
+    expect(plain).toMatch(/class="phase-chip" href="\/gallery\?phase=redraw" aria-pressed="false"/);
+    expect(plain).not.toContain('class="phase-clear"');
     expect(plain).not.toMatch(/name="model" value="anima" checked/);
 
     const repeated = await (await req('/gallery?model=anima&model=moss&phase=generate&limit=200')).text();
     expect(repeated).toMatch(/name="model" value="anima" checked/);
     expect(repeated).toMatch(/name="model" value="moss" checked/);
     expect(repeated).not.toMatch(/name="model" value="il" checked/);
-    expect(repeated).toMatch(/name="phase" value="generate" checked/);
+    expect(repeated).toMatch(/aria-pressed="true" data-phase="generate"/);
+    expect(repeated).toContain('name="phase" value="generate"');
     expect(repeated).toContain(generation.short_id);
     expect(repeated).not.toContain(other.generation.short_id);
     expect(repeated).not.toContain('data-gallery-live="true"');
@@ -547,6 +549,29 @@ describe('Web GUI pages', () => {
 
     const phaseOnly = await (await req('/gallery?phase=photo&limit=200')).text();
     expect(phaseOnly).not.toContain('data-gallery-live="true"');
+    // 押すたびに足し引きし、ほかの絞り込みは保つ。
+    const twoPhases = await (await req('/gallery?view=raw&phase=deliver,dof&limit=200')).text();
+    expect(twoPhases).toContain('href="/gallery?view=raw&amp;phase=deliver%2Cdof%2Cstage"');
+    expect(twoPhases).toContain('href="/gallery?view=raw&amp;phase=dof"');
+    expect(twoPhases).toContain('class="phase-clear" href="/gallery?view=raw"');
+  });
+
+  it('GET /gallery?tip=1 hides refined-further Generations and keeps live insertion', async () => {
+    const source = await createGeneration();
+    const child = await createGeneration();
+    await env.DB.prepare('UPDATE generations SET refines_generation_id = ? WHERE id = ?').bind(source.generation.id, child.generation.id).run();
+
+    const plain = await (await req('/gallery?limit=200')).text();
+    expect(plain).toContain(source.generation.short_id);
+    expect(plain).toMatch(/href="\/gallery\?tip=1" aria-pressed="false" data-tip-toggle/);
+
+    const tip = await (await req('/gallery?tip=1&limit=200')).text();
+    expect(tip).not.toContain(`data-short-id="${source.generation.short_id}"`);
+    expect(tip).toContain(child.generation.short_id);
+    expect(tip).toContain('data-gallery-tip="true"');
+    expect(tip).toContain('data-gallery-live="true"');
+    expect(tip).toMatch(/href="\/gallery" aria-pressed="true" data-tip-toggle/);
+    expect(tip).toContain('name="tip" value="1"');
   });
 
   it('GET /gallery?partial=1 returns a cards fragment without a document wrapper', async () => {
