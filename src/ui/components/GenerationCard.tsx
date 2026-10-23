@@ -17,7 +17,7 @@ export interface GenerationCardData {
   rating: 'bad' | 'neutral' | 'good' | null;
   bookmark: boolean;
   tags?: string[];
-  /** 指定があればカード root に `data-slot` (JST 15 分枠のキー) を付ける。Gallery のタイムラインが使う。 */
+  /** `timeline` のカードはここから `data-slot` (JST 15 分枠のキー) を作る。 */
   created_at?: string;
   image_width?: number | null;
   image_height?: number | null;
@@ -85,15 +85,18 @@ export function GenerationCard({
   g,
   compact = false,
   href,
+  timeline = false,
   children,
 }: {
   g: GenerationTileData;
   compact?: boolean;
   href?: string;
+  /** Gallery のタイムラインに並べるカード。`data-slot` を付け、クライアントがそれを見て日付 / 15 分枠の見出しを差し込む。 */
+  timeline?: boolean;
   children?: unknown;
 }) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.refinement_request);
-  const slot = g.created_at ? slotKeyOf(g.created_at) : null;
+  const slot = timeline && g.created_at ? slotKeyOf(g.created_at) : null;
   return (
     <div class={compact ? 'card card-compact' : 'card'} data-slot={slot ?? undefined}>
       <a class="thumb-link" href={href ?? `/g/${g.short_id}`} data-short-id={g.short_id}>

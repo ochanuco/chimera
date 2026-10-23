@@ -109,7 +109,7 @@ images.get('/:shortId', async (c) => {
     const cardData = await queryGenerations(db, { ids: generation.short_id }, origin);
     const item = cardData.items[0];
     if (!item) throw notFound('generation');
-    return c.html(<GenerationCard g={item} />);
+    return c.html(<GenerationCard g={item} timeline />);
   }
 
   if (wantsJson(c)) {

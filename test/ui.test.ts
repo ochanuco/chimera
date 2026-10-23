@@ -805,6 +805,9 @@ describe('Web GUI pages', () => {
 
     const rest = await (await req(`${href}&partial=1`)).text();
     expect(rest).not.toContain('<html');
+    // 時刻の枠は Gallery のタイムライン専用。付けると追記時に見出しが差し込まれる。
+    expect(first).not.toContain('data-slot=');
+    expect(rest).not.toContain('data-slot=');
     expect(rest).not.toContain('class="load-more"');
     const shown = [...first.matchAll(/data-short-id="([^"]+)"/g), ...rest.matchAll(/data-short-id="([^"]+)"/g)].map((m) => m[1]);
     expect(new Set(shown)).toEqual(new Set(made));
