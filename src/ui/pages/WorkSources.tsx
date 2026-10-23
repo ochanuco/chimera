@@ -1,4 +1,5 @@
 import { Layout } from '../layout';
+import { GenerationCard } from '../components/GenerationCard';
 import type { WorkSource, WorkSourceState } from '../../lib/ui-queries';
 
 export interface WorkSourceFilters {
@@ -66,17 +67,10 @@ export function WorkSourcesPage({
       ) : (
         <div class="work-grid">
           {items.map((g) => (
-            <a class="work-source" href={`/work/${g.short_id}`}>
-              <img src={`/g/${g.short_id}/preview`} alt={g.short_id} loading="lazy" />
-              <span class="work-source-meta">
-                <span class="work-source-id">{g.short_id}</span>
-                <span class={`work-state work-state-${g.state}`}>{STATE_LABEL[g.state]}</span>
-              </span>
-              <span class="work-source-meta">
-                <span class="work-source-recipe">{g.recipe ?? '-'}</span>
-                <span class={`work-rating work-rating-${g.rating ?? 'none'}`}>{g.rating ?? '未評価'}</span>
-              </span>
-            </a>
+            <GenerationCard g={g} href={`/work/${g.short_id}`}>
+              <span class={`work-state work-state-${g.state}`}>{STATE_LABEL[g.state]}</span>
+              <span class="work-source-recipe">{g.recipe ?? '-'}</span>
+            </GenerationCard>
           ))}
         </div>
       )}

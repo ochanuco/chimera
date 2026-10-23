@@ -256,9 +256,7 @@ function renderRunThumbnail(run: ExperimentDetailRun) {
   return (
     <div class="exp-run-thumb">
       {run.generation ? (
-        <a href={run.generation.canonical_url}>
-          <img src={run.generation.thumbnail_url} alt="" />
-        </a>
+        <GenerationCard g={run.generation} compact />
       ) : run.request && run.request.thumbnail_generation_short_id && run.request.thumbnail_url ? (
         <a href={`/g/${run.request.thumbnail_generation_short_id}`}>
           <img src={run.request.thumbnail_url} alt="" />

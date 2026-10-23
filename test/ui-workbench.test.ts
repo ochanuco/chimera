@@ -35,6 +35,17 @@ describe('GET /work', () => {
     expect(html.indexOf(`/work/${done.short_id}"`)).toBeLessThan(html.indexOf(`/work/${wip.short_id}"`));
     expect(html).toContain('work-state-wip');
     expect(html).toContain('work-state-done');
+    // 共通カード: サムネイルはワークベンチへ、rating / bookmark はその場で付けられる。
+    expect(html).toContain(`<a class="thumb-link" href="/work/${wip.short_id}" data-short-id="${wip.short_id}">`);
+    expect(html).toContain(`class="rating-group" data-generation-id="${wip.id}"`);
+    expect(html).toContain(`data-kind="generations" data-id="${wip.id}" data-bookmarked="false"`);
+  });
+
+  it('carries the card template that the candidate strip clones', async () => {
+    const { generation: root } = await createGeneration();
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    expect(html).toContain('<template data-generation-card-template="true">');
+    expect(html).toContain('data-card-link="reroll"');
   });
 
   it('filters by state and by recipe', async () => {

@@ -491,6 +491,17 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 /* ボタンの UA 既定 padding に任せず、リンクとブックマークで同じ当たり判定と間隔にする。 */
 .card-id-link, .card-bookmark-btn { padding: 0.1rem 0.4rem; }
 .card-id-link:hover { color: var(--accent); text-decoration: none; }
+.card-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; padding: 0 0.55rem 0.5rem; font-size: 0.75rem; color: var(--text-dim); }
+/* 帯・行に並べる小さい版。幅は置く側が決める。ワークベンチ / リロールへのリンクは省く。 */
+.card-compact { border-radius: 8px; }
+.card-compact .card-row { height: auto; padding: 0.25rem 0.35rem 0.35rem; gap: 0.2rem; }
+.card-compact .card-id-row, .card-compact .card-row .rating-group { height: 1.25rem; }
+.card-compact .card-id { font-size: 0.68rem; }
+.card-compact .card-id-link { display: none; }
+.card-compact .card-bookmark-btn { padding: 0 0.15rem; font-size: 0.75rem; }
+.card-compact .rating-group { gap: 0.15rem; }
+.card-compact .rate-btn { flex: 1; font-size: 0.6rem; padding: 0 0.1rem; }
+.card-compact .card-extra { padding: 0 0.35rem 0.35rem; font-size: 0.68rem; }
 
 .rating-group { display: flex; gap: 0.25rem; }
 .rate-btn {
@@ -996,6 +1007,9 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
   .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
   .card-row .card-id { min-height: 2.75rem; }
   .card-id-link { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
+  .card-compact .card-id-row, .card-compact .card-row .rating-group { height: 2rem; }
+  .card-compact .card-row .rate-btn, .card-compact .card-row .card-id { min-height: 2rem; }
+  .card.card-compact .card-bookmark-btn { position: static; width: auto; height: 2rem; background: none; }
 }
 
 details.section {
@@ -1189,8 +1203,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .sc-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
 .sc-row { display: grid; grid-template-columns: 10rem 9rem 12rem 1fr; gap: 0.75rem; align-items: start; padding: 0.6rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; }
 .sc-name { display: flex; flex-direction: column; gap: 0.3rem; }
-.sc-pin a, .sc-result a.sc-thumb { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; color: var(--text-dim); }
-.sc-pin img, .sc-result img { width: 100%; max-height: 9rem; object-fit: contain; background: var(--bg); border-radius: 4px; }
+.sc-pin .card, .sc-result .card { width: 7.5rem; }
 .sc-empty { color: var(--text-dim); font-size: 0.85rem; }
 .sc-result { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; }
 .sc-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
@@ -1343,7 +1356,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .exp-delta-empty { color: var(--text-dim); font-style: italic; }
 
 .exp-run-thumb { display: flex; align-items: center; gap: 0.6rem; margin: 0.6rem 0; }
-.exp-run-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: var(--checker); }
+.exp-run-thumb .card { width: 7.5rem; }
+.exp-run-thumb > a img { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; background: var(--checker); }
 .exp-run-request-link { font-size: 0.82rem; }
 
 .exp-base-generation { display: inline-flex; align-items: center; gap: 0.5rem; }
@@ -1570,6 +1584,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .work-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .work-filter-group { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .work-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.9rem; }
+.work-grid .card-extra { justify-content: space-between; }
 .work-source {
   display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem; border-radius: 10px;
   border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text);
@@ -1583,11 +1598,8 @@ details.section .section-body { margin-top: 0.6rem; }
 .photo-name { color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
-.work-rating { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--border); color: var(--text); }
 .work-state { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
 .work-state-done { border-color: var(--good); color: var(--good); }
-.work-rating-good { background: var(--good); color: #0c1a10; }
-.work-rating-bad { background: var(--bad); color: #200a08; }
 .work-source-recipe { font-size: 0.75rem; color: var(--text-dim); font-family: ui-monospace, monospace; }
 .work-pager { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
 
@@ -1661,13 +1673,13 @@ details.section .section-body { margin-top: 0.6rem; }
 
 .wb-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .wb-strip { display: flex; gap: 0.25rem; overflow-x: auto; flex: 1 1 14rem; min-width: 0; padding: 0.15rem; }
-.wb-mini { position: relative; flex: none; padding: 2px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer; }
-.wb-mini-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-.wb-mini-thumb { width: 2.75rem; height: 3.5rem; border-radius: 4px; overflow: hidden; background: #000; }
-.wb-mini-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.wb-mini-rate { display: block; height: 4px; margin-top: 2px; border-radius: 2px; }
-.wb-mini-adopted { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
-.wb-mini-running { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); font-size: 0.8rem; color: var(--neutral); }
+/* 候補の帯は共通カード（compact）を横に並べる。サムネイルは高さを詰める。 */
+.wb-strip .card { flex: none; width: 6.5rem; }
+.wb-strip .card .thumb-link { aspect-ratio: auto; height: 4.5rem; }
+.wb-strip .wb-mini-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.wb-mini-pending { position: relative; min-height: 4.5rem; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+.wb-mini-adopted { position: absolute; z-index: 2; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+.wb-mini-running { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); font-size: 0.8rem; color: var(--neutral); }
 .wb-adopt {
   font: inherit; font-size: 0.9rem; font-weight: 700; min-height: 2.5rem; padding: 0 1rem; border: 0; border-radius: 10px;
   background: var(--accent); color: #10131c; cursor: pointer;
@@ -1928,13 +1940,58 @@ export const appJs = `
       const method = bookmarked ? 'DELETE' : 'PUT';
       try {
         await api('/api/v1/' + kind + '/' + id + '/bookmark', method);
-        btn.setAttribute('data-bookmarked', bookmarked ? 'false' : 'true');
+        // 同じ対象のボタンが複数あっても揃える（rating と同じ）
+        qsa('.bookmark-btn[data-kind="' + kind + '"][data-id="' + id + '"]').forEach(function (b) {
+          b.setAttribute('data-bookmarked', bookmarked ? 'false' : 'true');
+        });
+        document.dispatchEvent(new CustomEvent('chimera:bookmark', { detail: { kind: kind, id: id, bookmarked: !bookmarked } }));
         track('bookmark.toggle', { kind: kind, id: id, bookmarked: !bookmarked });
       } catch (e) {
         trackError('bookmark.toggle', e, { kind: kind, id: id });
         alert('bookmark update failed: ' + e.message);
       }
     });
+  }
+
+  // <template data-generation-card-template>（GenerationCardTemplate）を複製して値を埋める。マークアップの正は JSX の GenerationCard だけ。
+  // g は { id, short_id, rating, bookmark, refines_generation_short_id か refines_generation_id }。opts.compact で小さい版、opts.href でサムネイルの行き先。
+  function buildGenerationCard(g, opts) {
+    opts = opts || {};
+    const tpl = qs('template[data-generation-card-template]');
+    if (!tpl) return null;
+    const card = tpl.content.firstElementChild.cloneNode(true);
+    if (opts.compact) card.classList.add('card-compact');
+    const link = qs('.thumb-link', card);
+    link.href = opts.href || '/g/' + g.short_id;
+    link.setAttribute('data-short-id', g.short_id);
+    const img = qs('img.thumb-fg', card);
+    img.src = '/g/' + g.short_id + '/preview';
+    img.alt = g.short_id;
+    const idBtn = qs('.card-id', card);
+    idBtn.textContent = g.short_id;
+    idBtn.setAttribute('data-copy-id', g.short_id);
+    idBtn.title = 'Copy ' + g.short_id;
+    idBtn.setAttribute('aria-label', 'Copy ' + g.short_id);
+    const work = qs('[data-card-link="work"]', card);
+    work.href = '/work/' + g.short_id;
+    work.setAttribute('aria-label', 'Open ' + g.short_id + ' in workbench');
+    const reroll = qs('[data-card-link="reroll"]', card);
+    if (g.refines_generation_short_id || g.refines_generation_id) {
+      reroll.remove();
+    } else {
+      reroll.href = '/reroll/' + g.short_id;
+      reroll.setAttribute('aria-label', 'Reroll ' + g.short_id);
+    }
+    const bm = qs('.bookmark-btn', card);
+    bm.setAttribute('data-id', g.id);
+    bm.setAttribute('data-bookmarked', g.bookmark ? 'true' : 'false');
+    const group = qs('.rating-group', card);
+    group.setAttribute('data-generation-id', g.id);
+    group.setAttribute('data-current', g.rating || '');
+    qsa('.rate-btn', group).forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-rating') === g.rating);
+    });
+    return card;
   }
 
   function initExperimentStatus() {
@@ -2630,7 +2687,7 @@ export const appJs = `
     }
 
     function nodeOf(g) {
-      return { id: g.id, short_id: g.short_id, seed: g.seed == null ? null : g.seed, rating: g.rating || null, delivered: false, image_width: g.image_width, image_height: g.image_height, image_size: g.image_size };
+      return { id: g.id, short_id: g.short_id, seed: g.seed == null ? null : g.seed, rating: g.rating || null, bookmark: Boolean(g.bookmark), delivered: false, image_width: g.image_width, image_height: g.image_height, image_size: g.image_size };
     }
 
     function seedText(n) {
@@ -2726,14 +2783,9 @@ export const appJs = `
       cell.textContent = '';
       if (!p.pin) return;
       if (p.result) {
-        var link = wbEl('a', 'sc-thumb');
-        link.href = '/g/' + p.result.short_id;
-        var img = document.createElement('img');
-        img.src = '/g/' + p.result.short_id + '/preview';
-        img.alt = p.result.short_id;
-        link.appendChild(img);
-        link.appendChild(wbEl('span', 'mono', p.result.short_id + ' · seed ' + (p.result.seed == null ? '-' : p.result.seed)));
-        cell.appendChild(link);
+        var card = buildGenerationCard(p.result, { compact: true });
+        card.appendChild(wbEl('div', 'card-extra', 'seed ' + (p.result.seed == null ? '-' : p.result.seed)));
+        cell.appendChild(card);
         if (!sc.sweep) {
           var same = p.result.id === p.pin.id;
           var adopt = wbEl('button', 'wb-pill', same ? 'pin と同じ絵' : 'good にして基準にする');
@@ -2872,6 +2924,13 @@ export const appJs = `
     document.addEventListener('chimera:rating', function (ev) {
       sc.poses.forEach(function (q) {
         [q.pin, q.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
+      });
+    });
+
+    document.addEventListener('chimera:bookmark', function (ev) {
+      if (ev.detail.kind !== 'generations') return;
+      sc.poses.forEach(function (q) {
+        [q.pin, q.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.bookmark = ev.detail.bookmarked; });
       });
     });
 
@@ -4674,7 +4733,6 @@ export const appJs = `
     { no: 6, label: 'ボケ' },
   ];
   var WB_LAST = WB_PHASES.length;
-  var WB_RATING_COLOR = { bad: 'var(--bad)', neutral: 'var(--neutral)', good: 'var(--good)' };
 
   function wbEl(tag, cls, text) {
     var el = document.createElement(tag);
@@ -5351,26 +5409,24 @@ export const appJs = `
       strip.textContent = '';
       var adopted = pick(wb.active);
       list.forEach(function (item) {
-        var btn = wbEl('button', 'wb-mini' + (item.key === wb.compareId ? ' wb-mini-on' : ''));
-        btn.type = 'button';
-        btn.setAttribute('data-wb-pick', item.key);
-        btn.title = itemKind(item) + ' · ' + itemSummary(item);
-        btn.setAttribute('aria-label', btn.title);
-        var thumb = wbEl('div', 'wb-mini-thumb');
+        var label = itemKind(item) + ' · ' + itemSummary(item);
+        var card;
         if (item.node) {
-          var img = document.createElement('img');
-          img.src = '/g/' + item.node.short_id + '/preview';
-          img.alt = item.node.short_id;
-          thumb.appendChild(img);
-          thumb.classList.toggle('wb-checker', item.node.delivered || item.node.cutout);
+          card = buildGenerationCard(item.node, { compact: true });
+          var link = qs('.thumb-link', card);
+          link.setAttribute('data-wb-pick', item.key);
+          link.title = label;
+          if (adopted && !adopted.skip && adopted.generation_id === item.node.id) link.appendChild(wbEl('span', 'wb-mini-adopted'));
+        } else {
+          card = wbEl('button', 'card card-compact wb-mini-pending');
+          card.type = 'button';
+          card.setAttribute('data-wb-pick', item.key);
+          card.title = label;
+          card.setAttribute('aria-label', label);
         }
-        btn.appendChild(thumb);
-        var bar = wbEl('span', 'wb-mini-rate');
-        bar.style.background = item.node && item.node.rating ? WB_RATING_COLOR[item.node.rating] : 'transparent';
-        btn.appendChild(bar);
-        if (item.node && adopted && !adopted.skip && adopted.generation_id === item.node.id) btn.appendChild(wbEl('span', 'wb-mini-adopted'));
-        if (item.pending) btn.appendChild(wbEl('span', 'wb-mini-running', '…'));
-        strip.appendChild(btn);
+        if (item.key === wb.compareId) card.classList.add('wb-mini-on');
+        if (item.pending) card.appendChild(wbEl('span', 'wb-mini-running', '…'));
+        strip.appendChild(card);
       });
     }
 
@@ -5842,6 +5898,11 @@ export const appJs = `
       render();
     });
 
+    document.addEventListener('chimera:bookmark', function (ev) {
+      var n = ev.detail.kind === 'generations' ? nodeById(ev.detail.id) : null;
+      if (n) n.bookmark = ev.detail.bookmarked;
+    });
+
     // ---- events ----
     root.addEventListener('click', function (ev) {
       var t = ev.target.closest ? ev.target : null;
@@ -5850,6 +5911,8 @@ export const appJs = `
       if (step && !step.disabled) return goStep(Number(step.getAttribute('data-wb-step')));
       var picked = t.closest('[data-wb-pick]');
       if (picked) {
+        if (picked.tagName === 'A' && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) return;
+        ev.preventDefault();
         wb.compareId = picked.getAttribute('data-wb-pick');
         return render();
       }

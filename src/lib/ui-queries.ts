@@ -22,6 +22,7 @@ export interface WorkSource {
   id: string;
   short_id: string;
   rating: 'bad' | 'neutral' | 'good' | null;
+  bookmark: boolean;
   recipe: string | null;
   created_at: string;
   state: WorkSourceState;
@@ -47,7 +48,7 @@ activity AS (
   GROUP BY t.root_id
 ),
 worked AS (
-  SELECT g.id, g.short_id, g.rating, g.created_at, q.recipe,
+  SELECT g.id, g.short_id, g.rating, g.bookmark, g.created_at, q.recipe,
          CASE WHEN a.delivered = 1 THEN 'done' ELSE 'wip' END AS state,
          MAX(a.last_created, COALESCE(w.updated_at, a.last_created)) AS last_activity
   FROM activity a
@@ -76,8 +77,8 @@ export async function listWorkSources(
   const { results } = await db
     .prepare(`${WORKED_ON_CTE} SELECT * FROM worked ${where} ORDER BY last_activity DESC, id DESC LIMIT ? OFFSET ?`)
     .bind(...binds, WORK_SOURCES_PAGE_SIZE + 1, filters.offset)
-    .all<WorkSource>();
-  const rows = results ?? [];
+    .all<Omit<WorkSource, 'bookmark'> & { bookmark: number }>();
+  const rows = (results ?? []).map((r) => ({ ...r, bookmark: r.bookmark === 1 }));
   const recipeRows = await db
     .prepare(`${WORKED_ON_CTE} SELECT DISTINCT recipe FROM worked WHERE recipe IS NOT NULL ORDER BY recipe`)
     .all<{ recipe: string }>();

@@ -289,8 +289,11 @@ describe('GET /check', () => {
 
     const { html, poses } = await checkPoses();
     expect(poses.map((p) => p.pose)).toEqual(['bust', 'catalogonly', 'coffee', 'promoted']);
-    expect(poses.find((p) => p.pose === 'bust')).toMatchObject({ pin: { short_id: bust.shortId }, request: null, result: null });
+    expect(poses.find((p) => p.pose === 'bust')).toMatchObject({ pin: { short_id: bust.shortId, bookmark: false }, request: null, result: null });
     expect(poses.find((p) => p.pose === 'coffee')).toMatchObject({ pin: null, drift: 'no_pin' });
+    // pin は共通カードで出し、結果のカードは JS がテンプレートから組む。
+    expect(html).toMatch(new RegExp(`class="card card-compact"[^]*?data-short-id="${bust.shortId}"[^]*?class="rating-group" data-generation-id`));
+    expect(html).toContain('<template data-generation-card-template="true">');
     expect(html).toContain('>pin なし</span>');
     expect(html).toContain('pin 済みを全部描き直す');
     expect(html).toContain('今のコードで描き直す');
