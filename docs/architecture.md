@@ -142,6 +142,7 @@ generations/{generation_id}/original.png
 generations/{generation_id}/original.webp
 generations/{generation_id}/preview.webp
 generations/{generation_id}/preview-cutout.webp
+references/{request_id}
 ```
 
 ComfyUI の filename は object key に利用せず、DB 上の metadata
@@ -159,6 +160,13 @@ request を終えるため、生成元の request が `done` / `failed` / `cance
 
 `original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。
 過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
+
+`references/{request_id}` は例外で、消すための一時領域です。kind `reference` の Request の参考画像を
+`POST /api/v1/references` が置き（D1 INSERT → R2 PUT の順）、worker が読み終えたら消します。chimera も
+その Request が done / failed / cancelled になった時点で消し（retry で queued に戻るときは残す）、
+cron trigger `0 * * * *` の `scheduled` ハンドラが置かれてから 24 時間を過ぎたものを消します
+（`src/lib/reference-images.ts`）。参考画像は Generation にならず、画像そのものもハッシュも D1 に残しません
+（[worker-protocol.md「reference」](worker-protocol.md#reference)）。
 
 ingest が保存する original は `original.png` です。古い Generation には lossless WebP の
 `original.webp` を original に持つものがあり、original を読む側は両方を受け付けます

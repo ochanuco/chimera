@@ -269,6 +269,36 @@ worker が別途 `PATCH /api/v1/experiment-runs/{run_id}` を送る必要はあ�
 GET /api/v1/requests/{id}
 ```
 
+### Create Reference
+
+``` text
+POST /api/v1/references
+Content-Type: multipart/form-data
+```
+
+  field            型
+  ---------------- --------------------------------------------------------------------------
+  image            必須。png / jpeg / webp（先頭のバイト列で判定）、20 MiB まで
+  seed             任意。0 以上の整数の文字列。空文字は省略と同じ
+  idempotency_key  必須
+
+`kind = reference` の Request（`created_by = gui`、payload `{"recipe": "yukari", "seed"?: int}`）を作り、画像を
+R2 の `references/{request_id}` に置きます。順序は ingest と同じ D1 INSERT → R2 PUT です。Generation は作りません。
+応答は Create Request と同じ形の Request 行で、新規は 201、同じキー・同じ seed の再送は 200、同じキーで seed が違えば 409 です。
+再送は、行を作った後に PUT が落ちて画像が無いときだけ置き直します（終端の Request には置き直しません）。
+画像の中身は再送の一致判定に使いません。
+
+### Reference Image
+
+``` text
+GET    /api/v1/requests/{id}/reference-image
+DELETE /api/v1/requests/{id}/reference-image
+```
+
+worker が参考画像を読み、使い終えたら消すための口です。GET は置いたときの Content-Type で画像を返し、
+画像が無ければ（消した後・置く前）404 です。DELETE は冪等で、画像が無くても 204 です。
+Request が無いときと、`kind` が reference でないときはどちらも 404 です。
+
 ### Timings
 
 ``` text
@@ -895,15 +925,23 @@ catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"s
   recipe         当てる recipe の名前
   seed           0 以上の整数、省略可。積む generate の seed で、省略時は worker が乱数で決める
 
-payload の未知のキーは 400 です。参考画像は payload に持たず、Request の id から引きます。
+payload の未知のキーは 400 です。参考画像は payload に持たず、R2 の `references/{request_id}` に置きます。
+GUI は [Create Reference](#create-reference) で Request と画像を一緒に作ります。`POST /api/v1/requests` でも
+`kind = reference` を積めますが、画像が無いので worker は読めません。
 
 worker は claim した reference を次の順に処理します。
 
-1. 参考画像を読む
+1. 参考画像を [Reference Image](#reference-image) の GET で読む
 2. タグに読み替え、recipe の pose と part patch を組む
 3. `kind = generate` を積む（`created_by = system`、`idempotency_key = reference:{reference の request id}`）。
    再実行で同じキーを送れば既存の generate が 200 で返るので、generate は 1 件にとどまる
 4. reference を done にする
+5. 参考画像を DELETE する。失敗して retry に回すときは消さない
+
+chimera も reference の Request が done / failed / cancelled になった時点で参考画像を消します。PATCH の done / failed / cancelled、
+release で `attempt >= max_attempts` になった failed、heartbeat 途絶で failed になった行（claim の直前と WorkerHub の alarm）の
+全てが対象で、queued に戻る遷移では消しません。どの経路でも消し損ねたものは、置かれてから 24 時間を過ぎると
+cron（1 時間ごと）が消します（[architecture.md「R2」](architecture.md#r2)）。
 
 done の `result` は次の形です。`generation_ids` は常に空で、絵は `generate_request_id` の Request が作ります。
 

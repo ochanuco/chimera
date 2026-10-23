@@ -15,6 +15,7 @@ import {
   type WakeState,
 } from './lib/gpu-wake';
 import { queuedAgeForWake, requeueStaleRunning } from './lib/requests';
+import { deleteSettledReferenceImages } from './lib/reference-images';
 import type { Bindings, RequestKind } from './types';
 
 type Role = 'worker' | 'viewer';
@@ -410,6 +411,7 @@ export class WorkerHub extends DurableObject<Bindings> {
   /** stale running を回収し (claimRequest と同じ規則)、GPU 機の起床を進める。 */
   async alarm(): Promise<void> {
     const rows = await requeueStaleRunning(this.env.DB, nowIso());
+    await deleteSettledReferenceImages(this.env.IMAGES, rows);
     for (const row of rows) {
       if (row.status === 'queued') {
         const workers = this.ctx.getWebSockets('worker').filter((ws) => acceptsKind(readAttachment(ws) as WorkerAttachment | null, row.kind));

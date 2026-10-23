@@ -22,6 +22,7 @@ pnpm run typecheck && pnpm test
 - Generation は物理削除しない。削除より rating / tag によるラベリング。original 画像（`generations/{id}/original.png`）も削除しない（redraw / deliver が読むため）。過去に削除済みの行（`original_purged_at`）は preview で読める（`docs/domain-model.md`「original の保持」）
 - 冪等性: Request / Job 作成は idempotency_key、ingest は (comfy_job_id, comfy_output_index) unique。再送は既存レコードを 200 で返す
 - ingest は D1 INSERT → R2 PUT の順（行が ID / R2 key を確定し、orphan object を作らない）。R2 key は `generations/{generation_id}/original.png`
+- 参考画像（kind `reference` の入力）だけは R2 から消す一時領域 `references/{request_id}` に置く。置く順は ingest と同じ D1 INSERT → R2 PUT で、Generation は作らず、画像もハッシュも D1 に残さない。Request の終端（done / failed / cancelled、retry の queued は除く）と 24 時間の cron で消す（`docs/architecture.md`「R2」）
 - `references` / `refinement` / `story` はキー省略と明示 null の両方を「該当なし」として受理する（request.json 契約）
 - SSR ページから API を呼ぶときは `src/lib/internal-api.ts` の `internalApiRequest` を使う（`app.request` にパスだけ渡すと origin が localhost になり絶対 URL が壊れる）
 - 認証はアプリ内に実装しない（Cloudflare Access 境界）。workers.dev ルートは無効のまま維持する
