@@ -1,10 +1,12 @@
 import { Layout } from '../layout';
+import { GenerationCard, GenerationCardTemplate } from '../components/GenerationCard';
 
 export interface StyleCheckNode {
   id: string;
   short_id: string;
   seed: number | null;
   rating: 'bad' | 'neutral' | 'good' | null;
+  bookmark: boolean;
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
@@ -73,6 +75,7 @@ export function StyleCheckPage({
   const selected = poses.find((p) => p.pose === selectedPose) ?? null;
   return (
     <Layout title="絵柄チェック" path={path}>
+      <GenerationCardTemplate />
       <div class="style-check" data-style-check data-recipe={recipe} data-initial={JSON.stringify({ poses, sweep })}>
         <div class="style-check-head">
           <h1 class="style-check-title">絵柄チェック</h1>
@@ -109,12 +112,9 @@ export function StyleCheckPage({
               </div>
               <div class="sc-pin">
                 {p.pin ? (
-                  <a href={`/g/${p.pin.short_id}`}>
-                    <img src={`/g/${p.pin.short_id}/preview`} alt={p.pin.short_id} loading="lazy" />
-                    <span class="mono">
-                      {p.pin.short_id} · seed {p.pin.seed ?? '-'}
-                    </span>
-                  </a>
+                  <GenerationCard g={p.pin} compact>
+                    seed {p.pin.seed ?? '-'}
+                  </GenerationCard>
                 ) : (
                   <span class="sc-empty">pin なし</span>
                 )}

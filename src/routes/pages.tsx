@@ -460,12 +460,12 @@ pages.get('/check', async (c) => {
   const { results: nodeRows } = wanted.length
     ? await c.env.DB
         .prepare(
-          `SELECT id, short_id, seed, rating, image_width, image_height, image_size FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
+          `SELECT id, short_id, seed, rating, bookmark, image_width, image_height, image_size FROM generations WHERE id IN (SELECT value FROM json_each(?))`,
         )
         .bind(JSON.stringify(wanted))
-        .all<StyleCheckNode>()
+        .all<Omit<StyleCheckNode, 'bookmark'> & { bookmark: number }>()
     : { results: [] };
-  const nodeById = new Map((nodeRows ?? []).map((n) => [n.id, n]));
+  const nodeById = new Map((nodeRows ?? []).map((n) => [n.id, { ...n, bookmark: Boolean(n.bookmark) }]));
 
   const poses: StyleCheckPoseView[] = rows.map((row, i) => ({
     pose: row.pose,

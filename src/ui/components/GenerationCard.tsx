@@ -34,6 +34,10 @@ export interface GenerationCardData {
   reference?: { recipe: string; pose: string } | null;
 }
 
+/** カードを出すのに要る最小限。ほかの項目は、渡されたぶんだけバッジとして出す。 */
+export type GenerationTileData = Pick<GenerationCardData, 'id' | 'short_id' | 'rating' | 'bookmark'> &
+  Partial<Omit<GenerationCardData, 'id' | 'short_id' | 'rating' | 'bookmark'>>;
+
 const RATINGS = ['bad', 'neutral', 'good'] as const;
 
 /** Small send-arrow icon for the 公開済み pill. Mirrors src/ui/pages/GenerationDetail.tsx's PublishIcon at a smaller size. */
@@ -74,15 +78,26 @@ function RequestBadge({ r }: { r: RequestBadgeData }) {
   );
 }
 
-/** Card used in Gallery / Bookmarks / Compare generation grids: thumbnail (with optional
- * `from <short_id>` / 公開済み overlays) + a row of rating + bookmark. Everything else lives in Generation Detail, which the thumbnail links to. */
-export function GenerationCard({ g }: { g: GenerationCardData }) {
+/** Generation のサムネイルを出す全ページ共通のカード（docs/ui.md「GenerationCard」）: サムネイル（バッジ付き）+ short_id・ワークベンチ・リロール・
+ * bookmark の行 + rating の行。rating / bookmark / short_id コピーはページ共通の委譲ハンドラが class と data 属性で拾う。
+ * `compact` は帯やリストに並べる小さい版、`href` はサムネイルの行き先（既定は Generation Detail）、`children` はカードの下端に足す行。 */
+export function GenerationCard({
+  g,
+  compact = false,
+  href,
+  children,
+}: {
+  g: GenerationTileData;
+  compact?: boolean;
+  href?: string;
+  children?: unknown;
+}) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.refinement_request);
   const slot = g.created_at ? slotKeyOf(g.created_at) : null;
   return (
-    <div class="card" data-slot={slot ?? undefined}>
-      <a class="thumb-link" href={`/g/${g.short_id}`} data-short-id={g.short_id}>
-        <img class="thumb-fg" src={g.thumbnail_url} alt={g.short_id} loading="lazy" />
+    <div class={compact ? 'card card-compact' : 'card'} data-slot={slot ?? undefined}>
+      <a class="thumb-link" href={href ?? `/g/${g.short_id}`} data-short-id={g.short_id}>
+        <img class="thumb-fg" src={g.thumbnail_url ?? `/g/${g.short_id}/preview`} alt={g.short_id} loading="lazy" />
         {hasTopBadges ? (
           <div class="thumb-badges-top">
             {g.refines_generation_short_id ? (
@@ -129,11 +144,11 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
             {g.short_id}
           </button>
           <span class="card-id-actions">
-            <a class="card-id-link" href={`/work/${g.short_id}`} title="ワークベンチで開く" aria-label={`Open ${g.short_id} in workbench`}>
+            <a class="card-id-link" data-card-link="work" href={`/work/${g.short_id}`} title="ワークベンチで開く" aria-label={`Open ${g.short_id} in workbench`}>
               ✎
             </a>
             {g.refines_generation_short_id ? null : (
-              <a class="card-id-link" href={`/reroll/${g.short_id}`} title="リロール" aria-label={`Reroll ${g.short_id}`}>
+              <a class="card-id-link" data-card-link="reroll" href={`/reroll/${g.short_id}`} title="リロール" aria-label={`Reroll ${g.short_id}`}>
                 ↻
               </a>
             )}
@@ -157,6 +172,16 @@ export function GenerationCard({ g }: { g: GenerationCardData }) {
           ))}
         </div>
       </div>
+      {children ? <div class="card-extra">{children}</div> : null}
     </div>
+  );
+}
+
+/** JS が組み立てるカード（ワークベンチの帯・絵柄チェックの結果）の型。`buildGenerationCard`（static.ts）が複製して値を埋める。 */
+export function GenerationCardTemplate() {
+  return (
+    <template data-generation-card-template>
+      <GenerationCard g={{ id: '', short_id: '', rating: null, bookmark: false }} />
+    </template>
   );
 }
