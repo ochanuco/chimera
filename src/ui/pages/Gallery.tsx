@@ -263,7 +263,7 @@ export function GalleryCards({
           <>
             {showDate && date ? <DateHeader date={date} /> : null}
             {showSlot && slot ? <SlotHeader slot={slot} /> : null}
-            <GenerationCard g={g} />
+            <GenerationCard g={g} timeline />
           </>
         );
       })}
@@ -277,7 +277,7 @@ export function GallerySlotCards({ items }: { items: GalleryItem[] }) {
   return (
     <>
       {items.map((g) => (
-        <GenerationCard g={g} />
+        <GenerationCard g={g} timeline />
       ))}
     </>
   );
