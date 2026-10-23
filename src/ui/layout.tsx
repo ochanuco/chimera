@@ -17,7 +17,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
   const galleryActive = path === '/gallery' || path === '/compare';
   const bookmarksActive = path === '/bookmarks';
   const workbenchActive = isActiveSection(path, '/work');
-  const moreActive = isActiveSection(path, '/experiments') || path === '/check' || path === '/stats' || path === '/photos';
+  const moreActive = isActiveSection(path, '/experiments') || path === '/check' || path === '/stats' || path === '/photos' || path === '/references';
 
   return (
     <html lang="ja">
@@ -48,6 +48,7 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
               <a href="/experiments">実験</a>
               <a href="/check">絵柄チェック</a>
               <a href="/photos">写真</a>
+              <a href="/references">参考画像</a>
               <a href="/stats">統計</a>
             </div>
           </details>

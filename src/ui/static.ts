@@ -1596,6 +1596,17 @@ details.section .section-body { margin-top: 0.6rem; }
 .photo-upload-status { color: var(--text-dim); font-size: 0.85rem; }
 .photo-grid .work-source img { aspect-ratio: 4 / 3; object-fit: cover; }
 .photo-name { color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reference-seed { width: 9rem; }
+.reference-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.reference-item > summary { cursor: pointer; }
+.reference-generations { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; vertical-align: middle; }
+.reference-generation { display: inline-flex; align-items: center; gap: 0.3rem; }
+.reference-generation img { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; }
+.reference-tags { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 0.8rem; margin: 0.5rem 0 0.5rem 1rem; }
+.reference-tags dt { color: var(--text-dim); }
+.reference-tags dd { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.reference-tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; padding: 0.05rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; }
+.reference-tag-dropped { color: var(--text-dim); text-decoration: line-through; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
 .work-state { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
@@ -6203,6 +6214,47 @@ export const appJs = `
     });
   }
 
+  // docs/ui.md「参考画像」: shrink like a photo, then POST /api/v1/references (multipart). One idempotency key per press, reused on a retry of the same press.
+  function initReferenceUpload() {
+    var form = qs('[data-reference-upload]');
+    if (!form) return;
+    var input = qs('[data-reference-file]', form);
+    var seedInput = qs('[data-reference-seed]', form);
+    var status = qs('[data-reference-status]', form);
+    var maxSide = Number(form.getAttribute('data-max-side')) || 3072;
+    var key = null;
+
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      var file = input.files && input.files[0];
+      if (!file) { status.textContent = '画像を選んでください'; return; }
+      var button = qs('button[type="submit"]', form);
+      button.disabled = true;
+      key = key || 'gui:reference:' + crypto.randomUUID();
+      try {
+        status.textContent = 'アップロード中…';
+        var body = new FormData();
+        body.append('image', await photoToPng(file, maxSide), file.name.replace(/\.[^.]+$/, '') + '.png');
+        body.append('idempotency_key', key);
+        if (seedInput.value.trim() !== '') body.append('seed', seedInput.value.trim());
+        var res = await fetch('/api/v1/references', { method: 'POST', body: body });
+        if (!res.ok) {
+          var message = 'アップロードに失敗しました (' + res.status + ')';
+          try { var data = await res.json(); if (data && data.error && data.error.message) message = data.error.message; } catch (e) {}
+          throw new Error(message);
+        }
+        track('reference_upload', { seed: seedInput.value.trim() !== '' });
+        window.location.reload();
+      } catch (e) {
+        status.textContent = e.message || String(e);
+        trackError('reference_upload', e);
+        button.disabled = false;
+      }
+    });
+    input.addEventListener('change', function () { key = null; });
+    seedInput.addEventListener('input', function () { key = null; });
+  }
+
   function initReroll() {
     var root = qs('[data-reroll]');
     if (!root) return;
@@ -6413,6 +6465,7 @@ export const appJs = `
     initWorkbench();
     initReroll();
     initPhotoUpload();
+    initReferenceUpload();
     initNavQueue();
     initPopoverClose();
     initCompareBar();

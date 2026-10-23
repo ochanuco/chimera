@@ -136,7 +136,7 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
 Token）を区別せず、いずれも全 `kind` を積めます（finalize / repair / masked_redraw を除く）。「GUI が積んでよいのは redraw / deliver /
-stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）だけ」は GUI のコードがそれらの form / ボタンしか
+stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）、参考画像から描く reference だけ」は GUI のコードがそれらの form / ボタンしか
 持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
@@ -1111,6 +1111,8 @@ worker は requests だけを見ます。
 
 - Generation Detail には積む form が無く、最新 request の status（queued / running / done / failed）と、done なら出力 Generation へのリンクを出す。
   request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `lighting` / `dof`、`created_by = gui`）から積む。
+- 参考画像 (`/references`, [ui.md](ui.md#参考画像references)): 画像と任意の seed を [Create Reference](#create-reference) に送り、
+  `kind = reference` を積む（`created_by = gui`）。GUI は prompt を書かない。done の result（当てたタグ・外したタグ・generate の Request id）を表示する。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 全ポーズ（カタログの pose と Preset だけの pose、`src/lib/style-check.ts`
