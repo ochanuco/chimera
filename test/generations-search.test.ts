@@ -128,6 +128,26 @@ describe('Generation search', () => {
     );
   });
 
+  it('filters by tip: hides a Generation that has a non-bad refinement', async () => {
+    const { generation: lone } = await createGeneration();
+    const { sourceGen, refined } = await createRefinedGeneration();
+    const ids = async (query: string) => (await getJson<SearchResult>(`/api/v1/generations?${query}&limit=200`)).body.items.map((g) => g.id);
+
+    let tips = await ids('tip=true');
+    expect(tips).toContain(lone.id);
+    expect(tips).toContain(refined.generation.id);
+    expect(tips).not.toContain(sourceGen.id);
+    expect(await ids('tip=false')).toEqual(expect.arrayContaining([sourceGen.id]));
+    expect(await ids('tip=false')).not.toContain(lone.id);
+
+    // 続きが bad だけなら、仕上げ元は先端に戻る。
+    await env.DB.prepare("UPDATE generations SET rating = 'bad' WHERE id = ?").bind(refined.generation.id).run();
+    tips = await ids('tip=true');
+    expect(tips).toContain(sourceGen.id);
+
+    expect((await getJson('/api/v1/generations?tip=1')).status).toBe(400);
+  });
+
   it('400s on an invalid origin value', async () => {
     const res = await getJson('/api/v1/generations?origin=bogus');
     expect(res.status).toBe(400);

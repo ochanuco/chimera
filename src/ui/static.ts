@@ -770,6 +770,20 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
 }
 .bad-toggle[aria-pressed="true"] .bad-toggle-box { background: var(--accent); border-color: var(--accent); }
 
+/* フェーズの複数選択。並びと見た目はワークベンチのフェーズ列 (.wb-steps) に揃える。 */
+.phase-bar { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 0.5rem 0.9rem; overflow-x: auto; }
+.phase-chain { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 0.25rem; flex: none; }
+.phase-chain li { display: flex; align-items: center; gap: 0.25rem; }
+.phase-sep { color: var(--text-dim); font-size: 0.8rem; }
+.phase-extra { display: flex; align-items: center; gap: 0.25rem; flex: none; padding-left: 0.9rem; border-left: 1px solid var(--border); }
+.phase-chip {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 3.5rem; min-height: 2rem; padding: 0.15rem 0.6rem;
+  border-radius: 8px; border: 1px solid var(--border); font-size: 0.78rem; color: var(--text-dim); white-space: nowrap;
+}
+.phase-chip:hover { text-decoration: none; color: var(--text); }
+.phase-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #10131c; }
+.phase-clear { flex: none; font-size: 0.78rem; color: var(--text-dim); }
+
 .filter-panel { position: relative; }
 .filter-panel summary {
   display: inline-flex;
@@ -3160,6 +3174,12 @@ export const appJs = `
     // 先頭挿入を古い方から繰り返すと、最終的に新しい方が一番上に来る (newest first)。
     galleryPending.queue.forEach(function (item) {
       galleryInsertCardHtml(item.html, grid);
+      // 「途中を隠す」では続きが届いた仕上げ元はもう先端ではない。
+      if (grid.getAttribute('data-gallery-tip') === 'true' && item.refinesShortId) {
+        var link = grid.querySelector('.thumb-link[data-short-id="' + item.refinesShortId + '"]');
+        var parentCard = link ? link.closest('.card') : null;
+        if (parentCard) parentCard.remove();
+      }
     });
     galleryPending.queue = [];
     badCards.forEach(function (card) {
@@ -3187,7 +3207,7 @@ export const appJs = `
     fetchGalleryCard(msg.short_id)
       .then(function (html) {
         if (!galleryLiveGrid() || galleryPendingQueued(msg.short_id)) return;
-        galleryPending.queue.push({ shortId: msg.short_id, html: html });
+        galleryPending.queue.push({ shortId: msg.short_id, html: html, refinesShortId: msg.refines_generation_short_id || null });
         updateGalleryPendingUi();
       })
       .catch(function (e) {

@@ -101,7 +101,7 @@ Request の `short_id` から最初の Generation の `/g/` へ 302 で飛ばし
 nav直下にsticky なツールバーを持ちます。
 
 ``` text
-[ 納品以外 | 納品 | すべて ]   bad も表示 ☐   [ 絞り込み ▾ ]
+[ 納品以外 | 納品 | すべて ]   bad も表示 ☐   途中を隠す ☐   [ 絞り込み ▾ ]
 ```
 
 `view` は3値の切り替えです。ラベルは `納品以外` / `納品` / `すべて` で、既定は `view=all`（raw / 仕上げ済み両方）、
@@ -111,6 +111,11 @@ nav直下にsticky なツールバーを持ちます。
 
 「bad も表示」は既定で隠している bad rating の Generation を表示に加えるトグルです
 （`bad=1`）。未評価・good・neutralの Generation は常に表示します。
+
+「途中を隠す」は仕上げの連鎖の先端だけを出すトグルです（`tip=1`、API の`tip=true`）。
+bad でない続き（その Generation を仕上げ元にする Generation）がある Generation を隠すので、
+ワークベンチで積んだ絵は最後のフェーズの出力だけが残ります。採用しなかった候補は先端なので残ります。
+view / bad と同じく他の絞り込みをまたいで保持し、新着のライブ反映も止めません。
 
 `絞り込み`パネル（`<details>`。いずれかの項目に値が入っているときは開いた状態で描画）は
 パネル外クリックまたはEscapeで閉じます（nav の `More` / キュー状態pill と共通の挙動、
@@ -124,7 +129,6 @@ Bookmarked only
 公開済みのみ
 基準のみ
 モデル系統（anima / il / moss / 不明、複数選択は OR）
-フェーズ（生成 / 取り込み / redraw / deliver / saturation / stage / lighting / dof / lens / photo、複数選択は OR）
 ```
 
 「公開済みのみ」は`published=true`（[api.md](api.md#generation-search)）で、少なくとも1件
@@ -134,12 +138,17 @@ pin されているGenerationだけに絞ります（[domain-model.md](domain-mo
 どちらも他のフィルタと同じくview/badトグルをまたいで保持され、いずれかの項目に値が入っているかの
 判定にも数えます。
 
-「モデル系統」は`model`（`anima` / `il` / `moss` / `unknown`）、「フェーズ」は`phase`で、
-チェックボックスは同じキーを繰り返して送ります（リンクはカンマ区切りの1値）。`unknown`は
-系統が決まらない Generation（`model_family`が NULL）です。フェーズはその Generation の
-Request の`kind`に対応し、`generate`は generate / finalize、`redraw`は redraw / repair /
-masked_redraw、それ以外は同名の kind です（対応表は`src/lib/phases.ts`）。どちらも
-[api.md](api.md#generation-search)の絞り込みで、タイムラインと枠範囲にも同じ値が渡ります。
+「モデル系統」は`model`（`anima` / `il` / `moss` / `unknown`）で、チェックボックスは同じキーを
+繰り返して送ります（リンクはカンマ区切りの1値）。`unknown`は系統が決まらない Generation
+（`model_family`が NULL）です。
+
+フェーズはパネルに入れず、ツールバーの下段にボタンとして並べます。ワークベンチのフェーズ列と同じ順に
+元絵 › 描き直し › フチ › 彩度 › 背景 › 光 › ボケ をつなぎ、区切りの後ろにレンズ / 写真合成 / 取り込みを置きます。
+ボタンは押すたびにその値を`phase`（カンマ区切り、複数選択は OR）に足し引きするリンクで、ほかの絞り込みと
+view / bad を保ちます。選んでいる間だけ「解除」が出ます。パネルの検索は選択中の`phase`を hidden で送り直します。
+フェーズはその Generation の Request の`kind`に対応し、`generate`は generate / finalize、`redraw`は
+redraw / repair / masked_redraw、それ以外は同名の kind です（対応表は`src/lib/phases.ts`）。`model`も
+`phase`も[api.md](api.md#generation-search)の絞り込みで、タイムラインと枠範囲にも同じ値が渡ります。
 
 Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはパネルに置かず、
 `GET /api/v1/generations`のqueryとしてMCP/APIから使います（[api.md](api.md#generation-search)）。
@@ -280,7 +289,7 @@ sticky toolbarの下へスクロールアウトしている間は、同じ文言
 2.75rem以上の高さ）をtoolbarの直下中央に浮かべます。
 
 帯かピルを押すと、新着を到着の古い順にグリッド先頭へ挿入し（＝新しいものが一番上に来ます）、
-薄くしたbadのカードを取り除きます。新着を挿入したときは最上部へスクロールします
+薄くしたbadのカードを取り除きます。「途中を隠す」では、挿入した新着の仕上げ元のカードも取り除きます。新着を挿入したときは最上部へスクロールします
 （telemetry `gallery.pending_apply`）。新着が属する枠の見出しがなければ作り、`at=`で開いた一覧でも
 同じようにグリッド先頭へ入れます。タイムラインの枚数は反映の直後に取得し直します（枠のスケルトンの
 数はそのままで、本物のカードが増減ぶんを埋めます）。
