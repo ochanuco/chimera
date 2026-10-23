@@ -10,7 +10,7 @@ import { EXPERIMENT_STATUSES } from '../lib/experiment-status';
 import { ExperimentDetailPage, type ExperimentDetailData, type ExperimentJudgmentSummary } from '../ui/pages/ExperimentDetail';
 import { ExperimentAbPage, type AbPair, type ExperimentAbData } from '../ui/pages/ExperimentAb';
 import { judgedSeedsForPair } from '../lib/judgments';
-import { BookmarksPage } from '../ui/pages/Bookmarks';
+import { BookmarkCards, BookmarksPage } from '../ui/pages/Bookmarks';
 import { ComparePage } from '../ui/pages/Compare';
 import { StatsPage } from '../ui/pages/Stats';
 import { PhotosPage } from '../ui/pages/Photos';
@@ -396,20 +396,37 @@ pages.get('/experiments/:id/ab', async (c) => {
 });
 
 pages.get('/bookmarks', async (c) => {
-  const view = parseGalleryView(c.req.query('view'), 'refined');
-  const genParams = new URLSearchParams({ bookmark: 'true', limit: '100' });
+  const q = c.req.query();
+  const view = parseGalleryView(q.view, 'refined');
+  const genParams = new URLSearchParams({ bookmark: 'true' });
   if (view !== 'all') genParams.set('origin', view);
+  const limit = q.limit ? Math.min(Math.max(Number(q.limit) || 48, 1), 200) : 48;
 
-  const [genRes, bookmarkedExperiments] = await Promise.all([
-    internalApiRequest(c, `/api/v1/generations?${genParams.toString()}`),
-    listBookmarkedExperiments(c.env.DB),
-  ]);
-  const genData = (await genRes.json()) as { items: GenerationCardData[] };
+  // Gallery と同じ無限スクロール (partial=1) と Back 復元 (until) に乗せる。
+  let genData: { items: GenerationCardData[]; next_cursor: string | null };
+  if (q.cursor && q.until) {
+    const restored = await loadGalleryThrough(c, genParams, q.cursor, q.until);
+    if (restored instanceof Response) return restored;
+    genData = restored;
+  } else {
+    const params = new URLSearchParams(genParams);
+    params.set('limit', String(limit));
+    if (q.cursor) params.set('cursor', q.cursor);
+    const genRes = await internalApiRequest(c, `/api/v1/generations?${params.toString()}`);
+    if (!genRes.ok) return genRes;
+    genData = (await genRes.json()) as { items: GenerationCardData[]; next_cursor: string | null };
+  }
 
+  if (q.partial === '1') {
+    return c.html(<BookmarkCards generations={genData.items} nextCursor={genData.next_cursor} view={view} />);
+  }
+
+  const bookmarkedExperiments = await listBookmarkedExperiments(c.env.DB);
   return c.html(
     <BookmarksPage
       path={c.req.path}
       generations={genData.items}
+      nextCursor={genData.next_cursor}
       experiments={bookmarkedExperiments}
       view={view}
     />,

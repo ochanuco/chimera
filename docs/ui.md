@@ -1062,8 +1062,8 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 ブックマークした対象を素早く呼び出します。
 
 ``` text
-Generations
 実験
+Generations
 ```
 
 BookmarkはFavoriteではなく再利用・再訪のための導線です。どの対象も🔖の1操作で切り替えます。
@@ -1076,6 +1076,10 @@ GenerationsセクションはGalleryと同じ3-way view switch（`納品以外` 
 
 Generationsセクションのカードは[GenerationCard](#gallery)でGalleryと共通です（bad非表示との
 組み合わせは無いため、[Gallery pending changes](#gallery-pending-changes)のbadの扱いはありません）。
+
+Generationsは48件ずつ読み込み、Galleryのタイムラインが無いときと同じ無限スクロール（末尾の`もっと見る`を
+`partial=1`で取得して追記）と、詳細から戻ったときの復元（`until`）を使います。カードが下に伸び続けるので、
+実験のセクションを上に置きます。
 
 ## Responsive / Density
 

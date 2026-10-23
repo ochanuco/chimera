@@ -788,6 +788,28 @@ describe('Web GUI pages', () => {
     expect(allHtml).toContain(refined.generation.short_id);
   });
 
+  it('GET /bookmarks pages its Generations with a load-more link and a partial=1 fragment', async () => {
+    await env.DB.prepare('UPDATE generations SET bookmark = 0').run();
+    const made = [];
+    for (let i = 0; i < 3; i += 1) {
+      const { generation } = await createGeneration();
+      await req(`/api/v1/generations/${generation.short_id}/bookmark`, { method: 'PUT' });
+      made.push(generation.short_id);
+    }
+
+    const first = await (await req('/bookmarks?view=all&limit=2')).text();
+    expect(first).toContain('data-gallery-grid');
+    const href = first.match(/class="load-more" href="([^"]+)"/)?.[1]?.replace(/&amp;/g, '&');
+    expect(href).toContain('cursor=');
+    expect(href).toContain('view=all');
+
+    const rest = await (await req(`${href}&partial=1`)).text();
+    expect(rest).not.toContain('<html');
+    expect(rest).not.toContain('class="load-more"');
+    const shown = [...first.matchAll(/data-short-id="([^"]+)"/g), ...rest.matchAll(/data-short-id="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(shown)).toEqual(new Set(made));
+  });
+
   it('GET /batches 404s', async () => {
     const res = await req('/batches');
     expect(res.status).toBe(404);
