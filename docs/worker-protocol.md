@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation | reference
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -207,7 +207,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。`kinds` に `finalize` や `import` を入れると 400 です。
@@ -878,6 +878,54 @@ deliver の出力の彩度を圧縮する worker 実行です（ワークベン�
 
 catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"strength": {"min": 0, "max": 1, "default": 1.0}}`）を公開します。ワークベンチのスライダーの初期値もここから取ります。
 
+### reference
+
+参考画像の構図・仕草・表情・レッグウェアを recipe に当てて 1 枚描く worker 実行です。worker は画像をタグに読み替えて
+通常の [generate](#generate) を積むだけで、自分では描きません。描くのは積んだ generate で、普通の Generation になります。
+
+``` json
+{
+  "kind": "reference",
+  "payload": { "recipe": "yukari", "seed": 123456 }
+}
+```
+
+  payload        型
+  -------------- --------------------------------------------------------------------------
+  recipe         当てる recipe の名前
+  seed           0 以上の整数、省略可。積む generate の seed で、省略時は worker が乱数で決める
+
+payload の未知のキーは 400 です。参考画像は payload に持たず、Request の id から引きます。
+
+worker は claim した reference を次の順に処理します。
+
+1. 参考画像を読む
+2. タグに読み替え、recipe の pose と part patch を組む
+3. `kind = generate` を積む（`created_by = system`、`idempotency_key = reference:{reference の request id}`）。
+   再実行で同じキーを送れば既存の generate が 200 で返るので、generate は 1 件にとどまる
+4. reference を done にする
+
+done の `result` は次の形です。`generation_ids` は常に空で、絵は `generate_request_id` の Request が作ります。
+
+``` json
+{
+  "generation_ids": [],
+  "generate_request_id": "0192d3a8-…",
+  "pose": "bust",
+  "applied": { "framing_tags": ["(from above:1.3)", "(upper body:1.3)"], "gesture": ["hand on own cheek"], "mouth": ["smile"] },
+  "dropped": ["on floor", "shoe soles"]
+}
+```
+
+  result               型
+  -------------------- --------------------------------------------------------------------------
+  generate_request_id  積んだ generate の Request id
+  pose                 当てた pose の名前
+  applied              part 名 → その part に当てたタグの配列。当てなかった part は持たない
+  dropped              tagger が残したが当てなかったタグの配列
+
+chimera はこの result を GUI の表示に読むだけで、検証はしません。画像そのものとそのハッシュはどこにも記録しません。
+
 ### repair
 
 部分描き直し機能の廃止により、`kind = repair` は作れません（`POST /api/v1/requests` も MCP `create_request` も 400）。
@@ -896,7 +944,7 @@ worker は queued の行を従来の契約のまま取れます。
 
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
-  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`
+  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`、[reference](#reference) が積む generate は `reference:{reference の request id}`
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
 

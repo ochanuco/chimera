@@ -199,7 +199,7 @@ export class WorkerHub extends DurableObject<Bindings> {
   private async handleHello(ws: WebSocket, body: { worker_id?: unknown; kinds?: unknown }): Promise<void> {
     const workerId = typeof body.worker_id === 'string' ? body.worker_id : null;
     const kinds = Array.isArray(body.kinds)
-      ? body.kinds.filter((k): k is RequestKind => k === 'generate' || k === 'redraw' || k === 'repair' || k === 'masked_redraw' || k === 'deliver' || k === 'dof' || k === 'lens' || k === 'photo' || k === 'stage' || k === 'lighting' || k === 'saturation')
+      ? body.kinds.filter((k): k is RequestKind => k === 'generate' || k === 'redraw' || k === 'repair' || k === 'masked_redraw' || k === 'deliver' || k === 'dof' || k === 'lens' || k === 'photo' || k === 'stage' || k === 'lighting' || k === 'saturation' || k === 'reference')
       : null;
     const prev = readAttachment(ws) as WorkerAttachment | null;
     const attachment: WorkerAttachment = {

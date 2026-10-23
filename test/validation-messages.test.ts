@@ -186,7 +186,7 @@ const REST_EXPECTED: Record<string, string> = {
   'request claim: empty kinds':
     '400 kinds: Too small: expected array to have >=1 items',
   'request claim: import is not claimable':
-    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"',
+    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"|"reference"',
   'experiment create: non-integer seeds':
     '400 base_parameters.seeds: must be an array of 1-16 non-negative integers',
   'experiment create: seeds and count disagree':
@@ -271,7 +271,7 @@ const MCP_EXPECTED: Record<string, string> = {
   'create_run: bad variables':
     'Input validation error: Invalid arguments for tool create_run: variables.a: Invalid input',
   'create_request: finalize kind':
-    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"',
+    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"|"reference"',
   'create_request: invalid deliver envelope':
     'Input validation error: Invalid arguments for tool create_request: payload.options.stroke_light: Invalid option: expected one of "even"|"n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw", payload: Unrecognized key: "extra"',
   'create_request: bad recipe_ref':

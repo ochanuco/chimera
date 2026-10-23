@@ -71,7 +71,7 @@ function trackMessages(ws: WebSocket): Tracker {
   return { messages, waitFor };
 }
 
-function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver')[]): void {
+function hello(ws: WebSocket, workerId: string, kinds?: ('generate' | 'redraw' | 'repair' | 'masked_redraw' | 'deliver' | 'reference')[]): void {
   ws.send(JSON.stringify({ type: 'hello', worker_id: workerId, kinds }));
 }
 
@@ -239,6 +239,25 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     // 届かないことの確認なので waitFor のタイムアウトは使わず、素朴に待って現れないことを見る。
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(workerT.messages.find((m) => m.type === 'queued' && m.request_id === requestId)).toBeUndefined();
+
+    worker.close();
+  });
+
+  it('kinds filtering: a worker with kinds ["reference"] gets a reference queued', async () => {
+    const worker = await connectWs('/api/v1/worker/ws');
+    const workerT = trackMessages(worker);
+    hello(worker, 'w-reference-only', ['reference']);
+    await workerT.waitFor((m) => m.type === 'hello_ack');
+
+    const created = await postJson<{ id: string }>('/api/v1/requests', {
+      kind: 'reference',
+      payload: { recipe: 'yukari' },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(created.status).toBe(201);
+    const queuedMsg = await workerT.waitFor((m) => m.type === 'queued' && m.request_id === created.body.id);
+    expect(queuedMsg.kind).toBe('reference');
 
     worker.close();
   });

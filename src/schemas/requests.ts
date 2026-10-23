@@ -7,12 +7,12 @@ import { jsonObject } from './request-payloads';
 
 /** finalize は既存の行を読むためだけに残す。作成も claim もできない (FINALIZE_CREATION_MESSAGE)。
  * repair / masked_redraw も既存の行を読むためと、claim 済みの行を worker が扱うためにだけ残す。作成はできない (PARTIAL_FIX_CREATION_MESSAGE)。 */
-export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation']);
-export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation']);
+export const requestKindSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation', 'reference']);
+export const creatableRequestKindSchema = z.enum(['generate', 'redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation', 'reference']);
 /** claim が受ける kind。作成できなくなった repair / masked_redraw も、積まれたままの行を worker が取れるように残す。 */
-export const claimableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation']);
+export const claimableRequestKindSchema = z.enum(['generate', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation', 'reference']);
 /** 出力と絞り込み用。import は worker が claim せず、登録側が done で作る Request で、生成要求の入力には使えない。 */
-export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation', 'import']);
+export const requestKindFilterSchema = z.enum(['generate', 'finalize', 'redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation', 'reference', 'import']);
 export const requestStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'cancelled']);
 export const requestCreatedBySchema = z.enum(['brain', 'mcp', 'gui', 'system']);
 
