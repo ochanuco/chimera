@@ -76,11 +76,12 @@ export function ReferencesPage({ path, items }: { path: string; items: Reference
       <h1>参考画像</h1>
       <form class="photo-upload" data-reference-upload data-max-side={String(PHOTO_MAX_SIDE)}>
         <input type="file" accept="image/png,image/jpeg,image/webp" required data-reference-file />
-        <input type="number" name="seed" min="0" step="1" placeholder="seed" class="reference-seed" data-reference-seed />
+        <input type="number" name="seed" min="0" step="1" placeholder="seed: ランダム" class="reference-seed" data-reference-seed />
         <button type="submit" class="wb-pill wb-pill-on">
           描く
         </button>
         <span class="photo-upload-status" data-reference-status aria-live="polite"></span>
+        <img class="reference-preview" alt="" hidden data-reference-preview />
       </form>
       {items.length === 0 ? (
         <p class="empty-state">参考画像から描いたものはまだありません</p>
