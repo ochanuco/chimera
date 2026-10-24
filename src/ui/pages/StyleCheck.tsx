@@ -29,6 +29,8 @@ export interface StyleCheckPromptDiff {
 
 export interface StyleCheckPoseView {
   pose: string;
+  /** The catalog's display label; null shows the raw name. */
+  label: string | null;
   /** null: the pose has no pin, so it cannot be drawn. */
   pin: StyleCheckNode | null;
   drift: StyleCheckDrift;
@@ -68,7 +70,29 @@ export const DRIFT_LABELS: Record<StyleCheckDrift, string> = {
   no_pin: 'pin なし',
 };
 
-function VariantMatrix({ title, axis, values, poses }: { title: string; axis: StyleCheckAxis; values: string[]; poses: StyleCheckPoseView[] }) {
+/** Display label with the raw identifier kept as a small muted suffix (and title); the raw name alone when there is no label. */
+function Named({ raw, label }: { raw: string; label: string | null | undefined }) {
+  if (!label || label === raw) return <span class="mono">{raw}</span>;
+  return (
+    <span title={raw}>
+      {label} <small class="sc-raw mono">{raw}</small>
+    </span>
+  );
+}
+
+function VariantMatrix({
+  title,
+  axis,
+  values,
+  labels,
+  poses,
+}: {
+  title: string;
+  axis: StyleCheckAxis;
+  values: string[];
+  labels: Record<string, string>;
+  poses: StyleCheckPoseView[];
+}) {
   if (values.length === 0) return null;
   return (
     <section class="sc-matrix" data-sc-matrix={axis}>
@@ -80,9 +104,9 @@ function VariantMatrix({ title, axis, values, poses }: { title: string; axis: St
               <th scope="col">pose</th>
               {values.map((value) => (
                 <th scope="col">
-                  <span class="mono">{value}</span>
-                  <button type="button" class="wb-pill" data-sc-col-render data-axis={axis} data-value={value}>
-                    列を描く
+                  <Named raw={value} label={labels[value]} />
+                  <button type="button" class="wb-pill" data-sc-col-render data-axis={axis} data-value={value} title={value}>
+                    {labels[value] ?? value}の列を描く
                   </button>
                 </th>
               ))}
@@ -91,8 +115,8 @@ function VariantMatrix({ title, axis, values, poses }: { title: string; axis: St
           <tbody>
             {poses.map((p) => (
               <tr>
-                <th scope="row" class="mono">
-                  {p.pose}
+                <th scope="row">
+                  <Named raw={p.pose} label={p.label} />
                 </th>
                 {values.map((value) => (
                   <td class="sc-cell" data-sc-cell data-pose={p.pose} data-axis={axis} data-value={value}></td>
@@ -113,6 +137,8 @@ export function StyleCheckPage({
   poses,
   angles,
   framings,
+  angleLabels,
+  framingLabels,
   selectedPose,
   sweep,
 }: {
@@ -123,6 +149,9 @@ export function StyleCheckPage({
   /** The catalog recipe's `angles` / `framings`: the matrix columns. */
   angles: string[];
   framings: string[];
+  /** The catalog's `angle_labels` / `framing_labels` (word → display label). */
+  angleLabels: Record<string, string>;
+  framingLabels: Record<string, string>;
   /** `?pose=`: the pose whose compare viewer is open. */
   selectedPose: string | null;
   /** `?sweep=`: show that pose sweep's results on the right instead of the latest plain render. */
@@ -157,11 +186,18 @@ export function StyleCheckPage({
           {recipe} · {poses.length} pose · 今のカタログ commit: <code>{gitCommit ?? '-'}</code>
         </p>
 
+        {sweep ? null : (
+          <>
+            <VariantMatrix title="アングル" axis="angle" values={angles} labels={angleLabels} poses={poses} />
+            <VariantMatrix title="画角" axis="framing" values={framings} labels={framingLabels} poses={poses} />
+          </>
+        )}
+
         <div class="sc-list">
           {poses.map((p) => (
             <article class="sc-row" data-sc-pose={p.pose}>
               <div class="sc-name">
-                <span class="mono">{p.pose}</span>
+                <Named raw={p.pose} label={p.label} />
                 <span class={`sc-drift sc-drift-${p.drift}`} data-sc-drift>
                   {DRIFT_LABELS[p.drift]}
                 </span>
@@ -202,13 +238,6 @@ export function StyleCheckPage({
             </article>
           ))}
         </div>
-
-        {sweep ? null : (
-          <>
-            <VariantMatrix title="アングル" axis="angle" values={angles} poses={poses} />
-            <VariantMatrix title="画角" axis="framing" values={framings} poses={poses} />
-          </>
-        )}
 
         <div class="sc-viewer wb" data-sc-viewer hidden={!selected}>
           <div class="wb-head">

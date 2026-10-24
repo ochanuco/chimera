@@ -57,6 +57,28 @@ export function styleCheckVocab(catalog: CatalogWithDoc | null, recipe: string):
   return { angle: words(entry?.angles), framing: words(entry?.framings) };
 }
 
+export type StyleCheckLabels = Record<StyleCheckAxis, Record<string, string>>;
+
+/** recipe の `angle_labels` / `framing_labels` (語 → 表示ラベル)。無い・文字列でない値は欠落として扱う。 */
+export function styleCheckLabels(catalog: CatalogWithDoc | null, recipe: string): StyleCheckLabels {
+  const entry = catalog?.doc.recipes.find((r) => r.name === recipe) as { angle_labels?: unknown; framing_labels?: unknown } | undefined;
+  const labels = (map: unknown) => {
+    const out: Record<string, string> = {};
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      for (const [word, label] of Object.entries(map)) if (typeof label === 'string' && label !== '') out[word] = label;
+    }
+    return out;
+  };
+  return { angle: labels(entry?.angle_labels), framing: labels(entry?.framing_labels) };
+}
+
+/** カタログ上の pose レコードの `label`。Preset だけの pose などレコードが無いときは null。 */
+export function poseLabel(catalog: CatalogWithDoc | null, recipe: string, pose: string): string | null {
+  const record = catalog ? findCatalogPose(catalog.doc, recipe, pose) : null;
+  const label = record && typeof record === 'object' ? (record as { label?: unknown }).label : null;
+  return typeof label === 'string' && label !== '' ? label : null;
+}
+
 export function variantOf(axis: StyleCheckAxis, value: string): StyleCheckVariant {
   return axis === 'angle' ? { angle: value } : { framing: value };
 }
@@ -125,6 +147,8 @@ export interface StyleCheckVariantCell {
 
 export interface StyleCheckRow {
   pose: string;
+  /** カタログの表示ラベル。無ければ null (生の名前で出す)。 */
+  label: string | null;
   /** 現在の pin。無ければこの pose の行は描けない (GET /check「pin なし」)。 */
   pin: PresetReferenceView | null;
   drift: DriftState;
@@ -173,15 +197,17 @@ export async function loadStyleCheckRows(
   db: D1Database,
   recipe: string,
   recipeRef: string,
-): Promise<{ rows: StyleCheckRow[]; vocab: Record<StyleCheckAxis, string[]> }> {
+): Promise<{ rows: StyleCheckRow[]; vocab: Record<StyleCheckAxis, string[]>; labels: StyleCheckLabels }> {
   const catalog = await getCatalog(db, recipeRef);
   const vocab = styleCheckVocab(catalog, recipe);
+  const labels = styleCheckLabels(catalog, recipe);
   // pose ごとに数往復の D1 クエリがあり、直列だと pose 数に比例して遅くなるので並列に引く。
   const rows = await Promise.all(
     (await listStyleCheckPoseNames(db, recipe, catalog)).map(async (pose): Promise<StyleCheckRow> => {
       const framing = poseOwnFraming(catalog, recipe, pose);
+      const label = poseLabel(catalog, recipe, pose);
       const pin = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
-      if (!pin) return { pose, pin, drift: 'no_pin', prompt_diff: [], idempotency_key: null, request: null, framing, variants: [] };
+      if (!pin) return { pose, label, pin, drift: 'no_pin', prompt_diff: [], idempotency_key: null, request: null, framing, variants: [] };
       const catalogPose = catalog ? findCatalogPose(catalog.doc, recipe, pose) : null;
       const [content, { drift, diff }] = await Promise.all([
         styleCheckKeyContent(db, catalog, recipe, pose, pin.seed),
@@ -199,7 +225,7 @@ export async function loadStyleCheckRows(
           request: null as RequestRow | null,
         })),
       );
-      return { pose, pin, drift, prompt_diff: diff, idempotency_key: idempotencyKey, request: null, framing, variants };
+      return { pose, label, pin, drift, prompt_diff: diff, idempotency_key: idempotencyKey, request: null, framing, variants };
     }),
   );
 
@@ -216,7 +242,7 @@ export async function loadStyleCheckRows(
     row.request = row.idempotency_key ? byKey.get(row.idempotency_key) ?? null : null;
     for (const v of row.variants) v.request = byKey.get(v.idempotency_key) ?? null;
   }
-  return { rows, vocab };
+  return { rows, vocab, labels };
 }
 
 export interface StyleCheckRenderResult {

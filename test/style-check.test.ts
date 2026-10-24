@@ -527,3 +527,58 @@ async function pinSeed(pose: string): Promise<number | null> {
     .first<{ seed: number | null }>();
   return row?.seed ?? null;
 }
+
+describe('GET /check labels', () => {
+  const ANGLE_LABELS = { from_below: 'あおり', from_above: '俯瞰', from_front: '正面', from_side: '横', from_behind: '背面', dutch: '傾き', pov: '主観' };
+  const FRAMING_LABELS = { face: '顔', bust: 'バスト', upper: '上半身', cowboy: '膝上', full: '全身', lying: '寝そべり', close: '寄り' };
+  const VOCAB_WORDS = { angles: ['from_below', 'from_above', 'unlabeled'], framings: ['bust', 'full'] };
+
+  beforeEach(async () => {
+    await clearRequests();
+    await env.DB.prepare('DELETE FROM preset_references').run();
+  });
+
+  it('shows catalog labels with the raw name kept, and puts the matrices before the per-pose list', async () => {
+    await publishAndImport(
+      'lbl0001',
+      undefined,
+      { ...VOCAB_WORDS, angle_labels: ANGLE_LABELS, framing_labels: FRAMING_LABELS },
+      { label: 'バスト' },
+      ['promoted'],
+    );
+    const html = await (await req('/check')).text();
+    expect(html).toContain('あおりの列を描く');
+    expect(html).not.toContain('from_belowの列を描く');
+    expect(html).toContain('title="from_below"');
+    expect(html).toContain('<small class="sc-raw mono">from_below</small>');
+    expect(html).toContain('バストの列を描く');
+    expect(html).toContain('<small class="sc-raw mono">bust</small>');
+    expect(html).toMatch(/title="bust">バスト <small/);
+    expect(html.indexOf('data-sc-matrix="angle"')).toBeLessThan(html.indexOf('class="sc-list"'));
+    expect(html.indexOf('data-sc-matrix="framing"')).toBeLessThan(html.indexOf('class="sc-list"'));
+  });
+
+  it('falls back to the raw name when a label is missing or not a string', async () => {
+    await publishAndImport(
+      'lbl0002',
+      undefined,
+      { ...VOCAB_WORDS, angle_labels: { from_below: 42, from_above: '俯瞰' }, framing_labels: 'oops' },
+      { label: 7 },
+      ['promoted'],
+    );
+    const html = await (await req('/check')).text();
+    expect(html).toContain('俯瞰の列を描く');
+    expect(html).toContain('from_belowの列を描く');
+    expect(html).toContain('unlabeledの列を描く');
+    expect(html).toContain('bustの列を描く');
+    expect(html).not.toContain('class="sc-raw mono">bust<');
+    expect(html).toContain('<span class="mono">promoted</span>');
+  });
+
+  it('shows raw names for an older catalog without any label field', async () => {
+    await publishAndImport('lbl0003', undefined, VOCAB_WORDS);
+    const html = await (await req('/check')).text();
+    expect(html).toContain('from_belowの列を描く');
+    expect(html).not.toContain('sc-raw');
+  });
+});

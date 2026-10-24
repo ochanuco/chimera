@@ -455,7 +455,7 @@ pages.get('/check', async (c) => {
   const catalog = await getCatalog(c.env.DB, recipeRef);
   const gitCommit = catalog?.row.git_commit ?? null;
 
-  const { rows, vocab } = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
+  const { rows, vocab, labels } = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
   const sweepParam = c.req.query('sweep');
   const sweep = sweepParam ? await loadPoseSweep(c.env.DB, sweepParam) : null;
   if (sweep) for (const row of rows) row.request = sweep.requests.get(row.pose) ?? null;
@@ -478,6 +478,7 @@ pages.get('/check', async (c) => {
 
   const poses: StyleCheckPoseView[] = rows.map((row, i) => ({
     pose: row.pose,
+    label: row.label,
     pin: row.pin ? nodeById.get(row.pin.generation_id) ?? null : null,
     drift: row.drift,
     prompt_diff: row.prompt_diff,
@@ -499,6 +500,8 @@ pages.get('/check', async (c) => {
       poses={poses}
       angles={vocab.angle}
       framings={vocab.framing}
+      angleLabels={labels.angle}
+      framingLabels={labels.framing}
       selectedPose={c.req.query('pose') ?? null}
       sweep={sweep ? { short_id: sweep.short_id, name: sweep.name, patches: sweep.patches } : null}
     />,

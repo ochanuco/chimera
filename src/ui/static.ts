@@ -1202,6 +1202,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .style-check-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .sc-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
 .sc-row { display: grid; grid-template-columns: 10rem 9rem 12rem 1fr; gap: 0.75rem; align-items: start; padding: 0.6rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; }
+.sc-raw { color: var(--text-dim); font-size: 0.75em; }
 .sc-name { display: flex; flex-direction: column; gap: 0.3rem; }
 .sc-pin .card, .sc-result .card { width: 7.5rem; }
 .sc-empty { color: var(--text-dim); font-size: 0.85rem; }
@@ -2740,7 +2741,9 @@ export const appJs = `
       viewerEl.hidden = !p;
       document.body.style.overflow = p ? 'hidden' : '';
       if (!p) return;
-      qs('[data-scv-name]', viewerEl).textContent = p.pose;
+      var scvName = qs('[data-scv-name]', viewerEl);
+      scvName.textContent = p.label || p.pose;
+      scvName.title = p.label ? p.pose : '';
       var rowDrift = qsa('[data-sc-pose]', root).filter(function (el) { return el.getAttribute('data-sc-pose') === p.pose; }).map(function (el) { return qs('[data-sc-drift]', el); })[0];
       var drift = qs('[data-scv-drift]', viewerEl);
       drift.className = rowDrift.className;
