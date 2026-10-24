@@ -47,10 +47,10 @@ async function sha256Hex(text: string): Promise<string> {
 
 /**
  * 絵柄チェックの idempotency key: `style-check:<recipe>:<pose>:<sha256>`。ハッシュの入力は plain render が
- * 描く内容だけ — pin の seed、pose の preset (版と本文)、カタログ上の pose レコード (prompt / negative / canvas など)、
- * recipe 直下の pose 以外の定義 (parameters / costumes / expressions / parts / model など。`poses` と、描画に関わらない
- * `dials` / `redraw` / `deliver` (古い `finalize` も) は除く)。
- * git_commit・generated_at・patches・backdrops は入れないので、docs や納品の既定だけの変更では key が変わらない。
+ * 描く内容だけ — pin の seed、pose の preset (版と本文)、カタログ上の pose レコードの positive / negative / canvas、
+ * recipe の model。
+ * パラメータ語彙 (parameters / angles など) や pose の parts / fingerprint などの付随情報、git_commit・generated_at・
+ * patches・backdrops は入れないので、描く絵が変わらないカタログ変更では key が変わらない。
  */
 export async function styleCheckIdempotencyKey(
   db: D1Database,
@@ -59,16 +59,20 @@ export async function styleCheckIdempotencyKey(
   pose: string,
   seed: number,
 ): Promise<string> {
-  const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as Record<string, unknown> | undefined;
-  const { poses: _poses, dials: _dials, redraw: _redraw, deliver: _deliver, finalize: _finalize, ...recipeLevel } = recipeEntry ?? {};
+  const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as { model?: unknown } | undefined;
+  const poseRecord = (catalog ? findCatalogPose(catalog.doc, recipe, pose) : null) as
+    | { positive?: unknown; negative?: unknown; canvas?: unknown }
+    | string
+    | null;
+  const poseObject = poseRecord && typeof poseRecord === 'object' ? poseRecord : null;
   const preset = await getPresetRow(db, recipe, 'pose', pose);
   const content = {
     recipe,
     pose,
     seed,
     preset: preset ? { version: preset.version, body: JSON.parse(preset.body_json) as unknown } : null,
-    pose_record: catalog ? findCatalogPose(catalog.doc, recipe, pose) : null,
-    recipe_level: recipeLevel,
+    pose_record: poseObject ? { positive: poseObject.positive, negative: poseObject.negative, canvas: poseObject.canvas } : null,
+    model: recipeEntry?.model ?? null,
   };
   return `style-check:${recipe}:${pose}:${await sha256Hex(stableStringify(content))}`;
 }

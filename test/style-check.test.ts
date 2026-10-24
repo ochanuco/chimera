@@ -22,9 +22,10 @@ function sampleCatalog(
     recipes: [
       {
         name: RECIPE,
+        model: 'model-a',
         ...delivery,
         poses: [
-          { name: 'bust', prompt: bustPrompt, ...bustExtra },
+          { name: 'bust', prompt: bustPrompt, positive: bustPrompt, ...bustExtra },
           { name: 'coffee', prompt: 'holding cup, cowboy shot' },
           ...extraPoses.map((name) => ({ name, prompt: `${name} pose` })),
         ],
@@ -192,6 +193,43 @@ describe('style-check content key', () => {
     });
     expect(await keyFor('bust', 123)).toBe(before);
   });
+
+  it('stays the same when only parameters, vocab lists or pose metadata change', async () => {
+    await publishAndImport('aaa1111');
+    const before = await keyFor('bust', 123);
+
+    await publishAndImport(
+      'aaa1111',
+      undefined,
+      {
+        parameters: { allowed: ['angle', 'framing'] },
+        angles: ['front', 'side'],
+        framings: ['bust', 'cowboy'],
+      },
+      { framing: 'bust', parts: { face: 'smile' }, costume: 'default', expression: 'smile', legwear: 'none', fingerprint: 'fp-2' },
+    );
+    expect(await keyFor('bust', 123)).toBe(before);
+  });
+
+  it('changes when positive, negative, canvas, model, seed or preset version changes', async () => {
+    await publishAndImport('aaa1111', undefined, undefined, { negative: 'blurry', canvas: { width: 832, height: 1216 } });
+    const before = await keyFor('bust', 123);
+
+    await publishAndImport('aaa1111', undefined, undefined, { negative: 'blurry', canvas: { width: 832, height: 1216 }, positive: 'other' });
+    expect(await keyFor('bust', 123)).not.toBe(before);
+    await publishAndImport('aaa1111', undefined, undefined, { negative: 'lowres', canvas: { width: 832, height: 1216 } });
+    expect(await keyFor('bust', 123)).not.toBe(before);
+    await publishAndImport('aaa1111', undefined, undefined, { negative: 'blurry', canvas: { width: 1024, height: 1024 } });
+    expect(await keyFor('bust', 123)).not.toBe(before);
+    await publishAndImport('aaa1111', undefined, { model: 'model-b' }, { negative: 'blurry', canvas: { width: 832, height: 1216 } });
+    expect(await keyFor('bust', 123)).not.toBe(before);
+
+    await publishAndImport('aaa1111', undefined, undefined, { negative: 'blurry', canvas: { width: 832, height: 1216 } });
+    expect(await keyFor('bust', 123)).toBe(before);
+    expect(await keyFor('bust', 124)).not.toBe(before);
+    await env.DB.prepare("UPDATE presets SET version = version + 1 WHERE recipe = ? AND kind = 'pose' AND name = 'bust'").bind(RECIPE).run();
+    expect(await keyFor('bust', 123)).not.toBe(before);
+  });
 });
 
 describe('catalog PUT auto render', () => {
@@ -216,12 +254,16 @@ describe('catalog PUT auto render', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(await count()).toBe(2);
     const keys = await styleCheckKeys();
+    const keysBefore = new Set(Object.values(keys));
 
     expect((await put('ccc3333', 'bust up, smiling')).status).toBe(200);
     await vi.waitFor(async () => expect(await count()).toBe(3));
-    const after = await styleCheckKeys();
-    expect(after.coffee).toBe(keys.coffee);
-    expect(after.bust).not.toBe(keys.bust);
+    const { results } = await env.DB.prepare("SELECT idempotency_key FROM requests WHERE idempotency_key LIKE 'style-check:%'").all<{
+      idempotency_key: string;
+    }>();
+    const added = results.map((r) => r.idempotency_key).filter((k) => !keysBefore.has(k));
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatch(/^style-check:yukari:bust:/);
   });
 
   it('does not render for a non-default recipe_ref', async () => {

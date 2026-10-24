@@ -838,7 +838,7 @@ pinが無いポーズも並び、`pin なし`と出します。1ポーズが1行
     (`style-check:<recipe>:<pose>:<sha256>`、`src/lib/style-check.ts`の
     `styleCheckIdempotencyKey`)に一致するrequestを探すだけで(積まない)、無ければ`未描画`と出します。
     ハッシュの入力は、pinのseed、poseのPreset（版と本文）、
-    カタログ上のposeレコード、recipe直下のpose以外の定義（`poses`と`dials`を除く）です。
+    カタログ上のposeレコードの`positive` / `negative` / `canvas`、recipeの`model`です。パラメータ語彙やposeの`parts`などは入れません。
     git commit・generated_at・patches・backdropsは入れないので、docsや納品の既定だけの
     変更・worker再起動ではkeyが変わらず、結果は空になりません。結果があれば pin と同じカード（seed 付き）を出します。
 -   `今のコードで描き直す`: そのポーズだけを描き直します。pinが無いときは押せません。
