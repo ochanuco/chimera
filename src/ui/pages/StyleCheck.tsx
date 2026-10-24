@@ -40,6 +40,19 @@ export interface StyleCheckPoseView {
   result: StyleCheckNode | null;
   /** Sweep mode only: the pose is not part of the sweep. */
   excluded: boolean;
+  /** The catalog pose's framing: that framing column shows the pin itself. */
+  framing: string | null;
+  /** Pinned poses only: one cell per angle / framing word, except the pose's own framing. */
+  variants: StyleCheckVariantView[];
+}
+
+export type StyleCheckAxis = 'angle' | 'framing';
+
+export interface StyleCheckVariantView {
+  axis: StyleCheckAxis;
+  value: string;
+  request: StyleCheckRequest | null;
+  result: StyleCheckNode | null;
 }
 
 export interface StyleCheckSweep {
@@ -55,11 +68,51 @@ export const DRIFT_LABELS: Record<StyleCheckDrift, string> = {
   no_pin: 'pin なし',
 };
 
+function VariantMatrix({ title, axis, values, poses }: { title: string; axis: StyleCheckAxis; values: string[]; poses: StyleCheckPoseView[] }) {
+  if (values.length === 0) return null;
+  return (
+    <section class="sc-matrix" data-sc-matrix={axis}>
+      <h2 class="sc-matrix-title">{title}</h2>
+      <div class="sc-matrix-scroll">
+        <table class="sc-matrix-table">
+          <thead>
+            <tr>
+              <th scope="col">pose</th>
+              {values.map((value) => (
+                <th scope="col">
+                  <span class="mono">{value}</span>
+                  <button type="button" class="wb-pill" data-sc-col-render data-axis={axis} data-value={value}>
+                    列を描く
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {poses.map((p) => (
+              <tr>
+                <th scope="row" class="mono">
+                  {p.pose}
+                </th>
+                {values.map((value) => (
+                  <td class="sc-cell" data-sc-cell data-pose={p.pose} data-axis={axis} data-value={value}></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function StyleCheckPage({
   path,
   recipe,
   gitCommit,
   poses,
+  angles,
+  framings,
   selectedPose,
   sweep,
 }: {
@@ -67,6 +120,9 @@ export function StyleCheckPage({
   recipe: string;
   gitCommit: string | null;
   poses: StyleCheckPoseView[];
+  /** The catalog recipe's `angles` / `framings`: the matrix columns. */
+  angles: string[];
+  framings: string[];
   /** `?pose=`: the pose whose compare viewer is open. */
   selectedPose: string | null;
   /** `?sweep=`: show that pose sweep's results on the right instead of the latest plain render. */
@@ -146,6 +202,13 @@ export function StyleCheckPage({
             </article>
           ))}
         </div>
+
+        {sweep ? null : (
+          <>
+            <VariantMatrix title="アングル" axis="angle" values={angles} poses={poses} />
+            <VariantMatrix title="画角" axis="framing" values={framings} poses={poses} />
+          </>
+        )}
 
         <div class="sc-viewer wb" data-sc-viewer hidden={!selected}>
           <div class="wb-head">

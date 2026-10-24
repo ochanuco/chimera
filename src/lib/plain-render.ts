@@ -8,6 +8,8 @@ export interface PlainRenderInput {
   recipe: string;
   pose: string;
   seed?: number;
+  /** generate parameters merged next to `pose` (e.g. a style-check variant `{angle}` / `{framing}`). */
+  parameters?: JsonObject;
   idempotency_key?: string;
   recipe_ref: string;
 }
@@ -43,14 +45,18 @@ export async function buildPlainRenderRequest(db: D1Database, input: PlainRender
     throw conflict(`no reference pinned for ${input.recipe}/${input.pose}; pass seed or set_pose_reference first`);
   }
 
+  const extra = Object.entries(input.parameters ?? {}).map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`);
   const payload: JsonObject = {
     schema_version: 1,
-    request: { count: 1, instruction: `plain ${input.pose}`, seeds: [seed] },
-    generation: { recipe: input.recipe, parameters: { pose: input.pose } },
-    semantic: { summary: `plain render of ${input.recipe} ${input.pose}: recipe defaults, no patches, seed ${seed}` },
+    request: { count: 1, instruction: ['plain', input.pose, ...extra].join(' '), seeds: [seed] },
+    generation: { recipe: input.recipe, parameters: { ...input.parameters, pose: input.pose } },
+    semantic: {
+      summary: `plain render of ${input.recipe} ${input.pose}: recipe defaults${extra.length ? ` + ${extra.join(', ')}` : ''}, no patches, seed ${seed}`,
+    },
   };
 
-  const idempotencyKey = input.idempotency_key ?? plainRenderIdempotencyKey(input.recipe, input.pose, seed, found.row.git_commit);
+  const defaultKey = plainRenderIdempotencyKey(input.recipe, input.pose, seed, found.row.git_commit);
+  const idempotencyKey = input.idempotency_key ?? (extra.length ? `${defaultKey}:${extra.join(',')}` : defaultKey);
 
   return { payload, seed, idempotency_key: idempotencyKey, reference };
 }

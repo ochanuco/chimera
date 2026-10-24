@@ -847,6 +847,24 @@ pinが無いポーズも並び、`pin なし`と出します。1ポーズが1行
     （`POST /api/v1/generations/{id}/pose-reference`）、ページを読み込み直します。結果は同じseedで描かれているので、差し替えてもkeyは変わりません。
 -   `/compare で開く`リンク（`/compare?ids=<pinのshort_id>,<結果のshort_id>`）。結果があるときだけ出します。
 
+#### アングルと画角の行列
+
+一覧の下に`アングル`と`画角`の2つの行列を上下に並べます。行は一覧と同じポーズ（同じ順）、列は公開済みカタログのrecipeの`angles`（`アングル`）と
+`framings`（`画角`）の語です。語彙が空の行列は出しません。1セルは、そのポーズをpinのseed・recipe既定のまま、`generation.parameters`の`pose`の隣に
+`angle`か`framing`のどちらか1語だけを足して描いた絵（variant）です。2語以上の組み合わせは描きません。
+
+-   pinが無いポーズのセルは`pin なし`です。
+-   `画角`の行列で、カタログのposeレコードの`framing`と同じ列はpinそのものを出し（`pin`の印）、描きません。
+-   まだ描いていないセルには`描く`ボタンを出し、そのセルだけを描きます。列見出しの`列を描く`はその語をpin済みの全ポーズについて描きます。
+-   queued / runningのセルは`待機中…` / `処理中…`、failedは`失敗`（エラーはツールチップ）で、一覧と同じ3秒ごとの取り直しで埋まります。
+-   描けたセルはワイプです。同じ箱にpin（左）とvariant（右）を重ね、上のpinをポインタのx位置で切ります。仕切りはホバー中ポインタに追従し、
+    離れると中央（キー操作のあとはその位置）に戻ります。タッチはポインタイベントで横に動かすと追従します。セルにフォーカスがあるときは`←` / `→`で仕切りを動かします。
+    2枚とも`object-fit: contain`で箱に収めるので、canvasが違う画角でも揃います。
+-   セルはvariantのGeneration Detail（`/g/<short_id>`）へのリンクで、評価（`bad` / `neutral` / `good`）はそこで付けます。セルの右下にvariantの評価を出し、
+    `bad`のセルは枠を赤くします。
+
+セルの request は一覧と同じく idempotency key で探すだけで、積みません（keyは[api.md](api.md#絵柄チェック)）。sweep表示（下記）のときは行列を出しません。
+
 `/check?sweep=<experimentのshort_id>`は、右側を「最新の描き直し」から「そのpose sweep（MCP `sweep_patch`、[experiment-agent.md](experiment-agent.md#sweep_patch)）の結果」に替えます。
 sweepのRunが無いposeは`対象外`と出し、sweepのRunが生成中の間は同じ3秒ごとの取り直しで埋まります。
 ページ上部にsweepの名前、patches（読み取り専用の折りたたみ）、実験ページへのリンクを出します。
@@ -881,7 +899,7 @@ pin なし   pinが無い
 `positive` / `negative`との差（`diffFactSummaries`、トークン単位の`promptDelta`）を折りたたみで出します。全文も開けます。
 カタログのposeがその文字列を持たないキーは比べません。
 
-ページ上部の`pin 済みを全部描き直す`ボタンと各行の`今のコードで描き直す`ボタンが`POST /api/v1/style-check/{recipe}`
+ページ上部の`pin 済みを全部描き直す`ボタン、各行の`今のコードで描き直す`ボタン、行列の`列を描く` / `描く`ボタンが`POST /api/v1/style-check/{recipe}`
 （[api.md](api.md#絵柄チェック)）を呼びます。pinを持つポーズごとに、MCP
 `plain_render`と同じ組み立て（`buildPlainRenderRequest` → `createRequest`、`created_by =
 gui`）でrequestを積みます。pinが無いポーズはskipされ、応答にその旨が残ります。idempotency
@@ -890,9 +908,9 @@ keyが上と同じなので、描画内容が同じ間の連打は積み直さ�
 
 カタログの公開（`PUT /api/v1/catalogs/{recipe_ref}`）では何も積みません。描き直しはこのボタンからだけです。
 
-queued / runningのrequestがある間は、ページが3秒ごとにrequestを取り直し、doneになればその行の結果を差し替えます（reload不要）。
+queued / runningのrequestがある間は、ページが3秒ごとにrequestを取り直し、doneになればその行や行列のセルの結果を差し替えます（reload不要）。
 
-絵柄チェックが書き込むのはplain renderのrequest行と、`good にして基準にする`によるratingとpinだけです。GUIはpromptを書きません
+絵柄チェックが書き込むのはplain render（variantを含む）のrequest行と、`good にして基準にする`によるratingとpinだけです。GUIはpromptを書きません
 （pinの変更はGeneration Detailの「基準にする」と同じ窓口、[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
 ## Experiment View
@@ -1170,7 +1188,7 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |
 | `pose_reference.set` | `generation_id`, `from`（絵柄チェックのときだけ`style_check`） | Generation Detailの`基準にする`（`initPoseReference`）、絵柄チェックの`pin を差し替える` |
 | `promote_profile.submit` | `generation_id`, `name`, `version` | Generation Detailの`profile に登録`（`initPromoteToProfile`） |
-| `style_check.render` | `recipe` | 絵柄チェックの`今の既定で描く`（`initStyleCheck`） |
+| `style_check.render` | `recipe`, `pose`, `axis`, `value`（行列のときだけ`angle` / `framing`と語） | 絵柄チェックの描き直しと行列の`列を描く` / `描く`（`initStyleCheck`） |
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
 | `queue.group.click` | `kinds`, `has_request` | キュー状態パネルの行クリック（`navQueueRow`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |

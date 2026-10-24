@@ -12,7 +12,8 @@ export const styleCheck = new Hono<AppEnv>();
 styleCheck.post('/:recipe', async (c) => {
   const recipe = c.req.param('recipe');
   const body = parseOrThrow(styleCheckRenderSchema, await c.req.json().catch(() => ({})));
-  const { results, createdRequests } = await renderStyleCheck(c.env.DB, c.env, recipe, body.pose);
+  const variant = body.angle ? { angle: body.angle } : body.framing ? { framing: body.framing } : undefined;
+  const { results, createdRequests } = await renderStyleCheck(c.env.DB, c.env, recipe, { pose: body.pose, variant });
   for (const row of createdRequests) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json({
     results: results.map((r) => ({

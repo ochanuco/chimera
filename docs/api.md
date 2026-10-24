@@ -1618,20 +1618,27 @@ MCP `set_pose_reference` と違い `recipe` / `pose` を渡しません — こ�
 ## 絵柄チェック
 
 ``` text
-POST /api/v1/style-check/{recipe}   {pose?}
+POST /api/v1/style-check/{recipe}   {pose?, angle?, framing?}
 ```
 
-`/check`（[ui.md](ui.md#絵柄チェック)）の`pin 済みを全部描き直す`ボタンと各行の`今のコードで描き直す`ボタンが呼ぶ窓口です。
+`/check`（[ui.md](ui.md#絵柄チェック)）の`pin 済みを全部描き直す`ボタン、各行の`今のコードで描き直す`ボタン、アングル / 画角の行列の
+`列を描く` / `描く`ボタンが呼ぶ窓口です。
 body は省略でき、`pose` を渡すとそのポーズだけを対象にします。省略時の対象は、公開済みカタログの
 `recipe` のポーズとPresetだけに存在するポーズ（`src/lib/style-check.ts` の `listStyleCheckPoseNames`）のうち
 pin を持つもの全部です。MCP `plain_render` と同じ組み立て
 （`buildPlainRenderRequest` → `createRequest`）で `kind = generate` の request を積みます。
+
+`angle` か `framing` を渡すと variant を描きます。pin の seed・recipe 既定のまま、`generation.parameters` を
+`{pose, angle}` / `{pose, framing}` にした request です。渡せるのはどちらか 1 つの 1 語だけで、両方を渡すと 400、
+語が公開済みカタログの recipe の `angles` / `framings` に無ければ 400 です。`framing` がカタログの pose レコードの
+`framing`（その pose 自身の画角）と同じポーズは `skipped: "own_framing"` で、積みません。
+
 `created_by` は `'gui'` 固定、idempotency key は
 `style-check:<recipe>:<pose>:<sha256>` です。sha256 は pin の seed・pose の Preset・カタログ上の
 pose レコードの `positive` / `negative` / `canvas`・recipe の `model` の canonical JSON で、
-git commit は含みません。描画内容が同じ間の連打は積み直さず既存行を返します。
-`recipe_ref` が `REQUESTS_DEFAULT_RECIPE_REF` のカタログの `PUT` 後にも同じ処理が
-バックグラウンドで走り、描画内容が変わった pose だけが積まれます。
+variant のときだけそこに `variant`（`{"angle": "<語>"}` / `{"framing": "<語>"}`）を足します。git commit は含みません。
+描画内容が同じ間の連打は積み直さず既存行を返します（`created: false`）。
+カタログの `PUT` では何も積みません。
 
 ``` json
 {
@@ -1642,8 +1649,8 @@ git commit は含みません。描画内容が同じ間の連打は積み直さ
 }
 ```
 
-pin が無いポーズは `skipped: "no_pin"` で、request は積まれません。常に 200 を返します（行ごとの skip/replay は
-エラーではありません）。
+pin が無いポーズは `skipped: "no_pin"` で、request は積まれません。語彙外の variant 以外は常に 200 を返します
+（行ごとの skip/replay はエラーではありません）。
 
 ## Tags
 

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { styleCheckIdempotencyKey } from '../src/lib/style-check';
 import { getCatalog } from '../src/lib/catalogs';
+import { stableStringify } from '../src/lib/json-canonical';
 import { createGeneration, getJson, mcpToolCall, postJson, req, clearRequests } from './helpers';
 
 // STYLE_CHECK_RECIPE (src/lib/style-check.ts) hardcodes 'yukari', and defaultRecipeRef
@@ -396,3 +397,133 @@ describe('GET /check', () => {
     }
   });
 });
+
+const VOCAB = { angles: ['from_below', 'from_above'], framings: ['bust', 'full'] };
+
+describe('style-check variants', () => {
+  beforeEach(async () => {
+    await clearRequests();
+    await env.DB.prepare('DELETE FROM preset_references').run();
+  });
+
+  async function keyFor(pose: string, seed: number, variant?: { angle: string } | { framing: string }): Promise<string> {
+    return styleCheckIdempotencyKey(env.DB, await getCatalog(env.DB, RECIPE_REF), RECIPE, pose, seed, variant);
+  }
+
+  it('keys a variant apart from the default and from other variants, and leaves the default key as the content hash without a variant', async () => {
+    await publishAndImport('var0001', undefined, VOCAB, { framing: 'bust' });
+    const preset = await env.DB.prepare("SELECT version, body_json FROM presets WHERE recipe = ? AND kind = 'pose' AND name = 'bust'")
+      .bind(RECIPE)
+      .first<{ version: number; body_json: string }>();
+    const content = {
+      recipe: RECIPE,
+      pose: 'bust',
+      seed: 123,
+      preset: { version: preset!.version, body: JSON.parse(preset!.body_json) as unknown },
+      pose_record: { positive: 'bust up, looking at camera', negative: undefined, canvas: undefined },
+      model: 'model-a',
+    };
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stableStringify(content)));
+    const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+    expect(await keyFor('bust', 123)).toBe(`style-check:${RECIPE}:bust:${hex}`);
+
+    const keys = [
+      await keyFor('bust', 123),
+      await keyFor('bust', 123, { angle: 'from_below' }),
+      await keyFor('bust', 123, { angle: 'from_above' }),
+      await keyFor('bust', 123, { framing: 'full' }),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(await keyFor('bust', 123, { angle: 'from_below' })).toBe(keys[1]);
+  });
+
+  it('renders an angle column for every pinned pose with {pose, angle} parameters, and replays on a repeated POST', async () => {
+    await publishAndImport('var0002', undefined, VOCAB, { framing: 'bust' });
+    await pinPose('bust');
+    await pinPose('coffee');
+
+    const first = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { angle: 'from_below' });
+    expect(first.status).toBe(200);
+    const rendered = first.body.results.filter((r) => !r.skipped);
+    expect(rendered.map((r) => [r.pose, r.created])).toEqual([
+      ['bust', true],
+      ['coffee', true],
+    ]);
+    for (const r of rendered) {
+      const row = await getJson<{ idempotency_key: string; payload: { generation: { parameters: unknown } } }>(`/api/v1/requests/${r.request_id}`);
+      expect(row.body.payload.generation.parameters).toEqual({ pose: r.pose, angle: 'from_below' });
+      expect(row.body.idempotency_key).toBe(await keyFor(r.pose, (await pinSeed(r.pose))!, { angle: 'from_below' }));
+    }
+
+    const second = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { angle: 'from_below' });
+    const replayed = second.body.results.filter((r) => !r.skipped);
+    expect(replayed.map((r) => r.created)).toEqual([false, false]);
+    expect(replayed.map((r) => r.request_id)).toEqual(rendered.map((r) => r.request_id));
+
+    const plain = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { pose: 'bust' });
+    expect(plain.body.results[0]!.created).toBe(true);
+  });
+
+  it('renders a single framing cell and skips the pose own framing', async () => {
+    await publishAndImport('var0003', undefined, VOCAB, { framing: 'bust' });
+    await pinPose('bust');
+
+    const own = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { pose: 'bust', framing: 'bust' });
+    expect(own.body.results).toMatchObject([{ pose: 'bust', skipped: 'own_framing', request_id: null }]);
+
+    const full = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { pose: 'bust', framing: 'full' });
+    const row = await getJson<{ payload: { generation: { parameters: unknown } } }>(`/api/v1/requests/${full.body.results[0]!.request_id}`);
+    expect(row.body.payload.generation.parameters).toEqual({ pose: 'bust', framing: 'full' });
+  });
+
+  it('rejects a word outside the catalog angles / framings and a body with both', async () => {
+    await publishAndImport('var0004', undefined, VOCAB, { framing: 'bust' });
+    await pinPose('bust');
+
+    for (const body of [{ angle: 'from_nowhere' }, { framing: 'cowboy' }, { angle: 'full' }, { angle: 'from_below', framing: 'full' }]) {
+      expect((await postJson(`/api/v1/style-check/${RECIPE}`, body)).status).toBe(400);
+    }
+    const { results } = await env.DB.prepare("SELECT id FROM requests WHERE idempotency_key LIKE 'style-check:%'").all();
+    expect(results).toEqual([]);
+  });
+
+  it('GET /check exposes a cell per pose and word with its request and result, and draws both matrices', async () => {
+    await publishAndImport('var0005', undefined, VOCAB, { framing: 'bust' });
+    const bust = await pinPose('bust');
+
+    const render = await postJson<{ results: StyleCheckPostItem[] }>(`/api/v1/style-check/${RECIPE}`, { pose: 'bust', angle: 'from_above' });
+    const requestId = render.body.results[0]!.request_id!;
+    const claimed = await claim(`worker-${crypto.randomUUID()}`);
+    expect(claimed.body!.id).toBe(requestId);
+    const resultGen = await createGeneration({ requestOverrides: { recipe: RECIPE, parameters: { pose: 'bust', angle: 'from_above' } } });
+    await postJson(`/api/v1/requests/${requestId}`, { status: 'done', worker_id: claimed.body!.worker_id, result: { generation_ids: [resultGen.generation.id] } }, 'PATCH');
+    await postJson(`/api/v1/style-check/${RECIPE}`, { pose: 'bust', angle: 'from_below' });
+
+    const html = await (await req('/check')).text();
+    const initial = html.match(/data-initial="([^"]*)"/)![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    const poses = (JSON.parse(initial) as { poses: { pose: string; pin: { short_id: string } | null; framing: string | null; variants: unknown[] }[] }).poses;
+    const bustPose = poses.find((p) => p.pose === 'bust')!;
+    expect(bustPose.pin!.short_id).toBe(bust.shortId);
+    expect(bustPose.framing).toBe('bust');
+    expect(bustPose.variants).toEqual([
+      { axis: 'angle', value: 'from_below', request: expect.objectContaining({ status: 'queued' }), result: null },
+      { axis: 'angle', value: 'from_above', request: expect.objectContaining({ id: requestId, status: 'done' }), result: expect.objectContaining({ short_id: resultGen.generation.short_id }) },
+      { axis: 'framing', value: 'full', request: null, result: null },
+    ]);
+    expect(poses.find((p) => p.pose === 'coffee')!.variants).toEqual([]);
+
+    expect(html).toContain('data-sc-matrix="angle"');
+    expect(html).toContain('data-sc-matrix="framing"');
+    expect(html).toMatch(/data-sc-col-render="true" data-axis="angle" data-value="from_below"/);
+    expect(html).toMatch(/data-sc-cell="true" data-pose="coffee" data-axis="framing" data-value="full"/);
+  });
+});
+
+async function pinSeed(pose: string): Promise<number | null> {
+  const row = await env.DB.prepare(
+    "SELECT seed FROM preset_references WHERE recipe = ? AND kind = 'pose' AND name = ? AND superseded_at IS NULL",
+  )
+    .bind(RECIPE, pose)
+    .first<{ seed: number | null }>();
+  return row?.seed ?? null;
+}
