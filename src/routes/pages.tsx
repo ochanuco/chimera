@@ -16,7 +16,10 @@ import { StatsPage } from '../ui/pages/Stats';
 import { PhotosPage } from '../ui/pages/Photos';
 import { ReferencesPage } from '../ui/pages/References';
 import { listPhotos } from '../lib/photos';
-import { listReferences } from '../lib/references';
+import { getReferenceDetail, listReferences, referencePending } from '../lib/references';
+import { getReferenceByIdOrShortId } from '../lib/reference-renders';
+import { ReferenceDetailPage, ReferenceRenders } from '../ui/pages/ReferenceDetail';
+import { ApiError } from '../lib/errors';
 import { getStats, STATS_PERIODS, type StatsCold, type StatsPeriod } from '../lib/stats';
 import { NotFoundPage } from '../ui/pages/NotFound';
 import { WorkSourcesPage } from '../ui/pages/WorkSources';
@@ -504,6 +507,25 @@ pages.get('/photos', async (c) => {
 
 pages.get('/references', async (c) => {
   return c.html(<ReferencesPage path={c.req.path} items={await listReferences(c.env.DB)} />);
+});
+
+pages.get('/references/:shortId', async (c) => {
+  let source;
+  try {
+    source = await getReferenceByIdOrShortId(c.env.DB, c.req.param('shortId'));
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return c.html(<NotFoundPage what="参考画像" />, 404);
+    throw err;
+  }
+  const detail = await getReferenceDetail(c.env.DB, source);
+  const pending = referencePending(detail);
+  // ?partial=renders: 描いた絵の一覧だけ。タグ画面は選んだ状態を保つため差し替えない。
+  if (c.req.query('partial') === 'renders') {
+    c.header('X-Reference-Status', detail.status);
+    c.header('X-Reference-Pending', pending ? 'true' : 'false');
+    return c.html(<ReferenceRenders renders={detail.renders} />);
+  }
+  return c.html(<ReferenceDetailPage path={c.req.path} detail={detail} pending={pending} />);
 });
 
 pages.get('/compare', async (c) => {

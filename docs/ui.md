@@ -14,7 +14,7 @@ Progressive disclosure
 ```
 
 Web GUI は ComfyUI へ到達せず、prompt も書きません。GUI が積むのは semantic 判断を伴わない
-再実行（redraw / deliver）と、[絵柄チェック](#絵柄チェック)の pin 再描画と、[参考画像](#参考画像references)から描く reference の requests 行だけで、
+再実行（redraw / deliver）と、[絵柄チェック](#絵柄チェック)の pin 再描画と、[参考画像](#参考画像references)の解析 reference とそこから描く reference_render の requests 行だけで、
 Compare は semantic metadata の diff を表示するところまでです（不変条件の正本は
 [architecture.md](architecture.md#web-gui)、requests の契約は [worker-protocol.md](worker-protocol.md)）。
 
@@ -1071,17 +1071,38 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 
 ## 参考画像（/references）
 
-参考画像の構図・仕草・表情・レッグウェアを yukari に当てて 1 枚描くページです（[worker-protocol.md「reference」](worker-protocol.md#reference)）。ナビの「その他」から入ります。
+参考画像を解析し、抽出したタグから選んで yukari に当てて描くページです（[worker-protocol.md「reference」「reference_render」](worker-protocol.md#reference)）。
+ナビの「その他」から入ります。
 
--   アップロード欄はファイルと任意の seed だけで、補足文は置きません。ブラウザが写真と同じく向き（EXIF）を直し、長辺 3072px まで
-    縮めて PNG にしてから、`POST /api/v1/references` で `kind = reference` の Request を積みます。idempotency_key はボタン押下ごとに
-    `gui:reference:{uuid}` を 1 つ作り、同じ押下の再送に使い回します（ファイルか seed を変えると作り直します）
+### `/references`
+
+-   アップロード欄はファイルだけで、補足文は置きません。ブラウザが写真と同じく向き（EXIF）を直し、長辺 3072px まで
+    縮めて PNG にしてから、`POST /api/v1/references` で解析の `kind = reference` を積み、その reference のページへ移ります。
+    idempotency_key はボタン押下ごとに `gui:reference:{uuid}` を 1 つ作り、同じ押下の再送に使い回します（ファイルを変えると作り直します）
 -   ページ上でクリップボードの画像（png / jpeg / webp）を貼り付けると、ファイル欄に入り、選んだ画像の縮小表示が出ます
--   seed は空なら送らず、worker が乱数で決めます（placeholder `seed: ランダム`）
--   一覧: reference の Request を新しい順に最大 30 件。行は short_id・status・seed・作成時刻と、worker が積んだ generate への
-    リンク（Generation ができていればサムネイルと short_id、まだなら generate の short_id と status）を出します。failed なら error も出します
--   詳細（行を開く）: worker が done の result に書いた pose、part ごとの当てたタグ、外したタグ（打ち消し線）を出します
--   GUI は prompt を書きません。タグを選んで prompt を組むのは worker で、GUI は画像と seed を渡すだけです
+-   移る前に、長辺 768px の JPEG をこのタブの sessionStorage（`reference-preview:{request id}`）に置きます。参考画像のページはそれがあるときだけ
+    参考画像を出します。サーバーは解析の後に画像を消すので、別のタブや端末では出ません。サーバーから参考画像を取ることはしません
+-   一覧: reference を新しい順に最大 30 件。行は short_id（その reference のページへのリンク）・解析の状態・作成時刻・描いた回数で、failed なら error も出します
+
+### `/references/{short_id}`
+
+ワークベンチ（[/work/{short_id}](#workshort_id)）と同じ組み立てです。右の操作パネル（`wb-panel`）で選び、左（`wb-compare`）に描いた絵を出します。
+
+-   解析が queued / running の間は、パネルに「解析待ち」「解析中」と worker の進捗（WorkerHub の progress）を出し、4 秒ごとに状態を確かめ、
+    done になったらページを読み直してタグを出します。failed / cancelled なら error を出し、描く操作は出しません
+-   タグ: 解析の candidates を part ごとのチップ（`wb-pill`）で出します。worker が既定で採用したもの（`applied: true`）は ON、
+    そうでない候補は OFF で薄く（破線）出し、`score / d1`（d1 に聞いていなければ `–`）を添えます。どのチップも押すと ON / OFF が切り替わります。
+    自由入力の欄はありません（選べるのは worker が抽出した候補だけ）
+-   pose は `bust` / `coffee` / `stand` の select で、既定は worker の提案です。`bust` の間は legwear の part のチップを押せなくし、送りません
+    （bust の絵には脚が入らない）
+-   seed は空なら送らず、worker が乱数で決めます（placeholder `ランダム`）
+-   「描く」は ON のチップを part ごとにまとめて `POST /api/v1/references/{id}/renders` に送り、`kind = reference_render` を積みます。
+    idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・pose・seed を変えると作り直します）。
+    何度でも描けます
+-   描いた絵: この reference の reference_render を新しい順に、render → generate → Generation と辿って [GenerationCard](#generationcard)（compact）で並べ、
+    カードの下に pose・seed・当てたタグを出します。まだ Generation の無い render は状態のタイル（待機中 / 処理中 / 描画中 / 失敗）を出します。
+    待つものがある間は 4 秒ごとに `?partial=renders`（一覧の HTML だけ）で差し替え、選んでいるチップはそのまま残します
+-   GUI は prompt を書きません。part patch と prompt を組むのは worker です
 
 ## Bookmarks
 

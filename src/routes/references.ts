@@ -5,10 +5,12 @@ import { MAX_REFERENCE_IMAGE_BYTES, referenceImageKey, sniffReferenceImageType }
 import { notifyHub, runInBackground } from '../lib/hub-notify';
 import { serializeRequest } from '../lib/serialize';
 import { badRequest } from '../lib/errors';
-import { ValidationError } from '../lib/validate';
+import { ValidationError, parseOrThrow } from '../lib/validate';
+import { checkReferenceRenderTags, getReferenceByIdOrShortId } from '../lib/reference-renders';
+import { createReferenceRenderSchema } from '../schemas/request-payloads';
 import type { AppEnv } from '../types';
 
-/** 参考画像から描く Request の作成口 (docs/worker-protocol.md「reference」)。Generation は作らない。 */
+/** 参考画像の解析（reference）と、その候補から描く reference_render の作成口 (docs/worker-protocol.md「reference」「reference_render」)。Generation は作らない。 */
 export const references = new Hono<AppEnv>();
 
 const REFERENCE_RECIPE = 'yukari';
@@ -51,6 +53,27 @@ references.post('/', async (c) => {
     await c.env.IMAGES.put(key, bytes, { httpMetadata: { contentType } });
   }
 
+  if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
+  return c.json(serializeRequest(row), created ? 201 : 200);
+});
+
+/** 解析済みの reference から選んだタグで描く reference_render を積む (docs/worker-protocol.md「reference_render」)。 */
+references.post('/:id/renders', async (c) => {
+  const body = parseOrThrow(createReferenceRenderSchema, await c.req.json());
+  const db = c.env.DB;
+  const source = await getReferenceByIdOrShortId(db, c.req.param('id'));
+  const applied = checkReferenceRenderTags(source, body.pose, body.applied);
+  const payload = {
+    reference_request_id: source.id,
+    pose: body.pose,
+    ...(body.seed !== undefined ? { seed: body.seed } : {}),
+    applied,
+  };
+  const { row, created } = await createRequest(
+    db,
+    { kind: 'reference_render', payload, idempotency_key: body.idempotency_key, created_by: 'gui' },
+    { defaultRecipeRef: defaultRecipeRef(c.env) },
+  );
   if (created) runInBackground(c, notifyHub(c.env, 'queued', row));
   return c.json(serializeRequest(row), created ? 201 : 200);
 });

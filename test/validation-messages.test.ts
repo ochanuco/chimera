@@ -186,7 +186,7 @@ const REST_EXPECTED: Record<string, string> = {
   'request claim: empty kinds':
     '400 kinds: Too small: expected array to have >=1 items',
   'request claim: import is not claimable':
-    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"|"reference"',
+    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"|"reference"|"reference_render"',
   'experiment create: non-integer seeds':
     '400 base_parameters.seeds: must be an array of 1-16 non-negative integers',
   'experiment create: seeds and count disagree':

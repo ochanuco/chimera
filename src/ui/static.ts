@@ -1596,18 +1596,14 @@ details.section .section-body { margin-top: 0.6rem; }
 .photo-upload-status { color: var(--text-dim); font-size: 0.85rem; }
 .photo-grid .work-source img { aspect-ratio: 4 / 3; object-fit: cover; }
 .photo-name { color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reference-seed { width: 9rem; }
+.ref-preview img { max-width: 100%; max-height: 24rem; object-fit: contain; align-self: flex-start; border-radius: 6px; }
+.ref-chip-dim { opacity: 0.55; border-style: dashed; }
+.ref-chip-score { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.7rem; }
+.ref-chip:disabled { opacity: 0.25; }
+.ref-render-tile { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 6px; }
+.ref-render-meta { display: block; overflow-wrap: anywhere; }
 .reference-preview { max-width: 160px; max-height: 160px; object-fit: contain; border-radius: 4px; }
-.reference-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.reference-item > summary { cursor: pointer; }
-.reference-generations { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; vertical-align: middle; }
-.reference-generation { display: inline-flex; align-items: center; gap: 0.3rem; }
-.reference-generation img { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; }
-.reference-tags { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 0.8rem; margin: 0.5rem 0 0.5rem 1rem; }
-.reference-tags dt { color: var(--text-dim); }
-.reference-tags dd { margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.reference-tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; padding: 0.05rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; }
-.reference-tag-dropped { color: var(--text-dim); text-decoration: line-through; }
+.reference-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .work-source-meta { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 .work-source-id { font-family: ui-monospace, monospace; font-weight: 600; }
 .work-state { font-size: 0.75rem; padding: 0.05rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
@@ -6215,12 +6211,25 @@ export const appJs = `
     });
   }
 
-  // docs/ui.md「参考画像」: shrink like a photo, then POST /api/v1/references (multipart). One idempotency key per press, reused on a retry of the same press.
+  // docs/ui.md「参考画像」: shrink like a photo, POST /api/v1/references (multipart), then open the reference's page.
+  // One idempotency key per press, reused on a retry of the same press.
+  var REFERENCE_PREVIEW_KEY = 'reference-preview:';
+
+  // A small JPEG of the upload, kept in this tab only, so the reference's page can show it while the server keeps no copy.
+  async function referencePreviewDataUrl(file) {
+    var bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    var scale = Math.min(1, 768 / Math.max(bitmap.width, bitmap.height));
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.8);
+  }
+
   function initReferenceUpload() {
     var form = qs('[data-reference-upload]');
     if (!form) return;
     var input = qs('[data-reference-file]', form);
-    var seedInput = qs('[data-reference-seed]', form);
     var status = qs('[data-reference-status]', form);
     var maxSide = Number(form.getAttribute('data-max-side')) || 3072;
     var key = null;
@@ -6237,15 +6246,16 @@ export const appJs = `
         var body = new FormData();
         body.append('image', await photoToPng(file, maxSide), file.name.replace(/\.[^.]+$/, '') + '.png');
         body.append('idempotency_key', key);
-        if (seedInput.value.trim() !== '') body.append('seed', seedInput.value.trim());
         var res = await fetch('/api/v1/references', { method: 'POST', body: body });
         if (!res.ok) {
           var message = 'アップロードに失敗しました (' + res.status + ')';
           try { var data = await res.json(); if (data && data.error && data.error.message) message = data.error.message; } catch (e) {}
           throw new Error(message);
         }
-        track('reference_upload', { seed: seedInput.value.trim() !== '' });
-        window.location.reload();
+        var created = await res.json();
+        try { sessionStorage.setItem(REFERENCE_PREVIEW_KEY + created.id, await referencePreviewDataUrl(file)); } catch (e) {}
+        track('reference_upload', {});
+        window.location.href = '/references/' + (created.short_id || created.id);
       } catch (e) {
         status.textContent = e.message || String(e);
         trackError('reference_upload', e);
@@ -6261,7 +6271,6 @@ export const appJs = `
       preview.hidden = false;
     }
     input.addEventListener('change', function () { key = null; status.textContent = ''; showPreview(); });
-    seedInput.addEventListener('input', function () { key = null; });
     document.addEventListener('paste', function (event) {
       var items = (event.clipboardData && event.clipboardData.items) || [];
       for (var i = 0; i < items.length; i++) {
@@ -6276,6 +6285,93 @@ export const appJs = `
         input.dispatchEvent(new Event('change'));
         track('reference_paste', {});
         return;
+      }
+    });
+  }
+
+  // /references/{short_id}: tag chips → reference_render, and the pictures drawn from this reference (docs/ui.md「参考画像」).
+  function initReferencePage() {
+    var root = qs('[data-reference-page]');
+    if (!root) return;
+    var id = root.getAttribute('data-reference-id');
+    var shortId = root.getAttribute('data-reference-short-id');
+    var pageStatus = root.getAttribute('data-reference-status');
+
+    var previewUrl = null;
+    try { previewUrl = sessionStorage.getItem(REFERENCE_PREVIEW_KEY + id); } catch (e) {}
+    if (previewUrl) {
+      qs('[data-ref-preview-img]', root).src = previewUrl;
+      qs('[data-ref-preview]', root).hidden = false;
+    }
+
+    var renders = qs('[data-ref-renders]', root);
+    var timer = null;
+    function schedule() {
+      if (timer) return;
+      timer = setTimeout(refresh, 4000);
+    }
+    async function refresh() {
+      timer = null;
+      try {
+        var res = await fetch('/references/' + encodeURIComponent(shortId) + '?partial=renders', { cache: 'no-store' });
+        if (!res.ok) { schedule(); return; }
+        if (res.headers.get('X-Reference-Status') !== pageStatus) { window.location.reload(); return; }
+        renders.innerHTML = await res.text();
+        if (res.headers.get('X-Reference-Pending') === 'true') schedule();
+      } catch (e) {
+        schedule();
+      }
+    }
+    if (root.getAttribute('data-pending') === 'true') schedule();
+
+    var run = qs('[data-ref-run]', root);
+    if (!run) return;
+    var poseSelect = qs('[data-ref-pose]', root);
+    var seedInput = qs('[data-ref-seed]', root);
+    var errorEl = qs('[data-ref-error]', root);
+    var key = null;
+
+    function syncLegwear() {
+      var bust = poseSelect.value === 'bust';
+      qsa('[data-ref-tag-part="legwear"]', root).forEach(function (chip) { chip.disabled = bust; });
+    }
+    syncLegwear();
+
+    root.addEventListener('click', function (event) {
+      var chip = event.target.closest('[data-ref-tag]');
+      if (!chip || chip.disabled) return;
+      var on = !chip.classList.contains('wb-pill-on');
+      chip.classList.toggle('wb-pill-on', on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+      key = null;
+    });
+    poseSelect.addEventListener('change', function () { syncLegwear(); key = null; });
+    seedInput.addEventListener('input', function () { key = null; });
+
+    run.addEventListener('click', async function () {
+      var applied = {};
+      qsa('[data-ref-tag].wb-pill-on', root).forEach(function (chip) {
+        if (chip.disabled) return;
+        var part = chip.getAttribute('data-ref-tag-part');
+        (applied[part] = applied[part] || []).push(chip.getAttribute('data-ref-tag'));
+      });
+      var body = { applied: applied, pose: poseSelect.value, idempotency_key: key = key || 'gui:reference_render:' + crypto.randomUUID() };
+      var seed = seedInput.value.trim();
+      if (seed !== '') body.seed = Number(seed);
+      run.disabled = true;
+      errorEl.hidden = true;
+      try {
+        await api('/api/v1/references/' + encodeURIComponent(id) + '/renders', 'POST', body);
+        track('reference_render', { pose: body.pose, seed: seed !== '' });
+        key = null;
+        if (timer) { clearTimeout(timer); timer = null; }
+        await refresh();
+      } catch (e) {
+        errorEl.textContent = e.message || String(e);
+        errorEl.hidden = false;
+        trackError('reference_render', e);
+      } finally {
+        run.disabled = false;
       }
     });
   }
@@ -6491,6 +6587,7 @@ export const appJs = `
     initReroll();
     initPhotoUpload();
     initReferenceUpload();
+    initReferencePage();
     initNavQueue();
     initPopoverClose();
     initCompareBar();

@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation | reference
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation | reference | reference_render
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -136,7 +136,7 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
 Token）を区別せず、いずれも全 `kind` を積めます（finalize / repair / masked_redraw を除く）。「GUI が積んでよいのは redraw / deliver /
-stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）、参考画像から描く reference だけ」は GUI のコードがそれらの form / ボタンしか
+stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）、参考画像の reference / reference_render だけ」は GUI のコードがそれらの form / ボタンしか
 持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
@@ -207,7 +207,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference", "reference_render"] }
 ```
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。`kinds` に `finalize` や `import` を入れると 400 です。
@@ -298,6 +298,27 @@ DELETE /api/v1/requests/{id}/reference-image
 worker が参考画像を読み、使い終えたら消すための口です。GET は置いたときの Content-Type で画像を返し、
 画像が無ければ（消した後・置く前）404 です。DELETE は冪等で、画像が無くても 204 です。
 Request が無いときと、`kind` が reference でないときはどちらも 404 です。
+
+### Create Reference Render
+
+``` text
+POST /api/v1/references/{id}/renders
+```
+
+``` json
+{ "applied": { "framing_tags": ["from above"], "gesture": ["looking up"] }, "pose": "coffee", "seed": 123456, "idempotency_key": "gui:reference_render:…" }
+```
+
+`{id}` は元の reference の UUID か short_id です。`kind = reference_render` の Request（`created_by = gui`）を作り、Create Request と
+同じ形の Request 行を返します。新規は 201、同じキー・同じ内容の再送は 200、同じキーで別の内容は 409 です。
+
+- `{id}` が無いか reference でなければ 404
+- 元の reference が done でなければ 400（`code: "reference_not_analyzed"`）
+- `pose` が `bust` / `coffee` / `stand` 以外、`seed` が負・非整数、未知のキーは 400
+- `applied` の各 (part, tag) が元の result の candidates に同じ part で無ければ 400。自由入力のタグは受けない（score が 0.05 未満の候補でも、candidates にあれば受ける）
+- `pose = bust` で `applied.legwear` が空でなければ 400（bust の絵には脚が入らない）
+
+payload の `applied` は part ごとに重複を除き、空の part を落としたものです。
 
 ### Timings
 
@@ -910,20 +931,20 @@ catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"s
 
 ### reference
 
-参考画像の構図・仕草・表情・レッグウェアを recipe に当てて 1 枚描く worker 実行です。worker は画像をタグに読み替えて
-通常の [generate](#generate) を積むだけで、自分では描きません。描くのは積んだ generate で、普通の Generation になります。
+参考画像を解析する worker 実行です。画像をタグに読み替え、構図・仕草・表情・レッグウェアの候補と pose の提案を result に書きます。
+描きはしません。描くのは、GUI が候補から選んで積む [reference_render](#reference_render) です。
 
 ``` json
 {
   "kind": "reference",
-  "payload": { "recipe": "yukari", "seed": 123456 }
+  "payload": { "recipe": "yukari" }
 }
 ```
 
   payload        型
   -------------- --------------------------------------------------------------------------
   recipe         当てる recipe の名前
-  seed           0 以上の整数、省略可。積む generate の seed で、省略時は worker が乱数で決める
+  seed           0 以上の整数、省略可。古い行だけが持つ。worker は使わない
 
 payload の未知のキーは 400 です。参考画像は payload に持たず、R2 の `references/{request_id}` に置きます。
 GUI は [Create Reference](#create-reference) で Request と画像を一緒に作ります。`POST /api/v1/requests` でも
@@ -932,37 +953,78 @@ GUI は [Create Reference](#create-reference) で Request と画像を一緒に�
 worker は claim した reference を次の順に処理します。
 
 1. 参考画像を [Reference Image](#reference-image) の GET で読む
-2. タグに読み替え、recipe の pose と part patch を組む
-3. `kind = generate` を積む（`created_by = system`、`idempotency_key = reference:{reference の request id}`）。
-   再実行で同じキーを送れば既存の generate が 200 で返るので、generate は 1 件にとどまる
+2. タグに読み替え、候補と pose の提案を組む
+3. 参考画像を DELETE する。失敗して retry に回すときは消さない
 4. reference を done にする
-5. 参考画像を DELETE する。失敗して retry に回すときは消さない
 
 chimera も reference の Request が done / failed / cancelled になった時点で参考画像を消します。PATCH の done / failed / cancelled、
 release で `attempt >= max_attempts` になった failed、heartbeat 途絶で failed になった行（claim の直前と WorkerHub の alarm）の
 全てが対象で、queued に戻る遷移では消しません。どの経路でも消し損ねたものは、置かれてから 24 時間を過ぎると
-cron（1 時間ごと）が消します（[architecture.md「R2」](architecture.md#r2)）。
+cron（1 時間ごと）が消します（[architecture.md「R2」](architecture.md#r2)）。参考画像は解析の後に残らないので、再解析はできません。
 
-done の `result` は次の形です。`generation_ids` は常に空で、絵は `generate_request_id` の Request が作ります。
+done の `result` は次の形です。`generation_ids` は常に空です。
 
 ``` json
 {
   "generation_ids": [],
-  "generate_request_id": "0192d3a8-…",
-  "pose": "bust",
-  "applied": { "framing_tags": ["(from above:1.3)", "(upper body:1.3)"], "gesture": ["hand on own cheek"], "mouth": ["smile"] },
-  "dropped": ["on floor", "shoe soles"]
+  "pose": "coffee",
+  "candidates": [
+    { "tag": "from above", "part": "framing_tags", "score": 0.25, "kept": true, "d1": null, "applied": true },
+    { "tag": "looking up", "part": "gesture", "score": 0.11, "kept": false, "d1": 0.53, "applied": true },
+    { "tag": "leaning forward", "part": "gesture", "score": 0.02, "kept": false, "d1": null, "applied": false }
+  ],
+  "applied": { "framing_tags": ["from above"], "gesture": ["looking up"] },
+  "dropped": ["…"]
 }
 ```
 
-  result               型
-  -------------------- --------------------------------------------------------------------------
-  generate_request_id  積んだ generate の Request id
-  pose                 当てた pose の名前
-  applied              part 名 → その part に当てたタグの配列。当てなかった part は持たない
-  dropped              tagger が残したが当てなかったタグの配列
+  result         型
+  -------------- --------------------------------------------------------------------------
+  pose           worker が提案する pose（`bust` / `coffee` / `stand`）
+  candidates     候補グループ（と追加の仕草の表）に属し score 0.05 以上のタグ全部と、それ未満でも kept か既定で採用するタグ。worker が常に外すタグは入らない
+                 `part` は当てる part、`score` は tagger の確率、`kept` は tagger の閾値を超えたか、`d1` は d1 に聞いたタグだけ
+                 yes の確率で、聞いていなければ null、`applied` は worker の既定で採用するか
+  applied        part 名 → 既定で採用するタグの配列（candidates の `applied: true` と同じ）。タグは重みを付けない素の名前（`from above`）
+  dropped        tagger が残したが採用しなかったタグの配列
 
-chimera はこの result を GUI の表示に読むだけで、検証はしません。画像そのものとそのハッシュはどこにも記録しません。
+chimera は candidates を [reference_render](#reference_render) の作成時の検査と GUI の表示に読みます。画像そのものとそのハッシュはどこにも記録しません。
+
+### reference_render
+
+解析済みの reference の候補から選んだタグで描く worker 実行です。worker は選ばれたタグから part patch を組んで通常の
+[generate](#generate) を積むだけで、自分では描きません。描くのは積んだ generate で、普通の Generation になります
+（reroll・derive・lineage がそのまま効きます）。1 つの reference から何度でも積めます。
+
+``` json
+{
+  "kind": "reference_render",
+  "payload": {
+    "reference_request_id": "0192d3a8-…",
+    "pose": "coffee",
+    "seed": 123456,
+    "applied": { "framing_tags": ["from above"], "gesture": ["looking up", "leaning forward"] }
+  }
+}
+```
+
+  payload                型
+  ---------------------- --------------------------------------------------------------------------
+  reference_request_id   元の reference の Request id（UUID）
+  pose                   `bust` / `coffee` / `stand`
+  seed                   0 以上の整数、省略可。積む generate の seed で、省略時は worker が乱数で決める
+  applied                part 名 → 当てるタグの配列。空の part は持たない
+
+作れるのは [Create Reference Render](#create-reference-render) だけで、`POST /api/v1/requests` と MCP `create_request` は 400 です。
+タグを元の解析結果と照らす検査がそこにしか無いためです。
+
+worker は claim した reference_render について `kind = generate` を積み（`created_by = system`、
+`idempotency_key = reference_render:{reference_render の request id}`、`semantic.attributes.reference` に
+`source_request` / `pose` / `applied`）、done にします。再実行で同じキーを送れば既存の generate が 200 で返るので、
+generate は 1 件にとどまります。done の `result` は次の形です。
+
+``` json
+{ "generation_ids": [], "generate_request_id": "0192d3a9-…", "generate_request_short_id": "k3x9ab" }
+```
 
 ### repair
 
@@ -982,7 +1044,7 @@ worker は queued の行を従来の契約のまま取れます。
 
   対象            idempotency_key                                    備考
   --------------- -------------------------------------------------- -----------------------------------------
-  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`、[reference](#reference) が積む generate は `reference:{reference の request id}`
+  requests 行     積む側が作る                                       GUI はボタン押下ごとに 1 つ生成（`gui:{kind}:{generation_short_id}:{uuid}`）し応答が返るまで再送に使い回す（リロールは元絵と回ごとの `reroll:{元絵の id}:{回番号}`）、brain は request ごとに 1 つ、Run 由来は `run:{run_id}`、[reference_render](#reference_render) が積む generate は `reference_render:{reference_render の request id}`
   Job             `request:{request_id}:job:{index}`                 worker が導出。`index` は request 内の 0 始まり
   Generation      キー無し。`(comfy_job_id, comfy_output_index)` の unique   `comfy_job_id` は chimera の Job UUID（ComfyUI の prompt_id ではない）
 
@@ -1111,8 +1173,9 @@ worker は requests だけを見ます。
 
 - Generation Detail には積む form が無く、最新 request の status（queued / running / done / failed）と、done なら出力 Generation へのリンクを出す。
   request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `lighting` / `dof`、`created_by = gui`）から積む。
-- 参考画像 (`/references`, [ui.md](ui.md#参考画像references)): 画像と任意の seed を [Create Reference](#create-reference) に送り、
-  `kind = reference` を積む（`created_by = gui`）。GUI は prompt を書かない。done の result（当てたタグ・外したタグ・generate の Request id）を表示する。
+- 参考画像 (`/references`, [ui.md](ui.md#参考画像references)): 画像を [Create Reference](#create-reference) に送って `kind = reference`
+  を積み（`created_by = gui`）、解析の done の candidates から選んだタグ・pose・seed を [Create Reference Render](#create-reference-render)
+  に送って `kind = reference_render` を積む（`created_by = gui`）。GUI は prompt を書かず、選べるのは worker が抽出した候補だけ。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。
 - 絵柄チェック (`/check`, [ui.md](ui.md#絵柄チェック)): 全ポーズ（カタログの pose と Preset だけの pose、`src/lib/style-check.ts`
