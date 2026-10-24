@@ -11,7 +11,7 @@ import { getCurrentReference, referenceView, type PresetReferenceView } from './
 import { getGenerationByIdOrShortId } from './db';
 import { runOverridePose } from './experiment-rules';
 import { getExperimentOr404, listRuns } from './experiments';
-import { notFound } from './errors';
+import { badRequest, notFound } from './errors';
 import { parseJsonObjectOrNull } from './overrides';
 import { diffFactSummaries, renderFactsForJob, type FactDiffEntry } from './render-facts';
 import type { ComfyJobRow, RequestRow } from '../types';
@@ -45,10 +45,63 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** 1 つのパラメータだけを recipe 既定から変えた描き方。組み合わせは持たない (docs/ui.md「絵柄チェック」)。 */
+export type StyleCheckVariant = { angle: string } | { framing: string };
+
+export type StyleCheckAxis = 'angle' | 'framing';
+
+/** recipe の `angles` / `framings` 語彙 (chagama が公開する文字列の配列)。 */
+export function styleCheckVocab(catalog: CatalogWithDoc | null, recipe: string): Record<StyleCheckAxis, string[]> {
+  const entry = catalog?.doc.recipes.find((r) => r.name === recipe) as { angles?: unknown; framings?: unknown } | undefined;
+  const words = (list: unknown) => (Array.isArray(list) ? list.filter((w): w is string => typeof w === 'string') : []);
+  return { angle: words(entry?.angles), framing: words(entry?.framings) };
+}
+
+export function variantOf(axis: StyleCheckAxis, value: string): StyleCheckVariant {
+  return axis === 'angle' ? { angle: value } : { framing: value };
+}
+
+/** カタログ上の pose レコードの `framing`。この画角の列は pin そのものなので描かない。 */
+export function poseOwnFraming(catalog: CatalogWithDoc | null, recipe: string, pose: string): string | null {
+  const record = catalog ? findCatalogPose(catalog.doc, recipe, pose) : null;
+  const framing = record && typeof record === 'object' ? (record as { framing?: unknown }).framing : null;
+  return typeof framing === 'string' ? framing : null;
+}
+
+async function styleCheckKeyContent(
+  db: D1Database,
+  catalog: CatalogWithDoc | null,
+  recipe: string,
+  pose: string,
+  seed: number,
+): Promise<Record<string, unknown>> {
+  const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as { model?: unknown } | undefined;
+  const poseRecord = (catalog ? findCatalogPose(catalog.doc, recipe, pose) : null) as
+    | { positive?: unknown; negative?: unknown; canvas?: unknown }
+    | string
+    | null;
+  const poseObject = poseRecord && typeof poseRecord === 'object' ? poseRecord : null;
+  const preset = await getPresetRow(db, recipe, 'pose', pose);
+  return {
+    recipe,
+    pose,
+    seed,
+    preset: preset ? { version: preset.version, body: JSON.parse(preset.body_json) as unknown } : null,
+    pose_record: poseObject ? { positive: poseObject.positive, negative: poseObject.negative, canvas: poseObject.canvas } : null,
+    model: recipeEntry?.model ?? null,
+  };
+}
+
+async function keyFromContent(recipe: string, pose: string, content: Record<string, unknown>, variant?: StyleCheckVariant): Promise<string> {
+  // variant 無しは content に `variant` キー自体を足さない — 既定の key を variant 導入前と同じ値に保つため。
+  const hashed = variant ? { ...content, variant } : content;
+  return `style-check:${recipe}:${pose}:${await sha256Hex(stableStringify(hashed))}`;
+}
+
 /**
  * 絵柄チェックの idempotency key: `style-check:<recipe>:<pose>:<sha256>`。ハッシュの入力は plain render が
  * 描く内容だけ — pin の seed、pose の preset (版と本文)、カタログ上の pose レコードの positive / negative / canvas、
- * recipe の model。
+ * recipe の model、variant (あるときだけ)。
  * パラメータ語彙 (parameters / angles など) や pose の parts / fingerprint などの付随情報、git_commit・generated_at・
  * patches・backdrops は入れないので、描く絵が変わらないカタログ変更では key が変わらない。
  */
@@ -58,23 +111,16 @@ export async function styleCheckIdempotencyKey(
   recipe: string,
   pose: string,
   seed: number,
+  variant?: StyleCheckVariant,
 ): Promise<string> {
-  const recipeEntry = catalog?.doc.recipes.find((r) => r.name === recipe) as { model?: unknown } | undefined;
-  const poseRecord = (catalog ? findCatalogPose(catalog.doc, recipe, pose) : null) as
-    | { positive?: unknown; negative?: unknown; canvas?: unknown }
-    | string
-    | null;
-  const poseObject = poseRecord && typeof poseRecord === 'object' ? poseRecord : null;
-  const preset = await getPresetRow(db, recipe, 'pose', pose);
-  const content = {
-    recipe,
-    pose,
-    seed,
-    preset: preset ? { version: preset.version, body: JSON.parse(preset.body_json) as unknown } : null,
-    pose_record: poseObject ? { positive: poseObject.positive, negative: poseObject.negative, canvas: poseObject.canvas } : null,
-    model: recipeEntry?.model ?? null,
-  };
-  return `style-check:${recipe}:${pose}:${await sha256Hex(stableStringify(content))}`;
+  return keyFromContent(recipe, pose, await styleCheckKeyContent(db, catalog, recipe, pose, seed), variant);
+}
+
+export interface StyleCheckVariantCell {
+  axis: StyleCheckAxis;
+  value: string;
+  idempotency_key: string;
+  request: RequestRow | null;
 }
 
 export interface StyleCheckRow {
@@ -88,6 +134,10 @@ export interface StyleCheckRow {
   idempotency_key: string | null;
   /** その key に一致する既存 request。無ければ「まだ描いていない」。 */
   request: RequestRow | null;
+  /** カタログ上の pose の画角。画角の行列でこの列は pin そのもので、variants に含めない。 */
+  framing: string | null;
+  /** pin があるときだけ: angles / framings の語ごとの variant render の key と既存 request。 */
+  variants: StyleCheckVariantCell[];
 }
 
 async function pinDrift(
@@ -123,29 +173,56 @@ export async function loadStyleCheckRows(
   db: D1Database,
   recipe: string,
   recipeRef: string,
-): Promise<StyleCheckRow[]> {
+): Promise<{ rows: StyleCheckRow[]; vocab: Record<StyleCheckAxis, string[]> }> {
   const catalog = await getCatalog(db, recipeRef);
+  const vocab = styleCheckVocab(catalog, recipe);
   // pose ごとに数往復の D1 クエリがあり、直列だと pose 数に比例して遅くなるので並列に引く。
-  return Promise.all(
+  const rows = await Promise.all(
     (await listStyleCheckPoseNames(db, recipe, catalog)).map(async (pose): Promise<StyleCheckRow> => {
+      const framing = poseOwnFraming(catalog, recipe, pose);
       const pin = await referenceView(db, await getCurrentReference(db, recipe, 'pose', pose));
-      if (!pin) return { pose, pin, drift: 'no_pin', prompt_diff: [], idempotency_key: null, request: null };
+      if (!pin) return { pose, pin, drift: 'no_pin', prompt_diff: [], idempotency_key: null, request: null, framing, variants: [] };
       const catalogPose = catalog ? findCatalogPose(catalog.doc, recipe, pose) : null;
-      const [{ idempotencyKey, request }, { drift, diff }] = await Promise.all([
-        styleCheckIdempotencyKey(db, catalog, recipe, pose, pin.seed).then(async (idempotencyKey) => ({
-          idempotencyKey,
-          request: await db.prepare('SELECT * FROM requests WHERE idempotency_key = ?').bind(idempotencyKey).first<RequestRow>(),
-        })),
+      const [content, { drift, diff }] = await Promise.all([
+        styleCheckKeyContent(db, catalog, recipe, pose, pin.seed),
         pinDrift(db, pin, catalogPose),
       ]);
-      return { pose, pin, drift, prompt_diff: diff, idempotency_key: idempotencyKey, request };
+      const idempotencyKey = await keyFromContent(recipe, pose, content);
+      const cells = (['angle', 'framing'] as const).flatMap((axis) =>
+        vocab[axis].filter((value) => !(axis === 'framing' && value === framing)).map((value) => ({ axis, value })),
+      );
+      const variants = await Promise.all(
+        cells.map(async ({ axis, value }) => ({
+          axis,
+          value,
+          idempotency_key: await keyFromContent(recipe, pose, content, variantOf(axis, value)),
+          request: null as RequestRow | null,
+        })),
+      );
+      return { pose, pin, drift, prompt_diff: diff, idempotency_key: idempotencyKey, request: null, framing, variants };
     }),
   );
+
+  const keys = rows.flatMap((row) => [row.idempotency_key, ...row.variants.map((v) => v.idempotency_key)].filter((k): k is string => k !== null));
+  const byKey = new Map<string, RequestRow>();
+  if (keys.length > 0) {
+    const { results } = await db
+      .prepare('SELECT * FROM requests WHERE idempotency_key IN (SELECT value FROM json_each(?))')
+      .bind(JSON.stringify(keys))
+      .all<RequestRow>();
+    for (const r of results ?? []) if (r.idempotency_key) byKey.set(r.idempotency_key, r);
+  }
+  for (const row of rows) {
+    row.request = row.idempotency_key ? byKey.get(row.idempotency_key) ?? null : null;
+    for (const v of row.variants) v.request = byKey.get(v.idempotency_key) ?? null;
+  }
+  return { rows, vocab };
 }
 
 export interface StyleCheckRenderResult {
   pose: string;
-  skipped?: 'no_pin';
+  /** own_framing: framing の variant がその pose 自身の画角 — その列は pin そのものなので描かない。 */
+  skipped?: 'no_pin' | 'own_framing';
   created?: boolean;
   request_id?: string;
   status?: RequestRow['status'];
@@ -160,18 +237,24 @@ export interface RenderStyleCheckResult {
 
 /**
  * POST /api/v1/style-check/{recipe}: pin を持つ全ポーズ (`pose` 指定ならその 1 つ) について、MCP `plain_render` と同じ組み立て
- * (buildPlainRenderRequest → createRequest) で kind=generate を積む。default idempotency key なので、
- * 同じ catalog commit への連打は何も作らず既存行を返す (created: false)。pin が無い pose は skip される。
+ * (buildPlainRenderRequest → createRequest) で kind=generate を積む。`variant` があれば recipe 既定にその 1 パラメータだけを
+ * 足して描く。content key なので、同じ描画内容への連打は何も作らず既存行を返す (created: false)。pin が無い pose は skip される。
+ * variant の語がカタログの `angles` / `framings` に無ければ 400。
  */
 export async function renderStyleCheck(
   db: D1Database,
   env: { REQUESTS_DEFAULT_RECIPE_REF?: string },
   recipe: string,
-  onlyPose?: string,
+  options: { pose?: string; variant?: StyleCheckVariant } = {},
 ): Promise<RenderStyleCheckResult> {
   const recipeRef = defaultRecipeRef(env);
   const catalog = await getCatalog(db, recipeRef);
-  const poses = onlyPose ? [onlyPose] : await listStyleCheckPoseNames(db, recipe, catalog);
+  const { variant } = options;
+  if (variant) {
+    const [axis, value] = 'angle' in variant ? (['angle', variant.angle] as const) : (['framing', variant.framing] as const);
+    if (!styleCheckVocab(catalog, recipe)[axis].includes(value)) throw badRequest(`unknown ${axis} '${value}' for ${recipe}`);
+  }
+  const poses = options.pose ? [options.pose] : await listStyleCheckPoseNames(db, recipe, catalog);
   const results: StyleCheckRenderResult[] = [];
   const createdRequests: RequestRow[] = [];
 
@@ -181,9 +264,13 @@ export async function renderStyleCheck(
       results.push({ pose, skipped: 'no_pin' });
       continue;
     }
+    if (variant && 'framing' in variant && variant.framing === poseOwnFraming(catalog, recipe, pose)) {
+      results.push({ pose, skipped: 'own_framing' });
+      continue;
+    }
 
-    const key = await styleCheckIdempotencyKey(db, catalog, recipe, pose, pin.seed);
-    const built = await buildPlainRenderRequest(db, { recipe, pose, recipe_ref: recipeRef, idempotency_key: key });
+    const key = await styleCheckIdempotencyKey(db, catalog, recipe, pose, pin.seed, variant);
+    const built = await buildPlainRenderRequest(db, { recipe, pose, parameters: variant, recipe_ref: recipeRef, idempotency_key: key });
     const { row, created } = await createRequest(
       db,
       { kind: 'generate', payload: built.payload, recipe_ref: recipeRef, idempotency_key: built.idempotency_key, created_by: 'gui' },

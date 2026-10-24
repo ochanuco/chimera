@@ -1219,6 +1219,25 @@ details.section .section-body { margin-top: 0.6rem; }
 .sc-viewer { position: fixed; inset: 0; z-index: 100; overflow: auto; background: var(--bg); padding: 0.75rem 1rem; --wb-pane-h: calc(100vh - 11rem); }
 .sc-viewer[hidden], .sc-viewer [hidden] { display: none !important; }
 .sc-viewer-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-left: auto; }
+.sc-matrix { margin-top: 1.25rem; }
+.sc-matrix-title { margin: 0 0 0.4rem; font-size: 1rem; }
+.sc-matrix-scroll { overflow-x: auto; }
+.sc-matrix-table { border-collapse: separate; border-spacing: 0.4rem; }
+.sc-matrix-table th { font-size: 0.8rem; font-weight: normal; text-align: left; vertical-align: top; }
+.sc-matrix-table thead th .wb-pill { display: block; margin-top: 0.25rem; }
+.sc-matrix-table tbody th { position: sticky; left: 0; background: var(--bg); padding-right: 0.4rem; vertical-align: middle; }
+.sc-cell { width: 7.5rem; height: calc(7.5rem * 3 / 2); padding: 0; vertical-align: middle; text-align: center; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem; }
+.sc-wipe { position: relative; display: block; width: 7.5rem; aspect-ratio: var(--thumb-ar); overflow: hidden; border-radius: 6px; touch-action: pan-y; --sc-wipe: 50%; }
+.sc-wipe:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sc-wipe-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; }
+.sc-wipe-pin { clip-path: inset(0 calc(100% - var(--sc-wipe)) 0 0); }
+.sc-wipe-bar { position: absolute; top: 0; bottom: 0; left: var(--sc-wipe); width: 2px; margin-left: -1px; background: var(--text); opacity: 0.8; pointer-events: none; }
+.sc-wipe-rating { position: absolute; right: 0.25rem; bottom: 0.25rem; padding: 0 0.3rem; border-radius: 4px; background: var(--bg); font-size: 0.7rem; line-height: 1.3; }
+.sc-wipe-rating-bad { color: var(--bad); }
+.sc-wipe-rating-neutral { color: var(--neutral); }
+.sc-wipe-rating-good { color: var(--good); }
+.sc-cell-bad { border-color: var(--bad); }
+.sc-wipe-tag { position: absolute; left: 0.25rem; bottom: 0.25rem; padding: 0 0.3rem; border-radius: 4px; background: var(--bg); color: var(--text-dim); font-size: 0.7rem; line-height: 1.3; }
 @media (max-width: 800px) { .sc-row { grid-template-columns: 1fr 1fr; } }
 
 
@@ -2810,8 +2829,88 @@ export const appJs = `
       cell.appendChild(wbEl('span', 'sc-empty', resultMessage(p)));
     }
 
+    function variantOf(p, axis, value) {
+      return (p.variants || []).find(function (v) { return v.axis === axis && v.value === value; }) || null;
+    }
+
+    function cellEls(p, v) {
+      return qsa('[data-sc-cell]', root).filter(function (el) {
+        return el.getAttribute('data-pose') === p.pose && (!v || (el.getAttribute('data-axis') === v.axis && el.getAttribute('data-value') === v.value));
+      });
+    }
+
+    // pin を左、variant を右に重ね、上の pin を仕切りの位置で切る。仕切りはポインタに追従し、離れると中央に戻る。
+    function buildWipe(pin, result) {
+      var a = wbEl('a', 'sc-wipe');
+      a.href = '/g/' + result.short_id;
+      a.setAttribute('aria-label', 'pin ' + pin.short_id + ' / ' + result.short_id);
+      [result, pin].forEach(function (n, i) {
+        var img = wbEl('img', 'sc-wipe-img' + (i === 1 ? ' sc-wipe-pin' : ''));
+        img.src = '/g/' + n.short_id + '/preview';
+        img.alt = n.short_id;
+        img.loading = 'lazy';
+        img.draggable = false;
+        a.appendChild(img);
+      });
+      a.appendChild(wbEl('span', 'sc-wipe-bar'));
+      if (result.rating) a.appendChild(wbEl('span', 'sc-wipe-rating sc-wipe-rating-' + result.rating, result.rating));
+      var at = 50;
+      function place(pct) { a.style.setProperty('--sc-wipe', Math.max(0, Math.min(100, pct)) + '%'); }
+      a.addEventListener('pointermove', function (ev) {
+        var box = a.getBoundingClientRect();
+        place(((ev.clientX - box.left) / box.width) * 100);
+      });
+      a.addEventListener('pointerleave', function () { place(at); });
+      a.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        at = Math.max(0, Math.min(100, at + (ev.key === 'ArrowLeft' ? -10 : 10)));
+        place(at);
+      });
+      return a;
+    }
+
+    function renderCell(el) {
+      var p = poseOf(el.getAttribute('data-pose'));
+      if (!p) return;
+      var axis = el.getAttribute('data-axis');
+      var value = el.getAttribute('data-value');
+      el.textContent = '';
+      el.classList.remove('sc-cell-bad');
+      if (!p.pin) return el.appendChild(wbEl('span', 'sc-empty', 'pin なし'));
+      if (axis === 'framing' && value === p.framing) {
+        var own = wbEl('a', 'sc-wipe');
+        own.href = '/g/' + p.pin.short_id;
+        var img = wbEl('img', 'sc-wipe-img');
+        img.src = '/g/' + p.pin.short_id + '/preview';
+        img.alt = p.pin.short_id;
+        img.loading = 'lazy';
+        own.appendChild(img);
+        own.appendChild(wbEl('span', 'sc-wipe-tag', 'pin'));
+        return el.appendChild(own);
+      }
+      var v = variantOf(p, axis, value);
+      if (!v) return;
+      if (v.result) {
+        el.classList.toggle('sc-cell-bad', v.result.rating === 'bad');
+        return el.appendChild(buildWipe(p.pin, v.result));
+      }
+      if (!v.request) {
+        var btn = wbEl('button', 'wb-pill', '描く');
+        btn.type = 'button';
+        btn.setAttribute('data-sc-cell-render', '');
+        return el.appendChild(btn);
+      }
+      var msg = wbEl('span', 'sc-empty', v.request.status === 'queued' ? '待機中…' : v.request.status === 'running' ? '処理中…'
+        : v.request.status === 'failed' ? '失敗' : v.request.status);
+      if (v.request.error) msg.title = v.request.error;
+      el.appendChild(msg);
+    }
+
     function renderAll() {
       sc.poses.forEach(renderResult);
+      qsa('[data-sc-cell]', root).forEach(renderCell);
       renderViewer();
     }
 
@@ -2819,23 +2918,38 @@ export const appJs = `
       return p.request && (p.request.status === 'queued' || p.request.status === 'running' || (p.request.status === 'done' && !p.result));
     }
 
+    // 取り直しの対象: 各行の描き直し結果と、行列の variant セル (sweep 中は行列を出さない)。
+    function slots() {
+      var out = [];
+      sc.poses.forEach(function (p) {
+        out.push({ p: p, slot: p });
+        if (!sc.sweep) (p.variants || []).forEach(function (v) { out.push({ p: p, slot: v }); });
+      });
+      return out;
+    }
+
+    function renderSlot(s) {
+      if (s.slot === s.p) renderResult(s.p);
+      else cellEls(s.p, s.slot).forEach(renderCell);
+    }
+
     async function syncRequests() {
-      var pending = sc.poses.filter(isPending);
+      var pending = slots().filter(function (s) { return isPending(s.slot); });
       if (pending.length === 0) {
         clearInterval(sc.timer);
         sc.timer = null;
         return;
       }
       for (var i = 0; i < pending.length; i++) {
-        var p = pending[i];
+        var slot = pending[i].slot;
         try {
-          var r = await api('/api/v1/requests/' + encodeURIComponent(p.request.id));
-          p.request.status = r.status;
-          p.request.error = r.error || null;
+          var r = await api('/api/v1/requests/' + encodeURIComponent(slot.request.id));
+          slot.request.status = r.status;
+          slot.request.error = r.error || null;
           var id = r.status === 'done' && r.result && r.result.generation_ids ? r.result.generation_ids[0] : null;
-          if (id) p.result = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
+          if (id) slot.result = nodeOf(await api('/api/v1/generations/' + encodeURIComponent(id)));
         } catch (e) { /* retry on the next tick */ }
-        renderResult(p);
+        renderSlot(pending[i]);
       }
       renderViewer();
     }
@@ -2844,24 +2958,30 @@ export const appJs = `
       if (!sc.timer) sc.timer = setInterval(syncRequests, 3000);
     }
 
-    async function enqueue(pose, button) {
+    // variant: { axis, value } — 行列の列 (pose なし) かセル (pose あり) を描く。
+    async function enqueue(pose, button, variant) {
       var label = button.textContent;
       button.disabled = true;
       button.textContent = '送信中…';
+      var body = {};
+      if (pose) body.pose = pose;
+      if (variant) body[variant.axis] = variant.value;
+      var props = { recipe: recipe, pose: pose || null, axis: variant ? variant.axis : null, value: variant ? variant.value : null };
       try {
-        var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST', pose ? { pose: pose } : {});
+        var result = await api('/api/v1/style-check/' + encodeURIComponent(recipe), 'POST', body);
         (result.results || []).forEach(function (item) {
           var p = poseOf(item.pose);
-          if (!p || item.skipped || (!item.created && item.status === 'done')) return;
-          p.request = { id: item.request_id, status: item.status, error: null };
-          p.result = null;
-          renderResult(p);
+          var slot = p && variant ? variantOf(p, variant.axis, variant.value) : p;
+          if (!slot || item.skipped || (!item.created && item.status === 'done')) return;
+          slot.request = { id: item.request_id, status: item.status, error: null };
+          slot.result = null;
+          renderSlot({ p: p, slot: slot });
         });
         renderViewer();
         startPolling();
-        track('style_check.render', { recipe: recipe, pose: pose || null });
+        track('style_check.render', props);
       } catch (e) {
-        trackError('style_check.render', e, { recipe: recipe, pose: pose || null });
+        trackError('style_check.render', e, props);
         alert('描画できません: ' + e.message);
       } finally {
         button.disabled = false;
@@ -2901,6 +3021,13 @@ export const appJs = `
       }
       var all = t.closest('[data-style-check-render]');
       if (all) return enqueue(null, all);
+      var col = t.closest('[data-sc-col-render]');
+      if (col) return enqueue(null, col, { axis: col.getAttribute('data-axis'), value: col.getAttribute('data-value') });
+      var cellBtn = t.closest('[data-sc-cell-render]');
+      if (cellBtn) {
+        var cell = cellBtn.closest('[data-sc-cell]');
+        return enqueue(cell.getAttribute('data-pose'), cellBtn, { axis: cell.getAttribute('data-axis'), value: cell.getAttribute('data-value') });
+      }
       var row = t.closest('[data-sc-pose]');
       var p = row ? poseOf(row.getAttribute('data-sc-pose')) : null;
       if (!p) return;
@@ -2931,7 +3058,7 @@ export const appJs = `
 
     document.addEventListener('chimera:rating', function (ev) {
       sc.poses.forEach(function (q) {
-        [q.pin, q.result].forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
+        [q.pin, q.result].concat((q.variants || []).map(function (v) { return v.result; })).forEach(function (n) { if (n && n.id === ev.detail.id) n.rating = ev.detail.rating; });
       });
     });
 

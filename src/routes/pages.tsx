@@ -49,7 +49,7 @@ import {
   getCatalog,
 } from '../lib/catalogs';
 import type { RecipeCatalogDoc } from '../schemas/catalogs';
-import type { AppEnv, ExperimentRunRow, GenerationRow } from '../types';
+import type { AppEnv, ExperimentRunRow, GenerationRow, RequestRow } from '../types';
 import type { GenerationCardData } from '../ui/components/GenerationCard';
 
 export const pages = new Hono<AppEnv>();
@@ -455,13 +455,16 @@ pages.get('/check', async (c) => {
   const catalog = await getCatalog(c.env.DB, recipeRef);
   const gitCommit = catalog?.row.git_commit ?? null;
 
-  const rows = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
+  const { rows, vocab } = await loadStyleCheckRows(c.env.DB, recipe, recipeRef);
   const sweepParam = c.req.query('sweep');
   const sweep = sweepParam ? await loadPoseSweep(c.env.DB, sweepParam) : null;
   if (sweep) for (const row of rows) row.request = sweep.requests.get(row.pose) ?? null;
 
   const resultIds = rows.map((r) => (r.request ? resolveDoneGenerationId(r.request) : null));
-  const wanted = Array.from(new Set([...rows.map((r) => r.pin?.generation_id ?? null), ...resultIds].filter((id): id is string => Boolean(id))));
+  const variantResultIds = rows.map((r) => r.variants.map((v) => (v.request ? resolveDoneGenerationId(v.request) : null)));
+  const wanted = Array.from(
+    new Set([...rows.map((r) => r.pin?.generation_id ?? null), ...resultIds, ...variantResultIds.flat()].filter((id): id is string => Boolean(id))),
+  );
   const { results: nodeRows } = wanted.length
     ? await c.env.DB
         .prepare(
@@ -471,15 +474,21 @@ pages.get('/check', async (c) => {
         .all<Omit<StyleCheckNode, 'bookmark'> & { bookmark: number }>()
     : { results: [] };
   const nodeById = new Map((nodeRows ?? []).map((n) => [n.id, { ...n, bookmark: Boolean(n.bookmark) }]));
+  const requestView = (r: RequestRow) => ({ id: r.id, status: r.status, error: r.error });
 
   const poses: StyleCheckPoseView[] = rows.map((row, i) => ({
     pose: row.pose,
     pin: row.pin ? nodeById.get(row.pin.generation_id) ?? null : null,
     drift: row.drift,
     prompt_diff: row.prompt_diff,
-    request: row.request ? { id: row.request.id, status: row.request.status, error: row.request.error } : null,
+    request: row.request ? requestView(row.request) : null,
     result: resultIds[i] ? nodeById.get(resultIds[i]!) ?? null : null,
     excluded: sweep ? !sweep.requests.has(row.pose) : false,
+    framing: row.framing,
+    variants: row.variants.map((v, j) => {
+      const id = variantResultIds[i]![j];
+      return { axis: v.axis, value: v.value, request: v.request ? requestView(v.request) : null, result: id ? nodeById.get(id) ?? null : null };
+    }),
   }));
 
   return c.html(
@@ -488,6 +497,8 @@ pages.get('/check', async (c) => {
       recipe={recipe}
       gitCommit={gitCommit}
       poses={poses}
+      angles={vocab.angle}
+      framings={vocab.framing}
       selectedPose={c.req.query('pose') ?? null}
       sweep={sweep ? { short_id: sweep.short_id, name: sweep.name, patches: sweep.patches } : null}
     />,
