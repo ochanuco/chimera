@@ -22,6 +22,7 @@ export const REQUEST_KIND_LABELS: Record<string, string> = {
   lens: 'レンズ',
   photo: '写真に立てる',
   reference: '参考画像',
+  reference_render: '参考画像から描く',
   repair: 'repair',
   masked_redraw: 'masked redraw',
   finalize: 'finalize',

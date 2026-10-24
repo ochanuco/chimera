@@ -106,12 +106,12 @@ Promotion として提案し、実際のコード変更は別途 chagama
 -   絵柄チェック（[ui.md](ui.md#絵柄チェック)）: 全ポーズの pin のドリフトを一覧し、pin を今のカタログ既定で
     もう一度描く plain render を requests 行として積む。結果を good にして pin を差し替えることもできる。GUI は prompt を書かない。
     `/check?sweep=` は MCP `sweep_patch` が積んだ pose ごとの Run の結果を pin の隣に出すだけで、GUI は patches を書かない。
--   参考画像（[ui.md](ui.md#参考画像references)）: 画像と任意の seed を渡して `kind = reference` を requests 行として積む。
-    GUI は prompt を書かない。タグを選び generate を組むのは worker。
+-   参考画像（[ui.md](ui.md#参考画像references)）: 画像を渡して解析の `kind = reference` を、解析結果の候補から選んだタグ・pose・seed で
+    `kind = reference_render` を requests 行として積む。GUI は prompt を書かず、選べるのは worker が抽出した候補だけ。generate を組むのは worker。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）、参考画像から描く
-reference だけで、GUI が
+判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）、参考画像の
+reference / reference_render だけで、GUI が
 触るのは自分の D1 の requests 行と、写真ページ（[ui.md](ui.md#写真photos)）とワークベンチの背景フェーズがアップロードする写真（`kind = import`
 の Request・Job・Generation と R2 の original）と、参考画像ページがアップロードする参考画像（R2 の `references/{request_id}`）のみです。
 

@@ -9,10 +9,11 @@ import {
   photoPayloadSchema,
   redrawPayloadSchema,
   referencePayloadSchema,
+  referenceRenderPayloadSchema,
   saturationPayloadSchema,
   stagePayloadSchema,
 } from '../schemas/request-payloads';
-import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE, patchesFingerprintIssues } from './request-rules';
+import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE, REFERENCE_RENDER_CREATION_MESSAGE, patchesFingerprintIssues } from './request-rules';
 import { prefixIssues, validate, type ValidationIssue } from './validate';
 import type { StandardSchemaV1 } from './standard-schema';
 import type { RequestKind } from '../types';
@@ -39,6 +40,8 @@ function payloadSchemaFor(kind: PayloadKind): StandardSchemaV1 {
       return saturationPayloadSchema;
     case 'reference':
       return referencePayloadSchema;
+    case 'reference_render':
+      return referenceRenderPayloadSchema;
     case 'generate':
       return generatePayloadSchema;
   }
@@ -74,6 +77,9 @@ export function createRequestIssues(
   }
   if (value.kind === 'repair' || value.kind === 'masked_redraw') {
     return [{ message: PARTIAL_FIX_CREATION_MESSAGE, path: ['kind'] }];
+  }
+  if (value.kind === 'reference_render') {
+    return [{ message: REFERENCE_RENDER_CREATION_MESSAGE, path: ['kind'] }];
   }
   if (value.kind === 'import') {
     if (value.status !== 'done') {
