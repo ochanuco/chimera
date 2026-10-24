@@ -1597,6 +1597,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .photo-grid .work-source img { aspect-ratio: 4 / 3; object-fit: cover; }
 .photo-name { color: var(--text-dim); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reference-seed { width: 9rem; }
+.reference-preview { max-width: 160px; max-height: 160px; object-fit: contain; border-radius: 4px; }
 .reference-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .reference-item > summary { cursor: pointer; }
 .reference-generations { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; vertical-align: middle; }
@@ -6251,8 +6252,32 @@ export const appJs = `
         button.disabled = false;
       }
     });
-    input.addEventListener('change', function () { key = null; });
+    var preview = qs('[data-reference-preview]', form);
+    function showPreview() {
+      var file = input.files && input.files[0];
+      if (preview.src) URL.revokeObjectURL(preview.src);
+      if (!file) { preview.hidden = true; preview.removeAttribute('src'); return; }
+      preview.src = URL.createObjectURL(file);
+      preview.hidden = false;
+    }
+    input.addEventListener('change', function () { key = null; status.textContent = ''; showPreview(); });
     seedInput.addEventListener('input', function () { key = null; });
+    document.addEventListener('paste', function (event) {
+      var items = (event.clipboardData && event.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind !== 'file' || ['image/png', 'image/jpeg', 'image/webp'].indexOf(items[i].type) < 0) continue;
+        var pasted = items[i].getAsFile();
+        if (!pasted) continue;
+        event.preventDefault();
+        var ext = pasted.type.split('/')[1];
+        var transfer = new DataTransfer();
+        transfer.items.add(new File([pasted], 'pasted.' + ext, { type: pasted.type }));
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change'));
+        track('reference_paste', {});
+        return;
+      }
+    });
   }
 
   function initReroll() {

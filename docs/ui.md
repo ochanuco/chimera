@@ -1076,6 +1076,8 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 -   アップロード欄はファイルと任意の seed だけで、補足文は置きません。ブラウザが写真と同じく向き（EXIF）を直し、長辺 3072px まで
     縮めて PNG にしてから、`POST /api/v1/references` で `kind = reference` の Request を積みます。idempotency_key はボタン押下ごとに
     `gui:reference:{uuid}` を 1 つ作り、同じ押下の再送に使い回します（ファイルか seed を変えると作り直します）
+-   ページ上でクリップボードの画像（png / jpeg / webp）を貼り付けると、ファイル欄に入り、選んだ画像の縮小表示が出ます
+-   seed は空なら送らず、worker が乱数で決めます（placeholder `seed: ランダム`）
 -   一覧: reference の Request を新しい順に最大 30 件。行は short_id・status・seed・作成時刻と、worker が積んだ generate への
     リンク（Generation ができていればサムネイルと short_id、まだなら generate の short_id と status）を出します。failed なら error も出します
 -   詳細（行を開く）: worker が done の result に書いた pose、part ごとの当てたタグ、外したタグ（打ち消し線）を出します
