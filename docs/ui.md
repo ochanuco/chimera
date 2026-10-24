@@ -888,10 +888,7 @@ gui`）でrequestを積みます。pinが無いポーズはskipされ、応答�
 keyが上と同じなので、描画内容が同じ間の連打は積み直さず既存行を返します
 （`created: false`）。
 
-recipe_refが`REQUESTS_DEFAULT_RECIPE_REF`（既定`production`）のカタログを
-`PUT /api/v1/catalogs/{recipe_ref}`で公開した直後にも、pin済みの全ポーズについて同じ描画をバックグラウンドで自動で
-積みます。描画内容が変わったposeだけがcreatedになり、commitだけの変更や同じカタログの
-再公開は何も積みません。失敗してもPUTは失敗しません。
+カタログの公開（`PUT /api/v1/catalogs/{recipe_ref}`）では何も積みません。描き直しはこのボタンからだけです。
 
 queued / runningのrequestがある間は、ページが3秒ごとにrequestを取り直し、doneになればその行の結果を差し替えます（reload不要）。
 

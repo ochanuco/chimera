@@ -232,44 +232,16 @@ describe('style-check content key', () => {
   });
 });
 
-describe('catalog PUT auto render', () => {
+describe('catalog PUT', () => {
   beforeEach(async () => {
     await clearRequests();
     await env.DB.prepare('DELETE FROM preset_references').run();
   });
 
-  it('enqueues only the poses whose render content changed, and an identical PUT creates nothing', async () => {
+  it('enqueues no style-check render, even when a pinned pose prompt changes', async () => {
     await publishAndImport('aaa1111');
     await pinPose('bust');
-    await pinPose('coffee');
-
-    const put = (commit: string, bustPrompt?: string) => postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog(commit, bustPrompt), 'PUT');
-    const count = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM requests WHERE idempotency_key LIKE 'style-check:%'").first<{ n: number }>())!.n;
-
-    expect((await put('aaa1111')).status).toBe(200);
-    await vi.waitFor(async () => expect(await count()).toBe(2));
-
-    expect((await put('bbb2222')).status).toBe(200);
-    expect((await put('bbb2222')).status).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(await count()).toBe(2);
-    const keys = await styleCheckKeys();
-    const keysBefore = new Set(Object.values(keys));
-
-    expect((await put('ccc3333', 'bust up, smiling')).status).toBe(200);
-    await vi.waitFor(async () => expect(await count()).toBe(3));
-    const { results } = await env.DB.prepare("SELECT idempotency_key FROM requests WHERE idempotency_key LIKE 'style-check:%'").all<{
-      idempotency_key: string;
-    }>();
-    const added = results.map((r) => r.idempotency_key).filter((k) => !keysBefore.has(k));
-    expect(added).toHaveLength(1);
-    expect(added[0]).toMatch(/^style-check:yukari:bust:/);
-  });
-
-  it('does not render for a non-default recipe_ref', async () => {
-    await publishAndImport('aaa1111');
-    await pinPose('bust');
-    await postJson('/api/v1/catalogs/feature-branch', sampleCatalog('zzz9999'), 'PUT');
+    expect((await postJson(`/api/v1/catalogs/${RECIPE_REF}`, sampleCatalog('bbb2222', 'bust up, smiling'), 'PUT')).status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(Object.keys(await styleCheckKeys())).toEqual([]);
   });
