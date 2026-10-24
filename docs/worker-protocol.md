@@ -315,7 +315,8 @@ POST /api/v1/references/{id}/renders
 - `{id}` が無いか reference でなければ 404
 - 元の reference が done でなければ 400（`code: "reference_not_analyzed"`）
 - `pose` が `bust` / `coffee` / `stand` 以外、`seed` が負・非整数、未知のキーは 400
-- `applied` の各 (part, tag) が元の result の candidates に同じ part で無ければ 400。自由入力のタグは受けない
+- `applied` の各 (part, tag) が元の result の candidates に同じ part で無ければ 400。自由入力のタグは受けない（score が 0.05 未満の候補でも、candidates にあれば受ける）
+- `pose = bust` で `applied.legwear` が空でなければ 400（bust の絵には脚が入らない）
 
 payload の `applied` は part ごとに重複を除き、空の part を落としたものです。
 
@@ -980,10 +981,10 @@ done の `result` は次の形です。`generation_ids` は常に空です。
   result         型
   -------------- --------------------------------------------------------------------------
   pose           worker が提案する pose（`bust` / `coffee` / `stand`）
-  candidates     候補グループ（と追加の仕草の表）に属し score 0.05 以上のタグ全部。worker が常に外すタグは入らない
+  candidates     候補グループ（と追加の仕草の表）に属し score 0.05 以上のタグ全部と、それ未満でも kept か既定で採用するタグ。worker が常に外すタグは入らない
                  `part` は当てる part、`score` は tagger の確率、`kept` は tagger の閾値を超えたか、`d1` は d1 に聞いたタグだけ
                  yes の確率で、聞いていなければ null、`applied` は worker の既定で採用するか
-  applied        part 名 → 既定で採用するタグの配列（candidates の `applied: true` と同じ）
+  applied        part 名 → 既定で採用するタグの配列（candidates の `applied: true` と同じ）。タグは重みを付けない素の名前（`from above`）
   dropped        tagger が残したが採用しなかったタグの配列
 
 chimera は candidates を [reference_render](#reference_render) の作成時の検査と GUI の表示に読みます。画像そのものとそのハッシュはどこにも記録しません。

@@ -62,7 +62,7 @@ references.post('/:id/renders', async (c) => {
   const body = parseOrThrow(createReferenceRenderSchema, await c.req.json());
   const db = c.env.DB;
   const source = await getReferenceByIdOrShortId(db, c.req.param('id'));
-  const applied = checkReferenceRenderTags(source, body.applied);
+  const applied = checkReferenceRenderTags(source, body.pose, body.applied);
   const payload = {
     reference_request_id: source.id,
     pose: body.pose,

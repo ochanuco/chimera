@@ -54,8 +54,8 @@ export async function getReferenceByIdOrShortId(db: D1Database, idOrShortId: str
   return row;
 }
 
-/** 元の reference が done で、applied の各 (part, tag) がその候補に同じ part で在ることを確かめ、空の part を落とした applied を返す。 */
-export function checkReferenceRenderTags(source: RequestRow, applied: Record<string, string[]>): Record<string, string[]> {
+/** 元の reference が done で、applied の各 (part, tag) がその候補に同じ part で在り、bust に legwear が無いことを確かめ、空の part を落とした applied を返す。 */
+export function checkReferenceRenderTags(source: RequestRow, pose: string, applied: Record<string, string[]>): Record<string, string[]> {
   if (source.status !== 'done') {
     throw new ApiError(400, 'reference_not_analyzed', `reference '${source.short_id ?? source.id}' is ${source.status}, not done`);
   }
@@ -68,5 +68,6 @@ export function checkReferenceRenderTags(source: RequestRow, applied: Record<str
     if (unique.length > 0) normalized[part] = unique;
   }
   if (unknown.length > 0) throw badRequest(`not a candidate of the analysis: ${unknown.join(', ')}`);
+  if (pose === 'bust' && normalized.legwear) throw badRequest('pose bust draws no legs, so it takes no legwear tags');
   return normalized;
 }

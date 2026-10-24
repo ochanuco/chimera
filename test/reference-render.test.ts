@@ -23,6 +23,7 @@ const ANALYSIS = {
     { tag: 'from above', part: 'framing_tags', score: 0.25, kept: true, d1: null, applied: true },
     { tag: 'looking up', part: 'gesture', score: 0.11, kept: false, d1: 0.53, applied: true },
     { tag: 'leaning forward', part: 'gesture', score: 0.02, kept: false, d1: null, applied: false },
+    { tag: 'pantyhose', part: 'legwear', score: 0.03, kept: true, d1: null, applied: true },
   ],
   applied: { framing_tags: ['from above'], gesture: ['looking up'] },
   dropped: [],
@@ -80,6 +81,13 @@ describe('POST /api/v1/references/{id}/renders', () => {
     });
   });
 
+  it('accepts legwear on a pose that draws legs, and a candidate below score 0.05', async () => {
+    const reference = await analyzedReference();
+    const res = await render(reference.id, { pose: 'coffee', applied: { legwear: ['pantyhose'] } });
+    expect(res.status).toBe(201);
+    expect((await render(reference.id, { pose: 'bust', applied: { legwear: [] } })).status).toBe(201);
+  });
+
   it('accepts no seed and no tags', async () => {
     const reference = await analyzedReference();
     const res = await render(reference.id, { pose: 'bust', applied: {} });
@@ -100,6 +108,7 @@ describe('POST /api/v1/references/{id}/renders', () => {
   it.each([
     ['a tag that is not a candidate', { pose: 'bust', applied: { gesture: ['peace sign'] } }],
     ['a candidate under another part', { pose: 'bust', applied: { mouth: ['looking up'] } }],
+    ['legwear on pose bust', { pose: 'bust', applied: { legwear: ['pantyhose'] } }],
     ['a pose outside the list', { pose: 'lounge', applied: {} }],
     ['a negative seed', { pose: 'bust', seed: -1, applied: {} }],
     ['free text in place of tags', { pose: 'bust', applied: 'from above, smile' }],
