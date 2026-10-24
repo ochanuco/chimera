@@ -3,9 +3,6 @@ import { recipeCatalogEnvelopeSchema } from '../schemas/catalogs';
 import { RECIPE_REF_RE } from '../lib/request-rules';
 import { decodeBackdropThumbnail, getCatalog, listCatalogs, putCatalog, summarizeCatalog } from '../lib/catalogs';
 import { badRequest, notFound } from '../lib/errors';
-import { notifyHub, runInBackground } from '../lib/hub-notify';
-import { defaultRecipeRef } from '../lib/requests';
-import { renderStyleCheck, STYLE_CHECK_RECIPE } from '../lib/style-check';
 import { parseOrThrow } from '../lib/validate';
 import type { AppEnv } from '../types';
 
@@ -25,15 +22,6 @@ catalogs.put('/:recipe_ref', async (c) => {
   const recipeRef = requireRecipeRef(c.req.param('recipe_ref'));
   const doc = parseOrThrow(recipeCatalogEnvelopeSchema, await c.req.json());
   const row = await putCatalog(c.env.DB, recipeRef, doc);
-  if (recipeRef === defaultRecipeRef(c.env)) {
-    const env = c.env;
-    runInBackground(
-      c,
-      renderStyleCheck(env.DB, env, STYLE_CHECK_RECIPE)
-        .then(({ createdRequests }) => Promise.all(createdRequests.map((r) => notifyHub(env, 'queued', r))))
-        .catch(() => undefined),
-    );
-  }
   return c.json({
     recipe_ref: row.recipe_ref,
     worker_id: row.worker_id,
