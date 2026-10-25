@@ -16,8 +16,8 @@ export const MAX_FRAME_TOTAL_POINTS = 20000;
 
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
-/** reference_render が描く土台 (docs/worker-protocol.md「reference_render」)。pose を持たないキャラクターだけの base で、GUI からは選ばせない。 */
-export const REFERENCE_RENDER_POSE = 'base';
+/** reference_render が描く土台 (docs/worker-protocol.md「reference_render」)。worker の yukari_persona（pose を持たない基本キャラクター）で、GUI からは選ばせない。 */
+export const REFERENCE_RENDER_POSE = 'yukari_persona';
 
 export const REFERENCE_RENDER_CREATION_MESSAGE =
   "kind 'reference_render' is created only by POST /api/v1/references/{id}/renders, which checks the tags against the analysis";

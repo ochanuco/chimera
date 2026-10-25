@@ -1110,7 +1110,7 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 -   タグ: 解析の candidates を part ごとのチップ（`wb-pill`）で出します。worker が既定で採用したもの（`applied: true`）は ON、
     そうでない候補は OFF で薄く（破線）出し、`score / d1`（d1 に聞いていなければ `–`）を添えます。どのチップも押すと ON / OFF が切り替わります。
     自由入力の欄はありません（選べるのは worker が抽出した候補だけ）
--   pose を選ぶ欄はありません。描く土台は常に base（pose を持たないキャラクターだけの基本プロンプト）で、worker の内部にあります
+-   pose を選ぶ欄はありません。描く土台は常に `yukari_persona`（pose を持たない基本キャラクター）で、worker の内部にあります
 -   seed は空なら送らず、worker が乱数で決めます（placeholder `ランダム`）
 -   「描く」は ON のチップを part ごとにまとめて `POST /api/v1/references/{id}/renders` に送り、`kind = reference_render` を積みます。
     idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・seed を変えると作り直します）。

@@ -310,7 +310,7 @@ POST /api/v1/references/{id}/renders
 ```
 
 `{id}` は元の reference の UUID か short_id です。`kind = reference_render` の Request（`created_by = gui`）を作り、Create Request と
-同じ形の Request 行を返します。payload の `pose` は chimera が常に `base` を入れ、本体では受けません。新規は 201、同じキー・同じ内容の再送は 200、同じキーで別の内容は 409 です。
+同じ形の Request 行を返します。payload の `pose` は chimera が常に `yukari_persona` を入れ、本体では受けません。新規は 201、同じキー・同じ内容の再送は 200、同じキーで別の内容は 409 です。
 
 - `{id}` が無いか reference でなければ 404
 - 元の reference が done でなければ 400（`code: "reference_not_analyzed"`）
@@ -424,7 +424,7 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
     載らないので（[domain-model.md](domain-model.md#preset)）、`parameters.costume` /
     `parameters.expression` の上書きは pin されずに worker へそのまま渡ります。行が
     1件でもある kind で名前が無いときだけ上の 400 が効きます。
--   `parameters.pose = base` は pin せずに通します。[reference_render](#reference_render) が積む generate の
+-   `parameters.pose = yukari_persona` は pin せずに通します。[reference_render](#reference_render) が積む generate の
     土台で、worker の内部にしか無く、Preset の行もカタログの pose も持たないためです。
 -   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
     pin の対象外です。
@@ -981,7 +981,7 @@ done の `result` は次の形です。`generation_ids` は常に空です。
 
   result         型
   -------------- --------------------------------------------------------------------------
-  pose           常に `base`。chimera は読まない
+  pose           常に `yukari_persona`。chimera は読まない
   candidates     候補グループ（と追加の仕草の表）に属し score 0.05 以上のタグ全部と、それ未満でも kept か既定で採用するタグ。worker が常に外すタグは入らない
                  `part` は当てる part、`score` は tagger の確率、`kept` は tagger の閾値を超えたか、`d1` は d1 に聞いたタグだけ
                  yes の確率で、聞いていなければ null、`applied` は worker の既定で採用するか
@@ -992,10 +992,16 @@ chimera は candidates を [reference_render](#reference_render) の作成時の
 
 ### reference_render
 
-解析済みの reference の候補から選んだタグで描く worker 実行です。描く土台は base です。base は結月ゆかりというキャラクターを形づくる
-基本プロンプトだけで、pose・アングル・画角・表情・レッグウェアを持ちません。用意済みの pose では描けない新しい pose を参考画像のタグだけで
-探るためで、既存の pose を土台にするとその pose の中身がタグとぶつかります。base は worker の内部にあり、カタログの pose には出ません。
-worker は選ばれたタグから base への part patch を組んで通常の
+解析済みの reference の候補から選んだタグで描く worker 実行です。描く土台は `yukari_persona`（基本キャラクター）です。
+`yukari_persona` は、どの pose も下に敷く 3 つの層だけでできていて、pose・アングル・画角・表情を持ちません。
+
+- キャラクター層: 結月ゆかりそのもの（キャラ名・作品名のタグ、髪・瞳・髪飾り、うさぎフードのカーディガン）
+- カスタマイズ層: このプロジェクトの定番（タイツ、ネイル、体型、顔、目の形、画風、artist タグ）
+- 制作層: 処理に要るもの（品質・人数のタグ、deliver が切り抜く緑背景）
+
+用意済みの pose では描けない新しい pose を参考画像のタグだけで探るためで、既存の pose を土台にするとその pose の中身がタグとぶつかります。
+legwear のタグを選ぶと、カスタマイズ層のタイツをそのタグで置き換えます。`yukari_persona` は worker の内部にあり、カタログの pose には出ません。
+worker は選ばれたタグから `yukari_persona` への part patch を組んで通常の
 [generate](#generate) を積むだけで、自分では描きません。描くのは積んだ generate で、普通の Generation になります
 （reroll・derive・lineage がそのまま効きます）。1 つの reference から何度でも積めます。
 
@@ -1004,7 +1010,7 @@ worker は選ばれたタグから base への part patch を組んで通常の
   "kind": "reference_render",
   "payload": {
     "reference_request_id": "0192d3a8-…",
-    "pose": "base",
+    "pose": "yukari_persona",
     "seed": 123456,
     "applied": { "framing_tags": ["from above"], "gesture": ["looking up", "leaning forward"] }
   }

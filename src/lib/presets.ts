@@ -245,7 +245,7 @@ export async function pinPresets(db: D1Database, payload: JsonObject): Promise<J
     if (pinnedKinds.has(kind)) continue;
     const name = parameters[kind];
     if (typeof name !== 'string' || name === '') continue;
-    // reference_render の generate が描く base は worker 内部の土台で、Preset の行もカタログの pose も持たない。
+    // reference_render の generate が描く yukari_persona は worker 内部の基本キャラクターで、Preset の行もカタログの pose も持たない。
     if (kind === 'pose' && name === REFERENCE_RENDER_POSE) continue;
     // import が作るのは pose だけ（docs/domain-model.md「Preset」）。行が一つも無い kind は worker 側の
     // 上書きに任せて素通しにし、行のある kind で名前が無いときだけ 400 にする。
