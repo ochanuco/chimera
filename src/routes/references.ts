@@ -7,6 +7,7 @@ import { serializeRequest } from '../lib/serialize';
 import { badRequest } from '../lib/errors';
 import { ValidationError, parseOrThrow } from '../lib/validate';
 import { checkReferenceRenderTags, getReferenceByIdOrShortId } from '../lib/reference-renders';
+import { REFERENCE_RENDER_POSE } from '../lib/request-rules';
 import { createReferenceRenderSchema } from '../schemas/request-payloads';
 import type { AppEnv } from '../types';
 
@@ -62,10 +63,10 @@ references.post('/:id/renders', async (c) => {
   const body = parseOrThrow(createReferenceRenderSchema, await c.req.json());
   const db = c.env.DB;
   const source = await getReferenceByIdOrShortId(db, c.req.param('id'));
-  const applied = checkReferenceRenderTags(source, body.pose, body.applied);
+  const applied = checkReferenceRenderTags(source, body.applied);
   const payload = {
     reference_request_id: source.id,
-    pose: body.pose,
+    pose: REFERENCE_RENDER_POSE,
     ...(body.seed !== undefined ? { seed: body.seed } : {}),
     applied,
   };

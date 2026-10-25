@@ -18,7 +18,7 @@ interface RequestBody {
 
 const ANALYSIS = {
   generation_ids: [],
-  pose: 'coffee',
+  pose: 'base',
   candidates: [
     { tag: 'from above', part: 'framing_tags', score: 0.25, kept: true, d1: null, applied: true },
     { tag: 'looking up', part: 'gesture', score: 0.11, kept: false, d1: 0.53, applied: true },
@@ -67,7 +67,6 @@ describe('POST /api/v1/references/{id}/renders', () => {
   it('queues a reference_render from the GUI with the chosen candidates', async () => {
     const reference = await analyzedReference();
     const res = await render(reference.short_id, {
-      pose: 'stand',
       seed: 42,
       applied: { framing_tags: ['from above'], gesture: ['leaning forward', 'leaning forward'], mouth: [] },
     });
@@ -75,44 +74,43 @@ describe('POST /api/v1/references/{id}/renders', () => {
     expect(res.body).toMatchObject({ kind: 'reference_render', status: 'queued', created_by: 'gui' });
     expect(res.body.payload).toEqual({
       reference_request_id: reference.id,
-      pose: 'stand',
+      pose: 'base',
       seed: 42,
       applied: { framing_tags: ['from above'], gesture: ['leaning forward'] },
     });
   });
 
-  it('accepts legwear on a pose that draws legs, and a candidate below score 0.05', async () => {
+  it('accepts legwear, and a candidate below score 0.05', async () => {
     const reference = await analyzedReference();
-    const res = await render(reference.id, { pose: 'coffee', applied: { legwear: ['pantyhose'] } });
+    const res = await render(reference.id, { applied: { legwear: ['pantyhose'] } });
     expect(res.status).toBe(201);
-    expect((await render(reference.id, { pose: 'bust', applied: { legwear: [] } })).status).toBe(201);
+    expect(res.body.payload.applied).toEqual({ legwear: ['pantyhose'] });
   });
 
   it('accepts no seed and no tags', async () => {
     const reference = await analyzedReference();
-    const res = await render(reference.id, { pose: 'bust', applied: {} });
+    const res = await render(reference.id, { applied: {} });
     expect(res.status).toBe(201);
-    expect(res.body.payload).toEqual({ reference_request_id: reference.id, pose: 'bust', applied: {} });
+    expect(res.body.payload).toEqual({ reference_request_id: reference.id, pose: 'base', applied: {} });
   });
 
   it('replays the same key and rejects the same key with other tags', async () => {
     const reference = await analyzedReference();
     const key = crypto.randomUUID();
-    const first = await render(reference.id, { idempotency_key: key, pose: 'bust', applied: { gesture: ['looking up'] } });
-    const replay = await render(reference.id, { idempotency_key: key, pose: 'bust', applied: { gesture: ['looking up'] } });
+    const first = await render(reference.id, { idempotency_key: key, applied: { gesture: ['looking up'] } });
+    const replay = await render(reference.id, { idempotency_key: key, applied: { gesture: ['looking up'] } });
     expect(replay.status).toBe(200);
     expect(replay.body.id).toBe(first.body.id);
-    expect((await render(reference.id, { idempotency_key: key, pose: 'bust', applied: {} })).status).toBe(409);
+    expect((await render(reference.id, { idempotency_key: key, applied: {} })).status).toBe(409);
   });
 
   it.each([
-    ['a tag that is not a candidate', { pose: 'bust', applied: { gesture: ['peace sign'] } }],
-    ['a candidate under another part', { pose: 'bust', applied: { mouth: ['looking up'] } }],
-    ['legwear on pose bust', { pose: 'bust', applied: { legwear: ['pantyhose'] } }],
-    ['a pose outside the list', { pose: 'lounge', applied: {} }],
-    ['a negative seed', { pose: 'bust', seed: -1, applied: {} }],
-    ['free text in place of tags', { pose: 'bust', applied: 'from above, smile' }],
-    ['an unknown key', { pose: 'bust', applied: {}, prompt: 'smile' }],
+    ['a tag that is not a candidate', { applied: { gesture: ['peace sign'] } }],
+    ['a candidate under another part', { applied: { mouth: ['looking up'] } }],
+    ['a pose', { pose: 'bust', applied: {} }],
+    ['a negative seed', { seed: -1, applied: {} }],
+    ['free text in place of tags', { applied: 'from above, smile' }],
+    ['an unknown key', { applied: {}, prompt: 'smile' }],
   ])('rejects %s', async (_label, body) => {
     const reference = await analyzedReference();
     expect((await render(reference.id, body)).status).toBe(400);
@@ -120,22 +118,22 @@ describe('POST /api/v1/references/{id}/renders', () => {
 
   it('rejects a reference that is not analyzed yet', async () => {
     const reference = await uploadReference();
-    const res = await render(reference.id, { pose: 'bust', applied: {} });
+    const res = await render(reference.id, { applied: {} });
     expect(res.status).toBe(400);
     expect(res.body.error?.code).toBe('reference_not_analyzed');
   });
 
   it('is 404 for a request that is not a reference', async () => {
     const reference = await analyzedReference();
-    const renderRow = await render(reference.id, { pose: 'bust', applied: {} });
-    expect((await render(renderRow.body.id, { pose: 'bust', applied: {} })).status).toBe(404);
-    expect((await render(crypto.randomUUID(), { pose: 'bust', applied: {} })).status).toBe(404);
+    const renderRow = await render(reference.id, { applied: {} });
+    expect((await render(renderRow.body.id, { applied: {} })).status).toBe(404);
+    expect((await render(crypto.randomUUID(), { applied: {} })).status).toBe(404);
   });
 
   it('is the only way to create one', async () => {
     const res = await postJson('/api/v1/requests', {
       kind: 'reference_render',
-      payload: { reference_request_id: 'x', pose: 'bust', applied: {} },
+      payload: { reference_request_id: 'x', pose: 'base', applied: {} },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
@@ -144,7 +142,7 @@ describe('POST /api/v1/references/{id}/renders', () => {
 
   it('is claimed by the kinds filter', async () => {
     const reference = await analyzedReference();
-    const created = await render(reference.id, { pose: 'coffee', applied: {} });
+    const created = await render(reference.id, { applied: {} });
     const claimed = await postJson<RequestBody>('/api/v1/requests/claim', { worker_id: 'w', kinds: ['reference_render'] });
     expect(claimed.body.id).toBe(created.body.id);
   });

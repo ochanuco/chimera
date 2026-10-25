@@ -13,7 +13,6 @@ export interface ReferenceCandidate {
 }
 
 export interface ReferenceAnalysis {
-  pose: string | null;
   candidates: ReferenceCandidate[];
 }
 
@@ -21,7 +20,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-/** reference の done の result から pose の提案と候補を読む。形の崩れた候補は落とす。 */
+/** reference の done の result から候補を読む。形の崩れた候補は落とす。 */
 export function parseReferenceAnalysis(resultJson: string | null): ReferenceAnalysis {
   let result: Record<string, unknown> | null = null;
   try {
@@ -42,7 +41,7 @@ export function parseReferenceAnalysis(resultJson: string | null): ReferenceAnal
       applied: c.applied === true,
     });
   }
-  return { pose: typeof result?.pose === 'string' ? result.pose : null, candidates };
+  return { candidates };
 }
 
 export async function getReferenceByIdOrShortId(db: D1Database, idOrShortId: string): Promise<RequestRow> {
@@ -54,8 +53,8 @@ export async function getReferenceByIdOrShortId(db: D1Database, idOrShortId: str
   return row;
 }
 
-/** 元の reference が done で、applied の各 (part, tag) がその候補に同じ part で在り、bust に legwear が無いことを確かめ、空の part を落とした applied を返す。 */
-export function checkReferenceRenderTags(source: RequestRow, pose: string, applied: Record<string, string[]>): Record<string, string[]> {
+/** 元の reference が done で、applied の各 (part, tag) がその候補に同じ part で在ることを確かめ、空の part を落とした applied を返す。 */
+export function checkReferenceRenderTags(source: RequestRow, applied: Record<string, string[]>): Record<string, string[]> {
   if (source.status !== 'done') {
     throw new ApiError(400, 'reference_not_analyzed', `reference '${source.short_id ?? source.id}' is ${source.status}, not done`);
   }
@@ -68,6 +67,5 @@ export function checkReferenceRenderTags(source: RequestRow, pose: string, appli
     if (unique.length > 0) normalized[part] = unique;
   }
   if (unknown.length > 0) throw badRequest(`not a candidate of the analysis: ${unknown.join(', ')}`);
-  if (pose === 'bust' && normalized.legwear) throw badRequest('pose bust draws no legs, so it takes no legwear tags');
   return normalized;
 }

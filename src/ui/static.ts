@@ -6456,16 +6456,9 @@ export const appJs = `
 
     var run = qs('[data-ref-run]', root);
     if (!run) return;
-    var poseSelect = qs('[data-ref-pose]', root);
     var seedInput = qs('[data-ref-seed]', root);
     var errorEl = qs('[data-ref-error]', root);
     var key = null;
-
-    function syncLegwear() {
-      var bust = poseSelect.value === 'bust';
-      qsa('[data-ref-tag-part="legwear"]', root).forEach(function (chip) { chip.disabled = bust; });
-    }
-    syncLegwear();
 
     root.addEventListener('click', function (event) {
       var chip = event.target.closest('[data-ref-tag]');
@@ -6475,7 +6468,6 @@ export const appJs = `
       chip.setAttribute('aria-pressed', on ? 'true' : 'false');
       key = null;
     });
-    poseSelect.addEventListener('change', function () { syncLegwear(); key = null; });
     seedInput.addEventListener('input', function () { key = null; });
 
     run.addEventListener('click', async function () {
@@ -6485,14 +6477,14 @@ export const appJs = `
         var part = chip.getAttribute('data-ref-tag-part');
         (applied[part] = applied[part] || []).push(chip.getAttribute('data-ref-tag'));
       });
-      var body = { applied: applied, pose: poseSelect.value, idempotency_key: key = key || 'gui:reference_render:' + crypto.randomUUID() };
+      var body = { applied: applied, idempotency_key: key = key || 'gui:reference_render:' + crypto.randomUUID() };
       var seed = seedInput.value.trim();
       if (seed !== '') body.seed = Number(seed);
       run.disabled = true;
       errorEl.hidden = true;
       try {
         await api('/api/v1/references/' + encodeURIComponent(id) + '/renders', 'POST', body);
-        track('reference_render', { pose: body.pose, seed: seed !== '' });
+        track('reference_render', { seed: seed !== '' });
         key = null;
         if (timer) { clearTimeout(timer); timer = null; }
         await refresh();

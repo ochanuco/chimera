@@ -306,17 +306,16 @@ POST /api/v1/references/{id}/renders
 ```
 
 ``` json
-{ "applied": { "framing_tags": ["from above"], "gesture": ["looking up"] }, "pose": "coffee", "seed": 123456, "idempotency_key": "gui:reference_render:…" }
+{ "applied": { "framing_tags": ["from above"], "gesture": ["looking up"] }, "seed": 123456, "idempotency_key": "gui:reference_render:…" }
 ```
 
 `{id}` は元の reference の UUID か short_id です。`kind = reference_render` の Request（`created_by = gui`）を作り、Create Request と
-同じ形の Request 行を返します。新規は 201、同じキー・同じ内容の再送は 200、同じキーで別の内容は 409 です。
+同じ形の Request 行を返します。payload の `pose` は chimera が常に `base` を入れ、本体では受けません。新規は 201、同じキー・同じ内容の再送は 200、同じキーで別の内容は 409 です。
 
 - `{id}` が無いか reference でなければ 404
 - 元の reference が done でなければ 400（`code: "reference_not_analyzed"`）
-- `pose` が `bust` / `coffee` / `stand` 以外、`seed` が負・非整数、未知のキーは 400
+- `seed` が負・非整数、未知のキー（`pose` を含む）は 400
 - `applied` の各 (part, tag) が元の result の candidates に同じ part で無ければ 400。自由入力のタグは受けない（score が 0.05 未満の候補でも、candidates にあれば受ける）
-- `pose = bust` で `applied.legwear` が空でなければ 400（bust の絵には脚が入らない）
 
 payload の `applied` は part ごとに重複を除き、空の part を落としたものです。
 
@@ -931,7 +930,7 @@ catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"s
 
 ### reference
 
-参考画像を解析する worker 実行です。画像をタグに読み替え、構図・仕草・表情・レッグウェアの候補と pose の提案を result に書きます。
+参考画像を解析する worker 実行です。画像をタグに読み替え、構図・仕草・表情・レッグウェアの候補を result に書きます。
 描きはしません。描くのは、GUI が候補から選んで積む [reference_render](#reference_render) です。
 
 ``` json
@@ -953,7 +952,7 @@ GUI は [Create Reference](#create-reference) で Request と画像を一緒に�
 worker は claim した reference を次の順に処理します。
 
 1. 参考画像を [Reference Image](#reference-image) の GET で読む
-2. タグに読み替え、候補と pose の提案を組む
+2. タグに読み替え、候補を組む
 3. 参考画像を DELETE する。失敗して retry に回すときは消さない
 4. reference を done にする
 
@@ -980,7 +979,7 @@ done の `result` は次の形です。`generation_ids` は常に空です。
 
   result         型
   -------------- --------------------------------------------------------------------------
-  pose           worker が提案する pose（`bust` / `coffee` / `stand`）
+  pose           常に `base`。chimera は読まない
   candidates     候補グループ（と追加の仕草の表）に属し score 0.05 以上のタグ全部と、それ未満でも kept か既定で採用するタグ。worker が常に外すタグは入らない
                  `part` は当てる part、`score` は tagger の確率、`kept` は tagger の閾値を超えたか、`d1` は d1 に聞いたタグだけ
                  yes の確率で、聞いていなければ null、`applied` は worker の既定で採用するか
@@ -991,7 +990,10 @@ chimera は candidates を [reference_render](#reference_render) の作成時の
 
 ### reference_render
 
-解析済みの reference の候補から選んだタグで描く worker 実行です。worker は選ばれたタグから part patch を組んで通常の
+解析済みの reference の候補から選んだタグで描く worker 実行です。描く土台は base です。base は結月ゆかりというキャラクターを形づくる
+基本プロンプトだけで、pose・アングル・画角・表情・レッグウェアを持ちません。用意済みの pose では描けない新しい pose を参考画像のタグだけで
+探るためで、既存の pose を土台にするとその pose の中身がタグとぶつかります。base は worker の内部にあり、カタログの pose には出ません。
+worker は選ばれたタグから base への part patch を組んで通常の
 [generate](#generate) を積むだけで、自分では描きません。描くのは積んだ generate で、普通の Generation になります
 （reroll・derive・lineage がそのまま効きます）。1 つの reference から何度でも積めます。
 
@@ -1000,7 +1002,7 @@ chimera は candidates を [reference_render](#reference_render) の作成時の
   "kind": "reference_render",
   "payload": {
     "reference_request_id": "0192d3a8-…",
-    "pose": "coffee",
+    "pose": "base",
     "seed": 123456,
     "applied": { "framing_tags": ["from above"], "gesture": ["looking up", "leaning forward"] }
   }
@@ -1010,7 +1012,7 @@ chimera は candidates を [reference_render](#reference_render) の作成時の
   payload                型
   ---------------------- --------------------------------------------------------------------------
   reference_request_id   元の reference の Request id（UUID）
-  pose                   `bust` / `coffee` / `stand`
+  pose                   常に `base`
   seed                   0 以上の整数、省略可。積む generate の seed で、省略時は worker が乱数で決める
   applied                part 名 → 当てるタグの配列。空の part は持たない
 
@@ -1174,7 +1176,7 @@ worker は requests だけを見ます。
 - Generation Detail には積む form が無く、最新 request の status（queued / running / done / failed）と、done なら出力 Generation へのリンクを出す。
   request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `lighting` / `dof`、`created_by = gui`）から積む。
 - 参考画像 (`/references`, [ui.md](ui.md#参考画像references)): 画像を [Create Reference](#create-reference) に送って `kind = reference`
-  を積み（`created_by = gui`）、解析の done の candidates から選んだタグ・pose・seed を [Create Reference Render](#create-reference-render)
+  を積み（`created_by = gui`）、解析の done の candidates から選んだタグと seed を [Create Reference Render](#create-reference-render)
   に送って `kind = reference_render` を積む（`created_by = gui`）。GUI は prompt を書かず、選べるのは worker が抽出した候補だけ。
 - redraw / deliver は Generation 単位でしか積めない（複数 Generation をまとめて積む画面は無い）。
 - 進捗の step 表示は段階 3。

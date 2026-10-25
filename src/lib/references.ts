@@ -1,10 +1,15 @@
 // 参考画像のページ (docs/ui.md「参考画像」): `/references` の一覧と、`/references/{short_id}` のタグ画面と描いた絵。
 
 import { parseReferenceAnalysis, type ReferenceCandidate } from './reference-renders';
-import { REFERENCE_RENDER_POSES } from './request-rules';
 import type { RequestRow, RequestStatus } from '../types';
 
 export const REFERENCES_PAGE_SIZE = 30;
+
+/** worker の error は Python の traceback を丸ごと持つことがあるので、画面には例外の行（最後の空でない行）だけを出す。 */
+export function errorHeadline(error: string): string {
+  const lines = error.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  return lines.length > 1 ? (lines.at(-1) ?? error) : error;
+}
 
 export interface ReferenceListItem {
   id: string;
@@ -40,7 +45,6 @@ export interface ReferenceRenderItem {
   status: RequestStatus;
   error: string | null;
   created_at: string;
-  pose: string | null;
   seed: number | null;
   applied: Record<string, string[]>;
   /** worker が done の result に書いた generate。done 前と、行が見つからないときは generate の status が null。 */
@@ -55,9 +59,6 @@ export interface ReferenceDetail {
   status: RequestStatus;
   error: string | null;
   created_at: string;
-  /** worker の提案。許可リストに無ければ bust。 */
-  pose: (typeof REFERENCE_RENDER_POSES)[number];
-  poses: readonly string[];
   candidates: ReferenceCandidate[];
   renders: ReferenceRenderItem[];
 }
@@ -125,7 +126,6 @@ export async function listReferenceRenders(db: D1Database, referenceId: string):
     status: row.status,
     error: row.error,
     created_at: row.created_at,
-    pose: typeof payload.pose === 'string' ? payload.pose : null,
     seed: typeof payload.seed === 'number' ? payload.seed : null,
     applied: appliedParts(payload.applied),
     generate: generateId ? (generates.get(generateId) ?? { id: generateId, short_id: null, status: null, error: null }) : null,
@@ -135,15 +135,12 @@ export async function listReferenceRenders(db: D1Database, referenceId: string):
 
 export async function getReferenceDetail(db: D1Database, source: RequestRow): Promise<ReferenceDetail> {
   const analysis = parseReferenceAnalysis(source.status === 'done' ? source.result_json : null);
-  const pose = REFERENCE_RENDER_POSES.find((p) => p === analysis.pose) ?? 'bust';
   return {
     id: source.id,
     short_id: source.short_id,
     status: source.status,
     error: source.error,
     created_at: source.created_at,
-    pose,
-    poses: REFERENCE_RENDER_POSES,
     candidates: analysis.candidates,
     renders: await listReferenceRenders(db, source.id),
   };

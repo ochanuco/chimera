@@ -1,6 +1,6 @@
 import { Layout } from '../layout';
 import { PHOTO_MAX_SIDE } from '../../lib/photos';
-import type { ReferenceListItem } from '../../lib/references';
+import { errorHeadline, type ReferenceListItem } from '../../lib/references';
 
 const STATUS_LABELS: Record<string, string> = { queued: '解析待ち', running: '解析中', done: '解析済み', failed: '失敗', cancelled: '中止' };
 
@@ -28,7 +28,7 @@ export function ReferencesPage({ path, items }: { path: string; items: Reference
               </a>{' '}
               {STATUS_LABELS[item.status] ?? item.status} · {item.created_at}
               {item.renders > 0 ? <> · {item.renders} 回描いた</> : null}
-              {item.status === 'failed' && item.error ? <> — {item.error}</> : null}
+              {item.status === 'failed' && item.error ? <> — {errorHeadline(item.error)}</> : null}
             </li>
           ))}
         </ul>
