@@ -534,7 +534,7 @@ PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告�
 GET    /api/v1/requests/{id}/reference-image  kind=reference の参考画像。200（画像）/ 404（画像が無い・kind が違う）
 DELETE /api/v1/requests/{id}/reference-image  参考画像を消す。204（無くても）/ 404（Request が無い・kind が違う）
 POST   /api/v1/references          multipart（image 必須・seed 任意・idempotency_key 必須）で kind=reference を積み、画像を R2 に置く。201 / 200(再送) / 409(同じキーで別の seed) / 400
-POST   /api/v1/references/{id}/renders  { applied, seed?, idempotency_key } で kind=reference_render を積む（pose は常に base）。201 / 200(再送) / 409(同じキーで別内容) / 400（未解析・候補に無いタグ）/ 404
+POST   /api/v1/references/{id}/renders  { applied, seed?, idempotency_key } で kind=reference_render を積む（pose は常に yukari_persona）。201 / 200(再送) / 409(同じキーで別内容) / 400（未解析・候補に無いタグ）/ 404
 ```
 
 参考画像の口の契約は [worker-protocol.md「Create Reference」「Reference Image」「Create Reference Render」](worker-protocol.md#create-reference) が正本です。

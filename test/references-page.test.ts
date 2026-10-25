@@ -14,7 +14,7 @@ interface RequestBody {
 
 const ANALYSIS = {
   generation_ids: [],
-  pose: 'base',
+  pose: 'yukari_persona',
   candidates: [
     { tag: 'from above', part: 'framing_tags', score: 0.25, kept: true, d1: null, applied: true },
     { tag: 'looking up', part: 'gesture', score: 0.11, kept: false, d1: 0.53, applied: true },

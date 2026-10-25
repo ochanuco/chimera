@@ -279,7 +279,7 @@ describe('preset pin (createRequest / generate)', () => {
     expect(res.body.payload.generation?.parameters).toEqual({ pose: 'lounge', costume: 'suspender', expression: 'smile' });
   });
 
-  it('passes pose base through unpinned: the reference_render base has no preset row', async () => {
+  it('passes pose yukari_persona through unpinned: it has no preset row', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
 
@@ -287,7 +287,7 @@ describe('preset pin (createRequest / generate)', () => {
       payload: {
         schema_version: 1,
         request: { instruction: 'test', count: 1 },
-        generation: { recipe, parameters: { pose: 'base' } },
+        generation: { recipe, parameters: { pose: 'yukari_persona' } },
       },
     });
     expect(res.status).toBe(201);

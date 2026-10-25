@@ -18,7 +18,7 @@ interface RequestBody {
 
 const ANALYSIS = {
   generation_ids: [],
-  pose: 'base',
+  pose: 'yukari_persona',
   candidates: [
     { tag: 'from above', part: 'framing_tags', score: 0.25, kept: true, d1: null, applied: true },
     { tag: 'looking up', part: 'gesture', score: 0.11, kept: false, d1: 0.53, applied: true },
@@ -74,7 +74,7 @@ describe('POST /api/v1/references/{id}/renders', () => {
     expect(res.body).toMatchObject({ kind: 'reference_render', status: 'queued', created_by: 'gui' });
     expect(res.body.payload).toEqual({
       reference_request_id: reference.id,
-      pose: 'base',
+      pose: 'yukari_persona',
       seed: 42,
       applied: { framing_tags: ['from above'], gesture: ['leaning forward'] },
     });
@@ -91,7 +91,7 @@ describe('POST /api/v1/references/{id}/renders', () => {
     const reference = await analyzedReference();
     const res = await render(reference.id, { applied: {} });
     expect(res.status).toBe(201);
-    expect(res.body.payload).toEqual({ reference_request_id: reference.id, pose: 'base', applied: {} });
+    expect(res.body.payload).toEqual({ reference_request_id: reference.id, pose: 'yukari_persona', applied: {} });
   });
 
   it('replays the same key and rejects the same key with other tags', async () => {
@@ -133,7 +133,7 @@ describe('POST /api/v1/references/{id}/renders', () => {
   it('is the only way to create one', async () => {
     const res = await postJson('/api/v1/requests', {
       kind: 'reference_render',
-      payload: { reference_request_id: 'x', pose: 'base', applied: {} },
+      payload: { reference_request_id: 'x', pose: 'yukari_persona', applied: {} },
       idempotency_key: crypto.randomUUID(),
       created_by: 'gui',
     });
