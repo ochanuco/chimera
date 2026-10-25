@@ -424,6 +424,8 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
     載らないので（[domain-model.md](domain-model.md#preset)）、`parameters.costume` /
     `parameters.expression` の上書きは pin されずに worker へそのまま渡ります。行が
     1件でもある kind で名前が無いときだけ上の 400 が効きます。
+-   `parameters.pose = base` は pin せずに通します。[reference_render](#reference_render) が積む generate の
+    土台で、worker の内部にしか無く、Preset の行もカタログの pose も持たないためです。
 -   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
     pin の対象外です。
 
