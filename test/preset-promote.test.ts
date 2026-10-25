@@ -279,6 +279,21 @@ describe('preset pin (createRequest / generate)', () => {
     expect(res.body.payload.generation?.parameters).toEqual({ pose: 'lounge', costume: 'suspender', expression: 'smile' });
   });
 
+  it('passes pose base through unpinned: the reference_render base has no preset row', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+
+    const res = await createGenerateRequest(recipe, {
+      payload: {
+        schema_version: 1,
+        request: { instruction: 'test', count: 1 },
+        generation: { recipe, parameters: { pose: 'base' } },
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.payload.generation).not.toHaveProperty('presets');
+  });
+
   it('400s an unknown costume name once the recipe has any costume preset row', async () => {
     const recipe = uniqueRecipe();
     await publishAndImport(recipe);
