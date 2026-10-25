@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HEX_COLOR_RE, REFERENCE_RENDER_POSES, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
+import { HEX_COLOR_RE, REFERENCE_RENDER_POSE, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
 import { addIssues } from './issues';
 
 /** worker に渡す payload の語彙 (docs/worker-protocol.md)。kind ごとの封筒の検証は lib/request-payload.ts が引く。 */
@@ -275,7 +275,7 @@ export const referencePayloadSchema = z
 export const referenceRenderPayloadSchema = z
   .object({
     reference_request_id: z.string().min(1),
-    pose: z.enum(REFERENCE_RENDER_POSES),
+    pose: z.literal(REFERENCE_RENDER_POSE),
     seed: z.number().int().min(0).optional(),
     applied: z.record(z.string().min(1), z.array(z.string().min(1))),
   })
@@ -285,7 +285,6 @@ export const referenceRenderPayloadSchema = z
 export const createReferenceRenderSchema = z
   .object({
     applied: z.record(z.string().min(1), z.array(z.string().min(1))),
-    pose: z.enum(REFERENCE_RENDER_POSES),
     seed: z.number().int().min(0).optional(),
     idempotency_key: z.string().min(1),
   })

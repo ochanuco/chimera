@@ -14,7 +14,7 @@ interface RequestBody {
 
 const ANALYSIS = {
   generation_ids: [],
-  pose: 'coffee',
+  pose: 'base',
   candidates: [
     { tag: 'from above', part: 'framing_tags', score: 0.25, kept: true, d1: null, applied: true },
     { tag: 'looking up', part: 'gesture', score: 0.11, kept: false, d1: 0.53, applied: true },
@@ -57,7 +57,7 @@ describe('/references', () => {
 
   it('lists newest first with the number of renders', async () => {
     const older = await analyzed();
-    await postJson(`/api/v1/references/${older.id}/renders`, { pose: 'bust', applied: {}, idempotency_key: crypto.randomUUID() });
+    await postJson(`/api/v1/references/${older.id}/renders`, { applied: {}, idempotency_key: crypto.randomUUID() });
     const newer = await uploadReference();
     await env.DB.prepare(`UPDATE requests SET created_at = '2020-01-01T00:00:00.000Z' WHERE id = ?`).bind(older.id).run();
     const items = await listReferences(env.DB);
@@ -84,14 +84,26 @@ describe('/references/{short_id}', () => {
     expect(html).not.toContain('data-ref-run');
   });
 
-  it('shows the candidates as chips per part, the proposed pose and the 描く button', async () => {
+  it('shows only the exception line of a traceback, on the page and in the list', async () => {
+    const reference = await uploadReference();
+    await postJson('/api/v1/requests/claim', { worker_id: 'w', kinds: ['reference'] });
+    const error = 'reference analysis exited 1: Traceback (most recent call last):\n  File "analyze.py", line 56, in main\n    result = analyze(image)\n    ^^^^^^^\nRuntimeError: CUDA out of memory\n';
+    await postJson(`/api/v1/requests/${reference.id}`, { status: 'failed', worker_id: 'w', error }, 'PATCH');
+    for (const path of [`/references/${reference.short_id}`, '/references']) {
+      const html = await (await req(path)).text();
+      expect(html).toContain('RuntimeError: CUDA out of memory');
+      expect(html).not.toContain('analyze.py');
+    }
+  });
+
+  it('shows the candidates as chips per part and the 描く button, with no pose to pick', async () => {
     const reference = await analyzed();
     const html = await (await req(`/references/${reference.short_id}`)).text();
     expect(html).toContain('data-ref-part="framing_tags"');
     expect(html).toMatch(/class="wb-pill ref-chip wb-pill-on"[^>]*data-ref-tag="from above"/);
     expect(html).toMatch(/class="wb-pill ref-chip ref-chip-dim"[^>]*data-ref-tag="leaning forward"/);
     expect(html).toContain('0.02 / –');
-    expect(html).toMatch(/<option value="coffee" selected/);
+    expect(html).not.toContain('data-ref-pose');
     expect(html).toContain('data-ref-run');
     expect(html).toContain('data-pending="false"');
   });
@@ -99,14 +111,13 @@ describe('/references/{short_id}', () => {
   it('lists the pictures drawn from it newest first, render → generate → Generation', async () => {
     const reference = await analyzed();
     const first = await postJson<RequestBody>(`/api/v1/references/${reference.id}/renders`, {
-      pose: 'coffee',
       seed: 5,
       applied: { gesture: ['leaning forward'] },
       idempotency_key: crypto.randomUUID(),
     });
     const { request: generate, generation } = await createGeneration();
     await finish(first.body.id, 'reference_render', { generation_ids: [], generate_request_id: generate.id, generate_request_short_id: generate.short_id });
-    await postJson(`/api/v1/references/${reference.id}/renders`, { pose: 'bust', applied: {}, idempotency_key: crypto.randomUUID() });
+    await postJson(`/api/v1/references/${reference.id}/renders`, { applied: {}, idempotency_key: crypto.randomUUID() });
 
     const res = await req(`/references/${reference.short_id}?partial=renders`);
     expect(res.headers.get('X-Reference-Status')).toBe('done');

@@ -1,6 +1,6 @@
 import { Layout } from '../layout';
 import { GenerationCard } from '../components/GenerationCard';
-import type { ReferenceDetail, ReferenceRenderItem } from '../../lib/references';
+import { errorHeadline, type ReferenceDetail, type ReferenceRenderItem } from '../../lib/references';
 import type { ReferenceCandidate } from '../../lib/reference-renders';
 
 const STATUS_LABELS: Record<string, string> = { queued: '解析待ち', running: '解析中', failed: '解析に失敗しました', cancelled: '中止しました' };
@@ -56,7 +56,7 @@ function RenderCaption({ render }: { render: ReferenceRenderItem }) {
   const parts = Object.entries(render.applied);
   return (
     <span class="wb-meta ref-render-meta">
-      {render.pose ?? ''} · seed {render.seed ?? 'ランダム'}
+      seed {render.seed ?? 'ランダム'}
       {parts.length > 0 ? <> · {parts.map(([part, tags]) => `${part}: ${tags.join(', ')}`).join(' / ')}</> : null}
     </span>
   );
@@ -82,7 +82,7 @@ export function ReferenceRenders({ renders }: { renders: ReferenceRenderItem[] }
             <div class="ref-render-tile">{RENDER_STATUS_LABELS[status] ?? status}</div>
             <div class="card-extra">
               <RenderCaption render={render} />
-              {failed ? <p class="wb-error">{failed}</p> : null}
+              {failed ? <p class="wb-error">{errorHeadline(failed)}</p> : null}
             </div>
           </div>,
         ];
@@ -132,16 +132,6 @@ export function ReferenceDetailPage({ path, detail, pending }: { path: string; d
                 <>
                   <TagChips detail={detail} />
                   <label class="wb-field">
-                    pose
-                    <select name="ref_pose" data-ref-pose>
-                      {detail.poses.map((p) => (
-                        <option value={p} selected={p === detail.pose}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label class="wb-field">
                     seed
                     <input type="number" name="ref_seed" min="0" step="1" placeholder="ランダム" data-ref-seed />
                   </label>
@@ -149,7 +139,7 @@ export function ReferenceDetailPage({ path, detail, pending }: { path: string; d
               ) : detail.status === 'failed' || detail.status === 'cancelled' ? (
                 <p class="wb-error" role="alert">
                   {STATUS_LABELS[detail.status]}
-                  {detail.error ? `: ${detail.error}` : ''}
+                  {detail.error ? `: ${errorHeadline(detail.error)}` : ''}
                 </p>
               ) : (
                 <p class="wb-note ref-progress" aria-live="polite" data-request-id={detail.id} data-request-status={detail.status}>

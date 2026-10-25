@@ -1098,7 +1098,8 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 -   ページ上でクリップボードの画像（png / jpeg / webp）を貼り付けると、ファイル欄に入り、選んだ画像の縮小表示が出ます
 -   移る前に、長辺 768px の JPEG をこのタブの sessionStorage（`reference-preview:{request id}`）に置きます。参考画像のページはそれがあるときだけ
     参考画像を出します。サーバーは解析の後に画像を消すので、別のタブや端末では出ません。サーバーから参考画像を取ることはしません
--   一覧: reference を新しい順に最大 30 件。行は short_id（その reference のページへのリンク）・解析の状態・作成時刻・描いた回数で、failed なら error も出します
+-   一覧: reference を新しい順に最大 30 件。行は short_id（その reference のページへのリンク）・解析の状態・作成時刻・描いた回数で、failed なら error も出します。
+    error が traceback を含むときは、一覧でも各ページでも例外の行（最後の空でない行）だけを出します
 
 ### `/references/{short_id}`
 
@@ -1109,14 +1110,13 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 -   タグ: 解析の candidates を part ごとのチップ（`wb-pill`）で出します。worker が既定で採用したもの（`applied: true`）は ON、
     そうでない候補は OFF で薄く（破線）出し、`score / d1`（d1 に聞いていなければ `–`）を添えます。どのチップも押すと ON / OFF が切り替わります。
     自由入力の欄はありません（選べるのは worker が抽出した候補だけ）
--   pose は `bust` / `coffee` / `stand` の select で、既定は worker の提案です。`bust` の間は legwear の part のチップを押せなくし、送りません
-    （bust の絵には脚が入らない）
+-   pose を選ぶ欄はありません。描く土台は常に base（pose を持たないキャラクターだけの基本プロンプト）で、worker の内部にあります
 -   seed は空なら送らず、worker が乱数で決めます（placeholder `ランダム`）
 -   「描く」は ON のチップを part ごとにまとめて `POST /api/v1/references/{id}/renders` に送り、`kind = reference_render` を積みます。
-    idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・pose・seed を変えると作り直します）。
+    idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・seed を変えると作り直します）。
     何度でも描けます
 -   描いた絵: この reference の reference_render を新しい順に、render → generate → Generation と辿って [GenerationCard](#generationcard)（compact）で並べ、
-    カードの下に pose・seed・当てたタグを出します。まだ Generation の無い render は状態のタイル（待機中 / 処理中 / 描画中 / 失敗）を出します。
+    カードの下に seed・当てたタグを出します。まだ Generation の無い render は状態のタイル（待機中 / 処理中 / 描画中 / 失敗）を出します。
     待つものがある間は 4 秒ごとに `?partial=renders`（一覧の HTML だけ）で差し替え、選んでいるチップはそのまま残します
 -   GUI は prompt を書きません。part patch と prompt を組むのは worker です
 
