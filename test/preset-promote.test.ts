@@ -139,7 +139,13 @@ async function setPatches(generationId: string, patches: unknown[]): Promise<voi
  */
 async function setupGeneration(
   recipe: string,
-  options: { withPin?: boolean; parameters?: Record<string, unknown>; patches?: unknown[]; poseFingerprint?: string } = {},
+  options: {
+    withPin?: boolean;
+    parameters?: Record<string, unknown>;
+    patches?: unknown[];
+    poseFingerprint?: string;
+    identityOverride?: string;
+  } = {},
 ) {
   // patches のある Request は pose_fingerprint も要る (putResolutionSchema の superRefine)。
   const { withPin = true, parameters = { pose: 'lounge' }, patches } = options;
@@ -153,7 +159,11 @@ async function setupGeneration(
       payload: {
         schema_version: 1,
         request: { instruction: 'test run', count: 1 },
-        generation: { recipe, parameters },
+        generation: {
+          recipe,
+          parameters,
+          ...(options.identityOverride ? { identity_override: options.identityOverride } : {}),
+        },
       },
     });
     expect(genReq.status).toBe(201);
@@ -575,6 +585,36 @@ describe('POST /api/v1/presets/promote', () => {
     expect(got.body.record).toEqual(res.body.record);
     expect(got.body.patches).toEqual(res.body.patches);
     expect(got.body.source_generation_id).toBe(generation.id);
+  });
+
+  it('carries the Request costume and identity_override into the version; GET resolves them', async () => {
+    const recipe = uniqueRecipe();
+    await publishAndImport(recipe);
+
+    const patches = [{ target: 'prompt.positive.identity', op: 'replace', reason: 'no ornament', old: 'hair ornament, ', value: '' }];
+    const { generation } = await setupGeneration(recipe, {
+      parameters: { pose: 'lounge', costume: 'default' },
+      patches,
+      identityOverride: 'drop the hair ornament',
+    });
+    await setRatingGood(generation.id);
+
+    const res = await postJson<PresetView & { parameters?: unknown; identity_override?: unknown }>('/api/v1/presets/promote', {
+      generation_id: generation.id,
+      name: 'lounge-bare',
+      kind: 'pose',
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.parameters).toEqual({ costume: 'default' });
+    expect(res.body.identity_override).toBe('drop the hair ornament');
+
+    const got = await getJson<PresetView & { parameters?: unknown; identity_override?: unknown }>(
+      `/api/v1/presets/${recipe}/pose/lounge-bare/1`,
+    );
+    expect(got.status).toBe(200);
+    expect(got.body.parameters).toEqual({ costume: 'default' });
+    expect(got.body.identity_override).toBe('drop the hair ornament');
   });
 
   it('409s when rating is not good', async () => {

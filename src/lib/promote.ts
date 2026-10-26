@@ -46,6 +46,20 @@ function findPin(payloadJson: string, kind: PresetKind): { name: string; version
   return undefined;
 }
 
+/** generate parameters a promoted version carries alongside its patches: the ones that change what the base pose renders. */
+const CARRIED_PARAMETERS = ['costume', 'expression', 'legwear', 'legwear_state', 'angle', 'framing'] as const;
+
+/** `generation.identity_override` of a generate request's payload, if any. */
+function findIdentityOverride(payloadJson: string): string | undefined {
+  try {
+    const payload = JSON.parse(payloadJson) as { generation?: { identity_override?: unknown } };
+    const value = payload.generation?.identity_override;
+    return typeof value === 'string' && value ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function promoteGenerationToPreset(db: D1Database, input: PromoteGenerationToPresetInput) {
   const existing = await db.prepare('SELECT * FROM presets WHERE idempotency_key = ?').bind(input.idempotency_key).first<PresetRow>();
 
@@ -104,9 +118,19 @@ export async function promoteGenerationToPreset(db: D1Database, input: PromoteGe
     throw conflict('promote requires a request with patches');
   }
 
+  // 起点 request の costume など patches の外の描き方と identity_override も版に載せる。
+  const parameters: Record<string, string> = {};
+  for (const key of CARRIED_PARAMETERS) {
+    const value = requestParameters[key];
+    if (key !== input.kind && typeof value === 'string' && value) parameters[key] = value;
+  }
+  const identityOverride = sourceRequest.kind === 'generate' ? findIdentityOverride(sourceRequest.payload_json) : undefined;
+
   const bodyJson = JSON.stringify({
     base: { recipe, kind: input.kind, name: baseName, version: baseVersion },
     patches,
+    ...(Object.keys(parameters).length > 0 ? { parameters } : {}),
+    ...(identityOverride ? { identity_override: identityOverride } : {}),
   });
 
   const id = uuidv7();
