@@ -292,8 +292,14 @@ publish されておらず、参照にしても行が増えるだけで何も足
 }
 ```
 
+起点 request の `parameters` のうち pose 以外の描き方（`costume` / `expression` /
+`legwear` / `legwear_state` / `angle` / `framing`）と `generation.identity_override` も、
+値があれば `parameters` / `identity_override` として版に載せます。patches が identity tag を
+落とす版は、そのままでは worker の identity guard に止められるからです。
+
 読み出しは解決済みの形で返します。`base` の連鎖を根まで辿り、根の `recipe_pose` 1件と、
-根から指定版までの patches を順に並べた配列にします。参照を本文に解決して patches を
+根から指定版までの patches を順に並べた配列にします。`parameters` は根から順に重ね
+（新しい版のキーが勝つ）、`identity_override` は最も新しい版の値を返します。参照を本文に解決して patches を
 畳むのは worker 側の graph compiler で、`parameters.costume` の上書きは今まで通り
 そこで効きます。
 

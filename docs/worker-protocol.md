@@ -435,6 +435,11 @@ pose 名は別の事実だからです。`lounge@1` は `recipe_pose` も `loung
 `parameters.pose` が持つのは前者（呼び出し側が指名した preset の名前）で、worker は preset を
 解決したあとこれを `recipe_pose` で置き換えてから graph を組みます。
 
+解決済みの preset が `parameters`（`costume` など）を持つときは、worker はそれを
+request の `parameters` の下敷きにします。同じキーを request が明示していれば request が
+勝ちます。`identity_override` も同様で、request が自分の `generation.identity_override` を
+持たないときだけ preset の値を使います。
+
 呼び出し側が `generation.presets` を明示した場合だけ、両者が食い違いえます。その場合は
 `parameters` の同じ kind の値と pin の `name` が一致することを chimera が検証し、違えば 400
 （`parameters.{kind} does not match the pinned preset`）です。どちらが勝つかを worker に

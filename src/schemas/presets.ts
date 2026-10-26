@@ -31,6 +31,8 @@ const presetBodyPromoteSchema = z
       version: z.number().int().positive(),
     }),
     patches: z.array(z.unknown()),
+    parameters: z.record(z.string(), z.string()).optional(),
+    identity_override: z.string().min(1).optional(),
   })
   .strict();
 

@@ -358,6 +358,8 @@ const MAX_RESOLVE_DEPTH = 20;
 export interface ResolvedPreset {
   record: unknown;
   patches: unknown[];
+  parameters?: Record<string, string>;
+  identity_override?: string;
 }
 
 /**
@@ -375,11 +377,21 @@ export async function resolvePreset(db: D1Database, row: PresetRow): Promise<Res
 
     if ('recipe_pose' in body) {
       const patches: unknown[] = [];
+      const parameters: Record<string, string> = {};
+      let identityOverride: string | undefined;
       for (let i = bodies.length - 2; i >= 0; i--) {
         const hop = bodies[i];
-        if (hop && 'patches' in hop) patches.push(...hop.patches);
+        if (!hop || !('patches' in hop)) continue;
+        patches.push(...hop.patches);
+        Object.assign(parameters, hop.parameters);
+        identityOverride = hop.identity_override ?? identityOverride;
       }
-      return { record: body, patches };
+      return {
+        record: body,
+        patches,
+        ...(Object.keys(parameters).length > 0 ? { parameters } : {}),
+        ...(identityOverride ? { identity_override: identityOverride } : {}),
+      };
     }
 
     // kind deliver: 全文上書きの leaf で、base への連鎖を持たない (schemas/presets.ts の presetBodyDeliverSchema)。
