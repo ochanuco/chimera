@@ -158,6 +158,7 @@ export function serializeRequest(row: RequestRow) {
     recipe_ref: row.recipe_ref,
     run_id: row.run_id,
     worker_id: row.worker_id,
+    worker_version: row.worker_version,
     attempt: row.attempt,
     max_attempts: row.max_attempts,
     claimed_at: row.claimed_at,

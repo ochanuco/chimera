@@ -108,6 +108,26 @@ describe('WorkerHub (WebSocket, docs/worker-protocol.md 段階3)', () => {
     ws.close();
   });
 
+  it('hello の version / commit を保持し、無ければ null で /state に出す', async () => {
+    const withVer = await connectWs('/api/v1/worker/ws');
+    const t1 = trackMessages(withVer);
+    withVer.send(JSON.stringify({ type: 'hello', worker_id: 'w-ver', kinds: ['generate'], version: 'r44-4608692', commit: 'a'.repeat(40) }));
+    await t1.waitFor((m) => m.type === 'hello_ack');
+    const bare = await connectWs('/api/v1/worker/ws');
+    const t2 = trackMessages(bare);
+    bare.send(JSON.stringify({ type: 'hello', worker_id: 'w-bare', kinds: ['generate'], version: null, commit: 7 }));
+    await t2.waitFor((m) => m.type === 'hello_ack');
+
+    const stub = env.WORKER_HUB.get(env.WORKER_HUB.idFromName('global'));
+    const state = (await (await stub.fetch('https://hub/state')).json()) as {
+      workers: { worker_id: string | null; version: string | null; commit: string | null }[];
+    };
+    expect(state.workers.find((w) => w.worker_id === 'w-ver')).toMatchObject({ version: 'r44-4608692', commit: 'a'.repeat(40) });
+    expect(state.workers.find((w) => w.worker_id === 'w-bare')).toMatchObject({ version: null, commit: null });
+    withVer.close();
+    bare.close();
+  });
+
   it('POST /api/v1/requests -> connected worker gets queued, viewer gets status queued', async () => {
     const worker = await connectWs('/api/v1/worker/ws');
     const workerT = trackMessages(worker);

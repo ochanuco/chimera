@@ -16,6 +16,8 @@ export interface Bindings {
   WOL_BASE_URL?: string;
   WOL_CLIENT_ID?: string;
   WOL_CLIENT_SECRET?: string;
+  /** Cloudflare の version metadata。ローカル・テストでは未設定。 */
+  CF_VERSION_METADATA?: { id: string; tag: string; timestamp: string };
 }
 
 export type AppEnv = { Bindings: Bindings };
@@ -189,6 +191,7 @@ export interface RequestRow {
   recipe_ref: string;
   run_id: string | null;
   worker_id: string | null;
+  worker_version: string | null;
   attempt: number;
   max_attempts: number;
   claimed_at: string | null;

@@ -101,11 +101,11 @@ async function seedQueuedPartialRequest(kind: 'repair' | 'masked_redraw', genera
   return seedRequest({ kind, status: 'queued', payload: { generation_id: generationId } });
 }
 
-async function claim(workerId: string, kinds?: string[]): Promise<{ status: number; body: RequestBody | null }> {
+async function claim(workerId: string, kinds?: string[], workerVersion?: string | null): Promise<{ status: number; body: RequestBody | null }> {
   const res = await req('/api/v1/requests/claim', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ worker_id: workerId, ...(kinds ? { kinds } : {}) }),
+    body: JSON.stringify({ worker_id: workerId, ...(kinds ? { kinds } : {}), ...(workerVersion !== undefined ? { worker_version: workerVersion } : {}) }),
   });
   if (res.status === 204) return { status: res.status, body: null };
   return { status: res.status, body: (await res.json()) as RequestBody };
@@ -246,6 +246,18 @@ describe('POST /api/v1/requests', () => {
 });
 
 describe('POST /api/v1/requests/claim', () => {
+  it('worker_version を claim した行に残し、省略なら null', async () => {
+    const { generation: g1 } = await createGeneration();
+    const { generation: g2 } = await createGeneration();
+    await createDeliverRequest(g1.id);
+    await createDeliverRequest(g2.id);
+
+    const first = await claim('worker-v', undefined, 'r44-4608692');
+    expect((first.body as unknown as { worker_version: string | null }).worker_version).toBe('r44-4608692');
+    const second = await claim('worker-v');
+    expect((second.body as unknown as { worker_version: string | null }).worker_version).toBeNull();
+  });
+
   it('claims the oldest queued row (FIFO), second claim 204 when queue is empty', async () => {
     const { generation: g1 } = await createGeneration();
     const { generation: g2 } = await createGeneration();

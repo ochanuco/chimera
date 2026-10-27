@@ -78,7 +78,7 @@ requests.get('/', async (c) => {
 requests.post('/claim', async (c) => {
   const body = parseOrThrow(claimRequestSchema, await c.req.json());
   const db = c.env.DB;
-  const { row, requeued } = await claimRequest(db, body.worker_id, body.kinds);
+  const { row, requeued } = await claimRequest(db, body.worker_id, body.kinds, body.worker_version);
   // 戻した行の queued より先に worker_seen を届け、claim した worker のために GPU 機を起こさない。
   const env = c.env;
   runInBackground(
@@ -109,7 +109,10 @@ requests.get('/summary', async (c) => {
     workers = [];
   }
 
-  return c.json({ counts, workers, groups });
+  const meta = c.env.CF_VERSION_METADATA;
+  const chimera = meta ? { version_id: meta.id ?? null, tag: meta.tag || null, timestamp: meta.timestamp ?? null } : null;
+
+  return c.json({ counts, workers, groups, chimera });
 });
 
 requests.get('/:id', async (c) => {

@@ -68,7 +68,9 @@ Experimentのshort_id・kind別件数・状態別件数を表示し、遷移先�
 Generation `/g/{short_id}` またはExperiment詳細 `/experiments/{short_id}`）があればリンク、
 無ければリンクなしの行です。パネルは表示・
 遷移専用で、redraw/deliverのような再実行やcancelledなどの操作は一切持ちません。パネル
-末尾にworker接続数（`worker N 台接続中` / `worker 未接続`）を出します。グループが無ければ
+末尾に接続中のworkerを1台1行（`worker r44-4608692 · 20:22 から`。ビルドはversion、無ければcommitの先頭7文字、
+どちらも無ければ`版不明`、時刻は接続時刻のローカルHH:MM）と、chimera自身のビルド（`chimera <tagまたはversion idの先頭8文字>`）を出します。
+worker未接続のときは`worker 未接続`です。グループが無ければ
 「キューは空です」と表示します。
 
 パスと内容の対応:

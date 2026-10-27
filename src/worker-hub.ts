@@ -25,6 +25,9 @@ interface WorkerAttachment {
   worker_id: string | null;
   /** hello 未受信なら null — その worker は全 kind の queued を受け取る。 */
   kinds: RequestKind[] | null;
+  /** hello の version / commit。dev checkout は release 版を持たないので null がありうる。 */
+  version: string | null;
+  commit: string | null;
   connected_at: string;
 }
 
@@ -115,7 +118,7 @@ export class WorkerHub extends DurableObject<Bindings> {
 
     const now = nowIso();
     if (role === 'worker') {
-      const attachment: WorkerAttachment = { role: 'worker', worker_id: null, kinds: null, connected_at: now };
+      const attachment: WorkerAttachment = { role: 'worker', worker_id: null, kinds: null, version: null, commit: null, connected_at: now };
       server.serializeAttachment(attachment);
       void this.workerSeen();
     } else {
@@ -133,10 +136,16 @@ export class WorkerHub extends DurableObject<Bindings> {
     this.sendTo(ws, { type: 'snapshot', progress, workers: this.listWorkers() });
   }
 
-  private listWorkers(): { worker_id: string | null; kinds: RequestKind[] | null; connected_at: string | null }[] {
+  private listWorkers(): { worker_id: string | null; kinds: RequestKind[] | null; version: string | null; commit: string | null; connected_at: string | null }[] {
     return this.ctx.getWebSockets('worker').map((ws) => {
       const att = readAttachment(ws) as WorkerAttachment | null;
-      return { worker_id: att?.worker_id ?? null, kinds: att?.kinds ?? null, connected_at: att?.connected_at ?? null };
+      return {
+        worker_id: att?.worker_id ?? null,
+        kinds: att?.kinds ?? null,
+        version: att?.version ?? null,
+        commit: att?.commit ?? null,
+        connected_at: att?.connected_at ?? null,
+      };
     });
   }
 
@@ -183,7 +192,7 @@ export class WorkerHub extends DurableObject<Bindings> {
 
     const type = (data as { type?: unknown }).type;
     if (type === 'hello') {
-      await this.handleHello(ws, data as { worker_id?: unknown; kinds?: unknown });
+      await this.handleHello(ws, data as { worker_id?: unknown; kinds?: unknown; version?: unknown; commit?: unknown });
       return;
     }
     if (type === 'progress') {
@@ -197,7 +206,7 @@ export class WorkerHub extends DurableObject<Bindings> {
     }
   }
 
-  private async handleHello(ws: WebSocket, body: { worker_id?: unknown; kinds?: unknown }): Promise<void> {
+  private async handleHello(ws: WebSocket, body: { worker_id?: unknown; kinds?: unknown; version?: unknown; commit?: unknown }): Promise<void> {
     const workerId = typeof body.worker_id === 'string' ? body.worker_id : null;
     const kinds = Array.isArray(body.kinds)
       ? body.kinds.filter((k): k is RequestKind => k === 'generate' || k === 'redraw' || k === 'repair' || k === 'masked_redraw' || k === 'deliver' || k === 'dof' || k === 'lens' || k === 'photo' || k === 'stage' || k === 'lighting' || k === 'saturation' || k === 'reference' || k === 'reference_render')
@@ -207,6 +216,8 @@ export class WorkerHub extends DurableObject<Bindings> {
       role: 'worker',
       worker_id: workerId,
       kinds,
+      version: typeof body.version === 'string' ? body.version : null,
+      commit: typeof body.commit === 'string' ? body.commit : null,
       connected_at: prev?.connected_at ?? nowIso(),
     };
     ws.serializeAttachment(attachment);

@@ -525,7 +525,7 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / lens / photo / stage / lighting / saturation / reference / import で、finalize・repair・masked_redraw・reference_render は 400（redraw か deliver を使う。repair / masked_redraw は部分描き直し機能の廃止で作れない）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
-POST   /api/v1/requests/claim      { worker_id, kinds? } → 200 (claim した行) / 204 (queued が無い)
+POST   /api/v1/requests/claim      { worker_id, kinds?, worker_version? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
 PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe / parameters / patches / pose_fingerprint / preset_versions / git_commit / git_dirty / references）を報告。200（再送・Job 作成前の上書き）/ 409（Job 作成後に別の値）。応答は { id, short_id, status, jobs[] }
 POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・lens・photo・stage・lighting・saturation（と古い repair・masked_redraw・finalize）は source_generation_id 必須
@@ -547,6 +547,7 @@ kind=reference_render は `POST /api/v1/requests` では作れません（400）
 -   `generation_id`: `kind = redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `lighting`（と古い `repair` / `masked_redraw` / `finalize`）の行を対象に、その
     `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
 -   `worker_id`: claim した worker
+-   `worker_version`: claim した worker のビルド。無ければ null
 -   `pending=true`: `status=queued` の別名
 
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
@@ -607,7 +608,8 @@ generate は request 単体のグループです。GUI ナビの queue pill 専�
 ``` json
 {
   "counts": { "queued": 3, "running": 1, "failed_24h": 1 },
-  "workers": [{ "worker_id": "w1", "kinds": ["deliver"], "connected_at": "2026-09-11T00:00:00.000Z" }],
+  "workers": [{ "worker_id": "w1", "kinds": ["deliver"], "version": "r44-4608692", "commit": "<40桁の sha>", "connected_at": "2026-09-11T00:00:00.000Z" }],
+  "chimera": { "version_id": "<Worker version の id>", "tag": null, "timestamp": "2026-09-11T00:00:00.000Z" },
   "groups": [
     {
       "key": "request:...",
