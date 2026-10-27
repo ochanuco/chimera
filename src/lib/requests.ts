@@ -526,6 +526,7 @@ export async function requeueStaleRunning(db: D1Database, now: string): Promise<
            error = CASE WHEN attempt >= max_attempts THEN 'heartbeat timeout' ELSE error END,
            finished_at = CASE WHEN attempt >= max_attempts THEN ? ELSE finished_at END,
            worker_id = NULL,
+           worker_version = NULL,
            updated_at = ?
        WHERE status = 'running' AND heartbeat_at < ?
        RETURNING id, kind, recipe_ref, status`,
@@ -550,6 +551,7 @@ export async function claimRequest(
   db: D1Database,
   workerId: string,
   kinds?: RequestKind[],
+  workerVersion?: string | null,
 ): Promise<{ row: RequestRow | null; requeued: RequeuedRequestRow[] }> {
   // 1) stale な running 行を回収する。claim の直前にだけ走査するので cron は要らない。
   const requeued = await requeueStaleRunning(db, nowIso());
@@ -561,14 +563,14 @@ export async function claimRequest(
   const row = await db
     .prepare(
       `UPDATE requests
-       SET status = 'running', worker_id = ?, claimed_at = ?, heartbeat_at = ?, attempt = attempt + 1, updated_at = ?
+       SET status = 'running', worker_id = ?, worker_version = ?, claimed_at = ?, heartbeat_at = ?, attempt = attempt + 1, updated_at = ?
        WHERE id = (
          SELECT id FROM requests WHERE status = 'queued' AND kind IN (${placeholders})
          ORDER BY created_at ASC, id ASC LIMIT 1
        )
        RETURNING *`,
     )
-    .bind(workerId, claimedAt, claimedAt, claimedAt, ...kindsList)
+    .bind(workerId, workerVersion ?? null, claimedAt, claimedAt, claimedAt, ...kindsList)
     .first<RequestRow>();
   return { row: row ?? null, requeued };
 }
@@ -615,8 +617,8 @@ export async function updateRequest(db: D1Database, row: RequestRow, body: Updat
     await db
       .prepare(
         exhausted
-          ? `UPDATE requests SET status = 'failed', error = ?, finished_at = ?, worker_id = NULL, updated_at = ? WHERE id = ?`
-          : `UPDATE requests SET status = 'queued', worker_id = NULL, updated_at = ? WHERE id = ?`,
+          ? `UPDATE requests SET status = 'failed', error = ?, finished_at = ?, worker_id = NULL, worker_version = NULL, updated_at = ? WHERE id = ?`
+          : `UPDATE requests SET status = 'queued', worker_id = NULL, worker_version = NULL, updated_at = ? WHERE id = ?`,
       )
       .bind(...(exhausted ? ['released after max attempts', now, now, row.id] : [now, row.id]))
       .run();
@@ -666,6 +668,8 @@ const SUMMARY_GROUP_CAP = 20;
 export interface RequestSummaryWorker {
   worker_id: string | null;
   kinds: RequestKind[] | null;
+  version: string | null;
+  commit: string | null;
   connected_at: string | null;
 }
 

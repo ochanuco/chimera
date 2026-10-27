@@ -72,6 +72,7 @@ export type CreateRequestInput = StandardSchemaV1.InferOutput<typeof createReque
 export const claimRequestSchema = z.object({
   worker_id: z.string().min(1),
   kinds: z.array(claimableRequestKindSchema).min(1).optional(),
+  worker_version: z.string().max(100).nullable().optional(),
 });
 
 export type ClaimRequestInput = StandardSchemaV1.InferOutput<typeof claimRequestSchema>;

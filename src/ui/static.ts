@@ -170,7 +170,7 @@ a.nav-queue-row:hover { background: var(--bg); text-decoration: none; }
 .nav-queue-row-kinds { font-size: 0.75rem; color: var(--text-dim); }
 .nav-queue-row-counts { margin-left: auto; display: inline-flex; gap: 0.5rem; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
 .nav-queue-divider { border-top: 1px solid var(--border); margin: 0.25rem 0; }
-.nav-queue-foot { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem 0.375rem; font-size: 0.75rem; color: var(--text-dim); }
+.nav-queue-foot { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.5rem 0.6rem 0.375rem; font-size: 0.75rem; color: var(--text-dim); }
 
 @media (max-width: 600px) {
   .nav {
@@ -3622,8 +3622,34 @@ export const appJs = `
 
     var foot = document.createElement('div');
     foot.className = 'nav-queue-foot';
-    var workersCount = (summary.workers || []).length;
-    foot.textContent = workersCount > 0 ? 'worker ' + workersCount + ' 台接続中' : 'worker 未接続';
+    var workers = summary.workers || [];
+    if (workers.length === 0) {
+      var none = document.createElement('div');
+      none.textContent = 'worker 未接続';
+      foot.appendChild(none);
+    }
+    workers.forEach(function (w) {
+      var line = document.createElement('div');
+      var build = w.version || (w.commit ? w.commit.slice(0, 7) : '版不明');
+      var since = '';
+      if (w.connected_at) {
+        var d = new Date(w.connected_at);
+        if (!isNaN(d.getTime())) {
+          since = ' · ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ' から';
+        }
+      }
+      line.textContent = 'worker ' + build + since;
+      foot.appendChild(line);
+    });
+    var chimera = summary.chimera;
+    if (chimera) {
+      var cline = document.createElement('div');
+      var cid = chimera.tag || (chimera.version_id ? chimera.version_id.slice(0, 8) : '');
+      if (cid) {
+        cline.textContent = 'chimera ' + cid;
+        foot.appendChild(cline);
+      }
+    }
     panel.appendChild(foot);
   }
 

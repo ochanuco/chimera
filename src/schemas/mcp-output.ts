@@ -61,6 +61,7 @@ const requestSchema = z.looseObject({
   recipe_ref: z.string().nullable(),
   run_id: z.string().nullable(),
   worker_id: z.string().nullable(),
+  worker_version: z.string().nullable().optional(),
   attempt: z.number(),
   max_attempts: z.number(),
   claimed_at: z.string().nullable(),

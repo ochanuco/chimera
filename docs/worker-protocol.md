@@ -40,6 +40,7 @@ payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-2
 recipe_ref        TEXT NOT NULL DEFAULT 'production'
 run_id            TEXT REFERENCES experiment_runs(id)   ExperimentRun 由来の generate のみ
 worker_id         TEXT                        claim した worker
+worker_version    TEXT                        claim した worker のビルド（claim の worker_version）
 attempt           INTEGER NOT NULL DEFAULT 0  claim された回数
 max_attempts      INTEGER NOT NULL DEFAULT 3
 claimed_at        TEXT
@@ -207,8 +208,10 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference", "reference_render"] }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference", "reference_render"], "worker_version": "r44-4608692" }
 ```
+
+`worker_version` は省略可（null も可、100 文字まで）。`hello` の `version`、release が無ければ短い commit を送り、claim した行の `worker_version` に書きます。
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。`kinds` に `finalize` や `import` を入れると 400 です。
 `repair` / `masked_redraw` は作れなくなりましたが、作成が止まる前に積まれた queued の行を取れるよう、`kinds` と省略時の全種には残しています。
@@ -1247,12 +1250,14 @@ JSON テキストです。
 worker → hub:
 
 ``` text
-{"type":"hello","worker_id":"<hostname>","kinds":["generate","deliver"]}   最初の1通
+{"type":"hello","worker_id":"<hostname>","kinds":["generate","deliver"],"version":"r44-4608692","commit":"<40桁の sha>"}   最初の1通
 {"type":"progress","request_id":"...","phase":"submit|sampling|ingest|deliver","step":12,"total":28,"message":"..."}
 {"type":"ping"}
 ```
 
 `hello` の `kinds` は省略可（省略した worker は全 kind の `queued` を受け取る）。
+`version`（release のビルド名）と `commit` は省略可で、null も受けます。release を持たない dev checkout は `version` を送りません。
+hub は接続ごとに保持し、`/state` と viewer の `snapshot`、`GET /api/v1/requests/summary` の `workers` に載せます。
 `progress` の `step` / `total` / `message` は任意。`ping` は Hibernation の
 auto-response（`ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'))`）
 が DO を起こさずに `{"type":"pong"}` を返すので、通常は `webSocketMessage` まで届きません。
