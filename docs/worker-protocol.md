@@ -211,7 +211,7 @@ POST /api/v1/requests/claim
 { "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference", "reference_render"], "worker_version": "r44-4608692" }
 ```
 
-`worker_version` は省略可（null も可、100 文字まで）。`hello` の `version`、release が無ければ短い commit を送り、claim した行の `worker_version` に書きます。
+`worker_version` は省略可（null も可、100 文字まで）。`hello` の `version` と同じ release 版を送り（release 外の worker は null）、claim した行の `worker_version` に書きます。
 
 `worker_id` は worker のホスト名です。`kinds` は省略すると全種です。`kinds` に `finalize` や `import` を入れると 400 です。
 `repair` / `masked_redraw` は作れなくなりましたが、作成が止まる前に積まれた queued の行を取れるよう、`kinds` と省略時の全種には残しています。

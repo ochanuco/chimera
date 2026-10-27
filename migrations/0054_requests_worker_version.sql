@@ -1,2 +1,2 @@
--- claim した worker のビルド (hello の version、無ければ短い commit)。
+-- claim した worker の release 版 (hello の version)。
 ALTER TABLE requests ADD COLUMN worker_version TEXT;
