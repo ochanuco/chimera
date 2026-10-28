@@ -69,6 +69,7 @@ references.post('/:id/renders', async (c) => {
     pose: REFERENCE_RENDER_POSE,
     ...(body.seed !== undefined ? { seed: body.seed } : {}),
     applied,
+    ...(body.pose_follow !== undefined ? { pose_follow: body.pose_follow } : {}),
   };
   const { row, created } = await createRequest(
     db,

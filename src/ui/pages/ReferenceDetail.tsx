@@ -5,6 +5,12 @@ import type { ReferenceCandidate } from '../../lib/reference-renders';
 
 const STATUS_LABELS: Record<string, string> = { queued: '解析待ち', running: '解析中', failed: '解析に失敗しました', cancelled: '中止しました' };
 const RENDER_STATUS_LABELS: Record<string, string> = { queued: '待機中', running: '処理中', failed: '失敗', cancelled: '中止', done: '描画中' };
+/** 参考画像のポーズをどこまで写すか (docs/ui.md「参考画像」)。 */
+const POSE_FOLLOW_CHOICES: [string, string][] = [
+  ['off', '写さない'],
+  ['loose', 'ざっくり'],
+  ['firm', 'しっかり'],
+];
 
 function fmt(n: number | null): string {
   return n === null ? '–' : n.toFixed(2);
@@ -131,6 +137,15 @@ export function ReferenceDetailPage({ path, detail, pending }: { path: string; d
               {analyzed ? (
                 <>
                   <TagChips detail={detail} />
+                  <div class="ref-pose-follow" role="radiogroup" aria-label="ポーズ">
+                    <span class="dial-label">ポーズ</span>
+                    {POSE_FOLLOW_CHOICES.map(([value, label]) => (
+                      <label class="wb-radio-pill">
+                        <input type="radio" name="ref_pose_follow" value={value} checked={value === 'firm'} data-ref-pose-follow />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
                   <label class="wb-field">
                     seed
                     <input type="number" name="ref_seed" min="0" step="1" placeholder="ランダム" data-ref-seed />

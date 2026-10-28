@@ -1113,9 +1113,11 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
     そうでない候補は OFF で薄く（破線）出し、`score / d1`（d1 に聞いていなければ `–`）を添えます。どのチップも押すと ON / OFF が切り替わります。
     自由入力の欄はありません（選べるのは worker が抽出した候補だけ）
 -   pose を選ぶ欄はありません。描く土台は常に `yukari_persona`（pose を持たない基本キャラクター）で、worker の内部にあります
+-   ポーズ: `写さない` / `ざっくり` / `しっかり` の `wb-radio-pill` で、参考画像のポーズの写し方を選び、`pose_follow`（`off` / `loose` / `firm`）として送ります。
+    既定は `しっかり`。ざっくりは骨格だけ、しっかりは深度で手前と奥まで写し、顔と髪はタグに任せます
 -   seed は空なら送らず、worker が乱数で決めます（placeholder `ランダム`）
 -   「描く」は ON のチップを part ごとにまとめて `POST /api/v1/references/{id}/renders` に送り、`kind = reference_render` を積みます。
-    idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・seed を変えると作り直します）。
+    idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・ポーズ・seed を変えると作り直します）。
     何度でも描けます
 -   描いた絵: この reference の reference_render を新しい順に、render → generate → Generation と辿って [GenerationCard](#generationcard)（compact）で並べ、
     カードの下に seed・当てたタグを出します。まだ Generation の無い render は状態のタイル（待機中 / 処理中 / 描画中 / 失敗）を出します。

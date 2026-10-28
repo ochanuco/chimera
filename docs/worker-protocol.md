@@ -309,7 +309,7 @@ POST /api/v1/references/{id}/renders
 ```
 
 ``` json
-{ "applied": { "framing_tags": ["from above"], "gesture": ["looking up"] }, "seed": 123456, "idempotency_key": "gui:reference_render:…" }
+{ "applied": { "framing_tags": ["from above"], "gesture": ["looking up"] }, "seed": 123456, "pose_follow": "firm", "idempotency_key": "gui:reference_render:…" }
 ```
 
 `{id}` は元の reference の UUID か short_id です。`kind = reference_render` の Request（`created_by = gui`）を作り、Create Request と
@@ -317,10 +317,12 @@ POST /api/v1/references/{id}/renders
 
 - `{id}` が無いか reference でなければ 404
 - 元の reference が done でなければ 400（`code: "reference_not_analyzed"`）
-- `seed` が負・非整数、未知のキー（`pose` を含む）は 400
+- `seed` が負・非整数、`pose_follow` が `off` / `loose` / `firm` 以外、未知のキー（`pose` を含む）は 400
 - `applied` の各 (part, tag) が元の result の candidates に同じ part で無ければ 400。自由入力のタグは受けない（score が 0.05 未満の候補でも、candidates にあれば受ける）
 
-payload の `applied` は part ごとに重複を除き、空の part を落としたものです。
+payload の `applied` は part ごとに重複を除き、空の part を落としたものです。`pose_follow` は参考画像のポーズの写し方で、
+送られたときだけ payload に入れます。worker が `off`（タグだけ）、`loose`（骨格、省略時）、`firm`（深度、頭はタグ任せ。深度を持たない古い
+reference では骨格）として描きます。
 
 ### Timings
 
