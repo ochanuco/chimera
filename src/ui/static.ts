@@ -1579,7 +1579,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .outline-stroke-compass { flex-basis: 100%; }
 .dof-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.9rem; margin: 0.3rem 0; padding: 0; border: 0; font-size: 0.85rem; }
 .dof-scope legend { float: left; padding: 0; margin-right: 0.5rem; color: var(--text-dim); }
-.dof-viewfinder { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
+.dof-viewfinder, .ref-pose-follow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin: 0.3rem 0; font-size: 0.85rem; }
 .detail-workbench { margin: 0.6rem 0 0; }
 .workbench-open-link {
   display: inline-block;
@@ -6495,6 +6495,9 @@ export const appJs = `
       key = null;
     });
     seedInput.addEventListener('input', function () { key = null; });
+    qsa('[data-ref-pose-follow]', root).forEach(function (radio) {
+      radio.addEventListener('change', function () { key = null; });
+    });
 
     run.addEventListener('click', async function () {
       var applied = {};
@@ -6506,11 +6509,13 @@ export const appJs = `
       var body = { applied: applied, idempotency_key: key = key || 'gui:reference_render:' + crypto.randomUUID() };
       var seed = seedInput.value.trim();
       if (seed !== '') body.seed = Number(seed);
+      var follow = qs('[data-ref-pose-follow]:checked', root);
+      if (follow) body.pose_follow = follow.value;
       run.disabled = true;
       errorEl.hidden = true;
       try {
         await api('/api/v1/references/' + encodeURIComponent(id) + '/renders', 'POST', body);
-        track('reference_render', { seed: seed !== '' });
+        track('reference_render', { seed: seed !== '', pose_follow: body.pose_follow });
         key = null;
         if (timer) { clearTimeout(timer); timer = null; }
         await refresh();

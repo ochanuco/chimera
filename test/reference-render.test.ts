@@ -80,6 +80,15 @@ describe('POST /api/v1/references/{id}/renders', () => {
     });
   });
 
+  it('passes the pose follow on, and rejects an unknown one', async () => {
+    const reference = await analyzedReference();
+    const res = await render(reference.id, { applied: {}, pose_follow: 'firm' });
+    expect(res.status).toBe(201);
+    expect(res.body.payload).toEqual({ reference_request_id: reference.id, pose: 'yukari_persona', applied: {}, pose_follow: 'firm' });
+    const bad = await render(reference.id, { applied: {}, pose_follow: 'hard' });
+    expect(bad.status).toBe(400);
+  });
+
   it('accepts legwear, and a candidate below score 0.05', async () => {
     const reference = await analyzedReference();
     const res = await render(reference.id, { applied: { legwear: ['pantyhose'] } });

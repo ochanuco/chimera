@@ -103,7 +103,10 @@ describe('/references/{short_id}', () => {
     expect(html).toMatch(/class="wb-pill ref-chip wb-pill-on"[^>]*data-ref-tag="from above"/);
     expect(html).toMatch(/class="wb-pill ref-chip ref-chip-dim"[^>]*data-ref-tag="leaning forward"/);
     expect(html).toContain('0.02 / –');
-    expect(html).not.toContain('data-ref-pose');
+    expect(html).not.toMatch(/data-ref-pose[=\s>]/);
+    expect(html).toMatch(/value="firm" checked[^>]*data-ref-pose-follow/);
+    expect(html).toContain('写さない');
+    expect(html).toContain('ざっくり');
     expect(html).toContain('data-ref-run');
     expect(html).toContain('data-pending="false"');
   });
