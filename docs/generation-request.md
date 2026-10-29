@@ -98,6 +98,7 @@ preset の pin、Run の所属、`generation.patches` の文法（[patches](#pat
   `graph`               object / null      ComfyUI graph をそのまま渡す graph モード
   `lint_waiver`         string / null      受領時 lint を飛ばす理由
   `identity_override`   string / null      identity_tags の消失を許す理由
+  `canvas_override`     string / null      draft より大きいキャンバスを許す理由（MCP だけが読む）
 
 ### parameters
 
@@ -185,6 +186,12 @@ node の seed と SaveImage の `filename_prefix` だけを書き換えて投入
 -   `identity_override`: patch や全文上書きで identity_tags が prompt から消えても描画し、
     Generation の `semantic.attributes` に理由と消えたタグを記録します。無ければその
     request は `failed` です（[identity の上書き](worker-protocol.md#identity-の上書き)）。
+-   `canvas_override`: MCP の `create_request`（generate）と `derive_request` は、約 1.4 MP
+    を超えるキャンバスを draft（pose の既定キャンバスの縦横比で約 1.3 MP）に揃えます。既定
+    キャンバスや親から引き継いだサイズが大きいときは draft の `render.width` /
+    `render.height` patch を末尾に足し、その request 自身が大きいサイズを patch したときは
+    受け付けません。理由を書くとそのまま描き、`semantic.attributes.canvas_override` に残します。
+    `derive_request` では同名の引数で渡します。`plain_render` と REST API は検査しません。
 
 ## semantic
 
