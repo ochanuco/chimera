@@ -145,6 +145,14 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// 新しい絵の大きさは chagama の AGENTS.md（draft）と同じ規定。instructions と create_request / derive_request で同じ文を出す。
+const DRAFT_CANVAS_GUIDANCE =
+  'A new picture is a draft: patch render.width / render.height to about 1.3 megapixels at the aspect ratio of the ' +
+  "pose's default canvas (get_catalog_pose `canvas`), each side a multiple of 8 — 896x1440 for a 1024x1640 or " +
+  '1280x2048 canvas, 1024x1280 for a 1024x1280 one. The aspect carries the look (a squarer bust canvas draws a ' +
+  "child's face), so never take it from the pose's kind. Only a picture the user picks goes up with redraw_generation " +
+  'method hires (2048). When continuing a picture by derive_request, its canvas patches come along from the parent. ';
+
 // prompt.positive の丸ごと replace は identity 指定を消す事故のもと。create_request と derive_request で同じ案内を出す。
 function promptPartGuidance(identityOverrideField: string): string {
   return (
@@ -168,13 +176,15 @@ const MCP_INSTRUCTIONS =
   '1. Start from list_catalog: it names every pose (and costume / expression) each recipe already has. Check it before ' +
   'writing a prompt patch for a look — the pose you want may already exist by name.\n' +
   '2. A named look is reproduced with plain_render(recipe, pose): it renders the recipe defaults at the seed of the ' +
-  "pose's pinned basis render (set_pose_reference). Seed exploration also goes through plain_render with an explicit seed.\n" +
-  "3. To derive from a look, start from the Generation in get_catalog_pose's `reference` (the current pin) and call " +
+  "pose's pinned basis render (set_pose_reference), at the pose's default canvas. Seed exploration for a new picture " +
+  'goes through derive_request from the pin with replace_patches: true and the draft canvas patches of step 3.\n' +
+  '3. ' + DRAFT_CANVAS_GUIDANCE + '\n' +
+  "4. To derive from a look, start from the Generation in get_catalog_pose's `reference` (the current pin) and call " +
   'derive_request from it. A rating=good Generation found via list_generations may predate the pin — prefer the pin. ' +
   'get_generation reports which pose a Generation drew and that pose\'s current pin as request.drawn_pose.\n' +
-  '4. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
+  '5. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
   'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
-  '5. A redrawn / delivered (or older repaired / masked_redraw) Generation exposes the Generation it was made from as ' +
+  '6. A redrawn / delivered (or older repaired / masked_redraw) Generation exposes the Generation it was made from as ' +
   '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
   'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
@@ -183,9 +193,9 @@ const MCP_INSTRUCTIONS =
   'deliver transparent, stage_generation (a backdrop pattern or a photo), lighting_generation (light it by the ' +
   'backdrop), then dof_generation. To compress the saturation of a delivered picture (figure and outline, outline colours ' +
   'included), run saturation_generation on the deliver output before stage_generation / photo_generation / dof_generation.\n' +
-  '6. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
+  '7. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.\n' +
-  '7. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
+  '8. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
   'Open the returned check_url to see each result next to its pin.';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
@@ -597,6 +607,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation / saturation_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
+        DRAFT_CANVAS_GUIDANCE +
         'Pass a stable idempotency_key: the same key with the same kind/payload replays the original ' +
         'row (created: false); the same key with a different kind/payload is a 409 tool error.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1090,6 +1101,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'resolved source Generation (plus a second purpose="derive" aspect="delivered" reference to the requested Generation ' +
         'when it differs from the source). ' +
         promptPartGuidance('identity_override (written to generation.identity_override; not carried from the parent)') +
+        DRAFT_CANVAS_GUIDANCE +
         'Pass a stable idempotency_key — the same key replays the original request ' +
         '(created: false) instead of creating a duplicate.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
