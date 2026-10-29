@@ -198,6 +198,7 @@ export const deriveRequestInputSchema = z
     semantic: z.object({ summary: z.string().min(1) }).passthrough(),
     reference: z.object({ aspect: z.string().optional(), instruction: z.string().optional() }).optional(),
     identity_override: z.string().trim().min(1).optional(),
+    canvas_override: z.string().trim().min(1).optional(),
     idempotency_key: z.string().min(1),
     recipe_ref: z.string().regex(RECIPE_REF_RE).optional(),
   })

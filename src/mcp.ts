@@ -4,7 +4,7 @@
 
 // 読み取り tool には readOnlyHint を付ける（annotation が無いと副作用ありとみなし、承認待ちで結果を返さない client がある）。
 import { McpServer } from '@modelcontextprotocol/server';
-import { notFound } from './lib/errors';
+import { badRequest, notFound } from './lib/errors';
 import { generatePayloadPatches } from './lib/patch-grammar';
 import {
   createExperimentRun,
@@ -36,6 +36,7 @@ import { getPresetRow, listPresets, recipeHasPresets, resolvePreset, serializeRe
 import { promoteGenerationToPreset, promoteGenerationToProfile } from './lib/promote';
 import { attachReferences, getCurrentReference, referenceView, setPoseReference } from './lib/preset-references';
 import { buildPlainRenderRequest } from './lib/plain-render';
+import { withDraftCanvas } from './lib/draft-canvas';
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { createPublication, serializePublication } from './lib/publications';
 import { computeSafetyVerdict, getSafetyForGeneration, publishWarningFor, type SafetyRating } from './lib/safety';
@@ -151,7 +152,11 @@ const DRAFT_CANVAS_GUIDANCE =
   "pose's default canvas (get_catalog_pose `canvas`), each side a multiple of 8 — 896x1440 for a 1024x1640 or " +
   '1280x2048 canvas, 1024x1280 for a 1024x1280 one. The aspect carries the look (a squarer bust canvas draws a ' +
   "child's face), so never take it from the pose's kind. Only a picture the user picks goes up with redraw_generation " +
-  'method hires (2048). When continuing a picture by derive_request, its canvas patches come along from the parent. ';
+  'method hires (2048). create_request (generate) and derive_request enforce this: a request that would render above ' +
+  'about 1.4 MP only because of the default canvas or a size carried from the parent gets the draft patches appended, ' +
+  'and a larger size patched in the request itself is rejected — unless canvas_override (derive_request) or ' +
+  'generation.canvas_override (create_request) gives the reason, which is recorded in semantic.attributes.canvas_override. ' +
+  'plain_render is not checked: it reproduces a pin at the default canvas. ';
 
 // prompt.positive の丸ごと replace は identity 指定を消す事故のもと。create_request と derive_request で同じ案内を出す。
 function promptPartGuidance(identityOverrideField: string): string {
@@ -202,6 +207,21 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   const db = env.DB;
   const bucket = env.IMAGES;
   const server = new McpServer({ name: 'chimera', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
+
+  async function draftGeneratePayload(payload: Record<string, unknown>, recipeRef: string | undefined) {
+    const generation = (payload.generation ?? {}) as Record<string, unknown>;
+    const override = generation.canvas_override;
+    if (override !== undefined && (typeof override !== 'string' || override.trim() === '')) {
+      throw badRequest('generation.canvas_override must be a non-empty string');
+    }
+    return withDraftCanvas(payload, {
+      doc: (await getCatalog(db, recipeRef ?? defaultRecipeRef(env)))?.doc ?? null,
+      inherited: [],
+      own: Array.isArray(generation.patches) ? (generation.patches as Record<string, unknown>[]) : [],
+      overrideField: 'generation.canvas_override',
+      override: override as string | undefined,
+    });
+  }
 
   /** hub 通知はレスポンスを待たせない。ExecutionContext が無ければ (テスト等) その場の Promise に任せる。 */
   function notifyHubInBackground(...args: Parameters<typeof notifyHub>): void {
@@ -613,7 +633,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: createRequestInputSchema,
     },
-    async ({ kind, payload, recipe_ref, idempotency_key }) => {
+    async ({ kind, payload: requested, recipe_ref, idempotency_key }) => {
+      const payload = kind === 'generate' ? await draftGeneratePayload(requested, recipe_ref) : requested;
       const { row, created } = await createRequest(
         db,
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
@@ -1118,6 +1139,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       semantic,
       reference,
       identity_override,
+      canvas_override,
       idempotency_key,
       recipe_ref,
     }) => {
@@ -1128,7 +1150,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const parentPresets = parseJsonArray(sourceRequest.preset_versions_json) as { kind: string; name: string; version: number }[];
       const parentRecipeHasPresets = sourceRequest.recipe ? await recipeHasPresets(db, sourceRequest.recipe) : false;
 
-      const payload = buildDerivedRequestPayload({
+      const derived = buildDerivedRequestPayload({
         parentGenerationId: sourceGeneration.id,
         requestedGenerationId: requestedGeneration.id,
         parentRecipe: sourceRequest.recipe,
@@ -1145,6 +1167,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         semantic,
         reference,
         identityOverride: identity_override,
+      });
+      const payload = withDraftCanvas(derived, {
+        doc: (await getCatalog(db, recipe_ref ?? defaultRecipeRef(env)))?.doc ?? null,
+        inherited: replace_patches ? [] : (parentPatches as Record<string, unknown>[]),
+        own: (patches ?? []) as Record<string, unknown>[],
+        overrideField: 'canvas_override',
+        override: canvas_override,
       });
 
       const { row, created } = await createRequest(
