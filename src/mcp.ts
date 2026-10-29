@@ -176,7 +176,8 @@ const MCP_INSTRUCTIONS =
   '1. Start from list_catalog: it names every pose (and costume / expression) each recipe already has. Check it before ' +
   'writing a prompt patch for a look — the pose you want may already exist by name.\n' +
   '2. A named look is reproduced with plain_render(recipe, pose): it renders the recipe defaults at the seed of the ' +
-  "pose's pinned basis render (set_pose_reference). Seed exploration also goes through plain_render with an explicit seed.\n" +
+  "pose's pinned basis render (set_pose_reference), at the pose's default canvas. Seed exploration for a new picture " +
+  'goes through derive_request from the pin with replace_patches: true and the draft canvas patches of step 3.\n' +
   '3. ' + DRAFT_CANVAS_GUIDANCE + '\n' +
   "4. To derive from a look, start from the Generation in get_catalog_pose's `reference` (the current pin) and call " +
   'derive_request from it. A rating=good Generation found via list_generations may predate the pin — prefer the pin. ' +
