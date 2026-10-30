@@ -87,6 +87,18 @@ export async function listCatalogs(db: D1Database): Promise<CatalogListItem[]> {
  * `parameters`, `patches` vocabulary and git info — no prompt bodies. What `list_catalog` and the
  * PUT response return; `get_catalog_pose` returns the full pose record via `findCatalogPose` instead.
  */
+/** The recipe's pose-less base: its name, canvas and the parts it leaves blank for a free prompt. */
+function summarizeBasePose(value: unknown): Record<string, unknown> | null {
+  const base = plainObject(value);
+  if (!base || typeof base.name !== 'string') return null;
+  const parts = Array.isArray(base.parts) ? base.parts : [];
+  const blankParts = parts
+    .map((part) => plainObject(part))
+    .filter((part) => part && typeof part.name === 'string' && part.text === '')
+    .map((part) => part!.name as string);
+  return { name: base.name, canvas: base.canvas ?? null, blank_parts: blankParts };
+}
+
 export function summarizeCatalog(doc: RecipeCatalogDoc) {
   const recipes = doc.recipes.map((recipe) => {
     const r = recipe as Record<string, unknown>;
@@ -95,6 +107,8 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     if ('expressions' in r) summary.expressions = extractNames(r.expressions);
     if ('parts' in r) summary.parts = r.parts;
     if ('identity_tags' in r) summary.identity_tags = r.identity_tags;
+    const base = summarizeBasePose(r.base_pose);
+    if (base) summary.base_pose = base;
     if ('parameters' in r) summary.parameters = r.parameters;
     // dials: {redraw?, deliver?, repair?, patches?} の word -> number map。chimera は表示にしか使わず、
     // word の実在確認や number への解決は worker が行う (docs/worker-protocol.md「deliver profile」)。
@@ -334,7 +348,8 @@ export function findCatalogPose(doc: RecipeCatalogDoc, recipeName: string, poseN
     if (typeof pose === 'string' && pose === poseName) return pose;
     if (pose && typeof pose === 'object' && (pose as Record<string, unknown>).name === poseName) return pose;
   }
-  return null;
+  const base = plainObject((recipe as { base_pose?: unknown }).base_pose);
+  return base && base.name === poseName ? base : null;
 }
 
 /** Top-level `saturation.strength` — the default blend of the `saturation` request kind. null when absent or outside 0..1. */

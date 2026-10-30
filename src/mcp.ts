@@ -179,7 +179,10 @@ function promptPartGuidance(identityOverrideField: string): string {
 const MCP_INSTRUCTIONS =
   'chimera manages ComfyUI generations for chagama. Order of operations:\n' +
   '1. Start from list_catalog: it names every pose (and costume / expression) each recipe already has. Check it before ' +
-  'writing a prompt patch for a look — the pose you want may already exist by name.\n' +
+  'writing a prompt patch for a look — the pose you want may already exist by name. A picture no pose covers is drawn ' +
+  "from the recipe's `base_pose` (yukari_persona: identity, costume and tights, no pose or expression): create_request " +
+  'generate with parameters.pose set to its name and the free prompt as append patches on its `blank_parts` ' +
+  '(framing_tags, action, mood, gesture, ...), at the draft canvas of step 3.\n' +
   '2. A named look is reproduced with plain_render(recipe, pose): it renders the recipe defaults at the seed of the ' +
   "pose's pinned basis render (set_pose_reference), at the pose's default canvas. Seed exploration for a new picture " +
   'goes through derive_request from the pin with replace_patches: true and the draft canvas patches of step 3.\n' +
@@ -1201,7 +1204,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.list_catalog,
       description:
         'Get the published recipe catalog summary for recipe_ref (default "production"): recipe names with their ' +
-        'pose/costume/expression NAMES, prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
+        'pose/costume/expression NAMES, `base_pose` (the pose-less base a free prompt is drawn on: name, canvas and ' +
+        'the `blank_parts` to append the prompt to), prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
         'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for deliver ' +
         'dial-able options, keyed by the option name — the word vocabulary deliver_generation accepts ' +
@@ -1254,7 +1258,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputs.get_catalog_pose,
       description:
-        'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production"). ' +
+        'Get a single pose record (full body, prompts included) from the published catalog for recipe_ref (default "production"); ' +
+        'a recipe\'s base_pose name returns that base. ' +
         'Where the recipe splits its prompt into parts, `parts` is [{name, text}] in order (the texts concatenate to the ' +
         'positive prompt); patch one of them with target "prompt.positive.<name>" instead of replacing the whole prompt. ' +
         'reference is the pose\'s current basis-render pin (set_pose_reference), or null if none has been set.',
