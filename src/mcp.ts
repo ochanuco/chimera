@@ -190,9 +190,12 @@ const MCP_INSTRUCTIONS =
   "4. To derive from a look, start from the Generation in get_catalog_pose's `reference` (the current pin) and call " +
   'derive_request from it. A rating=good Generation found via list_generations may predate the pin — prefer the pin. ' +
   'get_generation reports which pose a Generation drew and that pose\'s current pin as request.drawn_pose.\n' +
-  '5. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
+  '5. Set the camera with generation.parameters.angle (and .framing) from list_catalog\'s `angles` / `framings`, not with ' +
+  'camera words in a prompt patch: the recipe also adjusts what the camera sees. A back view is angle "from_behind" — ' +
+  'it swaps garments that differ from behind (the standard costume\'s halter is only a bow at the nape there).\n' +
+  '6. Change prompts per part: patch target "prompt.positive.<part>" (part names from get_catalog_pose `parts`). ' +
   'Replacing prompt.positive wholesale drops identity tags and trips the identity guard.\n' +
-  '6. A redrawn / delivered (or older repaired / masked_redraw) Generation exposes the Generation it was made from as ' +
+  '7. A redrawn / delivered (or older repaired / masked_redraw) Generation exposes the Generation it was made from as ' +
   '`refines_generation` ({id, short_id, rating}) in get_generation; it is null for a raw Generation. Change a picture ' +
   'with redraw_generation (one operation per request), then finish it with deliver_generation (cut-out, backdrop, ' +
   'a list of outlines) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
@@ -201,9 +204,9 @@ const MCP_INSTRUCTIONS =
   'deliver transparent, stage_generation (a backdrop pattern or a photo), lighting_generation (light it by the ' +
   'backdrop), then dof_generation. To compress the saturation of a delivered picture (figure and outline, outline colours ' +
   'included), run saturation_generation on the deliver output before stage_generation / photo_generation / dof_generation.\n' +
-  '7. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
+  '8. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.\n' +
-  '8. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
+  '9. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
   'Open the returned check_url to see each result next to its pin.';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
@@ -1207,7 +1210,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'pose/costume/expression NAMES, `base_pose` (the pose-less base a free prompt is drawn on: name, canvas and ' +
         'the `blank_parts` to append the prompt to), prompt part names (`parts`, the <part> of a "prompt.positive.<part>" patch target) ' +
         'and `identity_tags` (the tags a request must not drop without generation.identity_override) where the recipe ' +
-        'has them, per-recipe parameters, the patches vocabulary, `dials` (word -> number maps for deliver ' +
+        'has them, per-recipe parameters, `angles` / `framings` (the words generation.parameters.angle / .framing ' +
+        'accept, with Japanese `angle_labels` / `framing_labels`), the patches vocabulary, `dials` (word -> number maps for deliver ' +
         'dial-able options, keyed by the option name — the word vocabulary deliver_generation accepts ' +
         'in place of a number), `deliver` (defaults, outlines, stroke_light, backdrop_color: what deliver_generation resolves ' +
         'omitted options to), the top-level `dof` section (F-number range, scope and viewfinder defaults), the top-level `lens` section (strength range and default, center default, shape choices, sphere radius range), the top-level `photo` section (placement, height, stand, nearer, focus, F-number and focal_length defaults) and `redraw` (the hires default denoise), the top-level `backdrops` ' +

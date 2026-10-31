@@ -201,6 +201,23 @@ describe('MCP list_catalog / get_catalog_pose', () => {
     expect(JSON.stringify(tool.data)).not.toContain('masterpiece, sitting');
   });
 
+  it('list_catalog passes the angle and framing vocabulary through', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const vocabulary = {
+      angles: ['from_below', 'from_behind'],
+      angle_labels: { from_below: 'あおり', from_behind: '背面' },
+      framings: ['bust', 'full'],
+      framing_labels: { bust: 'バスト', full: '全身' },
+    };
+    await postJson(`/api/v1/catalogs/${recipeRef}`, {
+      schema_version: 1, recipes: [{ name: 'yukari', poses: [], ...vocabulary }], patches: {},
+    }, 'PUT');
+
+    const tool = await mcpToolCall<CatalogSummary>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.recipes).toEqual([{ name: 'yukari', poses: [], ...vocabulary }]);
+  });
+
   it('list_catalog 404s as a tool error when recipe_ref has nothing published', async () => {
     const tool = await mcpToolCall('list_catalog', { recipe_ref: uniqueRecipeRef() });
     expect(tool.isError).toBe(true);
