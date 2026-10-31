@@ -110,6 +110,9 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     const base = summarizeBasePose(r.base_pose);
     if (base) summary.base_pose = base;
     if ('parameters' in r) summary.parameters = r.parameters;
+    for (const key of ['angles', 'angle_labels', 'framings', 'framing_labels']) {
+      if (key in r) summary[key] = r[key];
+    }
     // dials: {redraw?, deliver?, repair?, patches?} の word -> number map。chimera は表示にしか使わず、
     // word の実在確認や number への解決は worker が行う (docs/worker-protocol.md「deliver profile」)。
     if ('dials' in r) summary.dials = r.dials;
