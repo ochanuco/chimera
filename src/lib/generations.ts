@@ -8,6 +8,7 @@ import { getSafetyForGeneration, serializeSafety, type SafetySummary } from './s
 import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
 import { isUuid } from './uuidv7';
+import { findRootGeneration } from './workbench';
 import { badRequest } from './errors';
 import { MODEL_FILTER_VALUES } from './model-family';
 import { isPhase, PHASE_KINDS, PHASES, type Phase } from './phases';
@@ -178,10 +179,12 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
         .bind(generation.refines_generation_id)
         .first<Pick<GenerationRow, 'id' | 'short_id' | 'rating'>>()
     : null;
+  const root = generation.refines_generation_id ? await findRootGeneration(db, generation) : null;
 
   return {
     ...context,
     refines_generation: refinesGeneration ?? null,
+    root_generation: root ? { id: root.id, short_id: root.short_id, rating: root.rating } : null,
     siblings: context.generations.filter((g) => g.id !== generation.id),
     publications: publications.map(serializePublication),
     pose_reference: poseReference,

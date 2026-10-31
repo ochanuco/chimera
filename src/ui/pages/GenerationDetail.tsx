@@ -52,6 +52,7 @@ export interface GenerationDetailData {
   safety: SafetyDetailData | null;
   pose_reference: PoseReferenceData | null;
   refines_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null } | null;
+  root_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null } | null;
   comfy_job: {
     id: string;
     seed: number | null;
@@ -241,6 +242,12 @@ export function GenerationDetailPage({
               <span class="detail-from">
                 元 <a href={`/g/${data.refines_generation.short_id}`}>{data.refines_generation.short_id}</a>{' '}
                 <CopyIdButton value={data.refines_generation.short_id} />
+              </span>
+            ) : null}{' '}
+            {data.root_generation && data.root_generation.id !== data.refines_generation?.id ? (
+              <span class="detail-from">
+                元絵 <a href={`/g/${data.root_generation.short_id}`}>{data.root_generation.short_id}</a>{' '}
+                <CopyIdButton value={data.root_generation.short_id} />
               </span>
             ) : null}{' '}
             <button type="button" class="compare-add-btn" data-generation-id={data.id} data-short-id={data.short_id}>

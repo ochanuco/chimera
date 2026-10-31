@@ -356,8 +356,21 @@ describe('Web GUI pages', () => {
     expect(refinedHtml).toContain(`元 <a href="/g/${source.short_id}">${source.short_id}</a>`);
     expect(refinedHtml).toContain(`data-copy-id="${source.short_id}"`);
 
+    expect(refinedHtml).not.toContain('元絵');
+
     const rawHtml = await (await req(`/g/${source.short_id}`)).text();
     expect(rawHtml).not.toContain('detail-from');
+  });
+
+  it('GET /g/:short_id also links and copies the raw root when the source is itself refined', async () => {
+    const { generation: root } = await createGeneration();
+    const middle = await createGeneration({ jobOverrides: { source_generation_id: root.id } });
+    const tip = await createGeneration({ jobOverrides: { source_generation_id: middle.generation.id } });
+
+    const html = await (await req(`/g/${tip.generation.short_id}`)).text();
+    expect(html).toContain(`元 <a href="/g/${middle.generation.short_id}">${middle.generation.short_id}</a>`);
+    expect(html).toContain(`元絵 <a href="/g/${root.short_id}">${root.short_id}</a>`);
+    expect(html).toContain(`data-copy-id="${root.short_id}"`);
   });
 
   it('GET /g/:short_id has no editing forms for any Generation and links to the workbench', async () => {
