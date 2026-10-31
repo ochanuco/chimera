@@ -251,6 +251,48 @@ describe('MCP list_catalog / get_catalog_pose', () => {
   });
 });
 
+function catalogWithBasePose() {
+  const doc = catalogWithParts();
+  (doc.recipes[0] as Record<string, unknown>).base_pose = {
+    name: 'yukari_persona',
+    canvas: [1024, 1640],
+    positive: 'masterpiece, ',
+    parts: [
+      { name: 'quality', text: 'masterpiece, ' },
+      { name: 'pose', text: '' },
+      { name: 'mood', text: '' },
+    ],
+  };
+  return doc;
+}
+
+describe('Recipe Catalog base_pose', () => {
+  it('list_catalog summarises base_pose as name, canvas and blank parts, no prompt text', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBasePose(), 'PUT');
+
+    const tool = await mcpToolCall<CatalogSummary>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.isError).toBe(false);
+    const yukari = tool.data?.recipes.find((r) => r.name === 'yukari') as Record<string, unknown>;
+    expect(yukari.base_pose).toEqual({ name: 'yukari_persona', canvas: [1024, 1640], blank_parts: ['pose', 'mood'] });
+    expect(yukari.poses).toEqual(['lounge', 'seated']);
+  });
+
+  it('get_catalog_pose returns the base_pose record by its name', async () => {
+    const recipeRef = uniqueRecipeRef();
+    await postJson(`/api/v1/catalogs/${recipeRef}`, catalogWithBasePose(), 'PUT');
+
+    const tool = await mcpToolCall<{ name: string; canvas: number[] }>('get_catalog_pose', {
+      recipe: 'yukari',
+      pose: 'yukari_persona',
+      recipe_ref: recipeRef,
+    });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.name).toBe('yukari_persona');
+    expect(tool.data?.canvas).toEqual([1024, 1640]);
+  });
+});
+
 describe('Recipe Catalog backdrops', () => {
   it('PUT summary lists backdrops as name/label only, no thumbnail bytes', async () => {
     const recipeRef = uniqueRecipeRef();
