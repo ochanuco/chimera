@@ -129,6 +129,23 @@ Claim の応答と `GET /requests/{id}` にも含まれます。
 です。`kind = redraw` / `kind = deliver` の payload に
 `experiment` があっても無視します。
 
+MCP の依頼系ツール（`create_request`、`derive_request`、`plain_render`、`redraw_generation` などの
+`*_generation`）は、行を作った後、worker の反応を D1 で見てから返します。返答の `settled` は
+`{outcome, waited_ms}` で、`outcome` は次のどれかです。
+
+  outcome       意味
+  ------------- ----------------------------------------------------------------------
+  `failed`      worker が失敗にした。`request.error` に理由
+  `done`        完了した
+  `cancelled`   取り消された
+  `submitted`   worker が graph を組み、ComfyUI が受け取った（Job に `comfy_prompt_id` がある）
+  `pending`     待ち時間内にどれにも至らなかった。以後は `get_request` で追う
+
+patch の組み立て失敗のような入力の誤りは claim から 1 秒ほどで `failed` になるので、呼び出し元は
+積んだ返答でそれを知ります。deliver などの仕上げ系は Job を完了後に記録するので、`submitted` を
+経ずに `done` か `pending` で返ります。待つ上限は 30 秒で、変数 `MCP_ENQUEUE_WAIT_MS`（ms、`0` で
+待たない）で変えます。REST の `POST /api/v1/requests` は待たずに返します。
+
 `kind = finalize` は作れません（`POST /api/v1/requests` も MCP `create_request` も 400 で、
 `redraw`（絵を変える）か `deliver`（切り抜いて仕上げる）を使うよう促すメッセージを返します）。
 読み取りは変わりません（[finalize](#finalize)）。
@@ -387,6 +404,10 @@ JSON として保存するだけで、この欄の形を検証も解釈もしま
 ### generate
 
 `payload` は request.json schema v1 をそのまま包みます（[generation-request.md](generation-request.md)）。
+
+作成時に `payload.request` の欄を検証します。`instruction` は空でない文字列、`count` は 1 以上の整数、
+`seeds` を書くなら `count` と同じ長さの整数配列で、外れれば 400 です。worker はこの欄を読んで動くので、
+欠けた行を積ませないためです。`generation` の中身は patch の文法以外見ません。
 
 ``` json
 {

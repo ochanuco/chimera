@@ -16,6 +16,8 @@ export interface Bindings {
   WOL_BASE_URL?: string;
   WOL_CLIENT_ID?: string;
   WOL_CLIENT_SECRET?: string;
+  /** MCP の依頼系ツールが worker の反応を待つ上限 (ms)。未設定なら 30000、"0" なら待たない (src/lib/request-settle.ts)。 */
+  MCP_ENQUEUE_WAIT_MS?: string;
   /** Cloudflare の version metadata。ローカル・テストでは未設定。 */
   CF_VERSION_METADATA?: { id: string; tag: string; timestamp: string };
 }

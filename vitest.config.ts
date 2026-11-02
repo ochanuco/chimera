@@ -10,7 +10,7 @@ export default defineConfig({
       return {
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations },
+          bindings: { TEST_MIGRATIONS: migrations, MCP_ENQUEUE_WAIT_MS: '0' },
         },
       };
     }),

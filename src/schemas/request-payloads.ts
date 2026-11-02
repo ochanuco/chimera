@@ -292,11 +292,23 @@ export const createReferenceRenderSchema = z
   })
   .strict();
 
-/** generate の payload は request.json v1 をそのまま包む (generation-request.md)。この schema が検証するのは封筒の形だけで、中身の語彙は見ない (`generation.patches` の文法だけは作成時に lib/patch-grammar.ts が見る)。 */
+/** worker が読む `request` の欄。欠けると worker が受け取った直後に落ちるので、積む前に弾く。 */
+const generateRequestBlockSchema = z
+  .looseObject({
+    instruction: z.string().min(1),
+    count: z.number().int().min(1),
+    seeds: z.array(z.number().int()).optional(),
+  })
+  .refine((request) => request.seeds === undefined || request.seeds.length === request.count, {
+    message: 'request.seeds must have exactly request.count entries',
+    path: ['seeds'],
+  });
+
+/** generate の payload は request.json v1 をそのまま包む (generation-request.md)。この schema が検証するのは封筒と `request` の欄だけで、`generation` の語彙は見ない (`generation.patches` の文法だけは作成時に lib/patch-grammar.ts が見る)。 */
 export const generatePayloadSchema = z
   .object({
     schema_version: z.literal(1),
-    request: jsonObject,
+    request: generateRequestBlockSchema,
     generation: jsonObject,
   })
   .passthrough();
