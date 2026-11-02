@@ -28,14 +28,21 @@ function lastSet(patches: Patch[], target: string): number | null {
   return value;
 }
 
-function poseCanvas(doc: RecipeCatalogDoc | null, recipe: unknown, pose: unknown): [number, number] | null {
+function poseRecord(doc: RecipeCatalogDoc | null, recipe: unknown, pose: unknown): Record<string, unknown> | null {
   if (!doc || typeof recipe !== 'string' || typeof pose !== 'string') return null;
   const record = findCatalogPose(doc, recipe, pose);
-  const canvas = record && typeof record === 'object' ? (record as { canvas?: unknown }).canvas : undefined;
+  return record && typeof record === 'object' ? (record as Record<string, unknown>) : null;
+}
+
+function poseCanvas(record: Record<string, unknown> | null): [number, number] | null {
+  const canvas = record?.canvas;
   if (!Array.isArray(canvas) || canvas.length !== 2) return null;
   const [width, height] = canvas;
   return typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0 ? [width, height] : null;
 }
+
+// A bust drawn below its own canvas reads as a child's face, and no face word brings the age back.
+const FULL_CANVAS_FRAMINGS = new Set(['bust']);
 
 /** About 1.3 MP at width:height, each side rounded down to a multiple of 8. */
 export function draftSize(width: number, height: number): [number, number] {
@@ -46,11 +53,13 @@ export function draftSize(width: number, height: number): [number, number] {
 
 /**
  * The render.width / render.height patches to append so the request renders a draft, or [] when it already does
- * (or its canvas cannot be resolved). A size the caller sets in this request is never rewritten: past a draft it
- * is rejected so the caller either shrinks it or names the reason in the override field.
+ * (or its canvas cannot be resolved, or the pose's catalog framing is drawn at its own canvas). A size the caller
+ * sets in this request is never rewritten: past a draft it is rejected so the caller either shrinks it or names the
+ * reason in the override field.
  */
 export function draftCanvasPatches(input: DraftCanvasInput): Patch[] {
-  const canvas = poseCanvas(input.doc, input.recipe, input.pose);
+  const record = poseRecord(input.doc, input.recipe, input.pose);
+  const canvas = poseCanvas(record);
   const ownWidth = lastSet(input.own, 'render.width');
   const ownHeight = lastSet(input.own, 'render.height');
   const width = ownWidth ?? lastSet(input.inherited, 'render.width') ?? canvas?.[0] ?? null;
@@ -58,7 +67,9 @@ export function draftCanvasPatches(input: DraftCanvasInput): Patch[] {
   if (width === null || height === null || width * height <= MAX_DRAFT_AREA) return [];
 
   const [draftWidth, draftHeight] = draftSize(width, height);
-  if (ownWidth !== null || ownHeight !== null) {
+  const ownSize = ownWidth !== null || ownHeight !== null;
+  if (!ownSize && typeof record?.framing === 'string' && FULL_CANVAS_FRAMINGS.has(record.framing)) return [];
+  if (ownSize) {
     throw badRequest(
       `render.width x render.height ${width}x${height} is larger than a draft (about 1.3 MP, ${draftWidth}x${draftHeight} ` +
         `at this aspect ratio); patch a draft size, or give the reason for this size in ${input.overrideField}`,
