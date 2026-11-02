@@ -148,6 +148,8 @@ export const photoOptionsSchema = z
     // A lens name from the catalog's photo.focal_length values; the worker checks it, so a lens added there needs no change here.
     focal_length: z.string().min(1).optional(),
     card: z.enum(['print', 'acrylic']).optional(),
+    reshoot: z.boolean().optional(),
+    seed: z.number().int().min(0).max(4294967295).optional(),
   })
   .strict();
 

@@ -152,6 +152,8 @@ export const photoGenerationInputSchema = z.object({
   bokeh: photoOptionsSchema.shape.bokeh,
   focal_length: photoOptionsSchema.shape.focal_length,
   card: photoOptionsSchema.shape.card,
+  reshoot: photoOptionsSchema.shape.reshoot,
+  seed: photoOptionsSchema.shape.seed,
   idempotency_key: z.string().min(1),
 });
 
