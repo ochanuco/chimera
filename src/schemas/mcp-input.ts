@@ -211,6 +211,7 @@ export const generationLineageInputSchema = z.object({
 
 /** 1:1 with GET /api/v1/generations's filters (src/lib/generations.ts queryGenerations). */
 export const listGenerationsInputSchema = z.object({
+  q: z.string().min(1).optional(),
   tag: z.string().min(1).optional(),
   published: z.boolean().optional(),
   reference: z.boolean().optional(),

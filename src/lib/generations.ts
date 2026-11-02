@@ -394,6 +394,14 @@ function buildGenerationFilter(query: Record<string, string | undefined>): { con
     );
     binds.push(query.tag);
   }
+  if (query.q !== undefined) {
+    if (query.q === '') throw badRequest('q must not be empty');
+    const pattern = `%${query.q.replace(/[\\%_]/g, '\\$&')}%`;
+    conditions.push(
+      `(g.summary LIKE ? ESCAPE '\\' OR g.semantic_json LIKE ? ESCAPE '\\' OR g.request_id IN (SELECT id FROM requests WHERE raw_instruction LIKE ? ESCAPE '\\' OR patches_json LIKE ? ESCAPE '\\' OR parameters_json LIKE ? ESCAPE '\\'))`,
+    );
+    binds.push(pattern, pattern, pattern, pattern, pattern);
+  }
   if (query.published === 'true') {
     conditions.push('EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id)');
   } else if (query.published === 'false') {
