@@ -182,17 +182,9 @@ file yk-lineT3_00001_.png
 
 ## UC-16: 安定した条件をchagamaへ昇格する
 
-反復の結果、条件が安定したらExperimentを`stabilized`にします。
-
-``` text
-PATCH /api/v1/experiments/{id}
-```
-
-``` json
-{ "status": "stabilized" }
-```
-
-安定したRunをsource_run_idに指定し、Promotionを作成します。
+反復の結果、条件が安定したら、安定したRunをsource_run_idに指定し、Promotionを作成します。
+Experimentのstatusを進める必要はありません。Experimentは最後に触られてから14日で消えます
+（[domain-model.md「一時記録の期限」](domain-model.md#一時記録の期限)）。
 
 ``` text
 POST /api/v1/experiments/{id}/promotions

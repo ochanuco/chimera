@@ -38,6 +38,7 @@ import { attachReferences, getCurrentReference, referenceView, setPoseReference 
 import { buildPlainRenderRequest } from './lib/plain-render';
 import { withDraftCanvas } from './lib/draft-canvas';
 import { createObservation, getObservation, listObservations } from './lib/observations';
+import { TEMPORARY_RECORD_RETENTION_DAYS } from './lib/temporary-records';
 import { createPublication, serializePublication } from './lib/publications';
 import { computeSafetyVerdict, getSafetyForGeneration, publishWarningFor, type SafetyRating } from './lib/safety';
 import { getGpuStatus } from './lib/gpu-wake';
@@ -177,6 +178,11 @@ function promptPartGuidance(identityOverrideField: string): string {
  * Server-level guidance in the initialize response: tool descriptions alone leave the client to guess the order
  * of operations, so a client seeing only a rating=good Generation re-invents a pose that already exists in the catalog.
  */
+const TEMPORARY_RECORDS_NOTE =
+  `Experiments (with their Runs) and Observations are temporary: a round's working memory, deleted ${TEMPORARY_RECORD_RETENTION_DAYS} days ` +
+  'after they were last touched. The durable evidence of a trial is the Generation itself: its semantic (write the aim, the diff from ' +
+  'the base and what the render tests there) and the human rating. Blind A/B judgments are kept too.';
+
 const MCP_INSTRUCTIONS =
   'chimera manages ComfyUI generations for chagama. Order of operations:\n' +
   '1. Start from list_catalog: it names every pose (and costume / expression) each recipe already has. Check it before ' +
@@ -206,7 +212,8 @@ const MCP_INSTRUCTIONS =
   'backdrop), then dof_generation. To compress the saturation of a delivered picture (figure and outline, outline colours ' +
   'included), run saturation_generation on the deliver output before stage_generation / photo_generation / dof_generation.\n' +
   '8. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
-  'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.\n' +
+  'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns. ' +
+  TEMPORARY_RECORDS_NOTE + '\n' +
   '9. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
   'Open the returned check_url to see each result next to its pin.\n' +
   '10. The tools that queue one request (create_request, derive_request, plain_render and the *_generation tools) wait up to 30 s ' +
@@ -252,7 +259,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'list_experiments',
     {
       outputSchema: mcpOutputs.list_experiments,
-      description: 'List Experiments, optionally filtered by status. Each item carries its base_recipe/base_parameters and latest Run.',
+      description:
+        'List Experiments, optionally filtered by status. Each item carries its base_recipe/base_parameters and latest Run. ' +
+        'An Experiment ends by expiring, not by its status: nothing needs to move it to stabilized / promoted / abandoned. ' +
+        TEMPORARY_RECORDS_NOTE,
       inputSchema: listExperimentsInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -313,7 +323,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'change one aspect per arm with per-part targets "prompt.positive.<part>" (part names from get_catalog_pose `parts`) instead of replacing the whole prompt. ' +
         'instruction is the arm\'s instruction text (defaults to the label). ' +
         'Retrying with the same idempotency_key returns the original Experiment and Runs with created=false; the same key with different arms is a 409. ' +
-        'Returns the Experiment (id, short_id, url, compare_url) and per arm the Run id, request_id and request_short_id.',
+        'Returns the Experiment (id, short_id, url, compare_url) and per arm the Run id, request_id and request_short_id. ' +
+        TEMPORARY_RECORDS_NOTE,
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: createExperimentInputSchema,
     },
@@ -1454,8 +1465,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     {
       outputSchema: mcpOutputs.list_observations,
       description:
-        "List Observations, chimera's index of chagama' experiments/ records (docs/domain-model.md#observation). " +
-        'The index is not the source of truth — it can lag the JSONL files. Observation is history, not the current rule; ' +
+        'List Observations: notes of what was tried for one parameter and what happened (docs/domain-model.md#observation). ' +
+        TEMPORARY_RECORDS_NOTE + ' Observation is history, not the current rule; ' +
         "the current rule lives in the pose recipe's own comments. Every reason is scoped to the pose/seed/tag block/canvas " +
         "it was observed under, not a general claim about the tag — treat a hit as one past data point, not a rule. " +
         'q matches parameter/value/reason by substring.',
@@ -1476,7 +1487,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
     'get_observation',
     {
       outputSchema: mcpOutputs.get_observation,
-      description: 'Get one Observation by id (docs/domain-model.md#observation). 404s (as a tool error) when not found.',
+      description:
+        'Get one Observation by id (docs/domain-model.md#observation). 404s (as a tool error) when not found, ' +
+        `which includes an Observation that expired ${TEMPORARY_RECORD_RETENTION_DAYS} days after it was recorded.`,
       inputSchema: idInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -1493,14 +1506,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.record_observation,
       description:
         'Non-destructive: only appends one new Observation. Never deletes, overwrites, publishes or sends anything. ' +
-        'Records what was tried for one parameter and what happened (docs/domain-model.md#observation). Requires pose and/or ' +
+        'Records what was tried for one parameter and what happened (docs/domain-model.md#observation). ' +
+        TEMPORARY_RECORDS_NOTE + ' Requires pose and/or ' +
         "component (at least one). This is history, not the current rule — it does not change the pose recipe. The reason " +
         "you give is scoped to this pose/seed/tag block/canvas, not a general claim about the tag: don't write it as if it " +
         'settles the tag everywhere else in the project. Pass a fresh idempotency_key per observation you intend to record; ' +
         'resending the same key returns the row it already made. Measuring the same thing again and getting the same result ' +
         'is a separate observation, so give it its own key rather than reusing the first one. supersedes_id records that ' +
-        'this Observation overturns an earlier one — the earlier row ' +
-        'is never edited or deleted, since Observation is append-only.',
+        'this Observation overturns an earlier one — the earlier row is never edited; when it expires, supersedes_id becomes null.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: recordObservationInputSchema,
     },

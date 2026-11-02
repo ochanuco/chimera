@@ -754,8 +754,7 @@ deliver request の payload に `profile: { name, version? }` を渡すと、chi
 
 ## Observation
 
-chagama の `experiments/` を写した索引です（[domain-model.md](domain-model.md#observation)）。
-正本は JSONL 側で、chimera は引くための索引に徹します。
+ラウンド中の作業記憶で、作られてから 14 日で消えます（[domain-model.md](domain-model.md#observation)）。
 
 ``` text
 GET  /api/v1/observations          ?character= &pose= &component= &parameter= &outcome= &q=
@@ -939,6 +938,7 @@ POST /api/v1/experiments/{id}/judgments
   "seed": 12345,
   "left_generation_id": "...",
   "right_generation_id": "...",
+  "baseline_generation_id": "...",
   "verdict": "right",
   "winner": "arm",
   "judged_at": "...",
@@ -959,9 +959,9 @@ POST /api/v1/experiments/{id}/judgments
 }
 ```
 
-`winner`は`verdict`と各Generationの所属Requestから導いた`baseline` / `arm` /
-`tie`です（`left_generation_id` / `right_generation_id`自体は向きを覚えているだけで、
-どちらがbaselineかは表現しません）。
+`winner`は`verdict`と`baseline_generation_id`（作成時に各Generationの所属Requestから
+決めたbaseline側のGeneration）から導いた`baseline` / `arm` / `tie`です。Experiment / Run が
+期限で消えた後のjudgmentは`experiment_id` / `baseline_run_id` / `arm_run_id`がnullになります。
 
 `reveal` は判定後（このレスポンスと、Judgment Summary の
 `pairs[].render_diff`）にだけ現れます。A/B画面自体は判定前に確定情報を
@@ -1726,7 +1726,7 @@ Generation ingest はGeneration ID / R2
 keyを決定的に扱い、R2成功・D1失敗等から再実行可能にします。
 
 ExperimentRun create の `idempotency_key` は任意です。Run
-は物理削除できないため、Agent
+は期限まで消えないため、Agent
 がレスポンスを失って作成の成否が分からなくなった場合の再送手段として使います。
 人間がGUIから作る場合や一回限りのcurlなど、再送保護を必要としない経路も
 引き続きキーなしで使えるようにするため、他の必須の経路と異なりキーを必須にはしません。

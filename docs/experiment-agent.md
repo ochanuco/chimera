@@ -420,8 +420,8 @@ generate の `generation.patches` は、`recipe_ref`（省略時は既定）の�
 ### Observation と Publication
 
 `list_observations` / `get_observation` / `record_observation` は Observation（[domain-model.md](domain-model.md#observation)、[api.md](api.md#observation)）の窓口です。
-Observation は chagama の `experiments/` JSONL を写した索引で、正本ではなく、JSONL より遅れることがあります。
-記録は履歴であって現行の規則ではなく、現行の規則は pose recipe 自身のコメントにあります。
+Observation は Experiment / Run と同じ一時記録で、作られてから 14 日で消えます（[domain-model.md「一時記録の期限」](domain-model.md#一時記録の期限)）。
+試行の結果として残すものは Generation の semantic に書き、評価は人間の rating に任せます。記録は履歴であって現行の規則ではありません。
 各 reason は観測した pose / seed / タグブロック / canvas に限った話で、タグ一般についての主張ではありません。
 
 `record_observation` は pose と component の少なくとも一方を必須とし、`observed_at`（import 由来の記録日の欄）は受けません。

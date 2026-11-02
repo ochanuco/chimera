@@ -63,6 +63,8 @@ abandoned  → active
 
 `active` を離れた時点で `completed_at` が立ち、`active`
 に戻すと消えます。`stabilized → promoted` では最初に完了した時刻を保ちます。許可されていない遷移は409です。
+status は遷移を受け付けますが、Experiment の終わり方ではありません。Experiment は下記「一時記録の期限」で
+消えて終わり、agent が status を `stabilized` / `promoted` に進める必要はありません。
 
 過去の生成系譜を辿るときは、過去の Experiment を「再開」するより、過去
 Generation を Reference として新しい Experiment / Request
@@ -75,7 +77,24 @@ Generation を Reference として新しい Experiment / Request
 （下記 Request 節）。あくまで各 request payload への伝播であり、素材参照
 （`request_references`）そのものは相変わらず唯一の永続化された material relation です。
 
-Experiment は原則物理削除しません。
+### 一時記録の期限
+
+Experiment / ExperimentRun / Observation は一回のラウンドの作業記憶で、一時記録です。最後に触られてから
+14 日（`TEMPORARY_RECORD_RETENTION_DAYS`、`src/lib/temporary-records.ts`）を過ぎると、1 時間ごとの cron が
+消します。試行の結果として残るのは Generation（画像、prompt、parameters、系譜、rating、semantic、
+Publication）と PairwiseJudgment で、試行の証拠は Generation の semantic と rating です。
+
+最後に触られた時刻は次のとおりです。
+
+-   Experiment: `experiments.updated_at`。Run の作成・更新、judgment、Run の結果 Request の完了で進みます
+    （`touchExperiment`）。Run の `updated_at` がそれより新しければ、そちらを使います。
+-   Observation: `created_at`（Observation は書き換えません）。
+
+Experiment を消すときは、Run・ExperimentPromotion・Experiment の tag と一緒に消し、消す前に永続側からの
+参照を NULL にします。`requests.run_id`、`pairwise_judgments` の `experiment_id` / `baseline_run_id` /
+`arm_run_id`、他の Experiment の Run の `parent_run_id`、他の Promotion の `source_run_id` です。
+Observation を消すときは、それを指す `supersedes_id` を NULL にします。Generation と R2 の画像には
+触りません。1 回の cron で消す件数には上限があり、残りは次の回に消えます。
 
 ## ExperimentRun
 
@@ -182,7 +201,7 @@ factor を CLI / 人間が書き添えるための、キー文字列 → `string
 
 不変条件:
 
--   ExperimentRun は原則物理削除しません。
+-   ExperimentRun は Experiment と一緒に期限で消えます（上記「一時記録の期限」）。
 -   結果の Request が付いた、または Generation が attach された Run の `overrides`
     は変更できません（409）。条件を変えるなら新しい Run を作ります。
 -   attach 済みの Generation を別のものに付け替えることはできません（409）。同じ
@@ -226,7 +245,7 @@ rejected
 
 不変条件:
 
--   ExperimentPromotion は原則物理削除しません。
+-   ExperimentPromotion は Experiment と一緒に期限で消えます（上記「一時記録の期限」）。
 -   確定済み Promotion の `promoted_overrides` は変更できません（409）。
 
 ## Preset
@@ -424,18 +443,9 @@ pin がまだ無い pose には `seed` を明示して呼ぶことで、最初�
 
 ## Observation
 
-「あるパラメータについて何を試して何が起きたか」の記録です。chagama の
-`experiments/<character>/<pose>.jsonl` を写した索引で、正本ではありません。
-
-正本を動かさないのは、preset のときと壊れ方の種類が違うためです。preset は worker が
-graph を組むのに要る load-bearing なデータで、正本が二箇所にあると本番が壊れます。
-experiments の記録は誰も実行せず、人と agent が判断のために読むだけです。しかも
-chagama の `AGENTS.md` は「pose や tag を変える前に experiments/ を grep しろ」と
-定めていて、これは編集中にオフラインで即座に効きます。数百行の grep はゼロ秒で、MCP の
-往復はそうではありません。索引を得るために grep を失うのは損です。
-
-append-only を強制しているのが git である点も動かせません。JSONL は書き換えれば diff に
-出ますが、chimera を正本にすると、その強制がテーブルの運用規約に置き換わって弱くなります。
+「あるパラメータについて何を試して何が起きたか」の記録です。ラウンド中の作業記憶で、
+作られてから 14 日で消えます（[一時記録の期限](#一時記録の期限)）。試行の結果として残るのは
+Generation の semantic と rating です。
 
 主な属性:
 
@@ -460,14 +470,12 @@ created_at
 
 不変条件:
 
--   append-only です。Observation は編集も削除もしません。後の実験が前の結論を覆したと
-    きは、古い行を書き換えず `supersedes_id` を持つ新しい行を足します。JSONL 側の
-    append-only policy をそのまま持ち込んでいます。
+-   Observation は編集しません。後の実験が前の結論を覆したときは、古い行を書き換えず
+    `supersedes_id` を持つ新しい行を足します。行は期限で消え、消えた行を指す
+    `supersedes_id` は NULL になります。
 -   `id` は `{ path, line, record }` の正規化 JSON の SHA-256 です。同じ行は何度流しても
-    同じ Observation になるので、JSONL 全体を丸ごと再送できます。索引が正本より古いのは、
-    正本が古いより厄介です。「chimera に無い = まだ試していない」と読んだ人が、既に落ちた
-    道をもう一度歩くためで、`rejected` を引けるようにするのが目的である以上そこが腐ると
-    目的が消えます。同期は追加だけで、payload に無い行を消しません（append-only と同じ理由）。
+    同じ Observation になるので、JSONL 全体を丸ごと再送できます。同期は追加だけで、
+    payload に無い行を消しません。
 -   id に出所を混ぜるのは、内容だけにすると byte 一致する再測定が黙って消えるためです。
     同じ pose の同じ parameter を同じ value で測り直して同じ結果が出たら、それは再現の
     記録であって独立した観測です。append-only policy はそれを新しいレコードとして足すよう
@@ -487,8 +495,7 @@ created_at
     Observation ではありません。レコード自身がどちらも持たないときは、送り手が
     `component` を添えます。chimera はファイル名から推測しません。ファイル名は中身を
     代表しないことがあり、推測すると誤ったラベルが付きます。
--   Observation は履歴であって現在の規則ではありません。現在の規則は pose recipe の
-    コメント側にあります。
+-   Observation は履歴であって現在の規則ではありません。
 -   どの `reason` も、その pose / seed / tag ブロック / canvas の下での観測であって、
     タグ一般についての主張ではありません。「`boss` のブロックの下で `smug` を 1.4 に
     すると得意げに読めた」は、このプロジェクトの他のどこかでの `smug` 1.4 について
@@ -599,6 +606,7 @@ seed
 left_generation_id
 right_generation_id
 verdict
+baseline_generation_id
 judged_at
 ```
 
@@ -611,14 +619,19 @@ tie
 ```
 
 `left_generation_id` / `right_generation_id` は表示時にランダムに割り当てた向きで、`verdict`
-はその向きへの回答です。どちらの Generation が baseline / arm 側だったかは列自体には残らず、各
-Generation の所属 Request の `run_id`（baseline run / arm run のどちらの Request から出たか）と突き合わせて
-その都度導きます（API の `winner` フィールド）。この向き付けにより、GUI 上で人間が
-baseline / arm のどちらを見ているか判別できません（盲検性）。
+はその向きへの回答です。この向き付けにより、GUI 上で人間が baseline / arm のどちらを見ているか
+判別できません（盲検性）。作成時に、各 Generation の所属 Request が baseline run / arm run のどちらの
+結果 Request かを突き合わせ、baseline 側を `baseline_generation_id` に記録します。API の `winner` は
+`verdict` と `baseline_generation_id` から導くので、Run が期限で消えた後も判定の意味が残ります。
+
+PairwiseJudgment は永続記録です。Experiment / Run が期限で消えると `experiment_id` / `baseline_run_id` /
+`arm_run_id` は NULL になり、残るのは2枚の Generation、seed、baseline 側、verdict、判定時刻です。
+変えた条件は各 Generation の Request（patches、parameters）と semantic から読みます。
 
 不変条件:
 
 -   `(baseline_run_id, arm_run_id, seed)` は一意です。同じ組み合わせへの2回目の judgment は409です。
+-   `baseline_generation_id` は `left_generation_id` / `right_generation_id` のどちらかです。
 -   PairwiseJudgment は物理削除しません。
 
 ## ComfyJob

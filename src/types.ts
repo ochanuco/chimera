@@ -71,12 +71,13 @@ export type JudgmentWinner = 'baseline' | 'arm' | 'tie';
 
 export interface PairwiseJudgmentRow {
   id: string;
-  experiment_id: string;
-  baseline_run_id: string;
-  arm_run_id: string;
+  experiment_id: string | null;
+  baseline_run_id: string | null;
+  arm_run_id: string | null;
   seed: number;
   left_generation_id: string;
   right_generation_id: string;
+  baseline_generation_id: string;
   verdict: JudgmentVerdict;
   judged_at: string;
 }
