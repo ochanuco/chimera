@@ -11,6 +11,7 @@ import { isUuid } from './uuidv7';
 import { findRootGeneration } from './workbench';
 import { badRequest } from './errors';
 import { MODEL_FILTER_VALUES } from './model-family';
+import { listJudgmentsForGeneration } from './judgments';
 import { isPhase, PHASE_KINDS, PHASES, type Phase } from './phases';
 import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationAssetRow, GenerationRow, RequestRow, RequestStatus } from '../types';
 
@@ -161,7 +162,7 @@ export async function buildContext(db: D1Database, org: string, generation: Gene
 
 /** GET /api/v1/generations/{id} 及び MCP `get_generation` が返す形。 */
 export async function getGenerationDetail(db: D1Database, org: string, generation: GenerationRow) {
-  const [{ context, request }, job, publications, poseReference, safetyRow, assetRows] = await Promise.all([
+  const [{ context, request }, job, publications, poseReference, safetyRow, assetRows, judgments] = await Promise.all([
     loadBuiltContext(db, org, generation),
     db.prepare('SELECT * FROM comfy_jobs WHERE id = ?').bind(generation.comfy_job_id).first<ComfyJobRow>(),
     listPublicationsForGeneration(db, generation.id),
@@ -171,6 +172,7 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
       .prepare('SELECT * FROM generation_assets WHERE generation_id = ? ORDER BY role ASC, region ASC')
       .bind(generation.id)
       .all<GenerationAssetRow>(),
+    listJudgmentsForGeneration(db, generation.id),
   ]);
   const renderFacts = job ? await renderFactsForJob(db, job) : null;
   const refinesGeneration = generation.refines_generation_id
@@ -187,6 +189,7 @@ export async function getGenerationDetail(db: D1Database, org: string, generatio
     root_generation: root ? { id: root.id, short_id: root.short_id, rating: root.rating } : null,
     siblings: context.generations.filter((g) => g.id !== generation.id),
     publications: publications.map(serializePublication),
+    judgments,
     pose_reference: poseReference,
     safety: safetyRow ? serializeSafety(safetyRow, { includeTags: true }) : null,
     comfy_job: job

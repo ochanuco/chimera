@@ -315,6 +315,20 @@ export const mcpOutputs = {
       .object({ id: z.string(), short_id: z.string(), rating: z.string().nullable() })
       .nullable()
       .optional(),
+    judgments: z
+      .array(
+        z.object({
+          id: z.string(),
+          verdict: z.enum(['left', 'right', 'tie']),
+          winner: z.enum(['this', 'other', 'tie']),
+          other_generation: z.object({ id: z.string(), short_id: z.string(), rating: z.string().nullable() }),
+          this_was_baseline: z.boolean(),
+          seed: z.number(),
+          judged_at: z.string(),
+          experiment: z.string().nullable(),
+        }),
+      )
+      .optional(),
     semantic: z.unknown().optional(),
     request: z
       .looseObject({
