@@ -428,7 +428,14 @@ describe('MCP lighting_generation', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(moon.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { scene: 'moon' } });
-    for (const bad of [{ direction: 'up' }, { strength: 2 }, { scene: 'noon' }]) {
+    const acrylic = await mcpToolCall<CreateRequestResult>('lighting_generation', {
+      generation_id: generation.id,
+      acrylic: true,
+      seed: 5,
+      idempotency_key: crypto.randomUUID(),
+    });
+    expect(acrylic.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { acrylic: true, seed: 5 } });
+    for (const bad of [{ direction: 'up' }, { strength: 2 }, { scene: 'noon' }, { acrylic: 'yes' }, { seed: -1 }]) {
       const rejected = await mcpToolCall('lighting_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(rejected.isError).toBe(true);
     }
