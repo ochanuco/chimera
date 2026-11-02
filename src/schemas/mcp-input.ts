@@ -178,6 +178,8 @@ export const lightingGenerationInputSchema = z.object({
   direction: lightingOptionsSchema.shape.direction,
   strength: lightingOptionsSchema.shape.strength,
   scene: lightingOptionsSchema.shape.scene,
+  acrylic: lightingOptionsSchema.shape.acrylic,
+  seed: lightingOptionsSchema.shape.seed,
   idempotency_key: z.string().min(1),
 });
 
