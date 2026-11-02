@@ -1,238 +1,20 @@
 // REST (src/routes/observations.ts) と MCP tools (src/mcp.ts) の両方がここを呼ぶ。
-// sync (JSONL 取り込み) と createObservation は経路が違うが、id の計算規則 (observationId) は共有する。
 
-import { nowIso, chunk, D1_MAX_BOUND_PARAMS, type Pagination } from './db';
+import { nowIso, type Pagination } from './db';
 import { stableStringify } from './json-canonical';
 import type { CreateObservationInput } from '../schemas/observations';
 import type { ObservationOutcome, ObservationRow, ObservationSource } from '../types';
 
-const OUTCOMES: readonly ObservationOutcome[] = ['accepted', 'rejected', 'inconclusive'];
-
-/**
- * `{ path, line, record }` の正規化 JSON の SHA-256 (docs/domain-model.md「Observation」)。
- * `record` は変換前の元レコードそのもの — 正規化ロジックを後から直しても既存行の id が動かないようにするため。
- */
+/** `{ path, line, record }` の正規化 JSON の SHA-256。取り込み経路の廃止後も、既存行の id を変えないためこの形のまま使う。 */
 export async function observationId(envelope: { path: string; line: number; record: unknown }): Promise<string> {
   const bytes = new TextEncoder().encode(stableStringify(envelope));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export interface NormalizedObservation {
-  character: string;
-  pose: string | null;
-  component: string | null;
-  parameter: string;
-  value: string;
-  outcome: ObservationOutcome;
-  reason: string;
-  seed: number | null;
-  render_id: string | null;
-  generation_ids: string[] | null;
-  recipe: string | null;
-  observed_at: string | null;
-}
-
-export type NormalizeResult = { ok: true; row: NormalizedObservation } | { ok: false; reason: string };
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-/** `value` は数値のこともあるので文字列化して受ける。character/parameter/reason は文字列のみ。 */
-function stringifyValue(value: unknown): string | null {
-  if (typeof value === 'string') return value.length > 0 ? value : null;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return null;
-}
-
-function normalizeGenerationIds(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const ids = value.map((v) => String(v)).filter((v) => v.length > 0);
-  return ids.length > 0 ? ids : null;
-}
-
-/**
- * axis/arms を持つ形（形 C）のみ Observation に変換して受理する (docs/domain-model.md
- * 「実験のアームは Observation ではない」)。どの arm が選ばれたかは対応する行が無いため持ち込まない。
- */
-function transformFormC(r: Record<string, unknown>): Record<string, unknown> {
-  const arms = r.arms;
-  const armNames = arms && typeof arms === 'object' && !Array.isArray(arms) ? Object.keys(arms as Record<string, unknown>) : [];
-  const picked = r.picked;
-  const pickedIds = Array.isArray(picked) ? picked.map((v) => String(v)) : nonEmptyString(picked) ? [picked as string] : [];
-  return {
-    character: r.character,
-    parameter: r.axis,
-    value: armNames.join(', '),
-    outcome: pickedIds.length > 0 ? 'accepted' : 'inconclusive',
-    reason: r.observation,
-    seed: r.seed,
-    render_id: r.render_id,
-    generation_ids: pickedIds,
-    recipe: r.recipe,
-    observed_at: r.date,
-  };
-}
-
-export interface NormalizeOptions {
-  /** record 自身が同じキーを持たないときだけ使う値。パスからは推測しない（ディレクトリ名やファイル名が character/component を代表するとは限らない）。id の計算には入らない。 */
-  character?: string;
-  component?: string;
-}
-
-/** JSONL 1行を chimera の Observation の語彙に正規化する。受理しないものは reason 付きで返す。 */
-export function normalizeRecord(record: unknown, options: NormalizeOptions = {}): NormalizeResult {
-  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
-    return { ok: false, reason: 'record must be an object' };
-  }
-  const r = record as Record<string, unknown>;
-
-  const hasAxisArms = 'axis' in r && 'arms' in r;
-
-  // アーム判定を先に置く: 'no pose or component' を先に返すと「ラベルを足せば入る」と誤読される。
-  if (!hasAxisArms && ('verdict' in r || 'observation' in r || 'arms' in r)) {
-    return { ok: false, reason: 'experiment arm, not an observation' };
-  }
-
-  let pose = nonEmptyString(r.pose);
-  let component = nonEmptyString(r.component);
-  if (pose === null && component === null) {
-    component = nonEmptyString(options.component);
-  }
-  if (pose === null && component === null) {
-    return { ok: false, reason: 'no pose or component' };
-  }
-
-  const fields = hasAxisArms ? transformFormC(r) : r;
-
-  const outcomeRaw = fields.outcome;
-  if (outcomeRaw === undefined || outcomeRaw === null) {
-    return { ok: false, reason: 'no outcome' };
-  }
-  let outcome = String(outcomeRaw);
-  if (outcome === 'not adopted') outcome = 'rejected';
-  if (!(OUTCOMES as readonly string[]).includes(outcome)) {
-    return { ok: false, reason: `unknown outcome: ${outcome}` };
-  }
-
-  const character = nonEmptyString(fields.character) ?? nonEmptyString(options.character);
-  const parameter = nonEmptyString(fields.parameter);
-  const reason = nonEmptyString(fields.reason);
-  const value = stringifyValue(fields.value);
-  if (character === null || parameter === null || value === null || reason === null) {
-    const missing = [
-      character === null ? 'character' : null,
-      parameter === null ? 'parameter' : null,
-      value === null ? 'value' : null,
-      reason === null ? 'reason' : null,
-    ].filter((f): f is string => f !== null);
-    return { ok: false, reason: `missing required field: ${missing.join(', ')}` };
-  }
-
-  return {
-    ok: true,
-    row: {
-      character,
-      pose,
-      component,
-      parameter,
-      value,
-      outcome: outcome as ObservationOutcome,
-      reason,
-      seed: typeof fields.seed === 'number' && Number.isFinite(fields.seed) ? fields.seed : null,
-      render_id: nonEmptyString(fields.render_id),
-      generation_ids: normalizeGenerationIds(fields.generation_ids),
-      recipe: nonEmptyString(fields.recipe),
-      observed_at: nonEmptyString(fields.observed_at),
-    },
-  };
-}
-
-export interface SyncFileRecord {
-  line: number;
-  character?: string;
-  component?: string;
-  record: unknown;
-}
-
-export interface SyncFile {
-  path: string;
-  records: SyncFileRecord[];
-}
-
-export interface SyncSkipped {
-  path: string;
-  line: number;
-  reason: string;
-  record: unknown;
-}
-
-export interface SyncResult {
-  inserted: number;
-  unchanged: number;
-  skipped: SyncSkipped[];
-}
-
 const INSERT_COLUMNS =
   `id, character, pose, component, parameter, value, outcome, reason, seed, render_id,
    generation_ids_json, recipe, observed_at, supersedes_id, source, created_at`;
-
-/**
- * files を丸ごと冪等に upsert する。同じ (path, line) は同じ id になるので何度送っても行は増えない。
- * payload に無い既存行は消さない (sync は追加のみ)。import 由来の行は supersedes_id を持たない不変条件のため常に NULL を書く。
- */
-export async function syncObservations(db: D1Database, files: SyncFile[]): Promise<SyncResult> {
-  const now = nowIso();
-  const skipped: SyncSkipped[] = [];
-  const statements: D1PreparedStatement[] = [];
-
-  const insertStatement = db.prepare(
-    `INSERT INTO observations (${INSERT_COLUMNS})
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'import', ?)
-     ON CONFLICT (id) DO NOTHING`,
-  );
-
-  for (const file of files) {
-    for (const entry of file.records) {
-      const normalized = normalizeRecord(entry.record, { character: entry.character, component: entry.component });
-      if (!normalized.ok) {
-        skipped.push({ path: file.path, line: entry.line, reason: normalized.reason, record: entry.record });
-        continue;
-      }
-      const id = await observationId({ path: file.path, line: entry.line, record: entry.record });
-      const row = normalized.row;
-      statements.push(
-        insertStatement.bind(
-          id,
-          row.character,
-          row.pose,
-          row.component,
-          row.parameter,
-          row.value,
-          row.outcome,
-          row.reason,
-          row.seed,
-          row.render_id,
-          row.generation_ids ? JSON.stringify(row.generation_ids) : null,
-          row.recipe,
-          row.observed_at,
-          now,
-        ),
-      );
-    }
-  }
-
-  let inserted = 0;
-  for (const part of chunk(statements, D1_MAX_BOUND_PARAMS)) {
-    const results = await db.batch(part);
-    for (const result of results) {
-      if ((result.meta?.changes ?? 0) > 0) inserted++;
-    }
-  }
-
-  return { inserted, unchanged: statements.length - inserted, skipped };
-}
 
 export interface ObservationSummary {
   id: string;
@@ -274,7 +56,7 @@ function serializeObservation(row: ObservationRow): ObservationSummary {
   };
 }
 
-/** MCP / GUI から1件書く。id は sync と同じ content-hash 規則で計算するので同じ内容の呼び出しは冪等。 */
+/** MCP / GUI から1件書く。id は idempotency_key から作るので同じ key の再送は冪等。 */
 export async function createObservation(
   db: D1Database,
   input: CreateObservationInput,
@@ -295,7 +77,7 @@ export async function createObservation(
     observed_at: input.observed_at ?? null,
     supersedes_id: input.supersedes_id ?? null,
   };
-  // id は内容ではなく idempotency_key から作る。内容から作ると再測定が黙って消える (sync 側と同じ理由)。
+  // 内容から id を作ると再測定が黙って消える。
   const id = await observationId({ path: 'direct', line: 0, record: { idempotency_key: input.idempotency_key } });
   const now = nowIso();
 

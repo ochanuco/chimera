@@ -25,222 +25,21 @@ interface Observation {
   created_at: string;
 }
 
-interface SyncResult {
-  inserted: number;
-  unchanged: number;
-  skipped: { path: string; line: number; reason: string; record: unknown }[];
+async function seed(rows: { character: string; pose: string; parameter: string; value: string; outcome: string; reason: string }[]) {
+  for (const row of rows) {
+    const res = await postJson<Observation>('/api/v1/observations', { ...row, idempotency_key: crypto.randomUUID() });
+    expect(res.status).toBe(201);
+  }
 }
 
-function sync(files: { path: string; records: { line: number; character?: string; component?: string; record: unknown }[] }[]) {
-  return postJson<SyncResult>('/api/v1/observations/sync', { files });
-}
-
-describe('Observation sync', () => {
-  it('is idempotent: the same record synced twice does not add a second row', async () => {
-    const character = uniqueCharacter();
-    const path = `experiments/${character}/stand.jsonl`;
-    const record = { character, pose: 'stand', parameter: 'smug', value: '1.4', outcome: 'accepted', reason: 'read as confident' };
-
-    const first = await sync([{ path, records: [{ line: 1, record }] }]);
-    expect(first.status).toBe(200);
-    expect(first.body.inserted).toBe(1);
-    expect(first.body.unchanged).toBe(0);
-
-    const second = await sync([{ path, records: [{ line: 1, record }] }]);
-    expect(second.status).toBe(200);
-    expect(second.body.inserted).toBe(0);
-    expect(second.body.unchanged).toBe(1);
-
-    const list = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
-    expect(list.body.items).toHaveLength(1);
-  });
-
-  it('assigns a different id (and row) to the same content on a different line', async () => {
-    const character = uniqueCharacter();
-    const path = `experiments/${character}/stand.jsonl`;
-    const record = { character, pose: 'stand', parameter: 'smug', value: '1.4', outcome: 'accepted', reason: 'reproduced' };
-
-    const res = await sync([
-      {
-        path,
-        records: [
-          { line: 1, record },
-          { line: 2, record },
-        ],
-      },
-    ]);
-    expect(res.status).toBe(200);
-    expect(res.body.inserted).toBe(2);
-    expect(res.body.unchanged).toBe(0);
-
-    const list = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
-    expect(list.body.items).toHaveLength(2);
-    expect(new Set(list.body.items.map((o) => o.id)).size).toBe(2);
-  });
-
-  it('the same path and line sync to the same row (unchanged), even called separately', async () => {
-    const character = uniqueCharacter();
-    const path = `experiments/${character}/stand.jsonl`;
-    const record = { character, pose: 'stand', parameter: 'smug', value: '1.4', outcome: 'accepted', reason: 'first pass' };
-
-    await sync([{ path, records: [{ line: 5, record }] }]);
-    const res = await sync([{ path, records: [{ line: 5, record }] }]);
-    expect(res.body.inserted).toBe(0);
-    expect(res.body.unchanged).toBe(1);
-  });
-
-  it('skips a record with neither pose nor component', async () => {
-    const character = uniqueCharacter();
-    const record = { character, parameter: 'smug', value: '1.4', outcome: 'accepted', reason: 'no pose or component here' };
-
-    const res = await sync([{ path: `experiments/${character}/notes.jsonl`, records: [{ line: 1, record }] }]);
-    expect(res.body.inserted).toBe(0);
-    expect(res.body.skipped).toHaveLength(1);
-    expect(res.body.skipped[0]?.reason).toBe('no pose or component');
-  });
-
-  it('skips an experiment-arm record (verdict/arms, not axis+arms)', async () => {
-    const character = uniqueCharacter();
-    const record = {
-      character,
-      pose: 'stand',
-      batch_id: 'b1',
-      seeds: [1, 2, 3],
-      verdict: 'arm-a wins',
-      observation: 'arm-a read cleaner',
-      arms: { a: {}, b: {} },
-    };
-
-    const res = await sync([{ path: `experiments/${character}/stand.jsonl`, records: [{ line: 1, record }] }]);
-    expect(res.body.inserted).toBe(0);
-    expect(res.body.skipped).toHaveLength(1);
-    expect(res.body.skipped[0]?.reason).toBe('experiment arm, not an observation');
-  });
-
-  it('reports an experiment arm as such even when it carries neither pose nor component', async () => {
-    const character = uniqueCharacter();
-    // 実データの choza.jsonl はこの形。ラベルを足せば入ると読まれないよう、アームだと言う。
-    const record = { date: '2026-08-30', arm: 'choza-rest', batch: '1mei70', seeds: [1, 2], verdict: 'rejected', observation: 'palette gate FAIL' };
-
-    const res = await sync([{ path: `experiments/${character}/choza.jsonl`, records: [{ line: 1, character, record }] }]);
-    expect(res.body.inserted).toBe(0);
-    expect(res.body.skipped[0]?.reason).toBe('experiment arm, not an observation');
-  });
-
-  it('takes character from the sync entry when the record does not carry one', async () => {
-    const character = uniqueCharacter();
-    // 実データの形 C は character を持たない (ディレクトリ名に含意されている)。
-    const record = {
-      date: '2026-09-02',
-      axis: 'eye identity on the flat rebuild',
-      arms: { resting: ['7dcp7i'], jitome: ['wbe4oi'] },
-      picked: ['rr7aed'],
-      observation: 'resting read cleaner',
-    };
-
-    const res = await sync([
-      { path: `experiments/${character}/prompt_style.jsonl`, records: [{ line: 33, character, component: 'prompt_style', record }] },
-    ]);
-    expect(res.body.inserted).toBe(1);
-    expect(res.body.skipped).toEqual([]);
-
-    const list = await getJson<{ items: Observation[]; total: number }>(`/api/v1/observations?character=${character}`);
-    expect(list.body.total).toBe(1);
-    expect(list.body.items[0]?.character).toBe(character);
-    expect(list.body.items[0]?.component).toBe('prompt_style');
-    expect(list.body.items[0]?.parameter).toBe('eye identity on the flat rebuild');
-  });
-
-  it('names the fields a record is missing rather than saying only that one is', async () => {
-    const character = uniqueCharacter();
-    const record = { pose: 'stand', outcome: 'accepted' };
-
-    const res = await sync([{ path: `experiments/${character}/stand.jsonl`, records: [{ line: 1, record }] }]);
-    expect(res.body.inserted).toBe(0);
-    expect(res.body.skipped[0]?.reason).toBe('missing required field: character, parameter, value, reason');
-  });
-
-  it('normalizes "not adopted" to "rejected"', async () => {
-    const character = uniqueCharacter();
-    const record = { character, pose: 'stand', parameter: 'smug', value: '1.4', outcome: 'not adopted', reason: 'lost a sweep' };
-
-    const res = await sync([{ path: `experiments/${character}/stand.jsonl`, records: [{ line: 1, record }] }]);
-    expect(res.body.inserted).toBe(1);
-
-    const list = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
-    expect(list.body.items[0]?.outcome).toBe('rejected');
-  });
-
-  it('skips a record with an outcome outside the vocabulary', async () => {
-    const character = uniqueCharacter();
-    const record = { character, pose: 'stand', parameter: 'smug', value: '1.4', outcome: 'maybe', reason: 'unsure' };
-
-    const res = await sync([{ path: `experiments/${character}/stand.jsonl`, records: [{ line: 1, record }] }]);
-    expect(res.body.inserted).toBe(0);
-    expect(res.body.skipped).toHaveLength(1);
-    expect(res.body.skipped[0]?.reason).toBe('unknown outcome: maybe');
-  });
-
-  it('converts an axis+arms (form C) record, taking generation_ids from picked and component from the sync entry', async () => {
-    const character = uniqueCharacter();
-    const accepted = {
-      character,
-      axis: 'smug_weight',
-      arms: { low: { seed: 1 }, high: { seed: 2 } },
-      picked: ['gen-1', 'gen-2'],
-      observation: 'high read cleaner across seeds',
-      date: '2026-01-01',
-    };
-    const inconclusive = {
-      character,
-      axis: 'smug_weight',
-      arms: { low: { seed: 1 }, high: { seed: 2 } },
-      picked: [],
-      observation: 'no clear winner',
-      date: '2026-01-02',
-    };
-
-    const res = await sync([
-      {
-        path: `experiments/${character}/delivery_style.jsonl`,
-        records: [
-          { line: 1, component: 'prompt_style', record: accepted },
-          { line: 2, component: 'prompt_style', record: inconclusive },
-        ],
-      },
-    ]);
-    expect(res.status).toBe(200);
-    expect(res.body.inserted).toBe(2);
-    expect(res.body.skipped).toEqual([]);
-
-    const list = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
-    const byReason = new Map(list.body.items.map((o) => [o.reason, o]));
-
-    const acceptedRow = byReason.get('high read cleaner across seeds');
-    expect(acceptedRow?.component).toBe('prompt_style');
-    expect(acceptedRow?.pose).toBeNull();
-    expect(acceptedRow?.parameter).toBe('smug_weight');
-    expect(acceptedRow?.value).toBe('low, high');
-    expect(acceptedRow?.outcome).toBe('accepted');
-    expect(acceptedRow?.generation_ids).toEqual(['gen-1', 'gen-2']);
-    expect(acceptedRow?.observed_at).toBe('2026-01-01');
-
-    const inconclusiveRow = byReason.get('no clear winner');
-    expect(inconclusiveRow?.outcome).toBe('inconclusive');
-  });
-
+describe('Observation REST', () => {
   it('q matches a substring of parameter, value or reason', async () => {
     const character = uniqueCharacter();
-    await sync([
-      {
-        path: `experiments/${character}/stand.jsonl`,
-        records: [
-          { line: 1, record: { character, pose: 'stand', parameter: 'legwear-gap', value: '1.4', outcome: 'accepted', reason: 'clean separation' } },
-          { line: 2, record: { character, pose: 'stand', parameter: 'smug', value: 'legwear-tone', outcome: 'accepted', reason: 'fine' } },
-          { line: 3, record: { character, pose: 'stand', parameter: 'unrelated', value: '0.9', outcome: 'accepted', reason: 'mentions legwear boundary' } },
-          { line: 4, record: { character, pose: 'stand', parameter: 'other', value: '0.1', outcome: 'accepted', reason: 'no match here' } },
-        ],
-      },
+    await seed([
+      { character, pose: 'stand', parameter: 'legwear-gap', value: '1.4', outcome: 'accepted', reason: 'clean separation' },
+      { character, pose: 'stand', parameter: 'smug', value: 'legwear-tone', outcome: 'accepted', reason: 'fine' },
+      { character, pose: 'stand', parameter: 'unrelated', value: '0.9', outcome: 'accepted', reason: 'mentions legwear boundary' },
+      { character, pose: 'stand', parameter: 'other', value: '0.1', outcome: 'accepted', reason: 'no match here' },
     ]);
 
     const byParameter = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}&q=legwear-gap`);
@@ -256,18 +55,10 @@ describe('Observation sync', () => {
   it('filters by character, pose and outcome', async () => {
     const character = uniqueCharacter();
     const otherCharacter = uniqueCharacter();
-    await sync([
-      {
-        path: `experiments/${character}/stand.jsonl`,
-        records: [
-          { line: 1, record: { character, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r1' } },
-          { line: 2, record: { character, pose: 'sit', parameter: 'a', value: '1', outcome: 'rejected', reason: 'r2' } },
-        ],
-      },
-      {
-        path: `experiments/${otherCharacter}/stand.jsonl`,
-        records: [{ line: 1, record: { character: otherCharacter, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r3' } }],
-      },
+    await seed([
+      { character, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r1' },
+      { character, pose: 'sit', parameter: 'a', value: '1', outcome: 'rejected', reason: 'r2' },
+      { character: otherCharacter, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r3' },
     ]);
 
     const byCharacter = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
@@ -284,12 +75,7 @@ describe('Observation sync', () => {
 describe('MCP list_observations / get_observation / record_observation', () => {
   it('list_observations returns the same items as GET /api/v1/observations', async () => {
     const character = uniqueCharacter();
-    await sync([
-      {
-        path: `experiments/${character}/stand.jsonl`,
-        records: [{ line: 1, record: { character, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r1' } }],
-      },
-    ]);
+    await seed([{ character, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r1' }]);
 
     const rest = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
     const tool = await mcpToolCall<{ items: Observation[] }>('list_observations', { character });
@@ -299,12 +85,7 @@ describe('MCP list_observations / get_observation / record_observation', () => {
 
   it('get_observation returns the same row as GET /api/v1/observations/{id}', async () => {
     const character = uniqueCharacter();
-    await sync([
-      {
-        path: `experiments/${character}/stand.jsonl`,
-        records: [{ line: 1, record: { character, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r1' } }],
-      },
-    ]);
+    await seed([{ character, pose: 'stand', parameter: 'a', value: '1', outcome: 'accepted', reason: 'r1' }]);
     const list = await getJson<{ items: Observation[] }>(`/api/v1/observations?character=${character}`);
     const id = list.body.items[0]!.id;
 

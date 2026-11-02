@@ -450,7 +450,7 @@ Generation の semantic と rating です。
 主な属性:
 
 ``` text
-id                出所（path と行番号）と元レコードの正規化 JSON の SHA-256
+id                idempotency_key から作る SHA-256
 character         yukari
 pose              観測した pose。module 全体の観測なら null
 component         costumes / prompt_style / recipe 等。pose 単位なら null
@@ -462,9 +462,9 @@ seed              その観測を取った seed。無ければ null
 render_id         worker 側の id。chimera は不透明に持つ
 generation_ids    観測の材料になった Generation（解決できたものだけ）
 recipe            古い recipe に帰属する記録だけ入る
-observed_at       元の記録の日付。無ければ null
+observed_at       過去に取り込んだ行の記録日。新しい行は null
 supersedes_id     この記録が撤回する Observation
-source            import | mcp | gui
+source            mcp | gui（import は過去に取り込んだ行にだけ残る）
 created_at
 ```
 
@@ -473,45 +473,17 @@ created_at
 -   Observation は編集しません。後の実験が前の結論を覆したときは、古い行を書き換えず
     `supersedes_id` を持つ新しい行を足します。行は期限で消え、消えた行を指す
     `supersedes_id` は NULL になります。
--   `id` は `{ path, line, record }` の正規化 JSON の SHA-256 です。同じ行は何度流しても
-    同じ Observation になるので、JSONL 全体を丸ごと再送できます。同期は追加だけで、
-    payload に無い行を消しません。
--   id に出所を混ぜるのは、内容だけにすると byte 一致する再測定が黙って消えるためです。
-    同じ pose の同じ parameter を同じ value で測り直して同じ結果が出たら、それは再現の
-    記録であって独立した観測です。append-only policy はそれを新しいレコードとして足すよう
-    求めています。`(path, line)` は append-only である限り安定した識別子で、既存行の位置は
-    動きません。ファイルを並べ替えたり行を書き換えれば重複行ができますが、それは policy が
-    禁じている操作で git の diff に出ます。静かに消えるより、うるさく重複する方が台帳の
-    壊れ方として正しいはずです。ファイル名を変えると同じ理由でその1ファイル分が重複するので、
-    `inserted` が 0 でない同期は中身を見ます。
--   MCP / GUI から直接書かれた Observation の `id` は `idempotency_key` から作ります。
-    内容から作ると、import 側と同じ理由で再測定が黙って消えます。同じ観測を測り直して
-    同じ結果が出たら独立した行になるべきで、区別するのは呼び出し側が渡す key です。
+-   `id` は `idempotency_key` から作ります。内容から作ると、byte 一致する再測定が
+    黙って消えます。同じ pose の同じ parameter を同じ value で測り直して同じ結果が出たら、
+    それは再現の記録であって独立した観測です。区別するのは呼び出し側が渡す key です。
     再送は同じ key なら同じ行を返します。
--   import 由来の行は `supersedes_id` を持ちません。JSONL は撤回を散文で表現していて
-    （「先の accepted を測り直したら再現しなかった」）、構造化された参照が無いためです。
-    `supersedes_id` が入るのは MCP / GUI から書かれた Observation だけです。
 -   `pose` と `component` の少なくとも一方が必要です。どちらも持たない記録は
-    Observation ではありません。レコード自身がどちらも持たないときは、送り手が
-    `component` を添えます。chimera はファイル名から推測しません。ファイル名は中身を
-    代表しないことがあり、推測すると誤ったラベルが付きます。
+    Observation ではありません。
 -   Observation は履歴であって現在の規則ではありません。
 -   どの `reason` も、その pose / seed / tag ブロック / canvas の下での観測であって、
     タグ一般についての主張ではありません。「`boss` のブロックの下で `smug` を 1.4 に
     すると得意げに読めた」は、このプロジェクトの他のどこかでの `smug` 1.4 について
     何も言っていません。引くときは過去の一データ点として扱います。
-
-### 実験のアームは Observation ではない
-
-`experiments/` の記録には、パラメータの観測ではなく実験のアームそのもの（生成単位を
-指名し、seed の組を持ち、verdict と observation を持つ）が混ざっています。これは
-Experiment / ExperimentRun にそのまま入るので、Observation にはしません。
-
-アームが Generation を指名していて生成単位を指名していない記録は、Run に組み直せません。
-1アームの Generation が複数の生成単位にまたがっている（当時 count=1 で1枚ずつ回していた）
-ためで、Run にすると存在しない実行単位を捏造することになります。この形は Observation
-として写し、axis を `parameter`、採用された Generation を `generation_ids` に入れます。
-アーム分けは chimera に対応する行が無いので持ち込みません。JSONL 側に残ります。
 
 ## Request
 
