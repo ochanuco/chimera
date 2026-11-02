@@ -431,6 +431,7 @@ expression を Preset の版へ解決し、`generation.presets` に焼き込み�
     1件でもある kind で名前が無いときだけ上の 400 が効きます。
 -   `parameters.pose = yukari_persona` は pin せずに通します。[reference_render](#reference_render) が積む generate の
     土台で、worker の内部にしか無く、Preset の行もカタログの pose も持たないためです。
+    pin が無いのが正しい状態なので、`derive_request` もこの generate からは patch を引き継いで派生できます。
 -   `generation.graph` を持つ graph-mode の payload と、`generation.recipe` の無い payload は
     pin の対象外です。
 

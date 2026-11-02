@@ -13,7 +13,7 @@ import {
 import { parseJsonObject, type JsonObject } from './overrides';
 import { ApiError, badRequest, conflict, notFound } from './errors';
 import { uuidv7 } from './uuidv7';
-import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE } from './request-rules';
+import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE, REFERENCE_RENDER_POSE } from './request-rules';
 import { assertPatchGrammar, type PatchList } from './patch-grammar';
 import { applyDeliverProfile, extractPins, pinPresets } from './presets';
 import { stableStringify } from './json-canonical';
@@ -152,8 +152,10 @@ export function buildDerivedRequestPayload(input: BuildDerivedRequestPayloadInpu
     throw conflict('parent request has no recipe; a graph-mode request cannot be derived');
   }
   // patches は書かれた時点の preset 本文への差分。pin が無いと worker が現行版を解決し、差分の宛先がずれて
-  // text op が needle 不在で落ちる (docs/worker-protocol.md「preset の pin」)。
-  if (!input.replacePatches && input.parentPatches.length > 0 && input.parentPresets.length === 0 && input.parentRecipeHasPresets) {
+  // text op が needle 不在で落ちる (docs/worker-protocol.md「preset の pin」)。参考画像の pose は worker 内の層だけで
+  // preset 行を持たず、pin が無いのが正しい状態なので対象外。
+  const parentIsReferencePose = input.parentParameters.pose === REFERENCE_RENDER_POSE;
+  if (!input.replacePatches && input.parentPatches.length > 0 && input.parentPresets.length === 0 && input.parentRecipeHasPresets && !parentIsReferencePose) {
     throw conflict(
       'parent request carries patches but no pinned preset version, so the preset body those patches target may have moved since; ' +
         'pass replace_patches: true with patches restated against the current preset, or derive from a request that has pins',

@@ -436,6 +436,16 @@ describe('MCP derive_request', () => {
       ]);
     });
 
+    it('succeeds for a reference-picture parent, whose pose has no preset to pin', () => {
+      const patches = [{ target: 'prompt.positive.gesture', op: 'append', value: 'squatting, ', reason: 'tag' }];
+      const payload = buildDerivedRequestPayload(
+        deriveInput({ parentParameters: { pose: 'yukari_persona' }, parentPatches: patches }),
+      );
+      const generation = payload.generation as Record<string, unknown>;
+      expect(generation.patches).toEqual(patches);
+      expect(generation.presets).toBeUndefined();
+    });
+
     it('succeeds when the parent already carries a pin, carrying both patches and presets forward', () => {
       const payload = buildDerivedRequestPayload(
         deriveInput({ parentPresets: [{ kind: 'pose', name: 'lounge', version: 1 }] }),
