@@ -1191,7 +1191,7 @@ worker は requests だけを見ます。
   の `count` を `request.count` に抜き、残りを `generation.parameters` に入れ、
   `objective` を `request.instruction` と `semantic.summary` に写します。
   語彙の解釈はしません（詰め替えだけ）。
-- `idempotency_key` は `run:{run_id}`。Run は物理削除されず、1 Run につき起票は 1 回です。
+- `idempotency_key` は `run:{run_id}`。Run が期限で消えるまで、1 Run につき起票は 1 回です。
 - `GET /api/v1/experiment-runs?pending=true` は残しますが、migration 後は
   「requests 行を持たない Run」だけを返します。backfill 直後は空で、
   以後も Run 作成時に自動起票される限り空です。段階 1 の watch（このエンドポイントを

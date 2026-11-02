@@ -171,6 +171,10 @@ cron trigger `0 * * * *` の `scheduled` ハンドラが置かれてから 24 �
 （`src/lib/reference-images.ts`）。参考画像は Generation にならず、画像そのものもハッシュも D1 に残しません
 （[worker-protocol.md「reference」](worker-protocol.md#reference)）。
 
+同じ `scheduled` ハンドラは、最後に触られてから 14 日を過ぎた Experiment / ExperimentRun / Observation を
+D1 から消します（`src/lib/temporary-records.ts`、[domain-model.md「一時記録の期限」](domain-model.md#一時記録の期限)）。
+R2 には触りません。
+
 ingest が保存する original は `original.png` です。古い Generation には lossless WebP の
 `original.webp` を original に持つものがあり、original を読む側は両方を受け付けます
 （`docs/domain-model.md`「original の保持」）。

@@ -1,7 +1,8 @@
-// PairwiseJudgment のクエリと作成ロジック。左右の向き (left/right) は表示時にランダムに割り当てられる
-// ため、baseline / arm のどちらが勝ったかは verdict と各 Generation の request_id (Run の結果 Request) を突き合わせて導く。
+// PairwiseJudgment のクエリと作成ロジック。左右の向き (left/right) は表示時にランダムに割り当てられる。
+// 作成時に Run の結果 Request から baseline 側の Generation を決めて行に持つので、winner は Run が期限切れで
+// 消えた後も verdict と baseline_generation_id だけで導ける。
 
-import { chunk, D1_MAX_BOUND_PARAMS, nowIso, resolveRunRequests, runRequestIdSql } from './db';
+import { chunk, D1_MAX_BOUND_PARAMS, nowIso, resolveRunRequests } from './db';
 import { badRequest, conflict } from './errors';
 import { getRunOr404, listRuns, resolveGenerationOr404, touchExperiment } from './experiments';
 import { uuidv7 } from './uuidv7';
@@ -122,8 +123,9 @@ export async function createJudgment(
     await db
       .prepare(
         `INSERT INTO pairwise_judgments
-           (id, experiment_id, baseline_run_id, arm_run_id, seed, left_generation_id, right_generation_id, verdict, judged_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, experiment_id, baseline_run_id, arm_run_id, seed, left_generation_id, right_generation_id,
+            baseline_generation_id, verdict, judged_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -133,6 +135,7 @@ export async function createJudgment(
         body.seed,
         leftGeneration.id,
         rightGeneration.id,
+        leftIsBaseline ? leftGeneration.id : rightGeneration.id,
         body.verdict,
         now,
       )
@@ -161,8 +164,8 @@ export async function createJudgment(
   return { row: row!, winner: computeWinner(body.verdict, leftIsArm), reveal };
 }
 
-interface JudgmentListRow extends PairwiseJudgmentRow {
-  left_is_arm: number;
+function winnerOf(row: PairwiseJudgmentRow): JudgmentWinner {
+  return computeWinner(row.verdict, row.left_generation_id !== row.baseline_generation_id);
 }
 
 export async function listJudgments(
@@ -170,17 +173,10 @@ export async function listJudgments(
   experimentId: string,
 ): Promise<{ row: PairwiseJudgmentRow; winner: JudgmentWinner }[]> {
   const { results } = await db
-    .prepare(
-      `SELECT j.*, (g.request_id = ${runRequestIdSql('a')}) AS left_is_arm
-       FROM pairwise_judgments j
-       JOIN experiment_runs a ON a.id = j.arm_run_id
-       JOIN generations g ON g.id = j.left_generation_id
-       WHERE j.experiment_id = ?
-       ORDER BY j.judged_at ASC`,
-    )
+    .prepare('SELECT * FROM pairwise_judgments WHERE experiment_id = ? ORDER BY judged_at ASC')
     .bind(experimentId)
-    .all<JudgmentListRow>();
-  return (results ?? []).map((row) => ({ row, winner: computeWinner(row.verdict, row.left_is_arm === 1) }));
+    .all<PairwiseJudgmentRow>();
+  return (results ?? []).map((row) => ({ row, winner: winnerOf(row) }));
 }
 
 export async function judgedSeedsForPair(
@@ -227,21 +223,20 @@ export async function judgmentSummary(
            COUNT(*) AS total,
            SUM(CASE
                  WHEN j.verdict = 'tie' THEN 0
-                 WHEN j.verdict = 'left' AND g.request_id = ${runRequestIdSql('a')} THEN 1
-                 WHEN j.verdict = 'right' AND g.request_id IS NOT ${runRequestIdSql('a')} THEN 1
+                 WHEN j.verdict = 'left' AND j.left_generation_id <> j.baseline_generation_id THEN 1
+                 WHEN j.verdict = 'right' AND j.right_generation_id <> j.baseline_generation_id THEN 1
                  ELSE 0
                END) AS win,
            SUM(CASE
                  WHEN j.verdict = 'tie' THEN 0
-                 WHEN j.verdict = 'left' AND g.request_id IS NOT ${runRequestIdSql('a')} THEN 1
-                 WHEN j.verdict = 'right' AND g.request_id = ${runRequestIdSql('a')} THEN 1
+                 WHEN j.verdict = 'left' AND j.left_generation_id = j.baseline_generation_id THEN 1
+                 WHEN j.verdict = 'right' AND j.right_generation_id = j.baseline_generation_id THEN 1
                  ELSE 0
                END) AS loss,
            SUM(CASE WHEN j.verdict = 'tie' THEN 1 ELSE 0 END) AS tie
          FROM pairwise_judgments j
          JOIN experiment_runs b ON b.id = j.baseline_run_id
          JOIN experiment_runs a ON a.id = j.arm_run_id
-         JOIN generations g ON g.id = j.left_generation_id
          WHERE j.experiment_id = ?
          GROUP BY j.baseline_run_id, j.arm_run_id, b.run_index, a.run_index
          ORDER BY b.run_index ASC, a.run_index ASC`,

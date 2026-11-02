@@ -141,6 +141,7 @@ export function serializePairwiseJudgment(row: PairwiseJudgmentRow, winner: Judg
     seed: row.seed,
     left_generation_id: row.left_generation_id,
     right_generation_id: row.right_generation_id,
+    baseline_generation_id: row.baseline_generation_id,
     verdict: row.verdict,
     winner,
     judged_at: row.judged_at,
