@@ -147,6 +147,7 @@ export const photoOptionsSchema = z
     bokeh: z.number().min(0).max(1).optional(),
     // A lens name from the catalog's photo.focal_length values; the worker checks it, so a lens added there needs no change here.
     focal_length: z.string().min(1).optional(),
+    card: z.enum(['print', 'acrylic']).optional(),
   })
   .strict();
 
