@@ -836,11 +836,16 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'closer-up card (larger height) or a longer lens blurs the scene more. ' +
         'Coordinates are fractions 0-1 of the photo width/height, and the output has the photo\'s size. The photo\'s depth ' +
         'is built on first use and kept on the photo. The output is a delivered picture that refines the source; ' +
+        'card is "print" (default: the delivery with its outline bands as a flat card) or "acrylic" (the figure alone printed on a ' +
+        'clear acrylic stand with its cut edge, tab, base, glare and a light from the upper left; upright and in focus, so tilt and a ' +
+        'focus point are refused, and height spans the whole stand). reshoot (default false) re-shoots the composite as a ' +
+        'photo with Qwen-Image edit and lays the drawing back over it as delivered, so the stand and scene are lit as a camera ' +
+        'sees them; seed (default 0) is its seed. ' +
         "lens_generation may follow. list_catalog's top-level photo section publishes the defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: photoGenerationInputSchema,
     },
-    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, tilt, bokeh, focal_length, idempotency_key }) => {
+    async ({ generation_id, photo, place, height, stand_at, nearer, focus, f_number, tilt, bokeh, focal_length, card, reshoot, seed, idempotency_key }) => {
       const generation = await resolveGenerationOr404(db, generation_id);
       const scene = await resolveGenerationOr404(db, photo);
       const options: Record<string, unknown> = { photo: scene.short_id };
@@ -853,6 +858,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       if (tilt !== undefined) options.tilt = tilt;
       if (bokeh !== undefined) options.bokeh = bokeh;
       if (focal_length !== undefined) options.focal_length = focal_length;
+      if (card !== undefined) options.card = card;
+      if (reshoot !== undefined) options.reshoot = reshoot;
+      if (seed !== undefined) options.seed = seed;
       const { row, created } = await createRequest(
         db,
         { kind: 'photo', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
