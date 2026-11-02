@@ -1025,12 +1025,17 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "written by the human only, never by an agent — read it as the human's verdict on the image, not something " +
         'to set. Results are newest-first (created_at desc), paginated via limit/offset (limit caps at 200, ' +
         'defaults to 50). Pick a short_id from the results and follow up with get_generation / ' +
-        'get_generation_lineage / get_generation_image.',
+        'get_generation_lineage / get_generation_image. ' +
+        'q is a case-insensitive substring search over the semantic record (summary and every other semantic field) and the ' +
+        "request's raw_instruction, patches and parameters; it combines with the other filters (AND). Use it to check whether a " +
+        'parameter or word was already tried and how it was rated — pair it with rating: "bad" to see the rejected trials ' +
+        'before repeating one.',
       inputSchema: listGenerationsInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ tag, published, reference, rating, bookmark, character, model, phase, from, to, limit, offset }) => {
+    async ({ q, tag, published, reference, rating, bookmark, character, model, phase, from, to, limit, offset }) => {
       const query: Record<string, string | undefined> = {
+        q,
         tag,
         model: model?.join(','),
         phase: phase?.join(','),

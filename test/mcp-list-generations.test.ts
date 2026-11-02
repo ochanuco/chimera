@@ -46,6 +46,19 @@ async function publishAndImport(recipe: string): Promise<void> {
 }
 
 describe('MCP list_generations', () => {
+  it('filters by q and combines it with rating', async () => {
+    const word = `mq${crypto.randomUUID().slice(0, 8)}`;
+    const { generation } = await createGeneration();
+    await env.DB.prepare('UPDATE generations SET summary = ?, rating = ? WHERE id = ?').bind(`tried ${word}`, 'bad', generation.id).run();
+
+    const hit = await mcpToolCall<ListResult>('list_generations', { q: word, rating: 'bad' });
+    expect(hit.isError).toBe(false);
+    expect(hit.data?.items.map((item) => item.short_id)).toEqual([generation.short_id]);
+
+    const miss = await mcpToolCall<ListResult>('list_generations', { q: word, rating: 'good' });
+    expect(miss.data?.items).toEqual([]);
+  });
+
   it('filters by tag and returns gallery fields without image fields', async () => {
     const { generation } = await createGeneration();
     const tag = `outfit-good-${crypto.randomUUID().slice(0, 8)}`;

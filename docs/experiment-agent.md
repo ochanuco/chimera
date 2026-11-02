@@ -130,7 +130,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `saturation_generation` | `generation_id, strength?, idempotency_key` | 追記 | saturation request を積む。deliver の出力のキャラとフチ（フチの色も）の彩度を圧縮する |
 | `lighting_generation` | `generation_id, direction?, strength?, idempotency_key` | 追記 | lighting request を積む。stage の絵のキャラとフチを背景の光（露出・色味・向き）に合わせる |
 | `lens_generation` | `generation_id, center?, strength?, shape?, radius?, idempotency_key` | 追記 | lens request を積む。納品の絵を魚眼 / 逆魚眼で歪めるか、球面フィルターで円の内側を膨らませる |
-| `list_generations` | `character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
+| `list_generations` | `q?, character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
 | `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / pose_reference / refines_generation / assets 込み） |
 | `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
 | `get_generation_image` | `short_id, width?, asset?` | 読み取り | 縮小した JPEG 画像。cutout があれば既定でそちら（透過は薄い灰色に敷く）。載らなければ canonical URL |

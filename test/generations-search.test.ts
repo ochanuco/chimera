@@ -510,4 +510,70 @@ describe('Generation search: model and phase', () => {
     expect((await getJson('/api/v1/generations?model=anima,bogus')).status).toBe(400);
     expect((await getJson('/api/v1/generations?phase=bogus')).status).toBe(400);
   });
+  describe('q text search', () => {
+    async function putSemantic(id: string, semantic: Record<string, unknown>) {
+      const res = await req(`/api/v1/generations/${id}/semantic`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schema_version: 1, ...semantic }),
+      });
+      expect(res.status).toBe(200);
+    }
+    async function rate(id: string, rating: string) {
+      await req(`/api/v1/generations/${id}/rating`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating }),
+      });
+    }
+    const ids = async (q: string, extra = '') =>
+      (await getJson<SearchResult>(`/api/v1/generations?q=${encodeURIComponent(q)}${extra}&limit=200`)).body.items.map((g) => g.id);
+
+    it('matches the semantic summary case-insensitively and other semantic fields', async () => {
+      const word = `zq${crypto.randomUUID().slice(0, 8)}`;
+      const { generation } = await createGeneration();
+      await putSemantic(generation.id, { summary: `tried ${word.toUpperCase()} on the hood`, attributes: { note: `extra-${word}-field` } });
+      expect(await ids(word)).toEqual([generation.id]);
+      expect(await ids(`extra-${word}-field`)).toEqual([generation.id]);
+    });
+
+    it('matches the request prompt edits', async () => {
+      const word = `pt${crypto.randomUUID().slice(0, 8)}`;
+      const { generation } = await createGeneration({ requestOverrides: { patches: [{ target: 'prompt.positive.mood', op: 'append', value: word }] } });
+      expect(await ids(word)).toEqual([generation.id]);
+    });
+
+    it('returns nothing when no field contains the text', async () => {
+      await createGeneration();
+      expect(await ids(`absent-${crypto.randomUUID()}`)).toEqual([]);
+    });
+
+    it('combines with the rating filter', async () => {
+      const word = `cb${crypto.randomUUID().slice(0, 8)}`;
+      const bad = (await createGeneration()).generation;
+      const good = (await createGeneration()).generation;
+      await putSemantic(bad.id, { summary: `${word} one` });
+      await putSemantic(good.id, { summary: `${word} two` });
+      await rate(bad.id, 'bad');
+      await rate(good.id, 'good');
+      expect((await ids(word)).sort()).toEqual([bad.id, good.id].sort());
+      expect(await ids(word, '&rating=bad')).toEqual([bad.id]);
+    });
+
+    it('treats % and _ as literal characters', async () => {
+      const tag = crypto.randomUUID().slice(0, 8);
+      const percent = (await createGeneration()).generation;
+      const plain = (await createGeneration()).generation;
+      await putSemantic(percent.id, { summary: `${tag} 50%_off` });
+      await putSemantic(plain.id, { summary: `${tag} 50xxoff` });
+      expect(await ids(`${tag} 50%_off`)).toEqual([percent.id]);
+      expect(await ids('%')).toEqual(expect.not.arrayContaining([plain.id]));
+      expect(await ids(`${tag} 50_`)).toEqual([]);
+    });
+
+    it('rejects an empty q', async () => {
+      const res = await getJson('/api/v1/generations?q=');
+      expect(res.status).toBe(400);
+    });
+  });
 });

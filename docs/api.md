@@ -1271,6 +1271,7 @@ GET /api/v1/generations
 
 ``` text
 character
+q
 tag
 published
 reference
@@ -1290,6 +1291,11 @@ cursor
 after
 created_before
 ```
+
+`q`は大文字小文字を区別しない部分一致で、Generation の`summary`と`semantic_json`（semantic の全フィールド）、
+Request の`raw_instruction` / `patches_json` / `parameters_json`を探します。`%` と `_` は文字として扱い、
+他のフィルタとは AND です。MCP `list_generations`も同名の`q`を受け、`rating=bad`と組むと、試して却下された語や
+パラメータを繰り返す前に引けます。
 
 `model`と`phase`はカンマ区切りの複数指定（どれかに一致）です。`model`は`anima` / `il` / `moss` /
 `unknown`（`generations.model_family`が NULL、[domain-model.md](domain-model.md#generation)）で、
