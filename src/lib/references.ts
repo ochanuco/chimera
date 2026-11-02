@@ -1,6 +1,6 @@
 // 参考画像のページ (docs/ui.md「参考画像」): `/references` の一覧と、`/references/{short_id}` のタグ画面と描いた絵。
 
-import { parseReferenceAnalysis, type ReferenceCandidate } from './reference-renders';
+import { parseReferenceAnalysis, type ReferenceCandidate, type ReferencePoseReach } from './reference-renders';
 import type { RequestRow, RequestStatus } from '../types';
 
 export const REFERENCES_PAGE_SIZE = 30;
@@ -60,6 +60,7 @@ export interface ReferenceDetail {
   error: string | null;
   created_at: string;
   candidates: ReferenceCandidate[];
+  poseReach: ReferencePoseReach;
   renders: ReferenceRenderItem[];
 }
 
@@ -142,6 +143,7 @@ export async function getReferenceDetail(db: D1Database, source: RequestRow): Pr
     error: source.error,
     created_at: source.created_at,
     candidates: analysis.candidates,
+    poseReach: analysis.poseReach,
     renders: await listReferenceRenders(db, source.id),
   };
 }

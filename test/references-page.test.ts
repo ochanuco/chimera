@@ -111,6 +111,32 @@ describe('/references/{short_id}', () => {
     expect(html).toContain('data-pending="false"');
   });
 
+  it('offers only the skeleton when the figure could not be cut out', async () => {
+    const reference = await uploadReference();
+    await finish(reference.id, 'reference', { ...ANALYSIS, figure: { points: [], aspect: 1.5, cut: null } });
+    const html = await (await req(`/references/${reference.short_id}`)).text();
+    expect(html).toMatch(/value="loose" checked[^>]*data-ref-pose-follow/);
+    expect(html).toMatch(/value="firm" disabled[^>]*data-ref-pose-follow/);
+    expect(html).toContain('data-ref-pose-reach="skeleton"');
+  });
+
+  it('offers only the tags when no figure was found', async () => {
+    const reference = await uploadReference();
+    await finish(reference.id, 'reference', { ...ANALYSIS, figure: null });
+    const html = await (await req(`/references/${reference.short_id}`)).text();
+    expect(html).toMatch(/value="off" checked[^>]*data-ref-pose-follow/);
+    expect(html).toMatch(/value="loose" disabled[^>]*data-ref-pose-follow/);
+    expect(html).toContain('data-ref-pose-reach="none"');
+  });
+
+  it('follows the depth when the figure was cut out', async () => {
+    const reference = await uploadReference();
+    await finish(reference.id, 'reference', { ...ANALYSIS, figure: { points: [], aspect: 1.5, cut: 'photo', depth: 'iVBOR' } });
+    const html = await (await req(`/references/${reference.short_id}`)).text();
+    expect(html).toMatch(/value="firm" checked[^>]*data-ref-pose-follow/);
+    expect(html).not.toContain('data-ref-pose-reach');
+  });
+
   it('lists the pictures drawn from it newest first, render → generate → Generation', async () => {
     const reference = await analyzed();
     const first = await postJson<RequestBody>(`/api/v1/references/${reference.id}/renders`, {
