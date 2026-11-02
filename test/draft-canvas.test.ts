@@ -7,8 +7,8 @@ type Patch = { target: string; op: string; value?: unknown; reason?: string };
 type DerivePayload = { payload: { generation: { patches?: Patch[] }; semantic: { attributes?: Record<string, unknown> } } };
 
 const DRAFT_896x1440 = [
-  { target: 'render.width', op: 'set', value: 896, reason: 'draft: about 1.3 MP at the 1280x2048 aspect ratio' },
-  { target: 'render.height', op: 'set', value: 1440, reason: 'draft: about 1.3 MP at the 1280x2048 aspect ratio' },
+  { target: 'render.width', op: 'set', value: 896, reason: 'draft: about 1.3 MP at the 1024x1640 aspect ratio' },
+  { target: 'render.height', op: 'set', value: 1440, reason: 'draft: about 1.3 MP at the 1024x1640 aspect ratio' },
 ];
 
 function uniqueRecipeRef(): string {
@@ -20,7 +20,16 @@ async function publish(recipeRef: string): Promise<void> {
     `/api/v1/catalogs/${recipeRef}`,
     {
       schema_version: 3,
-      recipes: [{ name: 'yukari', poses: [{ name: 'bust', canvas: [1280, 2048] }, { name: 'gao', canvas: [1024, 1280] }] }],
+      recipes: [
+        {
+          name: 'yukari',
+          poses: [
+            { name: 'stand', canvas: [1024, 1640], framing: 'full' },
+            { name: 'bust', canvas: [1280, 2048], framing: 'bust' },
+            { name: 'gao', canvas: [1024, 1280], framing: 'upper' },
+          ],
+        },
+      ],
       patches: {},
     },
     'PUT',
@@ -45,8 +54,8 @@ describe('draftSize', () => {
 });
 
 describe('MCP derive_request draft canvas', () => {
-  const parent = (patches: Patch[] = []) =>
-    createGeneration({ requestOverrides: { recipe: 'yukari', parameters: { pose: 'bust' }, patches } });
+  const parent = (patches: Patch[] = [], pose = 'stand') =>
+    createGeneration({ requestOverrides: { recipe: 'yukari', parameters: { pose }, patches } });
 
   const derive = (generationId: string, ref: string, extra: Record<string, unknown> = {}) =>
     mcpToolCall<DerivePayload>('derive_request', {
@@ -71,9 +80,36 @@ describe('MCP derive_request draft canvas', () => {
   it('shrinks a larger size carried from the parent', async () => {
     const ref = uniqueRecipeRef();
     await publish(ref);
-    const { generation } = await parent(size(1280, 2048));
+    const { generation } = await parent(size(1024, 1640));
     const call = await derive(generation.id, ref);
     expect(call.data?.payload.generation.patches?.slice(2)).toEqual(DRAFT_896x1440);
+  });
+
+  it('keeps a bust pose at its own canvas', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const { generation } = await parent([], 'bust');
+    const call = await derive(generation.id, ref);
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation.patches).toBeUndefined();
+  });
+
+  it('keeps a bust size carried from the parent', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const { generation } = await parent(size(1280, 2048), 'bust');
+    const call = await derive(generation.id, ref);
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation.patches).toEqual(size(1280, 2048));
+  });
+
+  it('still rejects a larger size patched into a bust request itself', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const { generation } = await parent([], 'bust');
+    const call = await derive(generation.id, ref, { patches: size(1280, 2048) });
+    expect(call.isError).toBe(true);
+    expect(call.text).toContain('give the reason for this size in canvas_override');
   });
 
   it('leaves a draft-sized request alone, whatever its aspect ratio', async () => {
@@ -124,9 +160,17 @@ describe('MCP create_request draft canvas', () => {
   it('appends draft patches to a generate request without a size', async () => {
     const ref = uniqueRecipeRef();
     await publish(ref);
-    const call = await create(ref, { recipe: 'yukari', parameters: { pose: 'bust' } });
+    const call = await create(ref, { recipe: 'yukari', parameters: { pose: 'stand' } });
     expect(call.isError).toBe(false);
     expect(call.data?.request.payload.generation.patches).toEqual(DRAFT_896x1440);
+  });
+
+  it('keeps a bust pose at its own canvas', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const call = await create(ref, { recipe: 'yukari', parameters: { pose: 'bust' } });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.payload.generation.patches).toBeUndefined();
   });
 
   it('keeps a pose whose default canvas is already a draft', async () => {

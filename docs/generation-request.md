@@ -190,7 +190,8 @@ node の seed と SaveImage の `filename_prefix` だけを書き換えて投入
     を超えるキャンバスを draft（pose の既定キャンバスの縦横比で約 1.3 MP）に揃えます。既定
     キャンバスや親から引き継いだサイズが大きいときは draft の `render.width` /
     `render.height` patch を末尾に足し、その request 自身が大きいサイズを patch したときは
-    受け付けません。理由を書くとそのまま描き、`semantic.attributes.canvas_override` に残します。
+    受け付けません。catalog の pose の `framing` が `bust` の pose は縮めず、既定キャンバス
+    （1280x2048）のまま描きます。小さく描いたバストは幼い顔になるためです。理由を書くとそのまま描き、`semantic.attributes.canvas_override` に残します。
     `derive_request` では同名の引数で渡します。`plain_render` と REST API は検査しません。
 
 ## semantic

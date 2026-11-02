@@ -151,11 +151,13 @@ function toBase64(bytes: Uint8Array): string {
 // 新しい絵の大きさは chagama の AGENTS.md（draft）と同じ規定。instructions と create_request / derive_request で同じ文を出す。
 const DRAFT_CANVAS_GUIDANCE =
   'A new picture is a draft: patch render.width / render.height to about 1.3 megapixels at the aspect ratio of the ' +
-  "pose's default canvas (get_catalog_pose `canvas`), each side a multiple of 8 — 896x1440 for a 1024x1640 or " +
-  '1280x2048 canvas, 1024x1280 for a 1024x1280 one. The aspect carries the look (a squarer bust canvas draws a ' +
-  "child's face), so never take it from the pose's kind. Only a picture the user picks goes up with redraw_generation " +
+  "pose's default canvas (get_catalog_pose `canvas`), each side a multiple of 8 — 896x1440 for a 1024x1640 canvas, " +
+  '1024x1280 for a 1024x1280 one. The aspect carries the look, so never take it from the pose\'s kind. A pose whose ' +
+  "get_catalog_pose `framing` is bust is the exception: it renders at its own default canvas (1280x2048), because a " +
+  "bust drawn smaller reads as a child's face. Only a picture the user picks goes up with redraw_generation " +
   'method hires (2048). create_request (generate) and derive_request enforce this: a request that would render above ' +
-  'about 1.4 MP only because of the default canvas or a size carried from the parent gets the draft patches appended, ' +
+  'about 1.4 MP only because of the default canvas or a size carried from the parent gets the draft patches appended ' +
+  '(not for a bust pose), ' +
   'and a larger size patched in the request itself is rejected — unless canvas_override (derive_request) or ' +
   'generation.canvas_override (create_request) gives the reason, which is recorded in semantic.attributes.canvas_override. ' +
   'plain_render is not checked: it reproduces a pin at the default canvas. ';
