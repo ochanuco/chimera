@@ -312,9 +312,6 @@ describe('MCP photo_generation', () => {
       stand_at: [0.8, 0.4],
       focus: 'subject',
       focal_length: '85mm',
-      card: 'acrylic',
-      reshoot: true,
-      seed: 7,
       idempotency_key: crypto.randomUUID(),
     });
     expect(call.isError).toBe(false);
@@ -322,13 +319,13 @@ describe('MCP photo_generation', () => {
     expect(call.data?.request.created_by).toBe('mcp');
     expect(call.data?.request.payload).toEqual({
       generation_id: generation.short_id,
-      options: { photo: scene.short_id, stand_at: [0.8, 0.4], focus: 'subject', focal_length: '85mm', card: 'acrylic', reshoot: true, seed: 7 },
+      options: { photo: scene.short_id, stand_at: [0.8, 0.4], focus: 'subject', focal_length: '85mm' },
     });
   });
 
   it('rejects invalid input and 404s an unknown generation or photo', async () => {
     const { generation } = await createGeneration();
-    for (const bad of [{}, { photo: generation.id, height: 3 }, { photo: generation.id, focus: 'sign' }, { photo: generation.id, card: 'paper' }, { photo: generation.id, seed: -1 }]) {
+    for (const bad of [{}, { photo: generation.id, height: 3 }, { photo: generation.id, focus: 'sign' }]) {
       const call = await mcpToolCall('photo_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(call.isError).toBe(true);
     }
@@ -428,14 +425,7 @@ describe('MCP lighting_generation', () => {
       idempotency_key: crypto.randomUUID(),
     });
     expect(moon.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { scene: 'moon' } });
-    const acrylic = await mcpToolCall<CreateRequestResult>('lighting_generation', {
-      generation_id: generation.id,
-      acrylic: true,
-      seed: 5,
-      idempotency_key: crypto.randomUUID(),
-    });
-    expect(acrylic.data?.request.payload).toEqual({ generation_id: generation.short_id, options: { acrylic: true, seed: 5 } });
-    for (const bad of [{ direction: 'up' }, { strength: 2 }, { scene: 'noon' }, { acrylic: 'yes' }, { seed: -1 }]) {
+    for (const bad of [{ direction: 'up' }, { strength: 2 }, { scene: 'noon' }]) {
       const rejected = await mcpToolCall('lighting_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(rejected.isError).toBe(true);
     }

@@ -151,9 +151,6 @@ export const photoGenerationInputSchema = z.object({
   tilt: photoOptionsSchema.shape.tilt,
   bokeh: photoOptionsSchema.shape.bokeh,
   focal_length: photoOptionsSchema.shape.focal_length,
-  card: photoOptionsSchema.shape.card,
-  reshoot: photoOptionsSchema.shape.reshoot,
-  seed: photoOptionsSchema.shape.seed,
   idempotency_key: z.string().min(1),
 });
 
@@ -178,8 +175,6 @@ export const lightingGenerationInputSchema = z.object({
   direction: lightingOptionsSchema.shape.direction,
   strength: lightingOptionsSchema.shape.strength,
   scene: lightingOptionsSchema.shape.scene,
-  acrylic: lightingOptionsSchema.shape.acrylic,
-  seed: lightingOptionsSchema.shape.seed,
   idempotency_key: z.string().min(1),
 });
 

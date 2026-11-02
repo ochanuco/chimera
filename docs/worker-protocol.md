@@ -779,9 +779,6 @@ worker 実行です。写真は [写真ページ](ui.md#写真photos) で登録�
   focus          "subject"（省略時、板。傾けたときは板の中ほど）\| [x, y]（その点。板の上ならその高さの板の奥行き）
   f_number       1.4〜22、省略は 2.8
   focal_length   撮るレンズのフルサイズ換算の焦点距離の名前（catalog の `photo.focal_length.values`）。省略は "85mm"
-  card           "print"（省略時、キャラとフチを 1 枚の板にする）\| "acrylic"（キャラだけを透明なアクリル板に刷り、切り口の厚み・台座・映り込みと左上からの光で描く。正面に立ててピントを合わせるので tilt と focus の点指定は worker が拒む。height は台座まで含めたスタンド全体の高さ）
-  reshoot        true / false（省略は false）。合成した写真を Qwen-Image edit で写真として撮り直し、その上に納品の絵そのものを重ね直す。スタンドと景色の光はモデルが描き、絵は変わらない
-  seed           0〜2^32-1。reshoot の seed。省略は 0
 
 入力にできるのは層 asset（`layer-figure` / `layer-outline`）を持つ deliver か saturation の出力と、切り抜き済みの描き直しの出力だけで、その背景（`layer-backdrop`）は写真に
 置き換わります。写真の奥行きは写真の Generation の `depth` asset を使い、無いか古ければ worker が作って写真に付けます
@@ -903,8 +900,6 @@ stage で置いた絵のキャラとフチを、その背景の光に合わせ�
   direction      "n" … "nw" \| null。その側から陰影を付ける。null / 省略は露出と色味だけ
   strength       0〜1、省略は 0.7
   scene          "sunset" \| "moon" \| null。そのシーンの光で照らす。null / 省略はなし
-  acrylic        true / false（省略は false）。縁（白帯と紫縁の形）を透明なアクリル板にして背景の上に置き、Qwen-Image edit で本物のアクリルとして描き直す。光は `direction`（省略は nw）から当て、キャラは納品の絵を重ね直す。背景の無い絵は worker が `failed` にする
-  seed           0〜2^32-1。acrylic の描き直しの seed。省略は 0
 
 板のまわり（長辺の 6% の帯）の背景を環境光として読み、キャラとフチの露出と色かぶりをそちらへ寄せます（linear で
 `(環境光の輝度 / 0.35) ^ (0.4 × strength)` 倍、0.35〜1.15 に収める。色かぶりは strength 1 で半分）。`direction` が
