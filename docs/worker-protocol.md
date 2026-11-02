@@ -903,8 +903,6 @@ stage で置いた絵のキャラとフチを、その背景の光に合わせ�
   direction      "n" … "nw" \| null。その側から陰影を付ける。null / 省略は露出と色味だけ
   strength       0〜1、省略は 0.7
   scene          "sunset" \| "moon" \| null。そのシーンの光で照らす。null / 省略はなし
-  acrylic        true / false（省略は false）。縁（白帯と紫縁の形）を透明なアクリル板にして背景の上に置き、Qwen-Image edit で本物のアクリルとして描き直す。光は `direction`（省略は nw）から当て、キャラは納品の絵を重ね直す。背景の無い絵は worker が `failed` にする
-  seed           0〜2^32-1。acrylic の描き直しの seed。省略は 0
 
 板のまわり（長辺の 6% の帯）の背景を環境光として読み、キャラとフチの露出と色かぶりをそちらへ寄せます（linear で
 `(環境光の輝度 / 0.35) ^ (0.4 × strength)` 倍、0.35〜1.15 に収める。色かぶりは strength 1 で半分）。`direction` が

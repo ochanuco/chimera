@@ -242,9 +242,6 @@ export const lightingOptionsSchema = z
     strength: z.number().min(0).max(1).optional(),
     // 夕日・月明かりのシーンで照らす。柄の背景もそのシーンに染め、写真の背景は変えない。
     scene: z.enum(['sunset', 'moon']).nullable().optional(),
-    // 縁を透明なアクリル板にして画像編集モデルで描き直す。背景の無い絵は worker が拒む。
-    acrylic: z.boolean().optional(),
-    seed: z.number().int().min(0).max(4294967295).optional(),
   })
   .strict();
 
