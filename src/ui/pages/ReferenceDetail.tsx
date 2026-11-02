@@ -1,7 +1,7 @@
 import { Layout } from '../layout';
 import { GenerationCard } from '../components/GenerationCard';
 import { errorHeadline, type ReferenceDetail, type ReferenceRenderItem } from '../../lib/references';
-import type { ReferenceCandidate } from '../../lib/reference-renders';
+import type { ReferenceCandidate, ReferencePoseReach } from '../../lib/reference-renders';
 
 const STATUS_LABELS: Record<string, string> = { queued: '解析待ち', running: '解析中', failed: '解析に失敗しました', cancelled: '中止しました' };
 const RENDER_STATUS_LABELS: Record<string, string> = { queued: '待機中', running: '処理中', failed: '失敗', cancelled: '中止', done: '描画中' };
@@ -11,6 +11,12 @@ const POSE_FOLLOW_CHOICES: [string, string][] = [
   ['loose', 'ざっくり'],
   ['firm', 'しっかり'],
 ];
+/** 解析が写せる深さごとの、選べるポーズの写し方と既定。 */
+const POSE_FOLLOW_REACH: Record<ReferencePoseReach, { allowed: string[]; checked: string; note: string | null }> = {
+  depth: { allowed: ['off', 'loose', 'firm'], checked: 'firm', note: null },
+  skeleton: { allowed: ['off', 'loose'], checked: 'loose', note: '人物を切り抜けなかったので、しっかりは使えません。ざっくり（骨格）で写します' },
+  none: { allowed: ['off'], checked: 'off', note: '人物の骨格が取れなかったので、ポーズは写せません。タグだけで描きます' },
+};
 
 function fmt(n: number | null): string {
   return n === null ? '–' : n.toFixed(2);
@@ -101,6 +107,7 @@ export function ReferenceRenders({ renders }: { renders: ReferenceRenderItem[] }
 export function ReferenceDetailPage({ path, detail, pending }: { path: string; detail: ReferenceDetail; pending: boolean }) {
   const analyzed = detail.status === 'done';
   const sid = detail.short_id ?? detail.id;
+  const reach = POSE_FOLLOW_REACH[detail.poseReach];
   return (
     <Layout title={`参考画像 ${sid}`} fullBleed path={path}>
       <div
@@ -141,11 +148,23 @@ export function ReferenceDetailPage({ path, detail, pending }: { path: string; d
                     <span class="dial-label">ポーズ</span>
                     {POSE_FOLLOW_CHOICES.map(([value, label]) => (
                       <label class="wb-radio-pill">
-                        <input type="radio" name="ref_pose_follow" value={value} checked={value === 'firm'} data-ref-pose-follow />
+                        <input
+                          type="radio"
+                          name="ref_pose_follow"
+                          value={value}
+                          checked={value === reach.checked}
+                          disabled={!reach.allowed.includes(value)}
+                          data-ref-pose-follow
+                        />
                         <span>{label}</span>
                       </label>
                     ))}
                   </div>
+                  {reach.note ? (
+                    <p class="wb-note" data-ref-pose-reach={detail.poseReach}>
+                      {reach.note}
+                    </p>
+                  ) : null}
                   <label class="wb-field">
                     seed
                     <input type="number" name="ref_seed" min="0" step="1" placeholder="ランダム" data-ref-seed />

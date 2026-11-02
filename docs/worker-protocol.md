@@ -997,6 +997,9 @@ done の `result` は次の形です。`generation_ids` は常に空です。
                  yes の確率で、聞いていなければ null、`applied` は worker の既定で採用するか
   applied        part 名 → 既定で採用するタグの配列（candidates の `applied: true` と同じ）。タグは重みを付けない素の名前（`from above`）
   dropped        tagger が残したが採用しなかったタグの配列
+  figure         人物の姿勢。骨格が取れなければ null。`points`（骨格の座標）と `aspect`（参考画像の幅 / 高さ）に加え、人物を切り抜けたときは
+                 `cut`（切り抜いたモデル: `anime` か、写真向けの `photo`）と `silhouette` / `lineart` / `depth`（base64 PNG）を持つ。
+                 切り抜けなければ `cut` が null で、絵は持たない。GUI はこれで選べるポーズの写し方を決める
 
 chimera は candidates を [reference_render](#reference_render) の作成時の検査と GUI の表示に読みます。画像そのものとそのハッシュはどこにも記録しません。
 

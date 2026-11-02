@@ -1114,7 +1114,9 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
     自由入力の欄はありません（選べるのは worker が抽出した候補だけ）
 -   pose を選ぶ欄はありません。描く土台は常に `yukari_persona`（pose を持たない基本キャラクター）で、worker の内部にあります
 -   ポーズ: `写さない` / `ざっくり` / `しっかり` の `wb-radio-pill` で、参考画像のポーズの写し方を選び、`pose_follow`（`off` / `loose` / `firm`）として送ります。
-    既定は `しっかり`。ざっくりは骨格だけ、しっかりは深度で手前と奥まで写し、顔と髪はタグに任せます
+    既定は `しっかり`。ざっくりは骨格だけ、しっかりは深度で手前と奥まで写し、顔と髪はタグに任せます。
+    解析が人物を切り抜けなかった（result の `figure` に `depth` が無い）ときは `しっかり` を選べなくし、既定を `ざっくり` にして、その旨を添えます。
+    骨格も取れなかった（`figure` が null）ときは `写さない` だけを選べるようにし、その旨を添えます
 -   seed は空なら送らず、worker が乱数で決めます（placeholder `ランダム`）
 -   「描く」は ON のチップを part ごとにまとめて `POST /api/v1/references/{id}/renders` に送り、`kind = reference_render` を積みます。
     idempotency_key は押下ごとに `gui:reference_render:{uuid}` を 1 つ作り、失敗した押下の再送に使い回します（チップ・ポーズ・seed を変えると作り直します）。

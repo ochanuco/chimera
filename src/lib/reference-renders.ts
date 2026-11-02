@@ -12,8 +12,22 @@ export interface ReferenceCandidate {
   applied: boolean;
 }
 
+/**
+ * 解析が写せるポーズの深さ。depth: 深度まで（しっかり）、skeleton: 人物を切り抜けず骨格だけ、none: 骨格も取れない。
+ * figure を持たない古い result は depth として扱う。
+ */
+export type ReferencePoseReach = 'depth' | 'skeleton' | 'none';
+
 export interface ReferenceAnalysis {
   candidates: ReferenceCandidate[];
+  poseReach: ReferencePoseReach;
+}
+
+function poseReach(figure: unknown): ReferencePoseReach {
+  if (figure === undefined) return 'depth';
+  const f = asObject(figure);
+  if (!f) return 'none';
+  return typeof f.depth === 'string' ? 'depth' : 'skeleton';
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -41,7 +55,7 @@ export function parseReferenceAnalysis(resultJson: string | null): ReferenceAnal
       applied: c.applied === true,
     });
   }
-  return { candidates };
+  return { candidates, poseReach: poseReach(result?.figure) };
 }
 
 export async function getReferenceByIdOrShortId(db: D1Database, idOrShortId: string): Promise<RequestRow> {
