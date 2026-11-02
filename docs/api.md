@@ -1233,7 +1233,11 @@ redraw / deliver（と古い repair / masked_redraw）前のGeneration `{ "id", 
 `null`）、`publications`（[Publication](#publication)の一覧、
 新しい順）、`pose_reference`（このGenerationが現行の pose 基準 render として pin
 されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null`。
-[Pose Reference Pin](#pose-reference-pin)参照）を加えたフルの detail です。ロジックは
+[Pose Reference Pin](#pose-reference-pin)参照）、`judgments`（この Generation が左右どちらかに出た
+PairwiseJudgment の一覧、新しい順、無ければ `[]`）を加えたフルの detail です。`judgments` の要素は
+`{ "id", "verdict", "winner": "this" | "other" | "tie", "other_generation": { "id", "short_id", "rating" },
+"this_was_baseline", "seed", "judged_at", "experiment" }` で、`winner` はこの Generation から見た結果、
+`experiment` は Experiment の short_id（Experiment が期限切れで消えていれば `null`）です。ロジックは
 `src/lib/generations.ts` の `getGenerationDetail` に一本化されており、MCP
 `get_generation` もここを呼ぶ同じ形を返します。
 

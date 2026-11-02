@@ -1,0 +1,3 @@
+-- Generation 詳細が、その Generation が左右どちらかで加わった判定を引く。
+CREATE INDEX idx_pairwise_judgments_left_generation_id ON pairwise_judgments(left_generation_id);
+CREATE INDEX idx_pairwise_judgments_right_generation_id ON pairwise_judgments(right_generation_id);

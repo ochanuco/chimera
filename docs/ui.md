@@ -585,6 +585,11 @@ URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入�
 いずれも`/api/v1/generations/{id}/publications`・`/api/v1/publications/{id}`をfetchし、
 リロードなしでセクションを書き換えます。
 
+`公開`の下に、このGenerationが[PairwiseJudgment](domain-model.md)の左右どちらかに出ているときだけ`判定 (N)`
+セクションを出します。1判定1行で、この絵から見た結果（`勝ち` / `負け` / `引き分け`）、相手の
+short_id（`/g/`へのリンク、rating付き）、seed、基準側だったときの`基準側`、判定日、Experimentが
+残っていれば`実験`リンクを並べます。
+
 #### タグ追加
 
 `公開`の下には付与済みタグのチップ（各チップに`×`削除ボタン）とタグ追加フォームを置きます。

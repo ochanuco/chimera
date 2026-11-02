@@ -49,6 +49,15 @@ export interface GenerationDetailData {
   } | null;
   siblings: { id: string; short_id: string; image_width: number | null; image_height: number | null; comfy_output_index: number | null }[];
   publications: PublicationData[];
+  judgments: {
+    id: string;
+    winner: 'this' | 'other' | 'tie';
+    other_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null };
+    this_was_baseline: boolean;
+    seed: number;
+    judged_at: string;
+    experiment: string | null;
+  }[];
   safety: SafetyDetailData | null;
   pose_reference: PoseReferenceData | null;
   refines_generation: { id: string; short_id: string; rating: 'bad' | 'neutral' | 'good' | null } | null;
@@ -152,6 +161,8 @@ function renderPassPromptField(
   }
   return renderPromptField(label, text, prevText, variant);
 }
+
+const JUDGMENT_RESULT_LABELS = { this: '勝ち', other: '負け', tie: '引き分け' } as const;
 
 export function GenerationDetailPage({
   path,
@@ -262,6 +273,32 @@ export function GenerationDetailPage({
           <SafetySection safety={data.safety} />
 
           <PublicationSection generationId={data.id} publications={data.publications} safety={data.safety} />
+
+          {data.judgments.length > 0 ? (
+            <details class="section" open>
+              <summary>判定 ({data.judgments.length})</summary>
+              <div class="section-body">
+                <table class="kv-table">
+                  {data.judgments.map((j) => (
+                    <tr>
+                      <td>{JUDGMENT_RESULT_LABELS[j.winner]}</td>
+                      <td>
+                        <a href={`/g/${j.other_generation.short_id}`}>{j.other_generation.short_id}</a>
+                        {j.other_generation.rating ? ` (${j.other_generation.rating})` : ''} · seed {j.seed}
+                        {j.this_was_baseline ? ' · 基準側' : ''} · {j.judged_at.slice(0, 10)}
+                        {j.experiment ? (
+                          <>
+                            {' · '}
+                            <a href={`/experiments/${j.experiment}`}>実験</a>
+                          </>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </table>
+              </div>
+            </details>
+          ) : null}
 
           <datalist id="tag-suggestions"></datalist>
           <TagsEditor kind="generations" id={data.id} tags={tags} />

@@ -8,7 +8,7 @@ import { getRunOr404, listRuns, resolveGenerationOr404, touchExperiment } from '
 import { uuidv7 } from './uuidv7';
 import { parseJsonObjectOrNull } from './overrides';
 import { diffFactSummaries, resolveRequestRenderFacts, summarizeRenderFacts, type FactDiffEntry } from './render-facts';
-import type { ExperimentRow, ExperimentRunRow, JudgmentVerdict, JudgmentWinner, PairwiseJudgmentRow } from '../types';
+import type { ExperimentRow, ExperimentRunRow, GenerationRow, JudgmentVerdict, JudgmentWinner, PairwiseJudgmentRow } from '../types';
 
 /** Run ごとの render_facts サマリに variables を `variables.<key>` として合流させる。A/B の reveal と judgments/summary の render_diff は同じこのマップから作る。 */
 export async function runFactSummary(
@@ -177,6 +177,59 @@ export async function listJudgments(
     .bind(experimentId)
     .all<PairwiseJudgmentRow>();
   return (results ?? []).map((row) => ({ row, winner: winnerOf(row) }));
+}
+
+export interface GenerationJudgment {
+  id: string;
+  verdict: JudgmentVerdict;
+  winner: 'this' | 'other' | 'tie';
+  other_generation: { id: string; short_id: string; rating: GenerationRow['rating'] };
+  this_was_baseline: boolean;
+  seed: number;
+  judged_at: string;
+  experiment: string | null;
+}
+
+/** その Generation が左右どちらかに出た判定。判定は Experiment が期限切れで消えても残るので experiment は null になりうる。 */
+export async function listJudgmentsForGeneration(db: D1Database, generationId: string): Promise<GenerationJudgment[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT j.id, j.verdict, j.seed, j.judged_at, j.left_generation_id, j.baseline_generation_id,
+              o.id AS other_id, o.short_id AS other_short_id, o.rating AS other_rating,
+              e.short_id AS experiment_short_id
+       FROM pairwise_judgments j
+       JOIN generations o ON o.id = CASE WHEN j.left_generation_id = ?1 THEN j.right_generation_id ELSE j.left_generation_id END
+       LEFT JOIN experiments e ON e.id = j.experiment_id
+       WHERE j.left_generation_id = ?1 OR j.right_generation_id = ?1
+       ORDER BY j.judged_at DESC, j.id DESC`,
+    )
+    .bind(generationId)
+    .all<{
+      id: string;
+      verdict: JudgmentVerdict;
+      seed: number;
+      judged_at: string;
+      left_generation_id: string;
+      baseline_generation_id: string;
+      other_id: string;
+      other_short_id: string;
+      other_rating: GenerationRow['rating'];
+      experiment_short_id: string | null;
+    }>();
+  return (results ?? []).map((r) => {
+    const thisIsLeft = r.left_generation_id === generationId;
+    const winner = r.verdict === 'tie' ? 'tie' : (r.verdict === 'left') === thisIsLeft ? 'this' : 'other';
+    return {
+      id: r.id,
+      verdict: r.verdict,
+      winner,
+      other_generation: { id: r.other_id, short_id: r.other_short_id, rating: r.other_rating },
+      this_was_baseline: r.baseline_generation_id === generationId,
+      seed: r.seed,
+      judged_at: r.judged_at,
+      experiment: r.experiment_short_id,
+    };
+  });
 }
 
 export async function judgedSeedsForPair(
