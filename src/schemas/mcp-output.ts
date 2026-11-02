@@ -75,7 +75,13 @@ const requestSchema = z.looseObject({
   updated_at: z.string(),
 });
 
-const createdRequestSchema = z.looseObject({ created: z.boolean(), request: requestSchema });
+/** 依頼系ツールが返るまでに見た worker の反応 (src/lib/request-settle.ts)。 */
+const settledSchema = z.looseObject({
+  outcome: z.enum(['done', 'failed', 'cancelled', 'submitted', 'pending']),
+  waited_ms: z.number(),
+});
+
+const createdRequestSchema = z.looseObject({ created: z.boolean(), request: requestSchema, settled: settledSchema });
 
 /** referenceView (lib/preset-references.ts) — the current basis-render pin for a (recipe, kind, name). */
 const presetReferenceSchema = z.looseObject({ generation_id: z.string(), short_id: z.string(), seed: z.number() });
@@ -357,6 +363,7 @@ export const mcpOutputs = {
   derive_request: z.looseObject({
     created: z.boolean(),
     request: requestSchema,
+    settled: settledSchema,
     payload: jsonObject,
     derived_from: z.looseObject({
       requested: z.looseObject({ id: z.string(), short_id: z.string() }),
@@ -406,6 +413,7 @@ export const mcpOutputs = {
   plain_render: z.looseObject({
     created: z.boolean(),
     request: requestSchema,
+    settled: settledSchema,
     payload: jsonObject,
     seed: z.number(),
     reference: presetReferenceSchema.nullable(),

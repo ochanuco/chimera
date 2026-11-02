@@ -47,7 +47,7 @@ describe('MCP outputSchema', () => {
   it('validates the request tools', async () => {
     const created = await mcpToolCall<{ request: { id: string } }>('create_request', {
       kind: 'generate',
-      payload: { schema_version: 1, request: { count: 1 }, generation: { recipe: 'yukari', pose: 'lounge' } },
+      payload: { schema_version: 1, request: { instruction: 'lounge', count: 1 }, generation: { recipe: 'yukari', pose: 'lounge' } },
       idempotency_key: crypto.randomUUID(),
     });
     expect(created.isError).toBe(false);

@@ -87,7 +87,8 @@ import { mergedBaseParameters } from './lib/experiment-rules';
 import type { StandardSchemaV1 } from './lib/standard-schema';
 import { foldGenerationDetailPrompts, foldRequestPayloadPrompts } from './lib/prompt-fold';
 import { MAX_TRANSFORM_INPUT_BYTES, generationPreviewR2Key } from './lib/generation-preview';
-import type { Bindings } from './types';
+import type { Bindings, RequestRow } from './types';
+import { enqueueWaitMs, settleRequest } from './lib/request-settle';
 
 /** MCP client の 1 MiB レスポンス上限に合わせる。base64 化で 4/3 に膨れる分と JSON-RPC envelope の余裕を見て 700 KiB に切り詰める。 */
 const MAX_RETURNED_IMAGE_BYTES = 700 * 1024;
@@ -207,7 +208,10 @@ const MCP_INSTRUCTIONS =
   '8. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns.\n' +
   '9. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
-  'Open the returned check_url to see each result next to its pin.';
+  'Open the returned check_url to see each result next to its pin.\n' +
+  '10. The tools that queue one request (create_request, derive_request, plain_render and the *_generation tools) wait up to 30 s ' +
+  'and return `settled.outcome`: failed (read request.error, fix the input and queue again under a new idempotency_key), ' +
+  'submitted (ComfyUI accepted the graph), done, cancelled, or pending (the worker has not reacted yet; follow it with get_request).';
 
 export function createChimeraMcpServer(env: Bindings, origin: string, executionCtx?: Waitable): McpServer {
   const db = env.DB;
@@ -233,6 +237,15 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   function notifyHubInBackground(...args: Parameters<typeof notifyHub>): void {
     const promise = notifyHub(...args);
     if (executionCtx) executionCtx.waitUntil(promise);
+  }
+
+  const enqueueWait = enqueueWaitMs(env.MCP_ENQUEUE_WAIT_MS);
+
+  /** 作った行を worker に知らせ、worker が失敗するか ComfyUI が graph を受け取るまで待ってから返す。 */
+  async function enqueued(row: RequestRow, created: boolean) {
+    if (created) notifyHubInBackground(env, 'queued', row);
+    const { row: latest, settled } = await settleRequest(db, row, enqueueWait);
+    return { created, request: serializeRequest(latest), settled };
   }
 
   server.registerTool(
@@ -646,8 +659,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind, payload, recipe_ref, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env), checkPatches: generatePayloadPatches(kind, payload) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.create_request, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.create_request, await enqueued(row, created));
     },
   );
 
@@ -678,8 +690,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'redraw', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.redraw_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.redraw_generation, await enqueued(row, created));
     },
   );
 
@@ -731,8 +742,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'deliver', payload, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.deliver_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.deliver_generation, await enqueued(row, created));
     },
   );
 
@@ -772,8 +782,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'dof', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.dof_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.dof_generation, await enqueued(row, created));
     },
   );
 
@@ -810,8 +819,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'lens', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.lens_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.lens_generation, await enqueued(row, created));
     },
   );
 
@@ -858,8 +866,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'photo', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.photo_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.photo_generation, await enqueued(row, created));
     },
   );
 
@@ -899,8 +906,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'stage', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.stage_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.stage_generation, await enqueued(row, created));
     },
   );
 
@@ -928,8 +934,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'saturation', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.saturation_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.saturation_generation, await enqueued(row, created));
     },
   );
 
@@ -960,8 +965,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'lighting', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
-      return jsonResult(mcpOutputs.lighting_generation, { created, request: serializeRequest(row) });
+      return jsonResult(mcpOutputs.lighting_generation, await enqueued(row, created));
     },
   );
 
@@ -1188,10 +1192,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         // 検査するのはこの呼び出しで渡された patches だけで、親から引き継ぐ分は含めない。
         { defaultRecipeRef: defaultRecipeRef(env), checkPatches: { patches, basePath: ['patches'] } },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputs.derive_request, {
-        created,
-        request: serializeRequest(row),
+        ...(await enqueued(row, created)),
         payload,
         derived_from: {
           requested: { id: requestedGeneration.id, short_id: requestedGeneration.short_id },
@@ -1414,10 +1416,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         { kind: 'generate', payload: built.payload, recipe_ref: resolvedRecipeRef, idempotency_key: built.idempotency_key, created_by: 'mcp' },
         { defaultRecipeRef: defaultRecipeRef(env) },
       );
-      if (created) notifyHubInBackground(env, 'queued', row);
       return jsonResult(mcpOutputs.plain_render, {
-        created,
-        request: serializeRequest(row),
+        ...(await enqueued(row, created)),
         payload: built.payload,
         seed: built.seed,
         reference: built.reference,

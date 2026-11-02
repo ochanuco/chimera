@@ -25,9 +25,11 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['request update: failed without worker_id and error', 'PATCH', '/api/v1/requests/x', { status: 'failed' }],
   ['request update: done without result', 'PATCH', '/api/v1/requests/x', { status: 'done', worker_id: 'w' }],
   ['request create: finalize', 'POST', '/api/v1/requests', requestCase('finalize', { generation_id: MISSING_ID })],
-  ['request create: run_id on generate', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: {}, generation: {} }, { run_id: 'r' })],
-  ['request create: resolution keys on generate', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: {}, generation: {} }, { recipe: 'r', patches: [], parameters: {} })],
-  ['request create: generate payload without generation', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: {} })],
+  ['request create: run_id on generate', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: { instruction: 'i', count: 1 }, generation: {} }, { run_id: 'r' })],
+  ['request create: resolution keys on generate', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: { instruction: 'i', count: 1 }, generation: {} }, { recipe: 'r', patches: [], parameters: {} })],
+  ['request create: generate payload without generation', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: { instruction: 'i', count: 1 } })],
+  ['request create: generate request block without instruction', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: { count: 1 }, generation: {} })],
+  ['request create: generate seeds disagree with count', 'POST', '/api/v1/requests', requestCase('generate', { schema_version: 1, request: { instruction: 'i', count: 2, seeds: [1] }, generation: {} })],
   ['request create: dof scope with no layer', 'POST', '/api/v1/requests', requestCase('dof', optionsPayload({ focus: [0.5, 0.5], scope: { figure: false, outline: false, backdrop: false } }))],
   ['request create: lens radius without sphere', 'POST', '/api/v1/requests', requestCase('lens', optionsPayload({ radius: 0.5 }))],
   ['request create: lens strength 0', 'POST', '/api/v1/requests', requestCase('lens', optionsPayload({ strength: 0 }))],
@@ -87,7 +89,7 @@ const MCP_CASES: [label: string, tool: string, args: Record<string, unknown>][] 
   ['create_run: bad variables', 'create_run', { experiment_id: 'e', variables: { a: [] }, idempotency_key: 'k' }],
   ['create_request: finalize kind', 'create_request', { kind: 'finalize', payload: {}, idempotency_key: 'k' }],
   ['create_request: invalid deliver envelope', 'create_request', { kind: 'deliver', payload: { generation_id: 'g', options: { stroke_light: 'x' }, extra: 1 }, idempotency_key: 'k' }],
-  ['create_request: bad recipe_ref', 'create_request', { kind: 'generate', payload: { schema_version: 1, request: {}, generation: {} }, recipe_ref: '-bad', idempotency_key: 'k' }],
+  ['create_request: bad recipe_ref', 'create_request', { kind: 'generate', payload: { schema_version: 1, request: { instruction: 'i', count: 1 }, generation: {} }, recipe_ref: '-bad', idempotency_key: 'k' }],
   ['derive_request: seeds length', 'derive_request', { from_generation_id: 'g', instruction: 'i', count: 2, seeds: [1], semantic: { summary: 's' }, idempotency_key: 'k' }],
   ['derive_request: empty patches reason', 'derive_request', { from_generation_id: 'g', instruction: 'i', semantic: { summary: 's' }, patches: [{ target: 't', op: 'o', reason: '' }], idempotency_key: 'k' }],
   ['redraw_generation: hires without method fields', 'redraw_generation', { generation_id: 'g', options: { method: 'hires', hires: 10 }, idempotency_key: 'k' }],
@@ -160,6 +162,10 @@ const REST_EXPECTED: Record<string, string> = {
     '400 recipe: recipe is only accepted for kind import; patches: patches is only accepted for kind import; parameters: parameters is only accepted for kind import',
   'request create: generate payload without generation':
     '400 payload.generation: Invalid input: expected record, received undefined',
+  'request create: generate request block without instruction':
+    '400 payload.request.instruction: Invalid input: expected string, received undefined',
+  'request create: generate seeds disagree with count':
+    '400 payload.request.seeds: request.seeds must have exactly request.count entries',
   'request create: dof scope with no layer':
     '400 payload.options.scope: scope must keep at least one layer',
   'request create: lens radius without sphere':

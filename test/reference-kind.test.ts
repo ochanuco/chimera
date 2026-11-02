@@ -90,7 +90,7 @@ describe('generate from the worker', () => {
   it('accepts created_by system', async () => {
     const res = await postJson<RequestBody>('/api/v1/requests', {
       kind: 'generate',
-      payload: { schema_version: 1, request: { instruction: '参考画像から: bust' }, generation: { recipe: 'yukari' } },
+      payload: { schema_version: 1, request: { instruction: '参考画像から: bust', count: 1 }, generation: { recipe: 'yukari' } },
       idempotency_key: `reference:${crypto.randomUUID()}`,
       created_by: 'system',
     });
