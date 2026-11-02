@@ -759,62 +759,16 @@ deliver request の payload に `profile: { name, version? }` を渡すと、chi
 ``` text
 GET  /api/v1/observations          ?character= &pose= &component= &parameter= &outcome= &q=
 GET  /api/v1/observations/{id}     1件。無ければ404
-POST /api/v1/observations/sync     レコードの配列を冪等に upsert する
 POST /api/v1/observations          MCP / GUI から1件書く（idempotency_key 必須）
 ```
 
-`q` は `parameter` / `value` / `reason` の部分一致です。`AGENTS.md` が JSONL に対して
-求めている grep の代わりになる粒度にします。
-
-`POST /api/v1/observations/sync` の body はファイル単位です。行番号を送り手に明示させる
-のは、空行や並び順で番号がずれないようにするためです。
-
-``` json
-{
-  "files": [
-    {
-      "path": "experiments/yukari/stand.jsonl",
-      "records": [{ "line": 1, "record": { "character": "yukari", "pose": "stand", "...": "..." } }]
-    }
-  ]
-}
-```
-
-`line` はファイル先頭を 1 とする物理行番号で、空行も数えます。送り手が明示する以上、
-数え方が揃っていないと同じファイルから別の `id` が出て全行が重複します。
-
-`record` がそれ自身では持たない `character` と `component` を、送り手が同じ要素に添え
-られます。chimera はパスから推測しません。`experiments/yukari/` の下にあるから
-`character` は `yukari` だ、`delivery_style.jsonl` だから `component` は `delivery_style` だ、
-という推測はどちらも当たりません。実際 `delivery_style.jsonl` は `delivery_style` /
-`delivery` / `recolor` / `refinement_graph` の4種類の観測を持ちます。
-
-``` json
-{ "line": 48, "character": "yukari", "component": "prompt_style", "record": { "axis": "...", "arms": {} } }
-```
-
-添えた値は `record` 自身が同じキーを持たないときだけ使われます。
-
-chimera が `{ path, line, record }` を正規化して SHA-256 を取り、それを `id` にして upsert
-します。添えた `character` と `component` は `id` に入りません。同じ行に後から正しい値を
-付け直しても、新しい行にはなりません。同じ行は何度送っても同じ Observation になるので、JSONL 全体を毎回丸ごと送って
-構いません。payload に無い既存行は消しません。レスポンスは `{ inserted, unchanged, skipped }`
-で、`skipped` には受理しなかったレコードとその理由が入ります。
+`q` は `parameter` / `value` / `reason` の部分一致です。
 
 `GET /api/v1/observations` は `{ items, total }` を返します。`total` は絞り込み条件に
 一致する全件数で、ページングの外側の数です。
 
-受理しないのは次の2つです。`pose` と `component` のどちらも無いレコード（Observation の
-語彙に乗らない実装メモが混ざるため）と、`outcome` が語彙外のものです。ただし
-`"not adopted"` は `rejected` に正規化します（README の `rejected` の定義が
-"lost a sweep" を含み、該当レコードの `reason` もすべて「同じ seed で別のアームが
-選ばれた」であるため）。
-
-実験のアーム（生成単位と seed の組を持つ形）は Observation ではなく Experiment /
-ExperimentRun に入ります。`sync` はそれらを `skipped` として返します。
-
 `POST /api/v1/observations` は `idempotency_key` を必須にします。`id` はそこから作り、
-内容からは作りません。内容から作ると、同期側と同じ理由で再測定が黙って消えます。同じ
+内容からは作りません。内容から作ると、再測定が黙って消えます。同じ
 観測を測り直して同じ結果が出たら独立した行になるべきで、再送と区別できるのは呼び出し側の
 key だけです。同じ key の再送は既にある行をそのまま 200 で返します。
 

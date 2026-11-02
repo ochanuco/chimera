@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { observationSyncRequestSchema, createObservationSchema } from '../schemas/observations';
-import { syncObservations, createObservation, listObservations, getObservation } from '../lib/observations';
+import { createObservationSchema } from '../schemas/observations';
+import { createObservation, listObservations, getObservation } from '../lib/observations';
 import { parsePagination } from '../lib/db';
 import { badRequest, notFound } from '../lib/errors';
 import { parseOrThrow } from '../lib/validate';
@@ -15,13 +15,6 @@ function parseOutcome(raw: string | undefined): ObservationOutcome | undefined {
   if (!(OUTCOMES as readonly string[]).includes(raw)) throw badRequest(`invalid outcome '${raw}'`);
   return raw as ObservationOutcome;
 }
-
-// /sync は /:id より先に登録する（Hono のマッチ順）。
-observations.post('/sync', async (c) => {
-  const body = parseOrThrow(observationSyncRequestSchema, await c.req.json());
-  const result = await syncObservations(c.env.DB, body.files);
-  return c.json(result);
-});
 
 observations.post('/', async (c) => {
   const body = parseOrThrow(createObservationSchema, await c.req.json());

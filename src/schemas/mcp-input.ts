@@ -280,5 +280,5 @@ export const listObservationsInputSchema = z.object({
   limit: z.number().int().min(1).optional(),
 });
 
-/** observed_at は import 専用 (JSONL 記録日) の欄なので持たない。base は createObservationObjectSchema (schemas/observations.ts) を借り、同じ pose/component 必須 refine をかけ直す。 */
+/** observed_at は過去に取り込んだ行だけが持つ欄なので持たない。base は createObservationObjectSchema (schemas/observations.ts) を借り、同じ pose/component 必須 refine をかけ直す。 */
 export const recordObservationInputSchema = createObservationObjectSchema.omit({ observed_at: true }).superRefine(requirePoseOrComponent);

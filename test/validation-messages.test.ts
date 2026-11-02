@@ -67,7 +67,6 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['publication create: unparsable https url', 'POST', '/api/v1/generations/x/publications', { url: 'https://' }],
   ['publication update: missing url', 'PATCH', '/api/v1/publications/x', {}],
   ['observation: neither pose nor component', 'POST', '/api/v1/observations', { character: 'c', parameter: 'p', value: 'v', outcome: 'accepted', reason: 'r', idempotency_key: 'k' }],
-  ['observation sync: records shape', 'POST', '/api/v1/observations/sync', { files: [{ path: 'p', records: [{ line: 0 }] }] }],
   ['workbench: unknown phase key', 'PUT', '/api/v1/workbenches/x', { picks: { '7': { skip: true }, '0': { skip: true }, '1': { skip: true } } }],
   ['workbench: malformed picks', 'PUT', '/api/v1/workbenches/x', { picks: { '1': { generation_id: '' }, '2': { skip: true, generation_id: 'g' } } }],
   ['workbench: extra top-level key', 'PUT', '/api/v1/workbenches/x', { picks: {}, extra: 1 }],
@@ -239,8 +238,6 @@ const REST_EXPECTED: Record<string, string> = {
     '400 url: Invalid input: expected string, received undefined',
   'observation: neither pose nor component':
     '400 pose: pose か component の少なくとも一方が必要です',
-  'observation sync: records shape':
-    '400 files.0.records.0.line: Too small: expected number to be >0; files.0.records.0.record: Invalid input: expected nonoptional, received undefined',
   'workbench: unknown phase key':
     "400 picks.0: phase key must be one of 1..6, got '0'; picks.7: phase key must be one of 1..6, got '7'",
   'workbench: malformed picks':

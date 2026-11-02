@@ -5,25 +5,6 @@ import { addIssues } from './issues';
 
 export const observationOutcomeSchema = z.enum(['accepted', 'rejected', 'inconclusive']);
 
-/** sync の body はファイル単位 (docs/api.md「Observation」)。不正レコードは 400 ではなく skipped で返すため、
- * ここでは配列の形だけ検証し各レコードの妥当性判定は lib/observations.ts (normalizeRecord) に任せる。 */
-export const observationSyncRequestSchema = z.object({
-  files: z.array(
-    z.object({
-      path: z.string().min(1),
-      records: z.array(
-        z.object({
-          line: z.number().int().positive(),
-          // record 自身が持たないときだけ使うフォールバック。パスからは推測しない (docs/api.md「Observation」)。id の計算には入らない。
-          character: z.string().min(1).optional(),
-          component: z.string().min(1).optional(),
-          record: z.unknown(),
-        }),
-      ),
-    }),
-  ),
-});
-
 /** pose/component の一方必須という不変条件 (docs/domain-model.md「Observation」) を REST と MCP tool 両方にかける。
  * MCP は observed_at を持たないため、refine 前のプレーン ZodObject を export し mcp.ts 側で .omit する。 */
 export const createObservationObjectSchema = z.object({
