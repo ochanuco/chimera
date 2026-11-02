@@ -250,7 +250,7 @@ chimera.chanu.co
 
 PR ごとの preview は Cloudflare Workers Builds の Preview Builds が作ります。Workers Builds の
 production build は `wrangler versions upload` でバージョンを上げるだけで、本番へは反映しません。
-D1 migration はデプロイでは適用せず、migration を含む PR ごとに手で適用します。
+未適用の D1 migration は、deploy が `wrangler deploy` の前に適用します。
 rollback は Cloudflare の Workers versions から前バージョンを選ぶか、main を戻して再デプロイします。
 
 `recipe_ref` の既定（wrangler var `REQUESTS_DEFAULT_RECIPE_REF`）は `production` です。

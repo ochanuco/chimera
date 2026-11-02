@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 使い方: scripts/deploy.sh production
-# D1 migration はここで適用しない。migration を含む変更は PR ごとに手で適用する。
+# 未適用の D1 migration を当ててから deploy する。適用済みかは d1_migrations で判定するので、
+# ロールバック（古い ref）では当てるものがなく何もしない。
 set -euo pipefail
 
 if [ "${1:-}" != "production" ]; then
@@ -8,4 +9,5 @@ if [ "${1:-}" != "production" ]; then
   exit 2
 fi
 
+pnpm exec wrangler d1 migrations apply chimera --remote
 pnpm exec wrangler deploy
