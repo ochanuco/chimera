@@ -15,7 +15,10 @@ function uniqueRecipeRef(): string {
   return `test-${crypto.randomUUID()}`;
 }
 
-async function publish(recipeRef: string): Promise<void> {
+async function publish(recipeRef: string, withFramingCanvases = true): Promise<void> {
+  const framingCanvases = withFramingCanvases
+    ? { canvas: [1024, 1640], framing_canvases: { bust: [1280, 2048], close: [1152, 1152] } }
+    : {};
   const res = await postJson(
     `/api/v1/catalogs/${recipeRef}`,
     {
@@ -23,6 +26,7 @@ async function publish(recipeRef: string): Promise<void> {
       recipes: [
         {
           name: 'yukari',
+          ...framingCanvases,
           poses: [
             { name: 'stand', canvas: [1024, 1640], framing: 'full' },
             { name: 'bust', canvas: [1280, 2048], framing: 'bust' },
@@ -140,6 +144,42 @@ describe('MCP derive_request draft canvas', () => {
     expect(call.data?.payload.semantic.attributes?.canvas_override).toBe('match the parent pixel grid');
   });
 
+  it('renders a requested framing at its own canvas when that is a draft already', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const { generation } = await parent();
+    const call = await derive(generation.id, ref, { parameters: { framing: 'close' } });
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation.patches).toBeUndefined();
+  });
+
+  it('keeps a requested bust framing at its own canvas', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const { generation } = await parent();
+    const call = await derive(generation.id, ref, { parameters: { framing: 'bust' } });
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation.patches).toBeUndefined();
+  });
+
+  it('drafts a requested framing without a canvas from the recipe default canvas', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const { generation } = await parent([], 'gao');
+    const call = await derive(generation.id, ref, { parameters: { framing: 'full' } });
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation.patches).toEqual(DRAFT_896x1440);
+  });
+
+  it('falls back to the pose canvas when the catalog publishes no framing canvases', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref, false);
+    const { generation } = await parent();
+    const call = await derive(generation.id, ref, { parameters: { framing: 'close' } });
+    expect(call.isError).toBe(false);
+    expect(call.data?.payload.generation.patches).toEqual(DRAFT_896x1440);
+  });
+
   it('does nothing for a pose without a published canvas', async () => {
     const { generation } = await parent();
     const call = await derive(generation.id, uniqueRecipeRef());
@@ -169,6 +209,14 @@ describe('MCP create_request draft canvas', () => {
     const ref = uniqueRecipeRef();
     await publish(ref);
     const call = await create(ref, { recipe: 'yukari', parameters: { pose: 'bust' } });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.payload.generation.patches).toBeUndefined();
+  });
+
+  it('renders a requested close framing at its square canvas', async () => {
+    const ref = uniqueRecipeRef();
+    await publish(ref);
+    const call = await create(ref, { recipe: 'yukari', parameters: { pose: 'stand', framing: 'close' } });
     expect(call.isError).toBe(false);
     expect(call.data?.request.payload.generation.patches).toBeUndefined();
   });

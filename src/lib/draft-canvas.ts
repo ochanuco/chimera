@@ -12,6 +12,8 @@ export interface DraftCanvasInput {
   doc: RecipeCatalogDoc | null;
   recipe: unknown;
   pose: unknown;
+  /** The request's parameters.framing, which overrides the pose's framing and canvas. */
+  framing?: unknown;
   /** Patches carried from the parent request (empty for create_request or replace_patches). */
   inherited: Patch[];
   /** Patches the caller passed in this request. */
@@ -34,11 +36,33 @@ function poseRecord(doc: RecipeCatalogDoc | null, recipe: unknown, pose: unknown
   return record && typeof record === 'object' ? (record as Record<string, unknown>) : null;
 }
 
-function poseCanvas(record: Record<string, unknown> | null): [number, number] | null {
-  const canvas = record?.canvas;
+function asCanvas(canvas: unknown): [number, number] | null {
   if (!Array.isArray(canvas) || canvas.length !== 2) return null;
   const [width, height] = canvas;
   return typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0 ? [width, height] : null;
+}
+
+function recipeRecord(doc: RecipeCatalogDoc | null, recipe: unknown): Record<string, unknown> | null {
+  if (!doc || typeof recipe !== 'string') return null;
+  const record = doc.recipes.find((r) => (r as { name?: unknown }).name === recipe);
+  return record && typeof record === 'object' ? (record as Record<string, unknown>) : null;
+}
+
+/**
+ * The canvas the worker renders at by default: with a requested framing it is that framing's canvas, else the recipe
+ * default (the pose's own canvas is dropped); without one it is the pose's published canvas. A catalog that does not
+ * publish `framing_canvases` and `canvas` falls back to the pose's canvas.
+ */
+function defaultCanvas(
+  recipe: Record<string, unknown> | null,
+  pose: Record<string, unknown> | null,
+  framing: string | null,
+): [number, number] | null {
+  const framingCanvases = recipe?.framing_canvases;
+  if (framing !== null && framingCanvases && typeof framingCanvases === 'object' && 'canvas' in (recipe ?? {})) {
+    return asCanvas((framingCanvases as Record<string, unknown>)[framing]) ?? asCanvas(recipe?.canvas);
+  }
+  return asCanvas(pose?.canvas);
 }
 
 // A bust drawn below its own canvas reads as a child's face, and no face word brings the age back.
@@ -53,13 +77,15 @@ export function draftSize(width: number, height: number): [number, number] {
 
 /**
  * The render.width / render.height patches to append so the request renders a draft, or [] when it already does
- * (or its canvas cannot be resolved, or the pose's catalog framing is drawn at its own canvas). A size the caller
+ * (or its canvas cannot be resolved, or its framing -- the requested one, else the pose's -- is drawn at its own canvas). A size the caller
  * sets in this request is never rewritten: past a draft it is rejected so the caller either shrinks it or names the
  * reason in the override field.
  */
 export function draftCanvasPatches(input: DraftCanvasInput): Patch[] {
   const record = poseRecord(input.doc, input.recipe, input.pose);
-  const canvas = poseCanvas(record);
+  const requestedFraming = typeof input.framing === 'string' ? input.framing : null;
+  const framing = requestedFraming ?? (typeof record?.framing === 'string' ? record.framing : null);
+  const canvas = defaultCanvas(recipeRecord(input.doc, input.recipe), record, requestedFraming);
   const ownWidth = lastSet(input.own, 'render.width');
   const ownHeight = lastSet(input.own, 'render.height');
   const width = ownWidth ?? lastSet(input.inherited, 'render.width') ?? canvas?.[0] ?? null;
@@ -68,7 +94,7 @@ export function draftCanvasPatches(input: DraftCanvasInput): Patch[] {
 
   const [draftWidth, draftHeight] = draftSize(width, height);
   const ownSize = ownWidth !== null || ownHeight !== null;
-  if (!ownSize && typeof record?.framing === 'string' && FULL_CANVAS_FRAMINGS.has(record.framing)) return [];
+  if (!ownSize && framing !== null && FULL_CANVAS_FRAMINGS.has(framing)) return [];
   if (ownSize) {
     throw badRequest(
       `render.width x render.height ${width}x${height} is larger than a draft (about 1.3 MP, ${draftWidth}x${draftHeight} ` +
@@ -98,7 +124,12 @@ export function withDraftCanvas(
     return { ...payload, semantic: { ...semantic, attributes: { ...attributes, canvas_override: input.override } } };
   }
   const parameters = (generation.parameters ?? {}) as Record<string, unknown>;
-  const added = draftCanvasPatches({ ...input, recipe: generation.recipe, pose: parameters.pose });
+  const added = draftCanvasPatches({
+    ...input,
+    recipe: generation.recipe,
+    pose: parameters.pose,
+    framing: parameters.framing,
+  });
   if (added.length === 0) return payload;
   const patches = Array.isArray(generation.patches) ? (generation.patches as Patch[]) : [];
   return { ...payload, generation: { ...generation, patches: [...patches, ...added] } };
