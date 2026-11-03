@@ -187,10 +187,13 @@ node の seed と SaveImage の `filename_prefix` だけを書き換えて投入
     Generation の `semantic.attributes` に理由と消えたタグを記録します。無ければその
     request は `failed` です（[identity の上書き](worker-protocol.md#identity-の上書き)）。
 -   `canvas_override`: MCP の `create_request`（generate）と `derive_request` は、約 1.4 MP
-    を超えるキャンバスを draft（pose の既定キャンバスの縦横比で約 1.3 MP）に揃えます。既定
+    を超えるキャンバスを draft（既定キャンバスの縦横比で約 1.3 MP）に揃えます。既定キャンバスは
+    pose の `canvas` です。`parameters.framing` を指定した request では、その framing の
+    キャンバス（catalog の `framing_canvases`。無い framing は recipe の `canvas`）になります。
+    `close` は 1152x1152 で、もともと draft の大きさなので縮めません。既定
     キャンバスや親から引き継いだサイズが大きいときは draft の `render.width` /
     `render.height` patch を末尾に足し、その request 自身が大きいサイズを patch したときは
-    受け付けません。catalog の pose の `framing` が `bust` の pose は縮めず、既定キャンバス
+    受け付けません。framing（指定したもの、無ければ catalog の pose の `framing`）が `bust` なら縮めず、既定キャンバス
     （1280x2048）のまま描きます。小さく描いたバストは幼い顔になるためです。理由を書くとそのまま描き、`semantic.attributes.canvas_override` に残します。
     `derive_request` では同名の引数で渡します。`plain_render` と REST API は検査しません。
 
