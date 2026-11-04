@@ -543,7 +543,7 @@ worker は `failed` にします。`generation.identity_override` に理由の�
 
 ### finalize
 
-`kind = finalize` は redraw と deliver に分かれる前の種類です。古い行は読み取り専用で残り、一覧・`kind` の絞り込み・表示は動きますが、作成も claim もできません（`requests.kind` の CHECK は値を持ち続けます）。
+`kind = finalize` は redraw と deliver に分かれる前の種類です。古い行は読み取り専用で残り、一覧・`kind` の絞り込み・表示は動きますが、作成も claim もできません（`requests.kind` に DB の CHECK は無く、kind の検証は API の zod だけが持ちます）。
 finalize の出力 Generation は納品済みの絵として扱い、redraw / deliver の入力にはできません。
 
 ### redraw

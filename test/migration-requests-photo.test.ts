@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
 describe('migrations/0043 requests_photo', () => {
-  it('accepts kind photo and lens, keeps the reroll index, and still rejects an unknown kind', async () => {
+  it('accepts kind photo and lens, keeps the reroll index', async () => {
     expect(env.TEST_MIGRATIONS.some((m) => m.name === '0043_requests_photo.sql')).toBe(true);
     const insert = (kind: string) =>
       env.DB.prepare(
@@ -11,7 +11,6 @@ describe('migrations/0043 requests_photo', () => {
       ).bind(crypto.randomUUID(), kind, crypto.randomUUID());
     await insert('photo').run();
     await insert('lens').run();
-    await expect(insert('bogus').run()).rejects.toThrow();
     const indexes = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'requests'").all<{ name: string }>();
     expect(indexes.results.map((r) => r.name)).toContain('idx_requests_reroll_of');
   });

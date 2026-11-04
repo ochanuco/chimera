@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createGeneration } from './helpers';
 
 describe('migrations/0037 requests_dof and 0038 workbenches', () => {
-  it('accepts kind dof and still rejects an unknown kind', async () => {
+  it('accepts kind dof', async () => {
     expect(env.TEST_MIGRATIONS.some((m) => m.name === '0037_requests_dof.sql')).toBe(true);
     const insert = (kind: string) =>
       env.DB.prepare(
@@ -11,7 +11,6 @@ describe('migrations/0037 requests_dof and 0038 workbenches', () => {
          VALUES (?, ?, '{}', 'h', ?, 'gui', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
       ).bind(crypto.randomUUID(), kind, crypto.randomUUID());
     await insert('dof').run();
-    await expect(insert('bogus').run()).rejects.toThrow();
   });
 
   it('creates workbenches with one row per root Generation', async () => {

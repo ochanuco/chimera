@@ -20,6 +20,6 @@ pnpm exec wrangler dev   # http://localhost:8787
 
 ## デプロイ
 
-production へのデプロイは、GitHub Actions の `deploy` workflow を `main`（または main 上のコミット SHA）を指定して手動で実行する。Environment `production` の承認後に `wrangler deploy` が走る。未適用の D1 migration は `wrangler deploy` の前に適用される。
+production へは、main への push で GitHub Actions の `deploy` workflow が出す。前回の記録がない、ロールバック、追加系でない migration（CREATE TABLE / CREATE INDEX / ALTER TABLE ADD 以外の文を含む、または既存 migration の変更）のときだけ、Environment `production-approval` の承認で止まる。ロールバックは `deploy` を main 上のコミット SHA を指定して手動で実行する。未適用の D1 migration は `wrangler deploy` の前に適用され、前後で `scripts/d1-guard.mjs` がテーブルの行数を比べる。
 
 PR ごとの preview は Cloudflare Workers Builds の Preview Builds が作る。Workers Builds の production build は `pnpm exec wrangler versions upload` でバージョンを上げるだけで、反映はしない（設定は Cloudflare ダッシュボード側）。
