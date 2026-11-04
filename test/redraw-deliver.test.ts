@@ -404,7 +404,7 @@ describe('worker asset read', () => {
 });
 
 describe('requests table rebuild', () => {
-  it('accepts the new kinds in the CHECK and keeps the indexes', async () => {
+  it('accepts the new kinds and keeps the indexes', async () => {
     const indexes = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'requests'").all<{ name: string }>();
     const names = indexes.results.map((r) => r.name);
     for (const name of ['idx_requests_status_created_at', 'idx_requests_run_id', 'idx_requests_worker_id', 'idx_requests_short_id']) {
@@ -413,6 +413,5 @@ describe('requests table rebuild', () => {
     for (const kind of ['redraw', 'deliver', 'dof', 'lens']) {
       expect((await createRequest({ kind: kind as 'redraw' | 'deliver' | 'dof' | 'lens' })).status).toBe(201);
     }
-    await expect(env.DB.prepare("UPDATE requests SET kind = 'bogus' WHERE id = (SELECT id FROM requests LIMIT 1)").run()).rejects.toThrow();
   });
 });

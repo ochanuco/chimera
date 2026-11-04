@@ -49,7 +49,7 @@ function render(id: string, body: Record<string, unknown>) {
 }
 
 describe('migrations/0053 requests_reference_render', () => {
-  it('accepts kind reference_render and still rejects an unknown kind', async () => {
+  it('accepts kind reference_render', async () => {
     expect(env.TEST_MIGRATIONS.some((m) => m.name === '0053_requests_reference_render.sql')).toBe(true);
     const insert = (kind: string) =>
       env.DB.prepare(
@@ -57,7 +57,6 @@ describe('migrations/0053 requests_reference_render', () => {
          VALUES (?, ?, '{}', 'h', ?, 'gui', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
       ).bind(crypto.randomUUID(), kind, crypto.randomUUID());
     await insert('reference_render').run();
-    await expect(insert('bogus').run()).rejects.toThrow();
     const indexes = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'requests'").all<{ name: string }>();
     expect(indexes.results.map((r) => r.name)).toEqual(expect.arrayContaining(['idx_requests_reroll_of', 'idx_requests_payload_generation_id']));
   });

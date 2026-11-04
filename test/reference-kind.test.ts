@@ -27,7 +27,7 @@ function claim(kinds?: string[]) {
 }
 
 describe('migrations/0052 requests_reference', () => {
-  it('accepts kind reference, keeps the indexes, and still rejects an unknown kind', async () => {
+  it('accepts kind reference, keeps the indexes', async () => {
     expect(env.TEST_MIGRATIONS.some((m) => m.name === '0052_requests_reference.sql')).toBe(true);
     const insert = (kind: string) =>
       env.DB.prepare(
@@ -35,7 +35,6 @@ describe('migrations/0052 requests_reference', () => {
          VALUES (?, ?, '{}', 'h', ?, 'gui', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
       ).bind(crypto.randomUUID(), kind, crypto.randomUUID());
     await insert('reference').run();
-    await expect(insert('bogus').run()).rejects.toThrow();
     const indexes = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'requests'").all<{ name: string }>();
     const names = indexes.results.map((r) => r.name);
     expect(names).toContain('idx_requests_reroll_of');

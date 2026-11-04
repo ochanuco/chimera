@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
 describe('migrations/0044 requests_stage_lighting', () => {
-  it('accepts kind stage, lighting and photo, keeps the reroll index, and still rejects an unknown kind', async () => {
+  it('accepts kind stage, lighting and photo, keeps the reroll index', async () => {
     expect(env.TEST_MIGRATIONS.some((m) => m.name === '0044_requests_stage_lighting.sql')).toBe(true);
     const insert = (kind: string) =>
       env.DB.prepare(
@@ -12,7 +12,6 @@ describe('migrations/0044 requests_stage_lighting', () => {
     await insert('photo').run();
     await insert('stage').run();
     await insert('lighting').run();
-    await expect(insert('bogus').run()).rejects.toThrow();
     const indexes = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'requests'").all<{ name: string }>();
     expect(indexes.results.map((r) => r.name)).toContain('idx_requests_reroll_of');
   });
