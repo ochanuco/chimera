@@ -182,10 +182,20 @@ export interface StageFrameDefaults {
   expand: boolean | Record<string, boolean> | null;
 }
 
-/** Top-level `stage.frame` (chagama が埋める frame の既定値)。枠エディタの初期値にだけ使い、request には埋めない。セクションが無ければ null。 */
-export function findStageFrameDefaults(doc: RecipeCatalogDoc): StageFrameDefaults | null {
-  const frame = plainObject(plainObject((doc as { stage?: unknown }).stage)?.frame);
-  if (!frame) return null;
+/**
+ * Top-level `stage.frame` (chagama が埋める frame の既定値)。`recipe` を渡すと、その recipe の `stage.frame` の line / rim
+ * (枠の色が recipe ごと) を上に重ねる。枠エディタの初期値にだけ使い、request には埋めない。セクションが無ければ null。
+ */
+export function findStageFrameDefaults(doc: RecipeCatalogDoc, recipe?: string | null): StageFrameDefaults | null {
+  const shared = plainObject(plainObject((doc as { stage?: unknown }).stage)?.frame);
+  if (!shared) return null;
+  const own = recipe ? plainObject(plainObject(findRecipe(doc, recipe)?.stage)?.frame) : null;
+  const band = (key: 'line' | 'rim') => {
+    const base = plainObject(shared[key]);
+    const over = plainObject(own?.[key]);
+    return base && over ? { ...base, ...over } : (over ?? shared[key]);
+  };
+  const frame: Record<string, unknown> = { ...shared, line: band('line'), rim: band('rim') };
   const stroke = (value: unknown) => {
     const entry = plainObject(value);
     return entry ? { color: typeof entry.color === 'string' ? entry.color : undefined, width: typeof entry.width === 'number' ? entry.width : undefined } : null;
