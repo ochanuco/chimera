@@ -826,17 +826,20 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 `backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail }]`
 （`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。deliver の
 `backdrop` optionが取れるパターン名の一覧で、GUIのワークベンチの納品フェーズはこれをサムネイル
-ピッカーとして描画します。このキーが無い（旧workerが公開したカタログ）場合、GUIは
+ピッカーとして描画します。背景色は recipe ごとに違うので、recipe の
+`deliver.backdrops`（同じ形）があれば GUI はその絵の recipe の一覧を使い、無ければ
+top-level の`backdrops`に戻ります。どちらも無い（旧workerが公開したカタログ）場合、GUIは
 サムネイル無しの`stripes`カード1枚にフォールバックします。`PUT`のレスポンス・
-`GET /api/v1/catalogs`の一覧・MCP `list_catalog`は`backdrops`をname/labelだけの
-配列に要約し（thumbnail は含めない。キーが無いカタログでは`backdrops`自体を省略）、
+`GET /api/v1/catalogs`の一覧・MCP `list_catalog`は top-level と各 recipe の
+`deliver.backdrops`をname/labelだけの配列に要約し（thumbnail は含めない。キーが無いカタログでは`backdrops`自体を省略）、
 `GET /api/v1/catalogs/{recipe_ref}`だけがthumbnail込みの全体を返します：
 
 ``` text
-GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png
+GET /api/v1/catalogs/{recipe_ref}/backdrops/{name}.png[?recipe=<recipe>]
 ```
 
-`name`はcatalogの`backdrops[].name`。thumbnailを`image/png`でデコードして返します
+`name`はcatalogの`backdrops[].name`。`recipe`を付けるとその recipe の
+`deliver.backdrops`から引き（無ければ top-level）、recipe 間で同じ名前でも別の画像を返します。thumbnailを`image/png`でデコードして返します
 （catalog / nameのどちらかが無ければ404）。URLはcatalogが変わらない限り同じ画像を
 指すので`Cache-Control: public, max-age=31536000, immutable`で返します。GUIは
 `?v=<catalogのupdated_at>`をクエリに付けて参照し、republishのたびにこのURLを変えて

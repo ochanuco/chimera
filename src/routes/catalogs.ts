@@ -44,8 +44,9 @@ catalogs.get('/:recipe_ref', async (c) => {
   });
 });
 
-// Decodes catalog `backdrops[].thumbnail` (a data: URI) and serves it as a PNG. Callers
-// cache-bust this otherwise-immutable URL with a `?v=<catalog updated_at>` query.
+// Decodes catalog `backdrops[].thumbnail` (a data: URI) and serves it as a PNG; `?recipe=` picks that
+// recipe's `deliver.backdrops` (same names, different colours). Callers cache-bust this
+// otherwise-immutable URL with a `?v=<catalog updated_at>` query.
 catalogs.get('/:recipe_ref/backdrops/:file', async (c) => {
   const recipeRef = requireRecipeRef(c.req.param('recipe_ref'));
   const file = c.req.param('file');
@@ -54,7 +55,7 @@ catalogs.get('/:recipe_ref/backdrops/:file', async (c) => {
 
   const found = await getCatalog(c.env.DB, recipeRef);
   if (!found) throw notFound('recipe catalog');
-  const bytes = decodeBackdropThumbnail(found.doc, name);
+  const bytes = decodeBackdropThumbnail(found.doc, name, c.req.query('recipe'));
   if (!bytes) throw notFound('backdrop thumbnail');
 
   return new Response(bytes, {

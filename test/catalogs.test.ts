@@ -8,6 +8,8 @@ function uniqueRecipeRef(): string {
 // 1x1 PNG, same fixture used across the backdrop thumbnail tests below.
 const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
+const OTHER_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+
 function catalogWithBackdrops() {
   return {
     schema_version: 1,
@@ -397,6 +399,26 @@ describe('Recipe Catalog backdrops', () => {
 
     const res = await req(`/api/v1/catalogs/${recipeRef}/backdrops/stripes.png`);
     expect(res.status).toBe(404);
+  });
+
+  it("?recipe= serves that recipe's deliver.backdrops thumbnail, and falls back to the top-level list", async () => {
+    const recipeRef = uniqueRecipeRef();
+    const doc = catalogWithBackdrops();
+    doc.recipes = [
+      { name: 'yukari', poses: [] },
+      { name: 'akari', poses: [], deliver: { backdrops: [{ name: 'stripes', label: '斜めストライプ', thumbnail: `data:image/png;base64,${OTHER_PNG_BASE64}` }] } },
+    ] as typeof doc.recipes;
+    await postJson(`/api/v1/catalogs/${recipeRef}`, doc, 'PUT');
+
+    const own = await req(`/api/v1/catalogs/${recipeRef}/backdrops/stripes.png?recipe=akari`);
+    expect(new Uint8Array(await own.arrayBuffer())).toEqual(new Uint8Array(Buffer.from(OTHER_PNG_BASE64, 'base64')));
+    const fallback = await req(`/api/v1/catalogs/${recipeRef}/backdrops/stripes.png?recipe=yukari`);
+    expect(new Uint8Array(await fallback.arrayBuffer())).toEqual(new Uint8Array(Buffer.from(TINY_PNG_BASE64, 'base64')));
+    expect((await req(`/api/v1/catalogs/${recipeRef}/backdrops/dots.png?recipe=akari`)).status).toBe(404);
+
+    const tool = await mcpToolCall<{ recipes: { name: string; deliver?: { backdrops?: unknown } }[] }>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.data?.recipes.find((r) => r.name === 'akari')?.deliver?.backdrops).toEqual([{ name: 'stripes', label: '斜めストライプ' }]);
+    expect(JSON.stringify(tool.data)).not.toContain(OTHER_PNG_BASE64);
   });
 
   it('backdrop thumbnail route 404s for an unpublished recipe_ref', async () => {
