@@ -31,6 +31,17 @@ function parseOptions(payloadJson: string): Record<string, unknown> | null {
   }
 }
 
+/** deliver が人物の彩度を圧縮済みか（worker が解決した parameters.saturation > 0）。圧縮済みの納品に saturation は重ねられない。 */
+function deliveredSaturated(kind: string, parametersJson: string | null): boolean {
+  if (kind !== 'deliver' || !parametersJson) return false;
+  try {
+    const saturation = (JSON.parse(parametersJson) as { saturation?: unknown }).saturation;
+    return typeof saturation === 'number' && saturation > 0;
+  } catch {
+    return false;
+  }
+}
+
 function methodOf(kind: string, options: Record<string, unknown> | null): string | null {
   return kind === 'redraw' && typeof options?.method === 'string' ? options.method : null;
 }
@@ -65,6 +76,8 @@ export interface WorkbenchNode {
   delivered: boolean;
   /** generation_assets に role 'cutout' (region '') がある。絵そのものは不透明のまま。 */
   cutout: boolean;
+  /** deliver が人物の彩度を圧縮済み。 */
+  saturated: boolean;
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
@@ -133,6 +146,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       bookmark: row.bookmark === 1,
       delivered: isDeliveredRequest({ kind: row.request_kind, parameters_json: row.parameters_json }),
       cutout: row.has_cutout === 1,
+      saturated: deliveredSaturated(row.request_kind, row.parameters_json),
       image_width: row.image_width,
       image_height: row.image_height,
       image_size: row.image_size,

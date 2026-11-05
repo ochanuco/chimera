@@ -5554,6 +5554,7 @@ export const appJs = `
       if (!input) return '';
       if (wb.active === 2 && input.delivered) return '納品済み';
       if (needsCutOut()) return '切り抜かれていません';
+      if (wb.active === 3 && input.saturated) return '納品で彩度を圧縮済み';
       return '';
     }
 

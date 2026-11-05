@@ -93,6 +93,24 @@ describe('GET /api/v1/generations/:id/tree', () => {
     expect(fromRoot.body.nodes.map((n) => n.id).sort()).toEqual(fromLeaf.body.nodes.map((n) => n.id).sort());
   });
 
+  it('marks a deliver whose resolved saturation compressed the figure', async () => {
+    const { generation: root } = await createGeneration();
+    const deliver = async (parameters: Record<string, unknown>) =>
+      (
+        await createGeneration({
+          requestOverrides: { kind: 'deliver', status: 'done', payload: { generation_id: root.short_id }, parameters },
+          jobOverrides: { source_generation_id: root.id },
+        })
+      ).generation as { id: string };
+    const compressed = await deliver({ kind: 'deliver', saturation: 1 });
+    const plain = await deliver({ kind: 'deliver' });
+    const tree = await getJson<{ nodes: { id: string; saturated: boolean }[] }>(`/api/v1/generations/${root.id}/tree`);
+    const saturated = new Map(tree.body.nodes.map((n) => [n.id, n.saturated]));
+    expect(saturated.get(compressed.id)).toBe(true);
+    expect(saturated.get(plain.id)).toBe(false);
+    expect(saturated.get(root.id)).toBe(false);
+  });
+
   it('carries the rating', async () => {
     const { generation: root } = await createGeneration();
     await req(`/api/v1/generations/${root.id}/rating`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating: 'good' }) });
