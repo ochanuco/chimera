@@ -65,9 +65,6 @@ function defaultCanvas(
   return asCanvas(pose?.canvas);
 }
 
-// A bust drawn below its own canvas reads as a child's face, and no face word brings the age back.
-const FULL_CANVAS_FRAMINGS = new Set(['bust']);
-
 /** About 1.3 MP at width:height, each side rounded down to a multiple of 8. */
 export function draftSize(width: number, height: number): [number, number] {
   const ratio = width / height;
@@ -77,14 +74,13 @@ export function draftSize(width: number, height: number): [number, number] {
 
 /**
  * The render.width / render.height patches to append so the request renders a draft, or [] when it already does
- * (or its canvas cannot be resolved, or its framing -- the requested one, else the pose's -- is drawn at its own canvas). A size the caller
+ * (or its canvas cannot be resolved). A size the caller
  * sets in this request is never rewritten: past a draft it is rejected so the caller either shrinks it or names the
  * reason in the override field.
  */
 export function draftCanvasPatches(input: DraftCanvasInput): Patch[] {
   const record = poseRecord(input.doc, input.recipe, input.pose);
   const requestedFraming = typeof input.framing === 'string' ? input.framing : null;
-  const framing = requestedFraming ?? (typeof record?.framing === 'string' ? record.framing : null);
   const canvas = defaultCanvas(recipeRecord(input.doc, input.recipe), record, requestedFraming);
   const ownWidth = lastSet(input.own, 'render.width');
   const ownHeight = lastSet(input.own, 'render.height');
@@ -93,9 +89,7 @@ export function draftCanvasPatches(input: DraftCanvasInput): Patch[] {
   if (width === null || height === null || width * height <= MAX_DRAFT_AREA) return [];
 
   const [draftWidth, draftHeight] = draftSize(width, height);
-  const ownSize = ownWidth !== null || ownHeight !== null;
-  if (!ownSize && framing !== null && FULL_CANVAS_FRAMINGS.has(framing)) return [];
-  if (ownSize) {
+  if (ownWidth !== null || ownHeight !== null) {
     throw badRequest(
       `render.width x render.height ${width}x${height} is larger than a draft (about 1.3 MP, ${draftWidth}x${draftHeight} ` +
         `at this aspect ratio); patch a draft size, or give the reason for this size in ${input.overrideField}`,
