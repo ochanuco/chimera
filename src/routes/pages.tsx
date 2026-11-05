@@ -672,7 +672,7 @@ pages.get('/frame/:shortId', async (c) => {
         layers: { figure: `/g/${base.short_id}/assets/layer-figure`, outline: `/g/${base.short_id}/assets/layer-outline` },
         backdrops,
         initial,
-        defaults: catalog ? findStageFrameDefaults(catalog.doc) : null,
+        defaults: catalog ? findStageFrameDefaults(catalog.doc, recipe) : null,
       }}
     />,
   );

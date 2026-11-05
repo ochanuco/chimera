@@ -192,4 +192,22 @@ describe('findStageFrameDefaults', () => {
     expect(findStageFrameDefaults({ stage: { frame: {} } } as never)).toEqual({ sides: null, line: null, rim: null, paper: null, expand: null });
     expect(findStageFrameDefaults({} as never)).toBeNull();
   });
+
+  it("lays the recipe's own line and rim over the shared frame", () => {
+    const doc = {
+      recipes: [
+        { name: 'yukari' },
+        { name: 'akari', stage: { frame: { line: { color: '#56321a' }, rim: { color: '#33200f', width: 0.25 } } } },
+      ],
+      stage: { frame: { sides: { top: 'out' }, line: { color: '#4a3152', width: 0.6, pattern: 'solid' }, rim: { color: '#2e2236', width: 0.25 }, paper: '#ffffff' } },
+    };
+    expect(findStageFrameDefaults(doc as never, 'akari')).toMatchObject({
+      sides: { top: 'out' },
+      line: { color: '#56321a', width: 0.6, pattern: 'solid' },
+      rim: { color: '#33200f', width: 0.25 },
+      paper: '#ffffff',
+    });
+    expect(findStageFrameDefaults(doc as never, 'yukari')).toEqual(findStageFrameDefaults(doc as never));
+    expect(findStageFrameDefaults(doc as never, 'unknown')?.line).toEqual({ color: '#4a3152', width: 0.6, pattern: 'solid' });
+  });
 });
