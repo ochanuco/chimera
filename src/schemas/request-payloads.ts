@@ -14,6 +14,7 @@ const transparentField = z.boolean().nullable().optional();
 const backdropField = z.string().nullable().optional();
 const strokeLightField = z.enum(['even', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']).nullable().optional();
 const seeThroughField = z.number().min(1).max(5).nullable().optional();
+const deliverSaturationField = z.number().min(0).max(1).optional();
 const outlineSchema = z
   .object({ color: z.string().regex(/^#[0-9a-f]{6}$/i), width: z.number().gt(0).lte(5) })
   .strict();
@@ -52,6 +53,7 @@ export const deliverOptionsSchema = z
     outlines: outlinesField,
     light: lightField,
     see_through: seeThroughField,
+    saturation: deliverSaturationField,
   })
   .strict();
 
@@ -249,7 +251,7 @@ export const lightingPayloadSchema = z
   })
   .strict();
 
-/** saturation（彩度）の options (docs/worker-protocol.md「saturation」)。strength は元の彩度と圧縮後の彩度の混ぜ具合。入力は deliver の出力で、worker が判定する。 */
+/** saturation（彩度）の options (docs/worker-protocol.md「saturation」)。strength は元の彩度と圧縮後の彩度の混ぜ具合。入力は deliver の出力で、deliver の saturation で圧縮済みの絵を含め worker が判定する。 */
 export const saturationOptionsSchema = z
   .object({
     strength: z.number().min(0).max(1).optional(),
