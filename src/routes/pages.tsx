@@ -630,8 +630,9 @@ pages.get('/work/:shortId', async (c) => {
     deliverDefaults,
     outlines: doc && recipe ? findDeliverOutlines(doc, recipe) : null,
     strokeDefault,
-    backdrops: doc ? findBackdrops(doc).map(({ name, label }) => ({ name, label })) : [],
+    backdrops: doc ? findBackdrops(doc, recipe).map(({ name, label }) => ({ name, label })) : [],
     recipeRef,
+    recipe,
     catalogVersion: catalog?.row.updated_at ?? null,
     backdropColor: doc && recipe ? findDeliverBackdropColor(doc, recipe) : null,
     dof: doc ? findDof(doc) : null,
@@ -651,14 +652,15 @@ pages.get('/frame/:shortId', async (c) => {
   const root = await findRootGeneration(db, base);
   const detailRes = await internalApiRequest(c, `/api/v1/generations/${root.id}`);
   const detail = (await detailRes.json()) as { request: { recipe: string | null } | null };
-  const recipeRef = detail.request?.recipe ? defaultRecipeRef(c.env) : null;
+  const recipe = detail.request?.recipe ?? null;
+  const recipeRef = recipe ? defaultRecipeRef(c.env) : null;
   const catalog = recipeRef ? await getCatalog(db, recipeRef) : null;
   const backdrops =
     catalog && recipeRef
-      ? findBackdrops(catalog.doc).map(({ name, label }) => ({
+      ? findBackdrops(catalog.doc, recipe).map(({ name, label }) => ({
           name,
           label,
-          thumbnail: backdropThumbnailUrl(recipeRef, catalog.row.updated_at, name),
+          thumbnail: backdropThumbnailUrl(recipeRef, catalog.row.updated_at, name, recipe),
         }))
       : [];
   return c.html(

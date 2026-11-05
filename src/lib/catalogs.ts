@@ -116,7 +116,7 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     // dials: {redraw?, deliver?, repair?, patches?} の word -> number map。chimera は表示にしか使わず、
     // word の実在確認や number への解決は worker が行う (docs/worker-protocol.md「deliver profile」)。
     if ('dials' in r) summary.dials = r.dials;
-    if ('deliver' in r) summary.deliver = r.deliver;
+    if ('deliver' in r) summary.deliver = stripBackdropThumbnails(r.deliver);
     if ('redraw' in r) summary.redraw = r.redraw;
     return summary;
   });
@@ -142,9 +142,25 @@ export interface CatalogBackdrop {
   thumbnail: string;
 }
 
-/** Top-level `backdrops` (chagama の斜めストライプ等のパターン一覧、サムネイル付き)。キーが無い旧カタログでは空配列。 */
-export function findBackdrops(doc: RecipeCatalogDoc): CatalogBackdrop[] {
-  const raw = (doc as { backdrops?: unknown }).backdrops;
+function stripBackdropThumbnails(deliver: unknown): unknown {
+  const block = plainObject(deliver);
+  if (!block || !Array.isArray(block.backdrops)) return deliver;
+  return { ...block, backdrops: parseBackdrops(block.backdrops).map(({ name, label }) => ({ name, label })) };
+}
+
+/**
+ * パターン背景の一覧 (サムネイル付き)。`recipe` を渡すとその recipe の `deliver.backdrops` (背景色が recipe ごと) を返し、
+ * それが無い旧カタログでは top-level `backdrops` に戻る。どちらも無ければ空配列。
+ */
+export function findBackdrops(doc: RecipeCatalogDoc, recipe?: string | null): CatalogBackdrop[] {
+  if (recipe) {
+    const own = parseBackdrops(plainObject(findRecipe(doc, recipe)?.deliver)?.backdrops);
+    if (own.length > 0) return own;
+  }
+  return parseBackdrops((doc as { backdrops?: unknown }).backdrops);
+}
+
+function parseBackdrops(raw: unknown): CatalogBackdrop[] {
   if (!Array.isArray(raw)) return [];
   const result: CatalogBackdrop[] = [];
   for (const item of raw) {
@@ -187,9 +203,9 @@ export function findStageFrameDefaults(doc: RecipeCatalogDoc): StageFrameDefault
   };
 }
 
-/** Decodes `name`'s `data:image/png;base64,...` thumbnail to raw PNG bytes. null when `name` isn't published or the data URI is malformed — the route's caller turns that into a 404. */
-export function decodeBackdropThumbnail(doc: RecipeCatalogDoc, name: string): Uint8Array | null {
-  const backdrop = findBackdrops(doc).find((b) => b.name === name);
+/** Decodes `name`'s `data:image/png;base64,...` thumbnail (of `recipe`'s list, see findBackdrops) to raw PNG bytes. null when `name` isn't published or the data URI is malformed — the route's caller turns that into a 404. */
+export function decodeBackdropThumbnail(doc: RecipeCatalogDoc, name: string, recipe?: string | null): Uint8Array | null {
+  const backdrop = findBackdrops(doc, recipe).find((b) => b.name === name);
   if (!backdrop) return null;
   const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(backdrop.thumbnail);
   if (!match) return null;

@@ -25,6 +25,8 @@ export interface WorkbenchData {
   strokeDefault: string;
   backdrops: BackdropOption[];
   recipeRef: string | null;
+  /** The picture's recipe: picks that recipe's backdrop thumbnails. */
+  recipe: string | null;
   catalogVersion: string | null;
   backdropColor: string | null;
   dof: DofCatalog | null;
@@ -52,8 +54,11 @@ function withValue(options: number[], value: number | null): number[] {
   return value !== null && !options.includes(value) ? [...options, value].sort((a, b) => a - b) : options;
 }
 
-export function backdropThumbnailUrl(recipeRef: string, catalogVersion: string | null, name: string): string {
-  const q = catalogVersion ? `?v=${encodeURIComponent(catalogVersion)}` : '';
+export function backdropThumbnailUrl(recipeRef: string, catalogVersion: string | null, name: string, recipe: string | null): string {
+  const params = new URLSearchParams();
+  if (recipe) params.set('recipe', recipe);
+  if (catalogVersion) params.set('v', catalogVersion);
+  const q = params.size > 0 ? `?${params}` : '';
   return `/api/v1/catalogs/${encodeURIComponent(recipeRef)}/backdrops/${encodeURIComponent(name)}.png${q}`;
 }
 
@@ -165,7 +170,7 @@ function StageForm({ data }: { data: WorkbenchData }) {
                 {data.backdrops.length > 0 && data.recipeRef ? (
                   <img
                     class="backdrop-thumb"
-                    src={backdropThumbnailUrl(data.recipeRef, data.catalogVersion, bd.name)}
+                    src={backdropThumbnailUrl(data.recipeRef, data.catalogVersion, bd.name, data.recipe)}
                     alt={bd.label}
                     width="60"
                     height="96"
