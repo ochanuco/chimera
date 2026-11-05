@@ -9,13 +9,14 @@ import type { GenerationRow, RequestKind, RequestStatus } from '../types';
 
 const MAX_ROOT_HOPS = 100;
 
-/** redraw（canvas / hires / light）= 1 描き直し、deliver = 2 フチ、saturation = 3 彩度、stage = 4 背景、lighting = 5 光、dof = 6 ボケ。
+/** redraw（canvas / hires / light）= 1 描き直し、saturation = 2 彩度、deliver = 3 フチ、stage = 4 背景、lighting = 5 光、dof = 6 ボケ。
+ * saturation が 2 なのは入力が描いた絵（納品前）のときだけで、納品の絵に重ねた saturation は null。
  * 作成できなくなった repair / masked_redraw の既存の行は、描き直しの候補として 1 に置く。それ以外は null。 */
-export function workbenchPhase(kind: string, method: string | null): number | null {
+export function workbenchPhase(kind: string, method: string | null, sourceDelivered = false): number | null {
   if (kind === 'redraw') return method === 'light' || method === 'canvas' || method === 'hires' ? 1 : null;
   if (kind === 'repair' || kind === 'masked_redraw') return 1;
-  if (kind === 'deliver') return 2;
-  if (kind === 'saturation') return 3;
+  if (kind === 'saturation') return sourceDelivered ? null : 2;
+  if (kind === 'deliver') return 3;
   if (kind === 'stage') return 4;
   if (kind === 'lighting') return 5;
   if (kind === 'dof') return 6;
@@ -28,17 +29,6 @@ function parseOptions(payloadJson: string): Record<string, unknown> | null {
     return options && typeof options === 'object' && !Array.isArray(options) ? (options as Record<string, unknown>) : null;
   } catch {
     return null;
-  }
-}
-
-/** deliver が人物の彩度を圧縮済みか（worker が解決した parameters.saturation > 0）。圧縮済みの納品に saturation は重ねられない。 */
-function deliveredSaturated(kind: string, parametersJson: string | null): boolean {
-  if (kind !== 'deliver' || !parametersJson) return false;
-  try {
-    const saturation = (JSON.parse(parametersJson) as { saturation?: unknown }).saturation;
-    return typeof saturation === 'number' && saturation > 0;
-  } catch {
-    return false;
   }
 }
 
@@ -76,8 +66,6 @@ export interface WorkbenchNode {
   delivered: boolean;
   /** generation_assets に role 'cutout' (region '') がある。絵そのものは不透明のまま。 */
   cutout: boolean;
-  /** deliver が人物の彩度を圧縮済み。 */
-  saturated: boolean;
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
@@ -131,6 +119,8 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
     }>();
 
   const rows = results ?? [];
+  const deliveredById = new Map(rows.map((row) => [row.id, isDeliveredRequest({ kind: row.request_kind, parameters_json: row.parameters_json })]));
+  const sourceDelivered = (id: string | null | undefined) => (id ? deliveredById.get(id) === true : false);
   const nodes: WorkbenchNode[] = rows.map((row) => {
     const options = row.request_kind === 'generate' ? null : parseOptions(row.payload_json);
     const method = methodOf(row.request_kind, options);
@@ -140,13 +130,12 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       refines_generation_id: row.refines_generation_id,
       kind: row.request_kind,
       method,
-      phase: workbenchPhase(row.request_kind, method),
+      phase: workbenchPhase(row.request_kind, method, sourceDelivered(row.refines_generation_id)),
       options,
       rating: row.rating,
       bookmark: row.bookmark === 1,
-      delivered: isDeliveredRequest({ kind: row.request_kind, parameters_json: row.parameters_json }),
+      delivered: deliveredById.get(row.id) === true,
       cutout: row.has_cutout === 1,
-      saturated: deliveredSaturated(row.request_kind, row.parameters_json),
       image_width: row.image_width,
       image_height: row.image_height,
       image_size: row.image_size,
@@ -181,7 +170,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
       request_id: row.id,
       kind: row.kind,
       method,
-      phase: workbenchPhase(row.kind, method),
+      phase: workbenchPhase(row.kind, method, sourceDelivered(source)),
       options,
       source_generation_id: source,
       status: row.status,

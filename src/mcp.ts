@@ -212,8 +212,10 @@ const MCP_INSTRUCTIONS =
   'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture. To shoot a delivered ' +
   'picture like an acrylic stand on location, stand it in an uploaded photo with photo_generation, or step by step: ' +
   'deliver transparent, stage_generation (a backdrop pattern or a photo), lighting_generation (light it by the ' +
-  'backdrop), then dof_generation. deliver compresses the saturation itself (option saturation, default 1); ' +
-  'saturation_generation is only for a delivery made with saturation 0, and refuses one deliver already compressed.\n' +
+  'backdrop), then dof_generation. The saturation can be its own step before the outlines, as the WebUI workbench does it ' +
+  '(描き直し › 彩度 › フチ): saturation_generation on the raw or redrawn picture cuts the figure out with no outline and ' +
+  'compresses it, and deliver_generation on that output draws the outlines at that strength, compressing nothing again. ' +
+  'Without that step deliver compresses the figure itself (option saturation, default 1).\n' +
   '8. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns. ' +
   TEMPORARY_RECORDS_NOTE + '\n' +
@@ -737,7 +739,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'see_through (1-5, default 1: scales how much of the backdrop shows through see-through clothing drawn over ' +
         'the green key — 1 is the cut as solved, 3 lets three times as much through; the stored alpha cut is unchanged), ' +
         'saturation (0-1, the catalog default is 1: compresses the cut figure\'s saturation before the outlines are drawn, ' +
-        'so the outlines keep exactly their given colours; 0 leaves the figure as drawn; never applied with keep_scene), ' +
+        'so the outlines keep exactly their given colours; 0 leaves the figure as drawn; never applied with keep_scene; ' +
+        'ignored when generation_id is a saturation_generation output of a raw or redrawn picture, which is delivered from that ' +
+        'picture at the saturation\'s strength), ' +
         'light ({scene: "sunset" | "moon", from?: "n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw"}: the scene and light direction ' +
         'the delivery follows; from is the direction the light comes from, default "nw"). When light is omitted it is inherited from the ' +
         'nearest redraw with method "light" among the source\'s ancestors, and stroke_light follows that direction; a ' +
@@ -932,14 +936,14 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.saturation_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
-        'Enqueue a saturation request (docs/worker-protocol.md "saturation"): compress the saturation of a delivered picture\'s ' +
-        'figure and outline layers (outline colours included; the backdrop passes through). strength is 0-1 (default 1, the ' +
+        'Enqueue a saturation request (docs/worker-protocol.md "saturation"). strength is 0-1 (default 1, the ' +
         'catalog\'s saturation.strength): how far the original saturation is blended toward the compressed one. generation_id ' +
-        'accepts a short_id and takes a deliver output with layer assets; stage / lighting / dof / lens / photo outputs are refused, ' +
-        'and so is a delivery whose deliver already compressed its figure (its saturation option above 0, the default): ' +
-        'deliver_generation compresses before it draws the outlines, so to change the strength deliver the source again. ' +
-        'The output is a delivered picture with the same layers that refines the source; stage_generation, photo_generation and ' +
-        'dof_generation may follow. Follow status with get_request.',
+        'accepts a short_id. On a raw or redrawn picture (the WebUI workbench\'s 2 彩度, before 3 フチ) it cuts the figure out ' +
+        'transparent with no outline and compresses it exactly as deliver would; deliver_generation on the output then draws the ' +
+        'outlines at that strength without compressing again (stage_generation / dof_generation may also take it as it is). ' +
+        'On a deliver output with layer assets made with saturation 0 it compresses the figure and outline layers (outline colours ' +
+        'included; the backdrop passes through). A delivery whose deliver already compressed its figure and stage / lighting / dof / ' +
+        'lens / photo / saturation outputs are refused. The output refines the source. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: saturationGenerationInputSchema,
     },

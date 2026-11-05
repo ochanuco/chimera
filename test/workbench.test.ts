@@ -53,9 +53,9 @@ describe('GET /api/v1/generations/:id/tree', () => {
     const canvas = await derive(root, 'redraw', { method: 'canvas', denoise: 0.5 });
     const repair = await derive(light, 'repair', { parts: ['hands'] });
     const masked = await derive(light, 'masked_redraw', { regions: [[0, 0, 0.5, 0.5]], prompt_patch: 'x' });
-    const deliver = await derive(repair, 'deliver', { backdrop: null });
-    const saturation = await derive(deliver, 'saturation', { strength: 0.5 });
-    const stage = await derive(saturation, 'stage', { backdrop: 'dots' });
+    const saturation = await derive(repair, 'saturation', { strength: 0.5 });
+    const deliver = await derive(saturation, 'deliver', { backdrop: null });
+    const stage = await derive(deliver, 'stage', { backdrop: 'dots' });
     const lighting = await derive(stage, 'lighting', { strength: 0.5 });
     const dof = await derive(lighting, 'dof', { focus: [0.5, 0.5] });
     const other = await createGeneration();
@@ -75,8 +75,8 @@ describe('GET /api/v1/generations/:id/tree', () => {
       [canvas, 'redraw', 'canvas', 1, false],
       [repair, 'repair', null, 1, false],
       [masked, 'masked_redraw', null, 1, false],
-      [deliver, 'deliver', null, 2, true],
-      [saturation, 'saturation', null, 3, true],
+      [saturation, 'saturation', null, 2, true],
+      [deliver, 'deliver', null, 3, true],
       [stage, 'stage', null, 4, true],
       [lighting, 'lighting', null, 5, true],
       [dof, 'dof', null, 6, true],
@@ -93,22 +93,21 @@ describe('GET /api/v1/generations/:id/tree', () => {
     expect(fromRoot.body.nodes.map((n) => n.id).sort()).toEqual(fromLeaf.body.nodes.map((n) => n.id).sort());
   });
 
-  it('marks a deliver whose resolved saturation compressed the figure', async () => {
+  it('puts a saturation of a drawing at 2 and one over a delivery outside the phases', async () => {
     const { generation: root } = await createGeneration();
-    const deliver = async (parameters: Record<string, unknown>) =>
-      (
-        await createGeneration({
-          requestOverrides: { kind: 'deliver', status: 'done', payload: { generation_id: root.short_id }, parameters },
-          jobOverrides: { source_generation_id: root.id },
-        })
-      ).generation as { id: string };
-    const compressed = await deliver({ kind: 'deliver', saturation: 1 });
-    const plain = await deliver({ kind: 'deliver' });
-    const tree = await getJson<{ nodes: { id: string; saturated: boolean }[] }>(`/api/v1/generations/${root.id}/tree`);
-    const saturated = new Map(tree.body.nodes.map((n) => [n.id, n.saturated]));
-    expect(saturated.get(compressed.id)).toBe(true);
-    expect(saturated.get(plain.id)).toBe(false);
-    expect(saturated.get(root.id)).toBe(false);
+    const ofRaw = await derive(root, 'saturation', { strength: 1 });
+    const deliver = await derive(root, 'deliver', { backdrop: null });
+    const overDelivery = await derive(deliver, 'saturation', { strength: 1 });
+    const queuedOnDelivery = await createRequest({ kind: 'saturation', status: 'queued', payload: { generation_id: deliver.id, options: { strength: 1 } } });
+    const queuedOnRaw = await createRequest({ kind: 'saturation', status: 'queued', payload: { generation_id: root.id, options: { strength: 1 } } });
+    const tree = await getJson<Tree>(`/api/v1/generations/${root.id}/tree`);
+    const phase = new Map(tree.body.nodes.map((n) => [n.id, n.phase]));
+    expect(phase.get(ofRaw.id)).toBe(2);
+    expect(phase.get(deliver.id)).toBe(3);
+    expect(phase.get(overDelivery.id)).toBeNull();
+    const pending = new Map(tree.body.pending.map((p) => [p.request_id, p.phase]));
+    expect(pending.get(queuedOnRaw.body.id)).toBe(2);
+    expect(pending.get(queuedOnDelivery.body.id)).toBeNull();
   });
 
   it('carries the rating', async () => {
@@ -132,7 +131,7 @@ describe('GET /api/v1/generations/:id/tree', () => {
     expect(tree.body.pending.map((p) => p.request_id).sort()).toEqual([queued.body.id, running.body.id].sort());
     const byId = new Map(tree.body.pending.map((p) => [p.request_id, p]));
     expect(byId.get(queued.body.id)).toMatchObject({ kind: 'redraw', method: 'canvas', phase: 1, source_generation_id: root.id, status: 'queued' });
-    expect(byId.get(running.body.id)).toMatchObject({ kind: 'deliver', method: null, phase: 2, source_generation_id: child.id, status: 'running' });
+    expect(byId.get(running.body.id)).toMatchObject({ kind: 'deliver', method: null, phase: 3, source_generation_id: child.id, status: 'running' });
   });
 
   it('404s for an unknown generation', async () => {

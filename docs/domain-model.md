@@ -906,10 +906,11 @@ kind `lens` は納品の絵（deliver・dof・lens の出力）を魚眼 / 逆�
 （[worker-protocol.md](worker-protocol.md#lens)）。重ねる順は dof → lens で、lens の出力に dof はかけません。
 kind `photo` は層 asset を持つ deliver の出力を、写真の Generation（写真ページで登録した import）の中に板として立て、奥行きで
 ぼかした納品の絵を作ります（[worker-protocol.md](worker-protocol.md#photo)）。写真の `depth` asset は写真の Generation に付きます。
-kind `saturation` は deliver の出力の層ごとに彩度を圧縮し、同じ層を持つ納品の絵を作ります（[worker-protocol.md](worker-protocol.md#saturation)）。
+kind `saturation` は描いた絵（raw か描き直し）から人物をフチなしの透過で切り抜いて彩度を圧縮した納品の絵を作り、その出力の deliver は
+同じ強さの人物にフチを描きます。deliver の出力には、層ごとに彩度を圧縮した同じ層の納品の絵を作ります（[worker-protocol.md](worker-protocol.md#saturation)）。
 kind `stage` は deliver か saturation の出力を、ぼかさずに写真の中か背景の柄の上へ置き、kind `lighting` はその層を背景の光に合わせます
 （[worker-protocol.md](worker-protocol.md#stage)）。いずれの出力も層 asset を持つ納品の絵で、dof の入力になります。重ねる順は
-deliver → saturation → stage → lighting → dof → lens です。
+saturation → deliver → stage → lighting → dof → lens です。
 
 ## Workbench
 
@@ -923,8 +924,8 @@ picks_json          TEXT NOT NULL          {"1": {"generation_id": "<id>"} | {"s
 created_at / updated_at
 ```
 
-フェーズは 1 描き直し（redraw の hires。古い行の canvas / light と、作れなくなった repair / masked_redraw もここに置く）、2 切り抜き・フチ（deliver）、
-3 彩度（saturation）、4 背景（stage）、5 光（lighting）、6 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
+フェーズは 1 描き直し（redraw の hires。古い行の canvas / light と、作れなくなった repair / masked_redraw もここに置く）、2 彩度（描いた絵の saturation）、
+3 フチ（deliver）、4 背景（stage）、5 光（lighting）、6 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
 採用は木のどこかの Generation を指すだけで、Generation 側には何も書きません。木の取得と保存の API は
 [api.md](api.md#generation-tree) です。
 

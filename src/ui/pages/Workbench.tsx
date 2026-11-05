@@ -36,8 +36,8 @@ export interface WorkbenchData {
 
 const PHASES = [
   { no: 1, label: '描き直し' },
-  { no: 2, label: 'フチ' },
-  { no: 3, label: '彩度' },
+  { no: 2, label: '彩度' },
+  { no: 3, label: 'フチ' },
   { no: 4, label: '背景' },
   { no: 5, label: '光' },
   { no: 6, label: 'ボケ' },
@@ -91,7 +91,7 @@ function RedrawForm({ data }: { data: WorkbenchData }) {
 
 function DeliverForm({ data }: { data: WorkbenchData }) {
   return (
-    <div class="wb-form" data-wb-form="2" hidden>
+    <div class="wb-form" data-wb-form="3" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <div data-wb-form-body>
         <div class="wb-row">
@@ -117,13 +117,10 @@ function DeliverForm({ data }: { data: WorkbenchData }) {
 function SaturationForm({ data }: { data: WorkbenchData }) {
   const strength = data.saturation?.strength ?? 1;
   return (
-    <div class="wb-form" data-wb-form="3" hidden>
+    <div class="wb-form" data-wb-form="2" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
-      <button type="button" class="wb-pill" data-wb-cut-out hidden>
-        フチなしで切り抜く
-      </button>
       <div data-wb-form-body>
-        <p class="wb-note">キャラとフチの彩度を圧縮します。フチの色も対象です。背景はそのままです。</p>
+        <p class="wb-note">キャラを透過で切り抜き、彩度を圧縮します。フチは次のフェーズで付けます。飛ばすと圧縮しません。</p>
         <label class="wb-field">
           強さ <span class="mono" data-wb-saturation-readout>{strength}</span>
           <input type="range" name="wb_saturation_strength" min="0" max="1" step="0.05" value={String(strength)} />
@@ -431,8 +428,8 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
                 </h2>
               </div>
               <RedrawForm data={data} />
-              <DeliverForm data={data} />
               <SaturationForm data={data} />
+              <DeliverForm data={data} />
               <StageForm data={data} />
               <LightingForm />
               <DofForm data={data} />

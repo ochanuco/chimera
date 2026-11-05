@@ -116,7 +116,9 @@ describe('GET /work/:shortId', () => {
 
     const html = await (await req(`/work/${root.short_id}?at=${hires.short_id}`)).text();
     expect(html).toContain('data-workbench=');
-    for (const label of ['元絵', '1. 描き直し', '2. フチ', '3. 彩度', '4. 背景', '5. 光', '6. ボケ']) expect(html).toContain(label);
+    for (const label of ['元絵', '1. 描き直し', '2. 彩度', '3. フチ', '4. 背景', '5. 光', '6. ボケ']) expect(html).toContain(label);
+    expect(html.indexOf('2. 彩度')).toBeLessThan(html.indexOf('3. フチ'));
+    expect(html.indexOf('data-wb-form="2"')).toBeLessThan(html.indexOf('data-wb-form="3"'));
     for (const phase of [1, 2, 3, 4, 5, 6]) expect(html).toContain(`data-wb-form="${phase}"`);
     expect(html).not.toContain('data-wb-form="7"');
     expect(html).not.toContain('2. 部分');
@@ -156,17 +158,23 @@ describe('GET /work/:shortId', () => {
     expect(appJs).toContain("node.cutout ? '/g/' + node.short_id + '/assets/cutout'");
   });
 
-  it('lets phases 3 to 6 take a cut redraw and offers a cut-out without outlines otherwise', async () => {
+  it('lets phases 4 to 6 take a cut redraw and offers a cut-out without outlines or compression otherwise', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
-    for (const phase of ['3', '4', '5', '6']) {
+    for (const phase of ['4', '5', '6']) {
       const start = html.indexOf(`data-wb-form="${phase}"`);
       expect(html.slice(start, start + 600)).toContain('data-wb-cut-out');
+    }
+    for (const phase of ['2', '3']) {
+      const start = html.indexOf(`data-wb-form="${phase}"`);
+      expect(html.slice(start, start + 600)).not.toContain('data-wb-cut-out');
     }
     expect(html).toContain('フチなしで切り抜く');
     expect(appJs).toContain("return node.kind === 'redraw' && !!node.cutout;");
     expect(appJs).toContain("if (needsCutOut()) return '切り抜かれていません';");
-    expect(appJs).toContain("var options = { transparent: true, outlines: [] };");
+    expect(appJs).toContain('[4, 5, 6].indexOf(wb.active) >= 0');
+    expect(appJs).toContain("var options = { transparent: true, outlines: [], saturation: 0 };");
+    expect(appJs).toContain('goStep(3);');
     expect(appJs).toContain("'gui:workbench:deliver:' + input.short_id + ':' + crypto.randomUUID()");
   });
 
@@ -201,10 +209,10 @@ describe('GET /work/:shortId', () => {
     expect(byId.get(root.short_id)).toBe(false);
   });
 
-  it('phase 2 cuts out transparent with the outline editor open and finishing controls in closed details', async () => {
+  it('phase 3 cuts out transparent with the outline editor open and finishing controls in closed details', async () => {
     const { generation: root } = await createGeneration();
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="2"'), html.indexOf('data-wb-form="3"'));
+    const form = html.slice(html.indexOf('data-wb-form="3"'), html.indexOf('data-wb-form="4"'));
     expect(form).not.toContain('data-wb-bg=');
     expect(form).toMatch(/<input type="radio" name="backdrop" value="transparent" checked/);
     expect(form).toMatch(/<details class="wb-acc" open="">\s*<summary>\s*フチ/);
@@ -216,16 +224,22 @@ describe('GET /work/:shortId', () => {
     expect(form).toContain('切り抜きは 2 回目から使い回します');
   });
 
-  it('phase 3 compresses saturation with a strength slider defaulting to the catalog value', async () => {
+  it('phase 2 compresses saturation with a strength slider defaulting to the catalog value', async () => {
     const recipe = `wb-sat-${crypto.randomUUID()}`;
     const catalog = { schema_version: 3, recipes: [{ name: recipe, poses: [] }], patches: {}, saturation: { strength: { min: 0, max: 1, default: 0.6 } } };
     expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
     const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
     const html = await (await req(`/work/${root.short_id}`)).text();
-    const form = html.slice(html.indexOf('data-wb-form="3"'), html.indexOf('data-wb-form="4"'));
+    const form = html.slice(html.indexOf('data-wb-form="2"'), html.indexOf('data-wb-form="3"'));
     expect(form).toMatch(/name="wb_saturation_strength" min="0" max="1" step="0.05" value="0.6"/);
     expect(form).toContain('data-wb-saturation-readout');
     expect(appJs).toContain("return { kind: 'saturation', options: { strength: rangeValue('wb_saturation_strength') } };");
+  });
+
+  it('phase 3 outlines a phase-2 saturation as it is and a skipped 2 without compression', () => {
+    expect(appJs).toContain("if (wb.active === 3 && input.delivered && input.phase !== 2) return '納品済み';");
+    expect(appJs).toContain("if (activeInputNode().kind !== 'saturation') options.saturation = 0;");
+    expect(appJs).not.toContain('納品で彩度を圧縮済み');
   });
 
   it('phase 4 offers patterns with a shadow toggle, or a photo with upload, placement and height', async () => {

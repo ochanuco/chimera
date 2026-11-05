@@ -4890,8 +4890,8 @@ export const appJs = `
   // ---- ワークベンチ (/work/:shortId, docs/ui.md「Workbench」) ----
   var WB_PHASES = [
     { no: 1, label: '描き直し' },
-    { no: 2, label: 'フチ' },
-    { no: 3, label: '彩度' },
+    { no: 2, label: '彩度' },
+    { no: 3, label: 'フチ' },
     { no: 4, label: '背景' },
     { no: 5, label: '光' },
     { no: 6, label: 'ボケ' },
@@ -5190,7 +5190,7 @@ export const appJs = `
     var wb = {
       nodes: (initial.tree && initial.tree.nodes) || [],
       pending: (initial.tree && initial.tree.pending) || [],
-      picks: initial.picks || {},
+      picks: {},
       active: 1,
       compareId: null,
       mode: 'pair',
@@ -5230,6 +5230,13 @@ export const appJs = `
     function pick(k) {
       return wb.picks[String(k)] || null;
     }
+
+    // A pick saved under another phase than its Generation's (one adopted before 彩度 came before フチ) is not a pick.
+    Object.keys(initial.picks || {}).forEach(function (k) {
+      var p = initial.picks[k];
+      var n = p && !p.skip ? nodeById(p.generation_id) : null;
+      if (p && (p.skip || !n || n.phase === Number(k))) wb.picks[k] = p;
+    });
 
     // The input of phase k is the pick of phase k-1; a skipped phase passes its own input on.
     function inputOf(k) {
@@ -5546,15 +5553,15 @@ export const appJs = `
 
     function needsCutOut() {
       var input = activeInputNode();
-      return !!input && [3, 4, 5, 6].indexOf(wb.active) >= 0 && !isCutOut(input) && ['stage', 'lighting'].indexOf(input.kind) < 0;
+      return !!input && [4, 5, 6].indexOf(wb.active) >= 0 && !isCutOut(input) && ['stage', 'lighting'].indexOf(input.kind) < 0;
     }
 
     function unavailableText() {
       var input = activeInputNode();
       if (!input) return '';
       if (wb.active === 2 && input.delivered) return '納品済み';
+      if (wb.active === 3 && input.delivered && input.phase !== 2) return '納品済み';
       if (needsCutOut()) return '切り抜かれていません';
-      if (wb.active === 3 && input.saturated) return '納品で彩度を圧縮済み';
       return '';
     }
 
@@ -5746,10 +5753,10 @@ export const appJs = `
         qs('[data-wb-shadow-readout]', root).textContent = !wb.shadow
           ? ''
           : shadowDir === undefined
-            ? '2 のフチの陰影の向き'
+            ? '3 のフチの陰影の向き'
             : shadowDir
-              ? 'from ' + shadowDir + '（2 のフチの陰影と同じ）'
-              : '向きが無いので付きません（2 のフチの陰影が均一）';
+              ? 'from ' + shadowDir + '（3 のフチの陰影と同じ）'
+              : '向きが無いので付きません（3 のフチの陰影が均一）';
       }
       var dofPhoto = qs('[data-wb-dof-photo]', root);
       var stagedInPhoto = wb.active === WB_LAST && photoStaged(activeInputNode());
@@ -5875,13 +5882,15 @@ export const appJs = `
         return { kind: 'redraw', options: redrawOptions };
       }
       if (k === 2) {
+        return { kind: 'saturation', options: { strength: rangeValue('wb_saturation_strength') } };
+      }
+      if (k === 3) {
         var options = deliverOptionsFrom(form, false);
         if (!options) return null;
         options.transparent = true;
+        // A skipped 2 is no compression; after 2 the worker delivers at the saturation's strength.
+        if (activeInputNode().kind !== 'saturation') options.saturation = 0;
         return { kind: 'deliver', options: options };
-      }
-      if (k === 3) {
-        return { kind: 'saturation', options: { strength: rangeValue('wb_saturation_strength') } };
       }
       if (k === 4) {
         if (wb.stageMode === 'photo') {
@@ -5956,27 +5965,27 @@ export const appJs = `
       render();
     }
 
-    // A picture that is not cut out yet gets a deliver with no outlines, which lands as a phase-2 candidate for the user to pick.
+    // A picture that is not cut out yet gets a deliver with no outlines and no compression, which lands as a phase-3 candidate for the user to pick.
     async function cutOut() {
       var input = activeInputNode();
       if (!input || !needsCutOut()) return;
       wb.error = '';
-      var options = { transparent: true, outlines: [] };
+      var options = { transparent: true, outlines: [], saturation: 0 };
       try {
         var request = await postOptionRequest('deliver', input.short_id, options, null, 'gui:workbench:deliver:' + input.short_id + ':' + crypto.randomUUID());
         wb.pending.push({
           request_id: request.id,
           kind: 'deliver',
           method: null,
-          phase: 2,
+          phase: 3,
           options: options,
           source_generation_id: input.id,
           status: request.status || 'queued',
           created_at: request.created_at || '',
         });
-        track('workbench.run', { phase: 2, kind: 'deliver', generation_id: input.short_id });
-        goStep(2);
-        if (inputOf(2) !== input.id) wb.forcedInput = input.id;
+        track('workbench.run', { phase: 3, kind: 'deliver', generation_id: input.short_id });
+        goStep(3);
+        if (inputOf(3) !== input.id) wb.forcedInput = input.id;
         wb.compareId = 'p:' + request.id;
         startPolling();
       } catch (e) {

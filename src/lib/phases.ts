@@ -33,7 +33,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
 };
 
 /** Gallery のフェーズボタンの並び。chain はワークベンチの順に › でつなぎ、extra は連鎖の外に置く。 */
-export const PHASE_CHAIN = ['generate', 'redraw', 'deliver', 'saturation', 'stage', 'lighting', 'dof'] as const satisfies readonly Phase[];
+export const PHASE_CHAIN = ['generate', 'redraw', 'saturation', 'deliver', 'stage', 'lighting', 'dof'] as const satisfies readonly Phase[];
 export const PHASE_EXTRA = ['lens', 'photo', 'import'] as const satisfies readonly Phase[];
 
 export function isPhase(value: string): value is Phase {

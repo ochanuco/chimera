@@ -618,7 +618,7 @@ chimera の WebUI フォームのプリセットもここから取っていま�
   outlines       null \| [{color: "#rrggbb", width}]（フチのリスト、内側から外側へ 0〜6 本。`width` は長辺に対する %で 0 < width <= 5。省略または `null` は catalog の `recipes[].deliver.outlines.default`、`[]` はフチなし）
   stroke_light   null \| "even" \| "n".."nw"（一番外のフチの陰影。`"even"`（`null` も同じ）は一定の太さ、8 方位はフチを光源側で細く影側で太くし落ち影も付ける。陰影と押し出しは一番外のフチにかかり、落ち影も一番外のフチの外形に沿う。既定 `"n"`。`"none"` は 400 で、フチなしは `outlines: []`）
   see_through    null \| number（1〜5、既定 1。green key の上に描かれた透け衣装越しに背景が透ける量を何倍にするか。合成にだけ効き、保存する `alpha` は変えない）
-  saturation     number（0〜1、既定は catalog の `recipes[].deliver.defaults.saturation`（yukari は 1）。切り抜いた人物の彩度を [saturation](#saturation) と同じ曲線で圧縮してからフチを描くので、フチは `outlines` の色そのままになる。0 は圧縮しない。`keep_scene` には効かない。0 より大きいときは納品の `parameters.saturation` に残る）
+  saturation     number（0〜1、既定は catalog の `recipes[].deliver.defaults.saturation`（yukari は 1）。切り抜いた人物の彩度を [saturation](#saturation) と同じ曲線で圧縮してからフチを描くので、フチは `outlines` の色そのままになる。0 は圧縮しない。`keep_scene` には効かない。0 より大きいときは納品の `parameters.saturation` に残る。入力が描いた絵の [saturation](#saturation) の出力なら、この値は使わずその `strength` で圧縮する）
   light          null \| {scene, from?}（下記）
 
 `light` は光源です。`scene` は `"sunset"`（夕日）か `"moon"`（月明かり）で必須、`from` は光が来る向き
@@ -642,12 +642,14 @@ dof が読みます。
   layer-backdrop  背景。RGB。透過納品では付けない。`keep_scene` では元の場面
 
 出力は納品の Generation 1 枚で、入力の Generation を
-`refines_generation_id` で指します。入力にできるのは raw か描き直した絵で、納品済みの絵と LayerDiffuse 由来の
-絵は受けません。chimera が検証するのは型だけで、組み合わせの妥当性（recipe が route を持つか等）は worker が
+`refines_generation_id` で指します。入力にできるのは raw か描き直した絵と、それを入力にした [saturation](#saturation) の
+出力で、それ以外の納品済みの絵と LayerDiffuse 由来の絵は受けません。saturation の出力を入力にすると、worker はその元の絵を
+元の絵の切り抜きの asset で切り抜き、saturation の `strength` で人物を圧縮してからフチを描きます（圧縮は一度だけ。
+`keep_scene` は `failed`）。chimera が検証するのは型だけで、組み合わせの妥当性（recipe が route を持つか等）は worker が
 判定して `failed` にします。
 
 `recolor` / `skin` / `keep_legwear` / `deliver_size` / `repin` は廃止したので、deliver の新しい Request に含めると 400 です。
-彩度の圧縮は別の kind [saturation](#saturation) で行います。
+彩度の圧縮をフチの前の段に分けるときは kind [saturation](#saturation) を使います。
 これらを含む保存済みの payload は読めるままで、保存済みの deliver profile の本文は読むときにこの 5 キーを除いて使います
 （profile の展開、`promote-profile`、`get_preset`、profile の一覧）。catalog は既定を
 `recipes[].deliver.defaults`、フチの既定と上限を `recipes[].deliver.outlines`（`{default: [{color, width}], max_count, max_width}`）、
@@ -936,9 +938,13 @@ catalog は最上位の `lighting` 節に `direction` と `strength` を公開�
 
 ### saturation
 
-deliver の出力の彩度を圧縮する worker 実行です（ワークベンチの「3 彩度」）。絵は描き直さず、切り抜きとフチもやり直しません。
-deliver は既定で人物の彩度を圧縮してからフチを描くので（deliver の `saturation`）、この段階が受けるのは `saturation: 0` で
-納品した絵だけです。
+人物の彩度を圧縮する worker 実行です。絵は描き直しません。入力によって 2 通りに動きます。
+
+- raw か描き直した絵（ワークベンチの「2 彩度」）: 人物をフチなしの透過で切り抜き、[deliver](#deliver) の `saturation` と同じ
+  曲線で圧縮します。中身は `outlines: []`・透過・`saturation: strength` の deliver と同じで、切り抜きの asset も入力の絵に
+  付けて使い回します。この出力を deliver すると、同じ切り抜きと同じ強さでフチを描いた納品になります（「3 フチ」）。
+- deliver の出力（`saturation: 0` で納品した絵）: 層ごとに圧縮し直します（下記）。deliver は既定で人物を圧縮してからフチを
+  描くので、圧縮済みの納品は受けません。
 
 ``` json
 {
@@ -951,17 +957,17 @@ deliver は既定で人物の彩度を圧縮してからフチを描くので（
   -------------- --------------------------------------------------------------------------
   strength       0〜1、省略は catalog の `saturation.strength.default`（1.0）。圧縮の曲線の補正に掛ける重みで、0 は元のまま、1 は deliver の旧 repin と同じ
 
-`options` の未知のキーは 400 です。`generation_id` は UUID / short_id のどちらでもよく、入力にできるのは kind `deliver` が作った
-層 asset（`layer-figure` / `layer-outline`）を持つ絵と、切り抜き済みの描き直しの出力です。stage・lighting・dof・lens・photo の出力と、
-deliver の `saturation` が 0 より大きい納品（曲線が二重にかかる）は worker が `failed` にします（chimera が検証するのは型だけです）。
+`options` の未知のキーは 400 です。`generation_id` は UUID / short_id のどちらでもよく、stage・lighting・dof・lens・photo・
+saturation の出力と、deliver の `saturation` が 0 より大きい納品（曲線が二重にかかる）は worker が `failed` にします
+（chimera が検証するのは型だけです）。
 
-`layer-figure` と `layer-outline` の両方に、同じ彩度の圧縮曲線を別々にかけます（フチの色も対象）。圧縮する範囲は各層の alpha から取り、
-`layer-backdrop` はそのまま通して、層を重ね直した納品の絵を出します。切り抜きの asset（`alpha` / `depth` / `cut`）は使い回します。
-紫のフチ `#885b80` は strength 1 で `#7e6988` になります。deliver の既定のフチはこの `#7e6988` です。
+deliver の出力では、`layer-figure` と `layer-outline` の両方に同じ彩度の圧縮曲線を別々にかけます（フチの色も対象）。圧縮する範囲は
+各層の alpha から取り、`layer-backdrop` はそのまま通して、層を重ね直した納品の絵を出します。紫のフチ `#885b80` は strength 1 で
+`#7e6988` になります。deliver の既定のフチはこの `#7e6988` です。
 
-出力は納品の Generation（`is_delivered`）で、deliver と同じ層（`layer-figure` / `layer-outline`、あれば `layer-backdrop`）を持ち、
-入力を `refines_generation_id` で指します。deliver の出力と同じに扱われるので、続けて [stage](#stage)・[photo](#photo)・[dof](#dof) の
-入力にできます。
+出力は納品の Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、`parameters` に `kind: "saturation"`・
+`base_generation`・`strength` を残します。描いた絵からの出力は `layer-figure` と全透明の `layer-outline` を持つフチなしの透過納品、
+deliver の出力からの出力は deliver と同じ層を持ちます。どちらも続けて [stage](#stage)・[photo](#photo)・[dof](#dof) の入力にできます。
 
 catalog は最上位の `saturation` 節に `strength` の範囲と既定（`{"strength": {"min": 0, "max": 1, "default": 1.0}}`）を公開します。ワークベンチのスライダーの初期値もここから取ります。
 
