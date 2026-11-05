@@ -1360,7 +1360,7 @@ GET /api/v1/generations/{id}/tree
   ],
   "pending": [
     {
-      "request_id": "...", "kind": "deliver", "method": null, "phase": 4, "options": { "backdrop": null },
+      "request_id": "...", "kind": "deliver", "method": null, "phase": 3, "options": { "backdrop": null },
       "source_generation_id": "<入力の id>", "status": "running", "created_at": "..."
     }
   ]
@@ -1369,7 +1369,8 @@ GET /api/v1/generations/{id}/tree
 
 -   `kind`: その Generation を作った Request の kind（元絵は `generate`、import した元絵は `import`）
 -   `method`: kind が `redraw` のときの `options.method`（新しい行は `hires` だけ。古い行は `canvas` / `light` も読める）、それ以外は `null`
--   `phase`: ワークベンチのフェーズ。redraw（`hires`、古い行の `canvas` / `light`）= 1、`deliver` = 2、`saturation` = 3、`stage` = 4、`lighting` = 5、`dof` = 6。
+-   `phase`: ワークベンチのフェーズ。redraw（`hires`、古い行の `canvas` / `light`）= 1、`saturation` = 2、`deliver` = 3、`stage` = 4、`lighting` = 5、`dof` = 6。
+    `saturation` が 2 なのは入力（`pending` では `source_generation_id`）が納品の絵でないときだけで、納品の絵に重ねた `saturation` は `null`。
     作れなくなった `repair` / `masked_redraw` の既存の行は 1（描き直しの候補）。元絵と対応しない kind（`lens` / `photo` を含む）は `null`
 -   `options`: 作った Request の `payload.options`（元絵と options の無い kind は `null`）
 -   `delivered`: 納品の絵か（`dof` / `lens` / `photo` / `stage` / `lighting` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
@@ -1440,7 +1441,7 @@ short_id のどちらでもよく、raw Generation でなければ 400（不明�
 ```
 
 `GET` は行が無いと `picks: {}`、`updated_at: null` を返します。`PUT` の body は `{ "picks": { ... } }` で、`picks` を丸ごと
-置き換え、保存後の同じ形を返します。キーは `"1"`〜`"6"`（フェーズ番号。1 描き直し / 2 切り抜き・フチ / 3 彩度 / 4 背景 / 5 光 / 6 ボケ）、値は `{ "generation_id": "<id か short_id>" }`
+置き換え、保存後の同じ形を返します。キーは `"1"`〜`"6"`（フェーズ番号。1 描き直し / 2 彩度 / 3 フチ / 4 背景 / 5 光 / 6 ボケ）、値は `{ "generation_id": "<id か short_id>" }`
 （元絵から下の木に含まれる Generation。保存は id）か `{ "skip": true }` です。違反は 400 で、何も保存しません。
 
 ### Generation Timeline
