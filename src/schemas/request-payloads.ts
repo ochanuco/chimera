@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HEX_COLOR_RE, REFERENCE_RENDER_POSE, REFERENCE_POSE_FOLLOWS, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
+import { DEFAULT_FRAME, HEX_COLOR_RE, REFERENCE_RENDER_POSE, REFERENCE_POSE_FOLLOWS, MAX_FRAME_STROKES, MAX_FRAME_STROKE_POINTS, MAX_OUTLINES, dofScopeIssues, lensOptionsIssues, stageOptionsIssues } from '../lib/request-rules';
 import { addIssues } from './issues';
 
 /** worker に渡す payload の語彙 (docs/worker-protocol.md)。kind ごとの封筒の検証は lib/request-payload.ts が引く。 */
@@ -207,7 +207,7 @@ const frameSchema = z
   })
   .strict();
 
-/** stage（背景）の options (docs/worker-protocol.md「stage」)。photo があれば写真に place / height で置き、無ければ backdrop（柄名か #RRGGBB）に
+/** stage（背景）の options (docs/worker-protocol.md「stage」)。photo があれば写真に place / height で置き、無ければ backdrop（柄名か #RRGGBB、"random" は作成時に柄名へ）に
  * shadow_from の影で置く（frame は柄の組で、人物を枠に入れる）。二組は混ぜない。入力は層 asset を持つ deliver の出力で、worker が判定する。 */
 export const stageOptionsSchema = z
   .object({
@@ -216,7 +216,8 @@ export const stageOptionsSchema = z
     height: z.number().min(0.05).max(1.5).optional(),
     backdrop: z.string().min(1).optional(),
     shadow_from: z.enum(COMPASS).nullable().optional(),
-    frame: frameSchema.optional(),
+    // "default" は作成時に既定の枠 (DEFAULT_STAGE_FRAME) に展開され、保存される payload には残らない。
+    frame: z.union([z.literal(DEFAULT_FRAME), frameSchema]).optional(),
     // 背景を染めるシーン。省略は系譜の light redraw を引き継ぎ、null はなし。
     light: z
       .object({ scene: z.enum(['sunset', 'moon']), from: z.enum(COMPASS).optional() })

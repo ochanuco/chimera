@@ -758,7 +758,7 @@ v<version>`を表示します（リロードなし）。それ以外のGeneratio
     押すと`{transparent: true, outlines: [], saturation: 0}`の deliver を入力に積んで 3 の候補に移ります（候補を採用してから戻る。元の request は自動では積まない）。
     4 背景（`stage`）: `柄・単色` / `写真`。柄はcatalogの柄（既定は`ランダム`で、実行のたびに1つを選んで送る）か`単色`（#RRGGBB）と、枠の`枠あり`（既定）/ `枠なし`、影の`影あり`（既定）/ `影なし`。
     `枠あり`は`frame`に既定の箱（納品キャンバスの中央に幅・高さとも 90%、`[0.05, 0.05, 0.95, 0.95]`）と 4 辺とも`out`だけを入れて送り、線・縁・紙・余白は worker の既定（catalog の`stage.frame`）に任せます。
-    箱の大きさは client の`WB_FRAME_BOX`の 1 か所で決めます。
+    この箱と辺はサーバーの`DEFAULT_STAGE_FRAME`（`src/lib/request-rules.ts`）を client に埋め込んだもので、MCP / REST の`frame: "default"`と同じ定義です（[worker-protocol.md「既定の枠」](worker-protocol.md#既定の枠)）。
     影の向きは選ばせず、3 の`一番外の陰影`と同じ向き（`均一`ならシーンの光の向き、どちらも無ければ影は付かない）を`shadow_from`に入れ、
     欄にその向きを出します（入力の納品が`stroke_light`を持たないときは送らず worker に任せる。`影なし`は`shadow_from: null`）。
     柄のパネルの`枠に入れる…`は、4 の入力（選んだ候補）の`/frame/<short_id>`へのリンクです（[枠](#枠)）。入力が枠つきの stage の出力ならその状態を復元して開きます。

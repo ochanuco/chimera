@@ -377,8 +377,8 @@ describe('workbench client script', () => {
     expect(appJs).toContain("kind: 'saturation'");
     expect(appJs).toContain('function sceneOf(node)');
     expect(appJs).toContain('stageOptions.light = null');
-    expect(appJs).toContain('var WB_FRAME_BOX = [0.05, 0.05, 0.95, 0.95];');
-    expect(appJs).toContain("sides: { top: 'out', right: 'out', bottom: 'out', left: 'out' }");
+    expect(appJs).toContain('var WB_DEFAULT_FRAME = {"box":[0.05,0.05,0.95,0.95],"sides":{"top":"out","right":"out","bottom":"out","left":"out"}};');
+    expect(appJs).toContain('stageOptions.frame = JSON.parse(JSON.stringify(WB_DEFAULT_FRAME))');
   });
 
   it('saves picks as the whole map through the workbench endpoint, truncating by lineage', () => {

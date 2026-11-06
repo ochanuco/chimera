@@ -16,6 +16,19 @@ export const MAX_FRAME_TOTAL_POINTS = 20000;
 
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
+/** deliver / stage の `backdrop: "random"` (docs/worker-protocol.md「柄のランダム」)。Request の作成時に、絵の recipe の柄から 1 つに決めて置き換える。 */
+export const RANDOM_BACKDROP = 'random';
+
+/** stage の `frame: "default"` (docs/worker-protocol.md「既定の枠」)。Request の作成時に DEFAULT_STAGE_FRAME に置き換える。 */
+export const DEFAULT_FRAME = 'default';
+
+/** 既定の枠。ワークベンチの 4 背景の「枠」もこれを送る。座標は納品キャンバスに対する分数で、四辺とも人物を枠の外へはみ出させる。
+ * 線・rim・paper は書かず、worker が catalog の `stage.frame` の既定で埋める。 */
+export const DEFAULT_STAGE_FRAME = {
+  box: [0.05, 0.05, 0.95, 0.95] as [number, number, number, number],
+  sides: { top: 'out', right: 'out', bottom: 'out', left: 'out' } as const,
+};
+
 /** reference_render が描く土台 (docs/worker-protocol.md「reference_render」)。worker の yukari_persona（pose を持たない基本キャラクター）で、GUI からは選ばせない。 */
 export const REFERENCE_RENDER_POSE = 'yukari_persona';
 /** reference_render のポーズの写し方 (docs/worker-protocol.md「reference_render」)。off: タグだけ、loose: 骨格、firm: 深度（頭はタグ任せ）。 */
@@ -93,7 +106,9 @@ export function stageOptionsIssues(options: {
   if (hasPhoto && options.frame !== undefined) {
     issues.push({ message: 'frame is not for a photo', path: ['frame'] });
   }
-  if (options.frame !== undefined) issues.push(...frameIssues(options.frame as FrameShape));
+  if (options.frame !== undefined && typeof options.frame === 'object' && options.frame !== null) {
+    issues.push(...frameIssues(options.frame as FrameShape));
+  }
   return issues;
 }
 
