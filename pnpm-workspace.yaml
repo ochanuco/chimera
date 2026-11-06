@@ -1,5 +1,4 @@
-onlyBuiltDependencies:
-  - esbuild
-  - workerd
-ignoredBuiltDependencies:
-  - core-js-pure
+allowBuilds:
+  esbuild: true
+  workerd: true
+  core-js-pure: false
