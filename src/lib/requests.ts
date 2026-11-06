@@ -16,6 +16,7 @@ import { uuidv7 } from './uuidv7';
 import { FINALIZE_CREATION_MESSAGE, PARTIAL_FIX_CREATION_MESSAGE, REFERENCE_RENDER_POSE } from './request-rules';
 import { assertPatchGrammar, type PatchList } from './patch-grammar';
 import { applyDeliverProfile, extractPins, pinPresets } from './presets';
+import { applyFinishDefaults } from './finish-defaults';
 import { stableStringify } from './json-canonical';
 import { createUniqueRequestShortId } from './shortid';
 import { normalizeResolution, resolutionStatements, type ResolutionInput } from './request-resolution';
@@ -296,12 +297,15 @@ export async function createRequest(
   // generate の preset pin (worker-protocol.md「preset の pin」)、
   // deliver profile の展開 (worker-protocol.md「deliver profile」) は payload をハッシュする前にここで行う
   // — 内部呼び出しや idempotency 再送もこの正規化を通す。
-  const payload =
+  // backdrop "random" / frame "default" の置き換え (worker-protocol.md「柄のランダム」「既定の枠」) も同じく、profile の展開の後に行う。
+  const recipeRef = input.recipe_ref ?? options.defaultRecipeRef ?? 'production';
+  const profiled =
     input.kind === 'generate'
       ? await pinPresets(db, input.payload)
       : input.kind === 'deliver'
         ? await applyDeliverProfile(db, input.payload)
         : input.payload;
+  const payload = await applyFinishDefaults(db, profiled, { kind: input.kind, recipeRef, idempotencyKey: input.idempotency_key });
   const payloadHash = await canonicalPayloadHash(input.kind, payload);
 
   const existing = await db
@@ -310,7 +314,6 @@ export async function createRequest(
     .first<RequestRow>();
   if (existing) return replayOrConflict(existing, input.kind, payloadHash);
 
-  const recipeRef = input.recipe_ref ?? options.defaultRecipeRef ?? 'production';
   if (options.checkPatches) {
     await assertPatchGrammar(db, recipeRef, options.checkPatches.patches, options.checkPatches.basePath);
   }

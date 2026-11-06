@@ -729,7 +729,9 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'recipes). An explicit null keeps its own meaning rather than falling back to a default. Fields: ' +
         'keep_scene (keep background/scene), ' +
         'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
-        'or a #RRGGBB color; null delivers transparent unless transparent is false), ' +
+        'or a #RRGGBB color, or "random": chimera picks one of the picture\'s recipe patterns when it creates the request, ' +
+        'from the idempotency_key so a resend picks the same, and the request keeps the picked name; ' +
+        'null delivers transparent unless transparent is false), ' +
         'transparent (true is the explicit form of an alpha-cut delivery with no backdrop; false keeps a backdrop even ' +
         'when backdrop is null), ' +
         'outlines (array of up to 6 {color: "#rrggbb", width: percent of the long side, 0 < width <= 5}, innermost first; ' +
@@ -902,10 +904,10 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "id or short_id, usually uploaded on /photos) the card goes into the photo: place is [x, y] where the middle of its " +
         'bottom edge goes (default [0.5, 0.95], y up to 1.5 crops the feet) and height its share of the photo height ' +
         '(0.05-1.5, default 0.7); the output has the photo\'s size. Without photo it stays at its canvas on backdrop (a ' +
-        "list_catalog backdrops pattern name or #RRGGBB, default the deliver default) with a drop shadow thrown away from " +
+        "list_catalog backdrops pattern name or #RRGGBB, or \"random\" for one of the picture's recipe patterns picked from the idempotency_key when the request is created, so a resend picks the same; default the deliver default) with a drop shadow thrown away from " +
         'shadow_from (n/ne/e/se/s/sw/w/nw; null for none; omitted takes the delivery\'s own light, else the scene\'s), tinted to ' +
         'light ({scene: "sunset" | "moon", from?}; omitted inherits the nearest light redraw in the lineage, null for none) as a ' +
-        'delivery in that scene. frame ({box: [x0, y0, x1, y1] as fractions of the picture\'s canvas, sides?: {top, right, bottom, left: "cut" | "out" | "behind"}, line?: {color?, width?} | null, rim?: {color?, width?} | null (a dark edge on both sides of the line, on by default), paper?, canvas? ([x0, y0, x1, y1], each a fraction or null; a null edge is automatic), expand? (boolean or {top?, right?, bottom?, left?: boolean}; a false side keeps the automatic canvas within the delivered picture on that side), strokes?}) puts the figure in a box of the backdrop: a "cut" side crops the figure at the box edge an "out" side lets it pop out over the frame, and a "behind" side lets it pass under the frame band (default top out, others cut); strokes erase or restore the figure with a brush. frame belongs to the backdrop set and is not for photo. ' +
+        'delivery in that scene. frame ({box: [x0, y0, x1, y1] as fractions of the picture\'s canvas, sides?: {top, right, bottom, left: "cut" | "out" | "behind"}, line?: {color?, width?} | null, rim?: {color?, width?} | null (a dark edge on both sides of the line, on by default), paper?, canvas? ([x0, y0, x1, y1], each a fraction or null; a null edge is automatic), expand? (boolean or {top?, right?, bottom?, left?: boolean}; a false side keeps the automatic canvas within the delivered picture on that side), strokes?}) puts the figure in a box of the backdrop: a "cut" side crops the figure at the box edge an "out" side lets it pop out over the frame, and a "behind" side lets it pass under the frame band (default top out, others cut); strokes erase or restore the figure with a brush. frame "default" is the WebUI workbench\'s framed default (box [0.05, 0.05, 0.95, 0.95], all four sides out, line / rim / paper from the catalog); backdrop "random" with frame "default" and shadow_from omitted is a random pattern, framed, with a shadow. frame belongs to the backdrop set and is not for photo. ' +
         'The two sets do not mix. ' +
         'The output is a delivered picture that refines the source. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },

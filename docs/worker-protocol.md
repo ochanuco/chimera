@@ -614,7 +614,7 @@ chimera の WebUI フォームのプリセットもここから取っていま�
   -------------- --------------------------------------------------------------------------
   keep_scene     bool（背景・景色を残す）
   transparent    null \| bool（`true` は背景なしで切り抜いた透過納品の明示形。`false` は `backdrop` が null でも背景を敷く）
-  backdrop       null \| string（catalog `backdrops` の模様名か `#RRGGBB`。`null` は透過納品、ただし `transparent: false` なら除く。既定 `"dots"`）
+  backdrop       null \| string（catalog `backdrops` の模様名か `#RRGGBB`、または `"random"`（下の「柄のランダム」）。`null` は透過納品、ただし `transparent: false` なら除く。既定 `"dots"`）
   outlines       null \| [{color: "#rrggbb", width}]（フチのリスト、内側から外側へ 0〜6 本。`width` は長辺に対する %で 0 < width <= 5。省略または `null` は catalog の `recipes[].deliver.outlines.default`、`[]` はフチなし）
   stroke_light   null \| "even" \| "n".."nw"（一番外のフチの陰影。`"even"`（`null` も同じ）は一定の太さ、8 方位はフチを光源側で細く影側で太くし落ち影も付ける。陰影と押し出しは一番外のフチにかかり、落ち影も一番外のフチの外形に沿う。既定 `"n"`。`"none"` は 400 で、フチなしは `outlines: []`）
   see_through    null \| number（1〜5、既定 1。green key の上に描かれた透け衣装越しに背景が透ける量を何倍にするか。合成にだけ効き、保存する `alpha` は変えない）
@@ -844,10 +844,27 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
   photo          写真の Generation（UUID / short_id）。あれば写真に置く
   place          photo のときだけ。[x, y]（photo kind と同じ）。省略は [0.5, 0.95]
   height         photo のときだけ。0.05〜1.5（photo kind と同じ）。省略は 0.7
-  backdrop       photo が無いときだけ。背景の柄の名前（catalog の `backdrops`）か "#RRGGBB"。省略は deliver の既定
+  backdrop       photo が無いときだけ。背景の柄の名前（catalog の `backdrops`）か "#RRGGBB"、または "random"（下の「柄のランダム」）。省略は deliver の既定
   shadow_from    photo が無いときだけ。"n" … "nw" \| null。影を落とす光の向き。null は影なし、省略は透過納品の光の向き（無ければシーンの光の向き）
   light          photo が無いときだけ。{scene: "sunset" \| "moon", from?} \| null。背景を染めるシーン。省略は系譜の最も近い light redraw を引き継ぎ、null はなし
-  frame          photo が無いときだけ。キャラを背景の箱に入れる指定（下の「frame」）。省略は箱なし
+  frame          photo が無いときだけ。キャラを背景の箱に入れる指定（下の「frame」）か "default"（下の「既定の枠」）。省略は箱なし
+
+#### 柄のランダム
+
+deliver と stage の `backdrop` に `"random"` を書くと、chimera が Request を作るときに、絵の recipe の柄
+（catalog の `recipes[].deliver.backdrops`、無ければトップレベルの `backdrops`。仕上げ元を raw の Generation までさかのぼった
+recipe で引く）から 1 つを選んで置き換えます。保存される payload と worker が読む payload には選んだ柄の名前だけが残り、
+`"random"` は残りません。柄は `idempotency_key` の SHA-256 から選ぶので、同じキーの再送は同じ柄になり、既存の行がそのまま返ります
+（その間に catalog の柄の並びが変わったときだけ、別の柄になって 409 になりえます）。deliver profile の本文に `"random"` があれば、
+profile を展開した後に置き換えます。柄を公開していない catalog では 400 です。
+
+#### 既定の枠
+
+stage の `frame` に `"default"` を書くと、chimera が Request を作るときに、ワークベンチの 4 背景の`枠あり`と同じ既定の枠
+`{"box": [0.05, 0.05, 0.95, 0.95], "sides": {"top": "out", "right": "out", "bottom": "out", "left": "out"}}`
+（`src/lib/request-rules.ts` の `DEFAULT_STAGE_FRAME`）に置き換えます。線・縁・紙・余白は書かないので、下の「frame」のとおり
+worker が catalog の `stage.frame` の既定で埋めます。影は `shadow_from` を省略すれば納品の光の向き（無ければシーンの光の向き）から付くので、
+`{"backdrop": "random", "frame": "default"}` で「柄はランダム・枠あり・影あり」になります。
 
 #### frame
 

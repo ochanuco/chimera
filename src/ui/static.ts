@@ -1,6 +1,8 @@
 // Static CSS/JS served by src/routes/assets.ts. Kept as plain strings (no
 // bundler asset pipeline) per the "no external CDN" constraint in docs/ui.md.
 
+import { DEFAULT_STAGE_FRAME } from '../lib/request-rules';
+
 export const styleCss = `
 :root {
   color-scheme: dark;
@@ -5296,8 +5298,8 @@ export const appJs = `
 
     var WB_SCENE_LABELS = { sunset: '夕日', moon: '月明かり' };
 
-    // 4 背景の既定の枠。座標は納品キャンバスに対する分数。
-    var WB_FRAME_BOX = [0.05, 0.05, 0.95, 0.95];
+    // 4 背景の既定の枠。MCP の frame: "default" と同じ定義 (lib/request-rules.ts の DEFAULT_STAGE_FRAME)。
+    var WB_DEFAULT_FRAME = ${JSON.stringify(DEFAULT_STAGE_FRAME)};
 
     // The light scene a picture was drawn or delivered in: the nearest light redraw (or a deliver's own light) up its lineage.
     function sceneOf(node) {
@@ -5899,7 +5901,7 @@ export const appJs = `
         var backdropOptions = deliverOptionsFrom(form, false);
         if (!backdropOptions) return null;
         var stageOptions = { backdrop: backdropOptions.backdrop };
-        if (wb.framed) stageOptions.frame = { box: WB_FRAME_BOX.slice(), sides: { top: 'out', right: 'out', bottom: 'out', left: 'out' } };
+        if (wb.framed) stageOptions.frame = JSON.parse(JSON.stringify(WB_DEFAULT_FRAME));
         var sceneOn = qs('input[name="wb_stage_scene"]', form).checked;
         if (!wb.shadow) stageOptions.shadow_from = null;
         else {
