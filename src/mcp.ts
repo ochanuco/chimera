@@ -177,6 +177,17 @@ function promptPartGuidance(identityOverrideField: string): string {
   );
 }
 
+// 絵を描いて渡すときの規定の流れ。WebUI ワークベンチのフェーズ順（描き直し › 彩度 › フチ › 背景）と同じ。
+// instructions と redraw / saturation / deliver / stage の tool 説明で同じ文を出し、どの client も同じ所まで仕上げる。
+const STANDARD_FINISH_GUIDANCE =
+  'Standard flow for a picture someone asked for (the WebUI workbench order 描き直し › 彩度 › フチ › 背景; follow it unless ' +
+  'the user asks for something else): (a) draw drafts (create_request generate / derive_request / plain_render at the draft ' +
+  'canvas) and show them; (b) on the one the user picks, redraw_generation method hires 2048; (c) saturation_generation on ' +
+  'that output; (d) deliver_generation on the saturation output with backdrop null (transparent) — the outlines; (e) ' +
+  'stage_generation on the delivery with frame "default" and a backdrop (a pattern name or "random") — the framed backdrop. ' +
+  'The stage output is the finished picture; a deliver output alone has outlines but no framed backdrop. lighting / dof / ' +
+  'lens / photo are extras only when asked. ';
+
 /**
  * Server-level guidance in the initialize response: tool descriptions alone leave the client to guess the order
  * of operations, so a client seeing only a rating=good Generation re-invents a pose that already exists in the catalog.
@@ -216,12 +227,13 @@ const MCP_INSTRUCTIONS =
   '(描き直し › 彩度 › フチ): saturation_generation on the raw or redrawn picture cuts the figure out with no outline and ' +
   'compresses it, and deliver_generation on that output draws the outlines at that strength, compressing nothing again. ' +
   'Without that step deliver compresses the figure itself (option saturation, default 1).\n' +
-  '8. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
+  '8. ' + STANDARD_FINISH_GUIDANCE + '\n' +
+  '9. To compare variants, call create_experiment once per instruction: one arm per variant plus the control as an arm ' +
   'without patches, all sharing the same seeds. The experiment page shows every generation as a matrix: arms as rows, seeds as columns. ' +
   TEMPORARY_RECORDS_NOTE + '\n' +
-  '9. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
+  '10. To try one patch set on every pinned pose, call sweep_patch: one Run per pose at that pose\'s pin seed, no control (the pin is the baseline). ' +
   'Open the returned check_url to see each result next to its pin.\n' +
-  '10. The tools that queue one request (create_request, derive_request, plain_render and the *_generation tools) wait up to 30 s ' +
+  '11. The tools that queue one request (create_request, derive_request, plain_render and the *_generation tools) wait up to 30 s ' +
   'and return `settled.outcome`: failed (read request.error, fix the input and queue again under a new idempotency_key), ' +
   'submitted (ComfyUI accepted the graph), done, cancelled, or pending (the worker has not reacted yet; follow it with get_request).';
 
@@ -685,6 +697,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.redraw_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Step (b) of the standard flow (server instructions step 8: drafts › hires › saturation › deliver transparent › stage with frame "default"). ' +
         'Enqueue a redraw request (docs/worker-protocol.md "redraw"): the worker redraws the source picture at a larger ' +
         'size. Its output Generations record ' +
         'the source Generation as the one they refine (refines_generation). generation_id accepts a short_id. ' +
@@ -716,6 +729,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.deliver_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Step (d) of the standard flow (server instructions step 8: drafts › hires › saturation › deliver transparent › stage with frame "default"); a delivery is not finished until it is staged. ' +
         'Enqueue a deliver request (docs/worker-protocol.md "deliver"): cuts the figure out of the source picture and ' +
         'finishes it — backdrop, outlines and relight — without redrawing it. Its output ' +
         'Generations record the source Generation as the one they refine (refines_generation). generation_id accepts a ' +
@@ -898,6 +912,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.stage_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Step (e), the last one, of the standard flow (server instructions step 8: drafts › hires › saturation › deliver transparent › stage with frame "default"). ' +
         'Enqueue a stage request (docs/worker-protocol.md "stage"): set a delivered picture\'s figure and outline layers on a ' +
         'backdrop of their own, unblurred, keeping the layers for lighting_generation and dof_generation after. generation_id ' +
         'accepts a short_id and takes a deliver output with layer assets, usually a transparent one. With photo (a Generation ' +
@@ -938,6 +953,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       outputSchema: mcpOutputs.saturation_generation,
       description:
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Step (c) of the standard flow (server instructions step 8: drafts › hires › saturation › deliver transparent › stage with frame "default"). ' +
         'Enqueue a saturation request (docs/worker-protocol.md "saturation"). strength is 0-1 (default 1, the ' +
         'catalog\'s saturation.strength): how far the original saturation is blended toward the compressed one. generation_id ' +
         'accepts a short_id. On a raw or redrawn picture (the WebUI workbench\'s 2 彩度, before 3 フチ) it cuts the figure out ' +

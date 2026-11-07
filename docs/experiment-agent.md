@@ -288,6 +288,8 @@ options は REST の payload と同じ zod スキーマで検証します。
 どれも出力は source Generation を仕上げ元（`refines_generation_id`）とする Generation として記録されます。
 options の語彙と既定値は [worker-protocol.md](worker-protocol.md) の「[redraw](worker-protocol.md#redraw)」「[deliver](worker-protocol.md#deliver)」節が正本です。
 
+頼まれた絵を描いて渡すときの規定の流れは、WebUI ワークベンチのフェーズ順（描き直し › 彩度 › フチ › 背景）と同じです。下書きを描いて見せる → 選ばれた絵を `redraw_generation`（hires 2048）→ `saturation_generation` → `deliver_generation`（`backdrop: null` の透過、フチ）→ `stage_generation`（`frame: "default"` と柄の背景、枠）。stage の出力が仕上がりで、deliver の出力はフチだけで枠付きの背景を持ちません。lighting / dof / lens / photo は頼まれたときだけ足します。この流れは MCP の instructions（手順 8）と、redraw / saturation / deliver / stage の tool 説明にも出します。他の agent が MCP の説明だけで同じ所まで仕上げられるようにするためです。
+
 `redraw_generation` は同じ seed で大きく描き直します。受ける method は `hires` だけで、長辺を `hires`（64 以上の整数、必須。ワークベンチは 2048 / 2560 / 3072）で渡します。`denoise` は省略すると 0.45 です。
 入力は Anima の generate の出力だけで、納品済みの絵は受けません。
 

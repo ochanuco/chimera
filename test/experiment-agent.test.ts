@@ -223,6 +223,9 @@ describe('MCP server at /mcp', () => {
     for (const tool of ['list_catalog', 'plain_render', 'get_catalog_pose', 'derive_request', 'prompt.positive.<part>']) {
       expect(instructions).toContain(tool);
     }
+    // Standard finishing flow: drafts › hires › saturation › deliver transparent › stage with a frame.
+    expect(instructions).toContain('Standard flow');
+    expect(instructions).toContain('frame "default"');
 
     const list = await mcpCall<{ tools: { name: string }[] }>('tools/list', {});
     expect(list.status).toBe(200);
