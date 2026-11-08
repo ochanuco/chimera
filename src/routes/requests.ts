@@ -16,7 +16,8 @@ import { createJobSchema } from '../schemas/jobs';
 import { buildRequestJobs, createRequestJob, putResolution } from '../lib/request-resolution';
 import { notifyHub, notifyHubWorkerSeen, runInBackground } from '../lib/hub-notify';
 import { viewerWs } from './worker-hub';
-import { deleteSettledReferenceImages, referenceImageKey } from '../lib/reference-images';
+import { deleteSettledReferenceImages, putReferenceSafety, referenceImageKey, referenceVerdict } from '../lib/reference-images';
+import { putSafetySchema } from '../schemas/safety';
 import { getWorkerHubStub } from '../worker-hub';
 import { serializeRequest } from '../lib/serialize';
 import { nowIso, parsePagination } from '../lib/db';
@@ -87,7 +88,7 @@ requests.post('/claim', async (c) => {
       Promise.all(requeued.map((r) => notifyHub(env, r.status === 'failed' ? 'status' : 'queued', r))),
     ),
   );
-  await deleteSettledReferenceImages(env.IMAGES, requeued);
+  await deleteSettledReferenceImages(env.DB, env.IMAGES, requeued);
   if (row) runInBackground(c, notifyHub(c.env, 'status', row));
   if (!row) return c.body(null, 204);
   return c.json(serializeRequest(row), 200);
@@ -149,7 +150,7 @@ requests.patch('/:id', async (c) => {
   const db = c.env.DB;
   const row = await getRequestOr404(db, c.req.param('id'));
   const updated = await updateRequest(db, row, body);
-  await deleteSettledReferenceImages(c.env.IMAGES, [updated]);
+  await deleteSettledReferenceImages(c.env.DB, c.env.IMAGES, [updated]);
   if (updated.status === 'done' || updated.status === 'failed' || updated.status === 'cancelled') {
     runInBackground(c, notifyHub(c.env, 'status', updated));
   }
@@ -163,6 +164,16 @@ requests.get('/:id/reference-image', async (c) => {
   const object = await c.env.IMAGES.get(referenceImageKey(row.id));
   if (!object) throw notFound('reference image');
   return c.body(object.body, 200, { 'Content-Type': object.httpMetadata?.contentType ?? 'application/octet-stream' });
+});
+
+/** worker が解析した参考画像の判定（WD tagger の生スコア）を置く。読めない判定ならその場で画像を消す。 */
+requests.put('/:id/reference-safety', async (c) => {
+  const body = parseOrThrow(putSafetySchema, await c.req.json());
+  const row = await getRequestOr404(c.env.DB, c.req.param('id'));
+  if (row.kind !== 'reference') throw notFound('reference request');
+  const { row: safety, kept } = await putReferenceSafety(c.env.DB, c.env.IMAGES, row.id, body);
+  const { verdict, reasons } = referenceVerdict(safety);
+  return c.json({ model: safety.model, verdict, reasons, rated_at: safety.rated_at, kept });
 });
 
 /** worker が使い終えた参考画像を消す。冪等で、画像が無くても 204。 */

@@ -165,9 +165,11 @@ request を終えるため、生成元の request が `done` / `failed` / `cance
 過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
 
 `references/{request_id}` は例外で、消すための一時領域です。kind `reference` の Request の参考画像を
-`POST /api/v1/references` が置き（D1 INSERT → R2 PUT の順）、worker が読み終えたら消します。chimera も
-その Request が done / failed / cancelled になった時点で消し（retry で queued に戻るときは残す）、
-cron trigger `0 * * * *` の `scheduled` ハンドラが置かれてから 24 時間を過ぎたものを消します
+`POST /api/v1/references` が置き（D1 INSERT → R2 PUT の順）、worker が解析の後に内容の判定（WD tagger、
+`reference_safety`）を送ります。判定が sensitive / block ならその時点で消し、判定を送れなかった worker は自分で消します。
+chimera もその Request が done / failed / cancelled になった時点で消します（retry で queued に戻るときは残す）。
+ただし done で判定が none / caution のものは、agent が解析の失敗を確かめられるよう残し、MCP `get_reference_image` で
+読めます。cron trigger `0 * * * *` の `scheduled` ハンドラが、置かれてから 24 時間を過ぎたものをどれも消します
 （`src/lib/reference-images.ts`）。参考画像は Generation にならず、画像そのものもハッシュも D1 に残しません
 （[worker-protocol.md「reference」](worker-protocol.md#reference)）。
 

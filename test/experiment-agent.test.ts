@@ -240,6 +240,7 @@ describe('MCP server at /mcp', () => {
         'create_run',
         'get_run',
         'get_generation_image',
+        'get_reference_image',
         'attach_generation',
         'set_evaluation',
         'set_decision',

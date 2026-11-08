@@ -503,6 +503,7 @@ export async function clearGenerationData(): Promise<void> {
     env.DB.prepare('DELETE FROM preset_references'),
     env.DB.prepare('DELETE FROM presets'),
     env.DB.prepare('DELETE FROM request_references'),
+    env.DB.prepare('DELETE FROM reference_safety'),
     env.DB.prepare('DELETE FROM node_timings'),
     env.DB.prepare('DELETE FROM prompt_timings'),
     env.DB.prepare('DELETE FROM request_attempt_timings'),
@@ -520,6 +521,7 @@ export async function clearRequests(): Promise<void> {
     env.DB.prepare('DELETE FROM node_timings WHERE prompt_timing_id IN (SELECT id FROM prompt_timings WHERE request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations))'),
     env.DB.prepare('DELETE FROM prompt_timings WHERE request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
     env.DB.prepare('DELETE FROM request_attempt_timings WHERE request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
+    env.DB.prepare('DELETE FROM reference_safety'),
     env.DB.prepare('DELETE FROM request_references WHERE target_request_id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
     env.DB.prepare('DELETE FROM requests WHERE id NOT IN (SELECT request_id FROM comfy_jobs UNION SELECT request_id FROM generations)'),
   ]);
