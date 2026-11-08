@@ -40,6 +40,8 @@ import { withDraftCanvas } from './lib/draft-canvas';
 import { createObservation, getObservation, listObservations } from './lib/observations';
 import { TEMPORARY_RECORD_RETENTION_DAYS } from './lib/temporary-records';
 import { createPublication, serializePublication } from './lib/publications';
+import { getReferenceSafety, isReadableReference, referenceImageKey, referenceVerdict } from './lib/reference-images';
+import { getReferenceByIdOrShortId } from './lib/reference-renders';
 import { computeSafetyVerdict, getSafetyForGeneration, publishWarningFor, type SafetyRating } from './lib/safety';
 import { getGpuStatus } from './lib/gpu-wake';
 import { notifyHub, type Waitable } from './lib/hub-notify';
@@ -59,6 +61,7 @@ import {
   generationLineageInputSchema,
   getCatalogPoseInputSchema,
   getGenerationImageInputSchema,
+  getReferenceImageInputSchema,
   getGenerationInputSchema,
   getPresetInputSchema,
   getRequestInputSchema,
@@ -113,8 +116,24 @@ type Declared<T> = T extends readonly (infer U)[]
     ? { [K in keyof T as string extends K ? never : K]: Declared<T[K]> }
     : T;
 
+/** MCP で返す画像を JPEG に縮める。変換に失敗したら元のまま返す（呼び手が大きさで判断する）。 */
+async function downscaleForInline(env: Bindings, object: R2ObjectBody, width: number | undefined): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  // transform 用と失敗時フォールバック用に body を分ける（成功すればフォールバック側は読まれず捨てられる）。
+  const [forTransform, forFallback] = object.body.tee();
+  try {
+    const result = await env.IMAGE_TRANSFORM.input(forTransform)
+      .transform({ width: clampImageWidth(width), background: JPEG_FLATTEN_BACKGROUND })
+      .output({ format: 'image/jpeg', quality: 72 });
+    return { bytes: new Uint8Array(await result.response().arrayBuffer()), mimeType: 'image/jpeg' };
+  } catch {
+    // 変換失敗（壊れた画像、binding 未提供など）でも tool call 自体は失敗させない。
+    return { bytes: new Uint8Array(await new Response(forFallback).arrayBuffer()), mimeType: object.httpMetadata?.contentType ?? 'image/png' };
+  }
+}
+
 /** get_generation_image だけは image block を返すため jsonResult を通らず、structuredContent を直に組む。 */
 type ImageResult = Declared<StandardSchemaV1.InferOutput<typeof mcpOutputs.get_generation_image>>;
+type ReferenceImageResult = Declared<StandardSchemaV1.InferOutput<typeof mcpOutputs.get_reference_image>>;
 
 // content と structuredContent の両方を返す: outputSchema 宣言時は structuredContent が無いと SDK が
 // ProtocolError にし、outputSchema 未対応の client のため text も要る（MCP SEP-2106 §4.3）。
@@ -575,23 +594,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       const object = await bucket.get(sourceKey);
       if (!object) throw notFound('image');
 
-      // transform 用と失敗時フォールバック用に body を分ける（成功すればフォールバック側は読まれず捨てられる）。
-      const [forTransform, forFallback] = object.body.tee();
-
-      let bytes: Uint8Array;
-      let mimeType: string;
-      try {
-        const result = await env.IMAGE_TRANSFORM.input(forTransform)
-          .transform({ width: clampImageWidth(width), background: JPEG_FLATTEN_BACKGROUND })
-          .output({ format: 'image/jpeg', quality: 72 });
-        bytes = new Uint8Array(await result.response().arrayBuffer());
-        mimeType = 'image/jpeg';
-      } catch {
-        // 変換失敗（壊れた画像、binding 未提供など）でも tool call 自体は失敗させない。
-        // 元画像がキャップ内に収まればそのまま返し、収まらなければポインタに落とす。
-        bytes = new Uint8Array(await new Response(forFallback).arrayBuffer());
-        mimeType = object.httpMetadata?.contentType ?? 'image/png';
-      }
+      const { bytes, mimeType } = await downscaleForInline(env, object, width);
 
       if (bytes.length > MAX_RETURNED_IMAGE_BYTES) {
         return pointer(`image is ${bytes.length} bytes, over the ${MAX_RETURNED_IMAGE_BYTES} byte inline limit.`);
@@ -608,6 +611,54 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           reason: null,
           verdict,
         } satisfies ImageResult,
+      };
+    },
+  );
+
+  server.registerTool(
+    'get_reference_image',
+    {
+      outputSchema: mcpOutputs.get_reference_image,
+      description:
+        'Fetch the uploaded picture of a reference (the /references analysis input) by short_id (or id), downscaled to JPEG ' +
+        'like get_generation_image (width 256-1024, default 768). A reference picture is normally deleted right after the ' +
+        "worker analyses it; it is kept for 24 hours after upload only when the worker's content rating of it (WD tagger, " +
+        'same thresholds as get_generation_image) is none or caution. Otherwise (sensitive, block, not rated, already deleted ' +
+        'or not analysed yet) no image is returned, only the reason. Use it to check why an analysis (pose, cut-out, hair ' +
+        'mask) went wrong; never repost the picture.',
+      inputSchema: getReferenceImageInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async ({ reference, width }) => {
+      const row = await getReferenceByIdOrShortId(db, reference);
+      const safety = await getReferenceSafety(db, row.id);
+      const verdict = safety ? referenceVerdict(safety).verdict : null;
+      const shortId = row.short_id ?? row.id;
+      const canonicalUrl = `${origin}/references/${shortId}`;
+      const base = { short_id: shortId, canonical_url: canonicalUrl, status: row.status, verdict };
+      const pointer = (reason: string) => ({
+        content: [{ type: 'text' as const, text: `${reason} See ${canonicalUrl}` }],
+        structuredContent: { ...base, inlined: false, mime_type: null, reason } satisfies ReferenceImageResult,
+      });
+      const gone = 'the picture is gone (kept pictures are deleted 24 hours after upload).';
+      if (row.status !== 'done') return pointer(`reference is ${row.status}; only an analysed (done) reference can be read.`);
+      if (verdict === null) return pointer('the picture was not content-rated, so it was not kept.');
+      if (!isReadableReference(safety)) return pointer(`content-rating verdict is ${verdict}; the picture was deleted.`);
+      const key = referenceImageKey(row.id);
+      const head = await bucket.head(key);
+      if (!head) return pointer(gone);
+      if (head.size > MAX_TRANSFORM_INPUT_BYTES) {
+        return pointer(`image is ${head.size} bytes, over the ${MAX_TRANSFORM_INPUT_BYTES} byte transform input limit.`);
+      }
+      const object = await bucket.get(key);
+      if (!object) return pointer(gone);
+      const { bytes, mimeType } = await downscaleForInline(env, object, width);
+      if (bytes.length > MAX_RETURNED_IMAGE_BYTES) {
+        return pointer(`image is ${bytes.length} bytes, over the ${MAX_RETURNED_IMAGE_BYTES} byte inline limit.`);
+      }
+      return {
+        content: [{ type: 'image' as const, data: toBase64(bytes), mimeType }],
+        structuredContent: { ...base, inlined: true, mime_type: mimeType, reason: null } satisfies ReferenceImageResult,
       };
     },
   );

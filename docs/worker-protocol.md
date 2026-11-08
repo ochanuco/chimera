@@ -319,6 +319,18 @@ worker が参考画像を読み、使い終えたら消すための口です。G
 画像が無ければ（消した後・置く前）404 です。DELETE は冪等で、画像が無くても 204 です。
 Request が無いときと、`kind` が reference でないときはどちらも 404 です。
 
+### Reference Safety
+
+``` text
+PUT /api/v1/requests/{id}/reference-safety
+```
+
+worker が解析した参考画像の内容の判定を置きます。本文は Generation の Safety と同じ `{model, rating, tags}`（WD tagger の
+生スコア）で、判定の閾値も同じです（`src/lib/safety.ts`）。判定が none / caution なら画像は残り、done になっても
+24 時間の cron まで消えません（MCP `get_reference_image` で読めます）。sensitive / block ならこの PUT で画像を消します。
+応答は `{model, verdict, reasons, rated_at, kept}` で、`kept` は画像が残っているかです。再 PUT は上書きします。
+本文が不正なら 400、Request が無いときと `kind` が reference でないときは 404 です。
+
 ### Create Reference Render
 
 ``` text
@@ -1013,13 +1025,15 @@ worker は claim した reference を次の順に処理します。
 
 1. 参考画像を [Reference Image](#reference-image) の GET で読む
 2. タグに読み替え、候補を組む
-3. 参考画像を DELETE する。失敗して retry に回すときは消さない
+3. 参考画像を WD tagger に掛け、[Reference Safety](#reference-safety) に PUT する。判定できない・PUT が失敗したときは
+   参考画像を DELETE する。解析に失敗して retry に回すときはどちらもしない
 4. reference を done にする
 
 chimera も reference の Request が done / failed / cancelled になった時点で参考画像を消します。PATCH の done / failed / cancelled、
 release で `attempt >= max_attempts` になった failed、heartbeat 途絶で failed になった行（claim の直前と WorkerHub の alarm）の
-全てが対象で、queued に戻る遷移では消しません。どの経路でも消し損ねたものは、置かれてから 24 時間を過ぎると
-cron（1 時間ごと）が消します（[architecture.md「R2」](architecture.md#r2)）。参考画像は解析の後に残らないので、再解析はできません。
+全てが対象で、queued に戻る遷移では消しません。done で判定が none / caution の参考画像だけは消さずに残します。
+どの経路でも残ったものは、置かれてから 24 時間を過ぎると cron（1 時間ごと）が消します（[architecture.md「R2」](architecture.md#r2)）。
+参考画像は長くても 24 時間しか残らないので、再解析はできません。
 
 done の `result` は次の形です。`generation_ids` は常に空です。
 

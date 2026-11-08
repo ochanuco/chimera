@@ -134,6 +134,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / judgments / pose_reference / refines_generation / assets 込み） |
 | `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
 | `get_generation_image` | `short_id, width?, asset?` | 読み取り | 縮小した JPEG 画像。cutout があれば既定でそちら（透過は薄い灰色に敷く）。載らなければ canonical URL |
+| `get_reference_image` | `reference, width?` | 読み取り | 参考画像（/references の解析の入力）を縮小した JPEG。判定が none / caution で、上げてから 24 時間以内の done だけ。それ以外は理由だけ |
 | `list_catalog` | `recipe_ref?` | 読み取り | 公開済み recipe catalog の要約（既定 `"production"`） |
 | `get_catalog_pose` | `recipe, pose, recipe_ref?` | 読み取り | 単一 pose のフルレコードと現行の pin |
 | `get_gpu_status` | なし | 読み取り | GPU 機の電源状態（wol API の `GET /status`）。取れなければ `state: null` と `error` |

@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import worker from '../src/index';
 import { referenceImageKey } from '../src/lib/reference-images';
-import { clearRequests, postJson, req, TINY_PNG } from './helpers';
+import { clearRequests, mcpToolCall, postJson, req, TINY_PNG } from './helpers';
 
 beforeEach(async () => {
   await clearRequests();
@@ -207,5 +207,93 @@ describe('scheduled sweep', () => {
     expect(await stored(body.id)).toBeNull();
     expect(await env.IMAGES.head(original)).not.toBeNull();
     await env.IMAGES.delete(original);
+  });
+});
+
+const SAFE = { model: 'wd', rating: { general: 0.9, sensitive: 0.1, questionable: 0.01, explicit: 0 }, tags: { thighs: 0.6 } };
+const CAUTION = { ...SAFE, tags: { ass: 0.7 } };
+const SENSITIVE = { ...SAFE, rating: { general: 0.4, sensitive: 0.4, questionable: 0.3, explicit: 0.01 } };
+const BLOCK = { ...SAFE, tags: { nipples: 0.5 } };
+
+function rate(id: string, body: unknown) {
+  return postJson<{ verdict: string; kept: boolean }>(`/api/v1/requests/${id}/reference-safety`, body, 'PUT');
+}
+
+async function analysedWith(rating: unknown) {
+  const { body } = await upload({});
+  await claim();
+  const rated = await rate(body.id, rating);
+  await patch(body.id, { status: 'done', worker_id: 'w', result: { generation_ids: [] } });
+  return { body, rated };
+}
+
+describe('PUT /api/v1/requests/{id}/reference-safety', () => {
+  it.each([
+    ['none', SAFE],
+    ['caution', CAUTION],
+  ])('keeps a %s picture past done', async (verdict, rating) => {
+    const { body, rated } = await analysedWith(rating);
+    expect(rated.status).toBe(200);
+    expect(rated.body).toMatchObject({ verdict, kept: true });
+    expect(await stored(body.id)).not.toBeNull();
+  });
+
+  it.each([
+    ['sensitive', SENSITIVE],
+    ['block', BLOCK],
+  ])('deletes a %s picture at once', async (verdict, rating) => {
+    const { body } = await upload({});
+    await claim();
+    const rated = await rate(body.id, rating);
+    expect(rated.body).toMatchObject({ verdict, kept: false });
+    expect(await stored(body.id)).toBeNull();
+  });
+
+  it('still deletes a readable picture when the reference fails', async () => {
+    const { body } = await upload({});
+    await claim();
+    await rate(body.id, SAFE);
+    await patch(body.id, { status: 'failed', worker_id: 'w', error: 'x' });
+    expect(await stored(body.id)).toBeNull();
+  });
+
+  it('rejects a bad body and a request of another kind', async () => {
+    const { body } = await upload({});
+    expect((await rate(body.id, { model: 'wd' })).status).toBe(400);
+    const generate = await postJson<RequestBody>('/api/v1/requests', {
+      kind: 'generate',
+      payload: { schema_version: 1, request: {}, generation: { recipe: 'yukari' } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'brain',
+    });
+    expect((await rate(generate.body.id, SAFE)).status).toBe(404);
+  });
+});
+
+describe('MCP get_reference_image', () => {
+  it('returns a kept picture as an image block', async () => {
+    const { body } = await analysedWith(SAFE);
+    const { result, isError } = await mcpToolCall('get_reference_image', { reference: body.short_id });
+    expect(isError).toBe(false);
+    expect(result?.content?.[0]?.type).toBe('image');
+    expect(result?.structuredContent).toMatchObject({ short_id: body.short_id, inlined: true, verdict: 'none' });
+  });
+
+  it('returns only the reason for a sensitive, unrated, or unanalysed picture', async () => {
+    const sensitive = await analysedWith(SENSITIVE);
+    const unrated = await upload({});
+    await claim();
+    await patch(unrated.body.id, { status: 'done', worker_id: 'w', result: { generation_ids: [] } });
+    const queued = await upload({});
+    for (const [id, reason] of [
+      [sensitive.body.short_id, 'verdict is sensitive'],
+      [unrated.body.short_id, 'not content-rated'],
+      [queued.body.short_id, 'reference is queued'],
+    ]) {
+      const { result, text, isError } = await mcpToolCall('get_reference_image', { reference: id });
+      expect(isError).toBe(false);
+      expect(result?.content?.[0]?.type).toBe('text');
+      expect(text).toContain(reason);
+    }
   });
 });

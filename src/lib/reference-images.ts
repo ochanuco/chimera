@@ -1,5 +1,7 @@
 // 参考画像（kind reference の入力）の R2 一時領域 `references/{request_id}`。Generation の original と違い、使い終わったら消す。
 
+import { nowIso } from './db';
+import { computeSafetyVerdict, type SafetyRating, type SafetyVerdict, type SafetyVerdictResult } from './safety';
 import type { RequestKind, RequestStatus } from '../types';
 
 export const REFERENCE_IMAGE_PREFIX = 'references/';
@@ -23,14 +25,77 @@ export function sniffReferenceImageType(bytes: Uint8Array): (typeof REFERENCE_IM
   return null;
 }
 
-/** done / failed / cancelled になった reference の参考画像を消す。queued に戻った行（retry）は残す。 */
+/**
+ * 判定がこのどれかの参考画像だけ、解析の後も 24 時間の掃除まで残し、agent（MCP get_reference_image）が読める。
+ * sensitive / block と未判定は残さない（持ち主の決定、2026-11-08）。
+ */
+export const READABLE_REFERENCE_VERDICTS: readonly SafetyVerdict[] = ['none', 'caution'];
+
+export interface ReferenceSafetyRow {
+  request_id: string;
+  model: string;
+  rating_json: string;
+  tags_json: string;
+  rated_at: string;
+}
+
+export function referenceVerdict(row: ReferenceSafetyRow): SafetyVerdictResult {
+  return computeSafetyVerdict(JSON.parse(row.rating_json) as SafetyRating, JSON.parse(row.tags_json) as Record<string, number>);
+}
+
+export async function getReferenceSafety(db: D1Database, requestId: string): Promise<ReferenceSafetyRow | null> {
+  return db.prepare('SELECT * FROM reference_safety WHERE request_id = ?').bind(requestId).first<ReferenceSafetyRow>();
+}
+
+/** 判定が残してよいものか。未判定は false。 */
+export function isReadableReference(row: ReferenceSafetyRow | null): boolean {
+  return row !== null && READABLE_REFERENCE_VERDICTS.includes(referenceVerdict(row).verdict);
+}
+
+/** worker が送った参考画像の判定を保存し、残してよくなければその場で画像を消す。 */
+export async function putReferenceSafety(
+  db: D1Database,
+  bucket: R2Bucket,
+  requestId: string,
+  input: { model: string; rating: SafetyRating; tags: Record<string, number> },
+): Promise<{ row: ReferenceSafetyRow; kept: boolean }> {
+  const row: ReferenceSafetyRow = {
+    request_id: requestId,
+    model: input.model,
+    rating_json: JSON.stringify(input.rating),
+    tags_json: JSON.stringify(input.tags),
+    rated_at: nowIso(),
+  };
+  await db
+    .prepare(
+      `INSERT INTO reference_safety (request_id, model, rating_json, tags_json, rated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(request_id) DO UPDATE SET model = excluded.model, rating_json = excluded.rating_json,
+         tags_json = excluded.tags_json, rated_at = excluded.rated_at`,
+    )
+    .bind(row.request_id, row.model, row.rating_json, row.tags_json, row.rated_at)
+    .run();
+  const kept = isReadableReference(row) && (await bucket.head(referenceImageKey(requestId))) !== null;
+  if (!isReadableReference(row)) await bucket.delete(referenceImageKey(requestId));
+  return { row, kept };
+}
+
+/**
+ * done / failed / cancelled になった reference の参考画像を消す。queued に戻った行（retry）は残す。
+ * done で判定が読めるもの（READABLE_REFERENCE_VERDICTS）は 24 時間の掃除まで残す。
+ */
 export async function deleteSettledReferenceImages(
+  db: D1Database,
   bucket: R2Bucket,
   rows: readonly { id: string; kind: RequestKind; status: RequestStatus }[],
 ): Promise<void> {
-  const keys = rows
-    .filter((r) => r.kind === 'reference' && (r.status === 'done' || r.status === 'failed' || r.status === 'cancelled'))
-    .map((r) => referenceImageKey(r.id));
+  const settled = rows.filter(
+    (r) => r.kind === 'reference' && (r.status === 'done' || r.status === 'failed' || r.status === 'cancelled'),
+  );
+  const keys: string[] = [];
+  for (const r of settled) {
+    if (r.status === 'done' && isReadableReference(await getReferenceSafety(db, r.id))) continue;
+    keys.push(referenceImageKey(r.id));
+  }
   if (keys.length > 0) await bucket.delete(keys);
 }
 

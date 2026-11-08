@@ -267,6 +267,18 @@ export const mcpOutputs = {
     verdict: z.enum(['block', 'sensitive', 'caution', 'none']).nullable(),
   }),
 
+  // get_generation_image と同じく、画像は content の image ブロック。structuredContent は返せたかと理由だけ。
+  get_reference_image: z.looseObject({
+    short_id: z.string(),
+    canonical_url: z.string(),
+    status: z.string(),
+    inlined: z.boolean(),
+    mime_type: z.string().nullable(),
+    reason: z.string().nullable(),
+    // 未判定は null。
+    verdict: z.enum(['block', 'sensitive', 'caution', 'none']).nullable(),
+  }),
+
   attach_generation: runSchema,
   set_evaluation: runSchema,
   set_decision: runSchema,
