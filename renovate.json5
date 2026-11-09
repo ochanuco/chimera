@@ -2,4 +2,11 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   // 共通設定と自動マージは ochanuco/.github の preset（README を参照）
   extends: ['github>ochanuco/.github', 'github>ochanuco/.github:automerge'],
+  packageRules: [
+    {
+      description: 'typescript-api は scripts/check-zod-boundary.mjs が JS のコンパイラ API を使うための別名。TypeScript 7 は JS から API を出さないので 6.x までに留める',
+      matchPackageNames: ['typescript-api'],
+      allowedVersions: '<7',
+    },
+  ],
 }
