@@ -189,8 +189,8 @@ importers:
         specifier: ~7.0.0
         version: 7.0.2
       typescript-api:
-        specifier: npm:typescript@~5.9.3
-        version: typescript@5.9.3
+        specifier: npm:typescript@~6.0.3
+        version: typescript@6.0.3
       vitest:
         specifier: ^5.0.0
         version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(vite@8.2.2(@types/node@26.6.6)(esbuild@0.28.2)(yaml@2.9.0))
@@ -1418,8 +1418,8 @@ packages:
   tslib@2.9.1:
     resolution: {integrity: sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -2498,7 +2498,7 @@ snapshots:
   tslib@2.9.1:
     optional: true
 
-  typescript@5.9.3: {}
+  typescript@6.0.3: {}
 
   typescript@7.0.2:
     optionalDependencies:
