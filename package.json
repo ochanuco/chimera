@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit && pnpm run check:boundary",
     "check:boundary": "node scripts/check-zod-boundary.mjs",
-    "test": "vitest run",
+    "test": "vitest run && pnpm run test:scripts",
+    "test:scripts": "node --test scripts/d1-guard-test.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

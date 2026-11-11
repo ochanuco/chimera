@@ -3,8 +3,8 @@
 //   node scripts/d1-guard.mjs before --driver <wrangler|cf> --db <name|id> --dir <migrations> --state <file>
 //   node scripts/d1-guard.mjs after --state <file>
 // before: 未適用の migration があれば、Time Travel の bookmark と各テーブルの行数を state に残し、復元コマンドを Job Summary に出す。
-// after: 行数を取り直し、行が減ったテーブルがあれば失敗する（deploy は Worker を出す前に止まる）。
-// 行を消す migration は、本文に `-- deploy: allow-row-loss <table>` と書いて減るテーブルを宣言する。
+// after: 行数を取り直し、行が減ったテーブルか、行が入ったまま消えたテーブル（DROP や改名）があれば失敗する（deploy は Worker を出す前に止まる）。
+// 行を消す migration は、本文に `-- deploy: allow-row-loss <table>` と書いて、減るテーブルや消えるテーブルを宣言する。
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -114,18 +114,20 @@ if (command === 'before') {
   const changes = Object.entries(state.before)
     .filter(([t]) => t in after && after[t] !== state.before[t])
     .map(([t, n]) => ({ t, before: n, after: after[t], lost: after[t] < n && !allowed.has(t) }));
-  const dropped = Object.keys(state.before).filter((t) => !(t in after));
-  const lost = changes.filter((c) => c.lost);
+  const dropped = Object.keys(state.before)
+    .filter((t) => !(t in after))
+    .map((t) => ({ t, before: state.before[t], lost: state.before[t] > 0 && !allowed.has(t) }));
+  const lost = [...changes, ...dropped].filter((c) => c.lost);
   summary([
     '',
     changes.length + dropped.length === 0 ? '行数の変わったテーブルは無い。' : '| テーブル | 前 | 後 |\n|---|---:|---:|',
     ...changes.map((c) => `| ${c.lost ? '⚠️ ' : ''}${c.t} | ${c.before} | ${c.after} |`),
-    ...dropped.map((t) => `| ${t}（消えた） | ${state.before[t]} | - |`),
+    ...dropped.map((c) => `| ${c.lost ? '⚠️ ' : ''}${c.t}（消えた） | ${c.before} | - |`),
   ]);
   if (lost.length > 0) {
     summary([
       '',
-      `**行が減った: ${lost.map((c) => c.t).join(', ')}。Worker は出さずに止める。** 意図した削除なら migration に \`-- deploy: allow-row-loss <table>\` を書く。`,
+      `**行が減った（消えたテーブルを含む）: ${lost.map((c) => c.t).join(', ')}。Worker は出さずに止める。** 意図した削除や改名なら migration に \`-- deploy: allow-row-loss <table>\` を書く。`,
       '戻すときは:',
       '',
       '```sh',
