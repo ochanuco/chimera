@@ -273,18 +273,16 @@ function TrailForm({ data }: { data: WorkbenchData }) {
             </button>
           ))}
         </div>
+        <button type="button" class="wb-pill" data-wb-trail-mirror>
+          左右反転
+        </button>
         <div class="wb-trail-fronts">
           {[0, 1, 2, 3].map((i) => (
             <div class="wb-trail-front">
               <span class="wb-trail-no">{i + 1}</span>
-              <div class="wb-pills" role="group" aria-label={`点 ${i + 1}`}>
-                <button type="button" class="wb-pill" data-wb-trail-front={String(i)} data-value="front">
-                  前
-                </button>
-                <button type="button" class="wb-pill" data-wb-trail-front={String(i)} data-value="back">
-                  裏
-                </button>
-              </div>
+              <button type="button" class="wb-pill" data-wb-trail-front={String(i)} aria-pressed="false" aria-label={`点 ${i + 1} を前に出す`}>
+                裏
+              </button>
             </div>
           ))}
         </div>
