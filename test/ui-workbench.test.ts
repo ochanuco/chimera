@@ -314,7 +314,7 @@ describe('GET /work/:shortId', () => {
     for (const rule of ['both', 'split', 'start']) expect(form).toContain(`data-wb-trail-rule="${rule}"`);
     for (const head of ['light', 'sparkle']) expect(form).toContain(`data-wb-trail-head="${head}"`);
     expect(form).toContain('name="wb_trail_width" min="1" max="15" step="0.5" value="5"');
-    expect(form).toContain('name="wb_trail_color" value="#6f5c78"');
+    expect(form).toContain('name="wb_trail_color" value="#6f5c78" data-wb-trail-color-default="#6f5c78"');
     expect(form).toContain('name="wb_trail_head_at_end" checked');
     expect(form).toContain('name="wb_trail_in_frame" checked');
     const initial = /data-initial="([^"]*)"/.exec(html)?.[1]?.replaceAll('&quot;', '"') ?? '';

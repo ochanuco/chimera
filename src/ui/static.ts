@@ -6097,7 +6097,7 @@ export const appJs = `
         return { kind: 'stage', options: stageOptions };
       }
       if (k === 5) {
-        return {
+        var trailRun = {
           kind: 'trail',
           options: {
             template: wb.trail.template,
@@ -6106,12 +6106,15 @@ export const appJs = `
             path: wb.trail.path,
             rule: wb.trail.rule,
             width: rangeValue('wb_trail_width'),
-            color: qs('input[name="wb_trail_color"]', form).value,
             head: wb.trail.head,
             head_at_end: qs('input[name="wb_trail_head_at_end"]', form).checked,
             in_frame: qs('input[name="wb_trail_in_frame"]', form).checked,
           },
         };
+        // Without a recipe colour the worker picks it, unless the user changed the swatch.
+        var colorInput = qs('input[name="wb_trail_color"]', form);
+        if (colorInput.getAttribute('data-wb-trail-color-default') || colorInput.hasAttribute('data-wb-touched')) trailRun.options.color = colorInput.value;
+        return trailRun;
       }
       if (k === 6) {
         var lightingOptions = { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null };
@@ -6436,6 +6439,7 @@ export const appJs = `
       if (input.name === 'wb_saturation_strength') qs('[data-wb-saturation-readout]', root).textContent = input.value;
       if (input.name === 'wb_lighting_strength') qs('[data-wb-lighting-readout]', root).textContent = input.value;
       if (input.name === 'wb_trail_width') qs('[data-wb-trail-width-readout]', root).textContent = input.value;
+      if (input.name === 'wb_trail_color') input.setAttribute('data-wb-touched', '');
       if (/^wb_dof_(tilt|nearer|bokeh)$/.test(input.name)) qs('[data-wb-dof-readout="' + input.name.slice(7) + '"]', root).textContent = input.value;
     });
 
@@ -6487,12 +6491,22 @@ export const appJs = `
       updateOverlays();
     });
 
+    // The click that ends a drag over a tile in 「全部並べる」 must not pick that tile.
+    var trailDragEnded = false;
     root.addEventListener('pointerup', function (ev) {
       if (!trailDrag) return;
       trailDrag = null;
+      trailDragEnded = true;
+      setTimeout(function () { trailDragEnded = false; }, 0);
       ev.stopImmediatePropagation();
       updateOverlays();
     });
+    root.addEventListener('click', function (ev) {
+      if (!trailDragEnded) return;
+      trailDragEnded = false;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
 
     root.addEventListener('pointercancel', function () {
       trailDrag = null;

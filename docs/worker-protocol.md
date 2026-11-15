@@ -734,7 +734,7 @@ worker が作って元絵に付けます（`cut` asset と同じ仕組み）。�
 `"both"` は重ねない画像と重ねた画像の 2 枚（`-dof` と `-viewfinder`）を出します。
 
 入力にできるのは層 asset を持つ deliver の出力と、[saturation](#saturation)・[stage](#stage)・[trail](#trail)・[lighting](#lighting) の出力、切り抜き済みの描き直しの出力です。切り抜き済みの描き直しには、その redraw 自身の `depth` を使います。層の無い古い納品の絵、
-dof の出力、それ以外は worker が `failed` にします（納品し直す）。trail の出力（lighting を挟んでも）は `layer-front` をキャラの上に重ねてからぼかします。stage で写真に置いた絵（trail や lighting を挟んでも）は
+dof の出力、それ以外は worker が `failed` にします（納品し直す）。trail の出力（lighting を挟んでも）は `layer-front` をキャラの上に重ねます。stage で写真に置いた絵（trail や lighting を挟んでも）は
 [photo](#photo) と同じく写真の奥行きでぼかし、板の位置と高さは stage の `place` / `height` を使います。そのときだけ
 `stand_at` / `nearer` / `tilt` / `bokeh` / `focal_length`（意味と既定は photo と同じ）を受け、`scope` は使いません。それ以外の絵にこの 5 つを
 付けると worker が `failed` にします。柄の stage は納品の元絵の奥行きを使います。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation

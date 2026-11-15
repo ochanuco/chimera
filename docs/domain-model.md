@@ -800,6 +800,7 @@ cutout          cut: true の redraw の出力に付く表示用の切り抜き�
 layer-figure    deliver の出力に付く人物の層（RGBA、alpha は切り抜き）。出力と同じ寸法
 layer-outline   deliver の出力に付くフチと落ち影の層（RGBA。何も無ければ全透明）
 layer-backdrop  deliver の出力に付く背景の層（RGB。透過納品では付けない）
+layer-front     trail の出力（と、それを照らした lighting の出力）に付く、キャラの上に重ねる軌跡の層（RGBA）
 cut             alpha / depth をどう作ったかの json（モデル名・revision・
                 trimap の幅など）。alpha / depth と一緒に付く
 meta

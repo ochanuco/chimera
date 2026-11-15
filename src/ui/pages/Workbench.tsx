@@ -313,7 +313,7 @@ function TrailForm({ data }: { data: WorkbenchData }) {
         </label>
         <label class="wb-field">
           色
-          <input type="color" name="wb_trail_color" value={data.trailColor ?? '#ffffff'} />
+          <input type="color" name="wb_trail_color" value={data.trailColor ?? '#ffffff'} data-wb-trail-color-default={data.trailColor ?? ''} />
         </label>
         <div class="wb-field">
           先端

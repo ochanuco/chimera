@@ -312,6 +312,31 @@ describe('Recipe Catalog base_pose', () => {
   });
 });
 
+describe('Recipe Catalog trail', () => {
+  it('passes the top-level trail section and each recipe trail colour through the summary and list_catalog', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const trail = {
+      templates: [{ name: 'tsu', label: 'つ', points: [[0.2, 0.2], [0.8, 0.3], [0.7, 0.8], [0.3, 0.9]], front: [false, false, true, true] }],
+      default_template: 'tsu',
+      paths: ['curve', 'line'],
+      rules: ['both', 'split', 'start'],
+      heads: ['light', 'sparkle'],
+      width: { min: 1, max: 15, default: 5 },
+      point_range: [-1, 2],
+    };
+    const doc = { schema_version: 3, recipes: [{ name: 'yukari', poses: [], trail: { color: '#6f5c78' } }], patches: {}, trail };
+    const put = await postJson<{ trail?: unknown; recipes: { name: string; trail?: unknown }[] }>(`/api/v1/catalogs/${recipeRef}`, doc, 'PUT');
+    expect(put.status).toBe(200);
+    expect(put.body.trail).toEqual(trail);
+    expect(put.body.recipes[0]?.trail).toEqual({ color: '#6f5c78' });
+
+    const tool = await mcpToolCall<{ trail?: unknown; recipes: { name: string; trail?: unknown }[] }>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.trail).toEqual(trail);
+    expect(tool.data?.recipes[0]?.trail).toEqual({ color: '#6f5c78' });
+  });
+});
+
 describe('Recipe Catalog backdrops', () => {
   it('PUT summary lists backdrops as name/label only, no thumbnail bytes', async () => {
     const recipeRef = uniqueRecipeRef();
