@@ -1686,6 +1686,7 @@ details.section .section-body { margin-top: 0.6rem; }
 }
 .wb-loupe-pixel { image-rendering: pixelated; }
 .wb-loupe-cross { position: absolute; inset: 0; }
+.wb-loupe-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .wb-loupe-cross::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-loupe-cross::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-focus { z-index: 1; }
@@ -5569,6 +5570,7 @@ export const appJs = `
       overlay.style.height = box[3] + 'px';
       overlay.hidden = false;
       scheduleLoupes();
+      if (wb.onLayout) wb.onLayout();
     }
 
     // Fills a pane with the image of a Generation (or a placeholder for a pending one). role: 'input' | 'cmp'.
@@ -5661,9 +5663,33 @@ export const appJs = `
         loupe.hidden = !(show && !overlay.hidden && img && width > 0 && height > 0);
         if (loupe.hidden) return;
         var l = wbLoupeLayout(wb.cursor, { width: width, height: height }, wb.loupe.zoom, 280);
-        var src = (img.currentSrc || img.src).replace(/"/g, '%22');
-        var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
-        loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
+        // A live preview canvas drawn over the image (5 軌跡) is what the loupe magnifies while it is shown.
+        var preview = qs('.wb-trail-preview', overlay);
+        var loupeCanvas = qs('.wb-loupe-canvas', loupe);
+        if (preview && !preview.hidden && preview.width > 0) {
+          if (!loupeCanvas) {
+            loupeCanvas = document.createElement('canvas');
+            loupeCanvas.className = 'wb-loupe-canvas';
+            loupe.insertBefore(loupeCanvas, loupe.firstChild);
+          }
+          var dpr = window.devicePixelRatio || 1;
+          var side = Math.max(1, Math.round(l.size * dpr));
+          if (loupeCanvas.width !== side) loupeCanvas.width = side;
+          if (loupeCanvas.height !== side) loupeCanvas.height = side;
+          var lctx = loupeCanvas.getContext('2d');
+          lctx.setTransform(1, 0, 0, 1, 0, 0);
+          lctx.clearRect(0, 0, side, side);
+          lctx.imageSmoothingEnabled = wb.loupe.zoom < 5;
+          lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          lctx.drawImage(preview, l.bgX, l.bgY, l.bgW, l.bgH);
+          loupeCanvas.hidden = false;
+          loupe.style.background = 'var(--bg-elevated)';
+        } else {
+          if (loupeCanvas) loupeCanvas.hidden = true;
+          var src = (img.currentSrc || img.src).replace(/"/g, '%22');
+          var layers = 'url("' + src + '") ' + l.bgX + 'px ' + l.bgY + 'px / ' + l.bgW + 'px ' + l.bgH + 'px no-repeat, ';
+          loupe.style.background = layers + (pane.classList.contains('wb-checker') ? 'var(--checker)' : 'var(--bg-elevated)');
+        }
         loupe.classList.toggle('wb-loupe-pixel', wb.loupe.zoom >= 5);
         loupe.style.left = l.left + 'px';
         loupe.style.top = l.top + 'px';
@@ -5786,6 +5812,15 @@ export const appJs = `
       trailSeed: Math.floor(Math.random() * 2147483648),
     };
     var trailCatalog = initial.trail || null;
+    // A pane laid out after its image loads shows its overlay only then: draw the markers and the preview on it without waiting for the pointer.
+    var overlaysFrame = 0;
+    wb.onLayout = function () {
+      if (overlaysFrame) return;
+      overlaysFrame = requestAnimationFrame(function () {
+        overlaysFrame = 0;
+        updateOverlays();
+      });
+    };
     var viewer = wbViewer(root, wb);
     var fillPane = viewer.fillPane;
     var imagePanes = viewer.imagePanes;
@@ -6096,6 +6131,7 @@ export const appJs = `
         var drawn = wbTrailPlan(spec, H, W, trailLayers.light);
         wbTrailComposite(canvas, layers, drawn, o.in_frame ? trailLayers.frame : null, Math.min(1, 1024 / Math.max(W, H)));
         canvas.hidden = false;
+        scheduleLoupes();
       } catch (e) {
         canvas.hidden = true;
       }

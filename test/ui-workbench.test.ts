@@ -434,6 +434,16 @@ describe('GET /work/:shortId', () => {
     expect(appJs).toContain("'/api/v1/generations/' + encodeURIComponent(node.id) + '/context'");
   });
 
+  it('draws the overlays once a pane is laid out, and the loupe magnifies the trail preview while it is shown', () => {
+    const layout = appJs.slice(appJs.indexOf('    function layoutPane(pane) {'), appJs.indexOf('    // Fills a pane with the image'));
+    expect(layout).toContain('if (wb.onLayout) wb.onLayout();');
+    expect(appJs).toContain('wb.onLayout = function () {');
+    const loupes = appJs.slice(appJs.indexOf('    function updateLoupes() {'), appJs.indexOf('    function renderLoupeControls() {'));
+    expect(loupes).toContain("var preview = qs('.wb-trail-preview', overlay);");
+    expect(loupes).toContain('lctx.drawImage(preview, l.bgX, l.bgY, l.bgW, l.bgH);');
+    expect(loupes).toContain("var src = (img.currentSrc || img.src)");
+  });
+
   it('picks the random backdrop among the non-night patterns only', async () => {
     const recipe = `wb-night-${crypto.randomUUID()}`;
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
