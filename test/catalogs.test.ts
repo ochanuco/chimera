@@ -322,8 +322,8 @@ describe('Recipe Catalog backdrops', () => {
     );
     expect(res.status).toBe(200);
     expect(res.body.backdrops).toEqual([
-      { name: 'stripes', label: '斜めストライプ' },
-      { name: 'dots', label: '水玉' },
+      { name: 'stripes', label: '斜めストライプ', night: false },
+      { name: 'dots', label: '水玉', night: false },
     ]);
     expect(JSON.stringify(res.body)).not.toContain(TINY_PNG_BASE64);
   });
@@ -344,8 +344,8 @@ describe('Recipe Catalog backdrops', () => {
     );
     const item = list.body.items.find((i) => i.recipe_ref === recipeRef);
     expect(item?.backdrops).toEqual([
-      { name: 'stripes', label: '斜めストライプ' },
-      { name: 'dots', label: '水玉' },
+      { name: 'stripes', label: '斜めストライプ', night: false },
+      { name: 'dots', label: '水玉', night: false },
     ]);
   });
 
@@ -366,8 +366,8 @@ describe('Recipe Catalog backdrops', () => {
     const tool = await mcpToolCall<{ backdrops?: { name: string; label: string }[] }>('list_catalog', { recipe_ref: recipeRef });
     expect(tool.isError).toBe(false);
     expect(tool.data?.backdrops).toEqual([
-      { name: 'stripes', label: '斜めストライプ' },
-      { name: 'dots', label: '水玉' },
+      { name: 'stripes', label: '斜めストライプ', night: false },
+      { name: 'dots', label: '水玉', night: false },
     ]);
     expect(JSON.stringify(tool.data)).not.toContain(TINY_PNG_BASE64);
   });
@@ -417,7 +417,7 @@ describe('Recipe Catalog backdrops', () => {
     expect((await req(`/api/v1/catalogs/${recipeRef}/backdrops/dots.png?recipe=akari`)).status).toBe(404);
 
     const tool = await mcpToolCall<{ recipes: { name: string; deliver?: { backdrops?: unknown } }[] }>('list_catalog', { recipe_ref: recipeRef });
-    expect(tool.data?.recipes.find((r) => r.name === 'akari')?.deliver?.backdrops).toEqual([{ name: 'stripes', label: '斜めストライプ' }]);
+    expect(tool.data?.recipes.find((r) => r.name === 'akari')?.deliver?.backdrops).toEqual([{ name: 'stripes', label: '斜めストライプ', night: false }]);
     expect(JSON.stringify(tool.data)).not.toContain(OTHER_PNG_BASE64);
   });
 

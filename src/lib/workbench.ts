@@ -9,7 +9,7 @@ import type { GenerationRow, RequestKind, RequestStatus } from '../types';
 
 const MAX_ROOT_HOPS = 100;
 
-/** redraw（canvas / hires / light）= 1 描き直し、saturation = 2 彩度、deliver = 3 フチ、stage = 4 背景、lighting = 5 光、dof = 6 ボケ。
+/** redraw（canvas / hires / light）= 1 描き直し、saturation = 2 彩度、deliver = 3 フチ、stage = 4 背景、trail = 5 軌跡、lighting = 6 光、dof = 7 ボケ。
  * saturation が 2 なのは入力が描いた絵（納品前）のときだけで、納品の絵に重ねた saturation は null。
  * 作成できなくなった repair / masked_redraw の既存の行は、描き直しの候補として 1 に置く。それ以外は null。 */
 export function workbenchPhase(kind: string, method: string | null, sourceDelivered = false): number | null {
@@ -18,8 +18,9 @@ export function workbenchPhase(kind: string, method: string | null, sourceDelive
   if (kind === 'saturation') return sourceDelivered ? null : 2;
   if (kind === 'deliver') return 3;
   if (kind === 'stage') return 4;
-  if (kind === 'lighting') return 5;
-  if (kind === 'dof') return 6;
+  if (kind === 'trail') return 5;
+  if (kind === 'lighting') return 6;
+  if (kind === 'dof') return 7;
   return null;
 }
 
@@ -152,7 +153,7 @@ export async function buildWorkbenchTree(db: D1Database, root: GenerationRow): P
   const pendingRows = await db
     .prepare(
       `SELECT id, kind, status, payload_json, created_at FROM requests
-       WHERE kind IN ('redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'lighting', 'saturation')
+       WHERE kind IN ('redraw', 'repair', 'masked_redraw', 'deliver', 'dof', 'lens', 'photo', 'stage', 'trail', 'lighting', 'saturation')
          AND status IN ('queued', 'running')
          AND json_extract(payload_json, '$.generation_id') IN (SELECT value FROM json_each(?))
        ORDER BY created_at ASC, id ASC`,

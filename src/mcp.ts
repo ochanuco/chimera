@@ -69,6 +69,7 @@ import {
   idInputSchema,
   lensGenerationInputSchema,
   lightingGenerationInputSchema,
+  trailGenerationInputSchema,
   saturationGenerationInputSchema,
   listCatalogInputSchema,
   listExperimentsInputSchema,
@@ -204,7 +205,7 @@ const STANDARD_FINISH_GUIDANCE =
   'canvas) and show them; (b) on the one the user picks, redraw_generation method hires 2048; (c) saturation_generation on ' +
   'that output; (d) deliver_generation on the saturation output with backdrop null (transparent) — the outlines; (e) ' +
   'stage_generation on the delivery with frame "default" and a backdrop (a pattern name or "random") — the framed backdrop. ' +
-  'The stage output is the finished picture; a deliver output alone has outlines but no framed backdrop. lighting / dof / ' +
+  'The stage output is the finished picture; a deliver output alone has outlines but no framed backdrop. trail / lighting / dof / ' +
   'lens / photo are extras only when asked. ';
 
 /**
@@ -241,8 +242,8 @@ const MCP_INSTRUCTIONS =
   'saturation compressed, then backdrop and a list of outlines in exactly their given colours) and, if wanted, blur the delivered picture with dof_generation (depth of field) and then bend it ' +
   'with lens_generation (fisheye / inverse fisheye). Blur first: dof refuses a lens picture. To shoot a delivered ' +
   'picture like an acrylic stand on location, stand it in an uploaded photo with photo_generation, or step by step: ' +
-  'deliver transparent, stage_generation (a backdrop pattern or a photo), lighting_generation (light it by the ' +
-  'backdrop), then dof_generation. The saturation can be its own step before the outlines, as the WebUI workbench does it ' +
+  'deliver transparent, stage_generation (a backdrop pattern or a photo), trail_generation (a light trail around the figure, ' +
+  'optional), lighting_generation (light it by the backdrop), then dof_generation. The saturation can be its own step before the outlines, as the WebUI workbench does it ' +
   '(描き直し › 彩度 › フチ): saturation_generation on the raw or redrawn picture cuts the figure out with no outline and ' +
   'compresses it, and deliver_generation on that output draws the outlines at that strength, compressing nothing again. ' +
   'Without that step deliver compresses the figure itself (option saturation, default 1).\n' +
@@ -721,8 +722,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Enqueue a requests row for the worker (docs/worker-protocol.md). kind is "generate" (a request.json v1 payload, ' +
         'schema_version/request/generation required), "redraw" (payload {generation_id, options}; options is ' +
         '{method: "hires", hires, denoise?, cut?}; hires (long side in px, >= 64) is required), "deliver" (payload {generation_id, options?, profile?}), "dof" ' +
-        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "saturation" (payload {generation_id, options?: {strength?}}), "reference" (payload {recipe, seed?}; its image is only uploaded by POST /api/v1/references, so a reference row made here has no image and fails). "finalize", "repair" and "masked_redraw" can no longer ' +
-        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / lighting_generation / saturation_generation are the same requests with a typed input. created_by is ' +
+        '(payload {generation_id, options: {focus, ...}}), "lens" (payload {generation_id, options?: {center?, strength?, shape?, radius?}}), "photo" (payload {generation_id, options: {photo, ...}}), "stage" (payload {generation_id, options?: {photo?, place?, height?, backdrop?, shadow_from?, frame?, light?}}), "trail" (payload {generation_id, options?: {template?, points?, front?, path?, rule?, width?, color?, head?, head_at_end?, in_frame?, seed?}}), "lighting" (payload {generation_id, options?: {direction?, strength?, scene?}}), "saturation" (payload {generation_id, options?: {strength?}}), "reference" (payload {recipe, seed?}; its image is only uploaded by POST /api/v1/references, so a reference row made here has no image and fails). "finalize", "repair" and "masked_redraw" can no longer ' +
+        'be created. redraw_generation / deliver_generation / dof_generation / lens_generation / photo_generation / stage_generation / trail_generation / lighting_generation / saturation_generation are the same requests with a typed input. created_by is ' +
         'forced to "mcp". ' +
         promptPartGuidance('generation.identity_override (a non-empty string) of the generate payload') +
         DRAFT_CANVAS_GUIDANCE +
@@ -794,7 +795,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'recipes). An explicit null keeps its own meaning rather than falling back to a default. Fields: ' +
         'keep_scene (keep background/scene), ' +
         'backdrop (a pattern name — list_catalog\'s top-level backdrops lists what\'s published, e.g. "stripes" — ' +
-        'or a #RRGGBB color, or "random": chimera picks one of the picture\'s recipe patterns when it creates the request, ' +
+        'or a #RRGGBB color, or "random": chimera picks one of the picture\'s recipe patterns, night ones (night: true) excepted, when it creates the request, ' +
         'from the idempotency_key so a resend picks the same, and the request keeps the picked name; ' +
         'null delivers transparent unless transparent is false), ' +
         'transparent (true is the explicit form of an alpha-cut delivery with no backdrop; false keeps a backdrop even ' +
@@ -847,7 +848,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'the layers to blur (default all true, not all false). viewfinder: "off" (default), "on" draws a mirrorless ' +
         'viewfinder overlay (rule-of-thirds grid, a focus frame at focus, a shutter/F-number/ISO bar), "both" outputs the ' +
         'plain image and the overlaid one as two Generations. The output is a delivered picture that refines the source. ' +
-        'A stage or lighting output is blurred too: a picture set in a photo blurs by the photo\'s depth like photo_generation, ' +
+        'A stage, trail or lighting output is blurred too (a trail\'s front part stays over the figure): a picture set in a photo blurs by the photo\'s depth like photo_generation, ' +
         'taking stand_at / nearer / tilt / bokeh / focal_length (same meanings and defaults; refused on other pictures) instead of scope. ' +
         "list_catalog's top-level dof section publishes the F-number range and defaults. Follow status with get_request.",
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -965,12 +966,12 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
         'Step (e), the last one, of the standard flow (server instructions step 8: drafts › hires › saturation › deliver transparent › stage with frame "default"). ' +
         'Enqueue a stage request (docs/worker-protocol.md "stage"): set a delivered picture\'s figure and outline layers on a ' +
-        'backdrop of their own, unblurred, keeping the layers for lighting_generation and dof_generation after. generation_id ' +
+        'backdrop of their own, unblurred, keeping the layers for trail_generation, lighting_generation and dof_generation after. generation_id ' +
         'accepts a short_id and takes a deliver output with layer assets, usually a transparent one. With photo (a Generation ' +
         "id or short_id, usually uploaded on /photos) the card goes into the photo: place is [x, y] where the middle of its " +
         'bottom edge goes (default [0.5, 0.95], y up to 1.5 crops the feet) and height its share of the photo height ' +
         '(0.05-1.5, default 0.7); the output has the photo\'s size. Without photo it stays at its canvas on backdrop (a ' +
-        "list_catalog backdrops pattern name or #RRGGBB, or \"random\" for one of the picture's recipe patterns picked from the idempotency_key when the request is created, so a resend picks the same; default the deliver default) with a drop shadow thrown away from " +
+        "list_catalog backdrops pattern name or #RRGGBB, or \"random\" for one of the picture's recipe patterns that is not a night one (night: true; those are named explicitly) picked from the idempotency_key when the request is created, so a resend picks the same; default the deliver default) with a drop shadow thrown away from " +
         'shadow_from (n/ne/e/se/s/sw/w/nw; null for none; omitted takes the delivery\'s own light, else the scene\'s), tinted to ' +
         'light ({scene: "sunset" | "moon", from?}; omitted inherits the nearest light redraw in the lineage, null for none) as a ' +
         'delivery in that scene. frame ({box: [x0, y0, x1, y1] as fractions of the picture\'s canvas, sides?: {top, right, bottom, left: "cut" | "out" | "behind"}, line?: {color?, width?} | null, rim?: {color?, width?} | null (a dark edge on both sides of the line, on by default), paper?, canvas? ([x0, y0, x1, y1], each a fraction or null; a null edge is automatic), expand? (boolean or {top?, right?, bottom?, left?: boolean}; a false side keeps the automatic canvas within the delivered picture on that side), strokes?}) puts the figure in a box of the backdrop: a "cut" side crops the figure at the box edge an "out" side lets it pop out over the frame, and a "behind" side lets it pass under the frame band (default top out, others cut); strokes erase or restore the figure with a brush. frame "default" is the WebUI workbench\'s framed default (box [0.05, 0.05, 0.95, 0.95], all four sides out, line / rim / paper from the catalog); backdrop "random" with frame "default" and shadow_from omitted is a random pattern, framed, with a shadow. frame belongs to the backdrop set and is not for photo. ' +
@@ -1011,7 +1012,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'transparent with no outline and compresses it exactly as deliver would; deliver_generation on the output then draws the ' +
         'outlines at that strength without compressing again (stage_generation / dof_generation may also take it as it is). ' +
         'On a deliver output with layer assets made with saturation 0 it compresses the figure and outline layers (outline colours ' +
-        'included; the backdrop passes through). A delivery whose deliver already compressed its figure and stage / lighting / dof / ' +
+        'included; the backdrop passes through). A delivery whose deliver already compressed its figure and stage / trail / lighting / dof / ' +
         'lens / photo / saturation outputs are refused. The output refines the source. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: saturationGenerationInputSchema,
@@ -1030,6 +1031,41 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
   );
 
   server.registerTool(
+    'trail_generation',
+    {
+      outputSchema: mcpOutputs.trail_generation,
+      description:
+        "Non-destructive: only appends one new queued draft row to the requests table for the worker to pick up. Never deletes, overwrites, publishes or sends anything. Idempotent by idempotency_key. " +
+        'Enqueue a trail request (docs/worker-protocol.md "trail"): draw a light trail that winds around the figure of a staged ' +
+        'picture. generation_id accepts a short_id and must be a stage output (the worker refuses anything else, a trail output ' +
+        "included). template names a shape from list_catalog's top-level trail.templates (default trail.default_template); " +
+        'points (4 [x, y], each -1 to 2 as fractions of the stage picture\'s width / height, so a point may sit outside it) and ' +
+        'front (4 booleans: whether each point is in front of the figure) override the template\'s. The parts in front cross ' +
+        'over the figure; the rest passes behind it, painted into the backdrop. path "curve" (default, a smooth curve through ' +
+        'the points) | "line"; rule decides which control segments are in front: "both" (default, only when both ends are front), ' +
+        '"split" (a segment whose ends differ switches at its middle), "start" (follows its start point). width is 1-15 (percent ' +
+        "of the picture's longest side, default 5); color #RRGGBB (default the recipe's trail.color in list_catalog); head " +
+        '"light" (default) | "sparkle"; head_at_end (default true) puts the head at the last point instead of the first; ' +
+        'in_frame (default true) keeps the back part inside the stage frame box when the stage has a frame; seed (0-2^31-1) is ' +
+        'picked and recorded by the worker when omitted. The output is a delivered picture that refines the source, with a ' +
+        'layer-front asset; lighting_generation and dof_generation may follow. Follow status with get_request.',
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: trailGenerationInputSchema,
+    },
+    async ({ generation_id, idempotency_key, ...rest }) => {
+      const generation = await resolveGenerationOr404(db, generation_id);
+      const options: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rest)) if (value !== undefined) options[key] = value;
+      const { row, created } = await createRequest(
+        db,
+        { kind: 'trail', payload: { generation_id: generation.short_id, options }, idempotency_key, created_by: 'mcp' },
+        { defaultRecipeRef: defaultRecipeRef(env) },
+      );
+      return jsonResult(mcpOutputs.trail_generation, await enqueued(row, created));
+    },
+  );
+
+  server.registerTool(
     'lighting_generation',
     {
       outputSchema: mcpOutputs.lighting_generation,
@@ -1039,8 +1075,8 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'backdrop so they stop floating: exposure and colour cast pulled toward the ambient around the card, and with ' +
         'direction (n/ne/e/se/s/sw/w/nw; null = none, default) shading from that side tinted by the backdrop\'s brightest light. ' +
         'strength is 0-1 (default 0.7). scene ("sunset" | "moon"; null = none, default) lights the figure as that scene\'s light ' +
-        'redraw does (direction default nw) and tints a pattern backdrop to it; a photo backdrop is never changed. generation_id accepts a short_id and takes a stage output (or a delivery with its ' +
-        'backdrop); a lighting output is refused (light the stage output again). The backdrop is unchanged. The output is a ' +
+        'redraw does (direction default nw) and tints a pattern backdrop to it; a photo backdrop is never changed. generation_id accepts a short_id and takes a stage output, a trail output or a delivery with its ' +
+        'backdrop; a lighting output is refused (light the stage output again). The backdrop is unchanged. The output is a ' +
         'delivered picture that refines the source; dof_generation may follow. Follow status with get_request.',
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: lightingGenerationInputSchema,
@@ -1110,7 +1146,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, ' +
         "derive_request) assumes you already have one. Filters mirror the gallery's own " +
         'filters (character, tag, rating, bookmark, model family, phase, created_at range) and combine freely; ' +
-        'model (anima / il / moss / unknown) and phase (generate, import, redraw, deliver, saturation, stage, lighting, dof, lens, photo) each take a list and match any of it; published=true is the ' +
+        'model (anima / il / moss / unknown) and phase (generate, import, redraw, deliver, saturation, stage, trail, lighting, dof, lens, photo) each take a list and match any of it; published=true is the ' +
         "delivered-look index — every look that was posted, each still carrying its look:<pose> tag; reference=true " +
         "is the pose basis-render index — every Generation currently pinned via set_pose_reference. rating is " +
         "written by the human only, never by an agent — read it as the human's verdict on the image, not something " +

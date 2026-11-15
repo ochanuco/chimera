@@ -20,7 +20,7 @@ export interface FinishDefaultsContext {
 }
 
 /**
- * `options.backdrop: "random"`（deliver / stage）を絵の recipe の柄の 1 つに、`options.frame: "default"`（stage）を
+ * `options.backdrop: "random"`（deliver / stage）を絵の recipe の夜でない柄の 1 つに、`options.frame: "default"`（stage）を
  * DEFAULT_STAGE_FRAME に置き換える。柄は idempotency_key のハッシュで選ぶので、同じキーの再送は同じ柄になり、既存行の再送として返る。
  * どちらの語も無ければ payload をそのまま返す。
  */
@@ -44,7 +44,7 @@ async function pickBackdrop(db: D1Database, generationId: unknown, context: Fini
   if (!generation) throw notFound('generation');
   const recipe = await rootRecipe(db, generation);
   const catalog = await getCatalog(db, context.recipeRef);
-  const names = catalog ? findBackdrops(catalog.doc, recipe).map((b) => b.name) : [];
+  const names = catalog ? findBackdrops(catalog.doc, recipe).filter((b) => !b.night).map((b) => b.name) : [];
   if (names.length === 0) {
     throw badRequest(`backdrop "random" needs backdrop patterns in catalog '${context.recipeRef}', and it publishes none`);
   }

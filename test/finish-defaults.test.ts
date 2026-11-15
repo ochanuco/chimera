@@ -13,11 +13,11 @@ async function putCatalog(recipeRef: string) {
     {
       schema_version: 1,
       recipes: [
-        { name: 'akari', poses: [], deliver: { backdrops: OWN.map((name) => ({ name, label: name, thumbnail: PNG })) } },
+        { name: 'akari', poses: [], deliver: { backdrops: [...OWN.map((name) => ({ name, label: name, thumbnail: PNG, night: false })), { name: 'sakura-night', label: 'sakura（夜）', thumbnail: PNG, night: true }] } },
         { name: 'plain', poses: [] },
       ],
       patches: {},
-      backdrops: SHARED.map((name) => ({ name, label: name, thumbnail: PNG })),
+      backdrops: [...SHARED.map((name) => ({ name, label: name, thumbnail: PNG })), { name: 'stripes-night', label: 'stripes（夜）', thumbnail: PNG, night: true }],
     },
     'PUT',
   );

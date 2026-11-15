@@ -8,6 +8,7 @@ export const PHASE_KINDS = {
   deliver: ['deliver'],
   saturation: ['saturation'],
   stage: ['stage'],
+  trail: ['trail'],
   lighting: ['lighting'],
   dof: ['dof'],
   lens: ['lens'],
@@ -26,6 +27,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
   deliver: 'フチ',
   saturation: '彩度',
   stage: '背景',
+  trail: '軌跡',
   lighting: '光',
   dof: 'ボケ',
   lens: 'レンズ',
@@ -33,7 +35,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
 };
 
 /** Gallery のフェーズボタンの並び。chain はワークベンチの順に › でつなぎ、extra は連鎖の外に置く。 */
-export const PHASE_CHAIN = ['generate', 'redraw', 'saturation', 'deliver', 'stage', 'lighting', 'dof'] as const satisfies readonly Phase[];
+export const PHASE_CHAIN = ['generate', 'redraw', 'saturation', 'deliver', 'stage', 'trail', 'lighting', 'dof'] as const satisfies readonly Phase[];
 export const PHASE_EXTRA = ['lens', 'photo', 'import'] as const satisfies readonly Phase[];
 
 export function isPhase(value: string): value is Phase {

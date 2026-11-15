@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGeneration, getJson, mcpToolCall } from './helpers';
+import { createGeneration, getJson, mcpToolCall, postJson } from './helpers';
 
 interface CreateRequestResult {
   created: boolean;
@@ -404,6 +404,64 @@ describe('MCP saturation_generation', () => {
       const rejected = await mcpToolCall('saturation_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
       expect(rejected.isError).toBe(true);
     }
+  });
+});
+
+describe('MCP trail_generation', () => {
+  it('queues a trail row with only the given options', async () => {
+    const { generation } = await createGeneration();
+    const options = {
+      template: 'tsu',
+      points: [[0.2, 0.1], [-0.5, 1.8], [2, -1], [0.5, 0.5]],
+      front: [false, false, true, true],
+      path: 'line',
+      rule: 'split',
+      width: 15,
+      color: '#6f5c78',
+      head: 'sparkle',
+      head_at_end: false,
+      in_frame: false,
+      seed: 2147483647,
+    };
+    const call = await mcpToolCall<CreateRequestResult>('trail_generation', { generation_id: generation.id, ...options, idempotency_key: crypto.randomUUID() });
+    expect(call.isError).toBe(false);
+    expect(call.data?.request.kind).toBe('trail');
+    expect(call.data?.request.payload).toEqual({ generation_id: generation.short_id, options });
+    const bare = await mcpToolCall<CreateRequestResult>('trail_generation', { generation_id: generation.id, idempotency_key: crypto.randomUUID() });
+    expect(bare.data?.request.payload).toEqual({ generation_id: generation.short_id, options: {} });
+  });
+
+  it.each([
+    ['a point below -1', { points: [[-1.01, 0], [0, 0], [0, 0], [0, 0]] }],
+    ['a point above 2', { points: [[0, 0], [0, 2.01], [0, 0], [0, 0]] }],
+    ['three points', { points: [[0, 0], [0, 0], [0, 0]] }],
+    ['five front flags', { front: [true, true, true, true, true] }],
+    ['an unknown path', { path: 'spline' }],
+    ['an unknown rule', { rule: 'end' }],
+    ['width below 1', { width: 0.5 }],
+    ['width above 15', { width: 16 }],
+    ['a named colour', { color: 'purple' }],
+    ['an unknown head', { head: 'star' }],
+    ['a negative seed', { seed: -1 }],
+    ['a seed past 2^31-1', { seed: 2147483648 }],
+    ['a fractional seed', { seed: 1.5 }],
+    ['an empty template', { template: '' }],
+  ])('rejects %s', async (_label, bad) => {
+    const { generation } = await createGeneration();
+    const rejected = await mcpToolCall('trail_generation', { generation_id: generation.id, ...bad, idempotency_key: crypto.randomUUID() });
+    expect(rejected.isError).toBe(true);
+  });
+
+  it('rejects an unknown option key on the REST payload', async () => {
+    const { generation } = await createGeneration();
+    const res = await postJson<{ error: { message: string } }>('/api/v1/requests', {
+      kind: 'trail',
+      payload: { generation_id: generation.id, options: { template: 'tsu', glow: 1 } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/^payload\.options: Unrecognized key/);
   });
 });
 

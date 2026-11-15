@@ -865,7 +865,7 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
 
 deliver と stage の `backdrop` に `"random"` を書くと、chimera が Request を作るときに、絵の recipe の柄
 （catalog の `recipes[].deliver.backdrops`、無ければトップレベルの `backdrops`。仕上げ元を raw の Generation までさかのぼった
-recipe で引く）から 1 つを選んで置き換えます。保存される payload と worker が読む payload には選んだ柄の名前だけが残り、
+recipe で引く）のうち、夜の柄（`night: true`）を除いたものから 1 つを選んで置き換えます。夜の柄は名前で書けば使えます。保存される payload と worker が読む payload には選んだ柄の名前だけが残り、
 `"random"` は残りません。柄は `idempotency_key` の SHA-256 から選ぶので、同じキーの再送は同じ柄になり、既存の行がそのまま返ります
 （その間に catalog の柄の並びが変わったときだけ、別の柄になって 409 になりえます）。deliver profile の本文に `"random"` があれば、
 profile を展開した後に置き換えます。柄を公開していない catalog では 400 です。

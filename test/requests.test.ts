@@ -374,6 +374,25 @@ describe('POST /api/v1/requests/claim', () => {
     expect(claimed.body!.id).toBe(deliverReq.body.id);
   });
 
+  it('kinds filter: claims a trail row when kinds includes trail', async () => {
+    const { generation: g1 } = await createGeneration();
+    const deliverReq = await createDeliverRequest(g1.id);
+    const { generation: g2 } = await createGeneration();
+    const trailReq = await postJson<RequestBody>('/api/v1/requests', {
+      kind: 'trail',
+      payload: { generation_id: g2.id, options: { template: 'tsu' } },
+      idempotency_key: crypto.randomUUID(),
+      created_by: 'gui',
+    });
+    expect(trailReq.status).toBe(201);
+
+    const claimed = await claim('worker-a', ['trail', 'lighting']);
+    expect(claimed.status).toBe(200);
+    expect(claimed.body!.id).toBe(trailReq.body.id);
+    expect(claimed.body!.kind).toBe('trail');
+    expect((await getJson<RequestBody>(`/api/v1/requests/${deliverReq.body.id}`)).body.status).toBe('queued');
+  });
+
   it('kinds filter: claims a repair row when kinds includes only repair', async () => {
     const { generation: g1 } = await createGeneration();
     const deliverReq = await createDeliverRequest(g1.id);
