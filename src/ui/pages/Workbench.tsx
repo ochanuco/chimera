@@ -336,6 +336,9 @@ function TrailForm({ data }: { data: WorkbenchData }) {
             <input type="checkbox" name="wb_trail_in_frame" checked /> 裏の部分は枠の中に収める
           </span>
         </label>
+        <button type="button" class="wb-pill" data-wb-trail-reseed>
+          散らし直す
+        </button>
       </div>
     </div>
   );

@@ -1689,6 +1689,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-loupe-cross::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-loupe-cross::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-focus { z-index: 1; }
+.wb-trail-preview { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 .wb-trail-guide { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
 .wb-trail-guide polyline { fill: none; stroke-width: 2; stroke-dasharray: 6 4; stroke-linecap: round; filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)); }
 .wb-trail-pt {
@@ -4979,6 +4980,479 @@ export const appJs = `
     return out;
   }
 
+  // The trail plan (docs/worker-protocol.md「trail」): a literal port of the worker's imaging/trail.py plan(), checked against the
+  // shared fixture, so a seed draws the same particles here as on the worker.
+  function wbTrailRng(seed) {
+    var state = seed >>> 0;
+    function random() {
+      state = (state + 0x6d2b79f5) >>> 0;
+      var a = state;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a) >>> 0;
+      t = (((t + (Math.imul(t ^ (t >>> 7), 61 | t) >>> 0)) >>> 0) ^ t) >>> 0;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    function gauss() {
+      var u1 = random();
+      var u2 = random();
+      return Math.sqrt(-2 * Math.log(u1 + 1e-12)) * Math.cos(2 * Math.PI * u2);
+    }
+    return { random: random, gauss: gauss };
+  }
+
+  // Python's round(): halves go to the even neighbour.
+  function wbPyRound(x) {
+    var f = Math.floor(x);
+    var d = x - f;
+    if (d > 0.5) return f + 1;
+    if (d < 0.5) return f;
+    return f % 2 === 0 ? f : f + 1;
+  }
+
+  function wbInterp(x, xp, fp) {
+    var n = xp.length;
+    if (x <= xp[0]) return fp[0];
+    if (x >= xp[n - 1]) return fp[n - 1];
+    var lo = 0;
+    var hi = n - 1;
+    while (hi - lo > 1) {
+      var mid = (lo + hi) >> 1;
+      if (xp[mid] <= x) lo = mid;
+      else hi = mid;
+    }
+    var dx = xp[lo + 1] - xp[lo];
+    return dx === 0 ? fp[lo] : fp[lo] + (x - xp[lo]) * (fp[lo + 1] - fp[lo]) / dx;
+  }
+
+  function wbTrailPath(points, curve) {
+    var p = points;
+    var ext = [[2 * p[0][0] - p[1][0], 2 * p[0][1] - p[1][1]]].concat(p, [[2 * p[3][0] - p[2][0], 2 * p[3][1] - p[2][1]]]);
+    var xy = [];
+    var segment = [];
+    var localT = [];
+    for (var i = 0; i < p.length - 1; i++) {
+      var n = Math.max(4, Math.ceil(Math.hypot(p[i + 1][0] - p[i][0], p[i + 1][1] - p[i][1]) / 8));
+      var count = n + (i === p.length - 2 ? 1 : 0);
+      for (var j = 0; j < count; j++) {
+        var t = j / n;
+        xy.push(curve ? wbCatmull(ext[i], ext[i + 1], ext[i + 2], ext[i + 3], t) : [p[i][0] + (p[i + 1][0] - p[i][0]) * t, p[i][1] + (p[i + 1][1] - p[i][1]) * t]);
+        segment.push(i);
+        localT.push(t);
+      }
+    }
+    var arc = [0];
+    for (var k = 1; k < xy.length; k++) arc.push(arc[k - 1] + Math.hypot(xy[k][0] - xy[k - 1][0], xy[k][1] - xy[k - 1][1]));
+    var tangent = [];
+    var normal = [];
+    var last = xy.length - 1;
+    for (var m = 0; m <= last; m++) {
+      var ahead = xy[Math.min(last, m + 1)];
+      var behind = xy[Math.max(0, m - 1)];
+      var dx = ahead[0] - behind[0];
+      var dy = ahead[1] - behind[1];
+      var len = Math.max(Math.hypot(dx, dy), 1e-9);
+      tangent.push([dx / len, dy / len]);
+      normal.push([dy / len, -(dx / len)]);
+    }
+    var cols = function (rows, c) { return rows.map(function (r) { return r[c]; }); };
+    return {
+      xy: xy, segment: segment, localT: localT, arc: arc, tangent: tangent, normal: normal, length: arc[last],
+      xs: cols(xy, 0), ys: cols(xy, 1), nxs: cols(normal, 0), nys: cols(normal, 1),
+    };
+  }
+
+  // Per control segment, its [t0, t1, front] stretches under rule.
+  function wbTrailStretches(front, rule) {
+    var out = [];
+    for (var i = 0; i < front.length - 1; i++) {
+      var a = front[i];
+      var b = front[i + 1];
+      if (rule === 'both') out.push([[0, 1, a && b]]);
+      else if (rule === 'start') out.push([[0, 1, a]]);
+      else out.push(a === b ? [[0, 1, a]] : [[0, 0.5, a], [0.5, 1, b]]);
+    }
+    return out;
+  }
+
+  function wbTrailFrontPolygons(path, front, rule, reach) {
+    var polys = [];
+    var last = path.xy.length - 1;
+    wbTrailStretches(front, rule).forEach(function (stretches, i) {
+      stretches.forEach(function (st) {
+        if (!st[2]) return;
+        var ks = [];
+        for (var k = 0; k <= last; k++) {
+          if (path.segment[k] === i && path.localT[k] >= st[0] - 1e-6 && path.localT[k] <= st[1] + 1e-6) ks.push(k);
+        }
+        if (ks.length === 0) return;
+        var end = ks[ks.length - 1];
+        if (end < last && path.localT[end] < st[1]) ks.push(end + 1);
+        var left = ks.map(function (k) { return [path.xy[k][0] + path.normal[k][0] * reach, path.xy[k][1] + path.normal[k][1] * reach]; });
+        var right = ks.map(function (k) { return [path.xy[k][0] - path.normal[k][0] * reach, path.xy[k][1] - path.normal[k][1] * reach]; });
+        if (ks[0] === 0) {
+          var bx = path.tangent[0][0] * reach * 2;
+          var by = path.tangent[0][1] * reach * 2;
+          left.unshift([left[0][0] - bx, left[0][1] - by]);
+          right.unshift([right[0][0] - bx, right[0][1] - by]);
+        }
+        if (ks[ks.length - 1] === last) {
+          var fx = path.tangent[last][0] * reach * 2;
+          var fy = path.tangent[last][1] * reach * 2;
+          left.push([left[left.length - 1][0] + fx, left[left.length - 1][1] + fy]);
+          right.push([right[right.length - 1][0] + fx, right[right.length - 1][1] + fy]);
+        }
+        polys.push(left.concat(right.reverse()));
+      });
+    });
+    return polys;
+  }
+
+  // Toward white for f > 0, toward black for f < 0.
+  function wbMix(rgb, f) {
+    var target = f > 0 ? 255 : 0;
+    return rgb.map(function (v) { return v + (target - v) * Math.abs(f); });
+  }
+
+  function wbStar(cx, cy, outer, inner, points, rot) {
+    var out = [];
+    for (var k = 0; k < points * 2; k++) {
+      var r = k % 2 ? inner : outer;
+      out.push([cx + Math.cos(rot + k * Math.PI / points) * r, cy + Math.sin(rot + k * Math.PI / points) * r]);
+    }
+    return out;
+  }
+
+  function wbAlong(path) {
+    return function (s, off) {
+      var x = wbInterp(s, path.arc, path.xs);
+      var y = wbInterp(s, path.arc, path.ys);
+      var nx = wbInterp(s, path.arc, path.nxs);
+      var ny = wbInterp(s, path.arc, path.nys);
+      var nl = Math.max(Math.hypot(nx, ny), 1e-9);
+      return [x + nx / nl * off, y + ny / nl * off];
+    };
+  }
+
+  function wbPick(rng, count, length, qOf, density) {
+    var out = [];
+    for (var i = 0; i < count * 3; i++) {
+      var s = rng.random() * length;
+      var q = qOf(s);
+      if (rng.random() < density(q)) {
+        out.push([s, q]);
+        if (out.length === count) break;
+      }
+    }
+    return out;
+  }
+
+  function wbTrailBody(path, w, base, rng, headAtEnd, k) {
+    var length = path.length;
+    var at = wbAlong(path);
+    var prims = [];
+    function qOf(s) { return headAtEnd ? (length - s) / length : s / length; }
+    function sd(q) { return w * (0.18 + 1.1 * q); }
+
+    var light = wbMix(base, 0.45);
+    var steps = Math.ceil(length / (w * 0.2));
+    for (var n = 0; n < steps; n++) {
+      var s = n * w * 0.2;
+      var q = qOf(s);
+      if (q < 0.03) continue;
+      var p = at(s, rng.gauss() * sd(q) * 0.35);
+      var a = 0.2 * Math.pow(1 - q, 0.5) * Math.min(1, q / 0.12);
+      prims.push(['radial', p[0], p[1], sd(q) * 1.3, [[0, light, a], [1, light, 0]]]);
+    }
+
+    for (var i = 0; i < 2; i++) {
+      var phase = rng.random() * 2 * Math.PI;
+      var period = w * (1.9 + i * 0.8);
+      var run = [];
+      var colour = wbMix(base, 0.15 + i * 0.1);
+      var samples = Math.floor(length / 4) + 1;
+      for (var m = 0; m < samples; m++) {
+        var rs = m * 4;
+        var rq = qOf(rs);
+        if (rq >= 0.01 && rq <= 0.9) {
+          run.push(at(rs, sd(rq) * (0.55 + 0.35 * i) * Math.sin(rs / period + phase) * (0.4 + rq)));
+        } else if (run.length) {
+          prims.push(['polyline', run, (1 + i * 0.4) * k, colour, 0.8]);
+          run = [];
+        }
+      }
+      if (run.length) prims.push(['polyline', run, (1 + i * 0.4) * k, colour, 0.8]);
+    }
+
+    wbPick(rng, wbPyRound(length * 8 / k), length, qOf, function (q) {
+      return q < 0.02 ? 0 : Math.min(1, q / 0.15) * Math.pow(1 - q, 0.9);
+    }).forEach(function (sq) {
+      var p = at(sq[0], rng.gauss() * sd(sq[1]) * 0.45);
+      var radius = (0.6 + Math.pow(rng.random(), 2) * 2) * k;
+      var tone = rng.random() * 0.7 - 0.25;
+      prims.push(['disc', p[0], p[1], radius, wbMix(base, tone), 0.55 + 0.45 * rng.random()]);
+    });
+
+    wbPick(rng, wbPyRound(length / 8 / k), length, qOf, function (q) {
+      return q < 0.02 ? 0 : Math.pow(1 - q, 0.5);
+    }).forEach(function (sq) {
+      var p = at(sq[0], rng.gauss() * sd(sq[1]) * 1.5);
+      var r = (1.5 + Math.pow(rng.random(), 2) * 7) * k;
+      if (rng.random() < 0.4) {
+        var soft = wbMix(base, 0.5);
+        prims.push(['radial', p[0], p[1], r * 2.2, [[0, soft, 0.35], [1, soft, 0]]]);
+      } else {
+        prims.push(['radial', p[0], p[1], r, [[0, wbMix(base, 0.45), 0.95], [1, wbMix(base, -0.05), 0.8]]]);
+      }
+    });
+
+    wbPick(rng, wbPyRound(length / 55 / k), length, qOf, function (q) {
+      return q < 0.03 ? 0 : 0.3 + 0.7 * (1 - q);
+    }).forEach(function (sq) {
+      var p = at(sq[0], rng.gauss() * sd(sq[1]) * 1.9);
+      var r;
+      if (rng.random() < 0.8) {
+        r = (3 + rng.random() * 7) * k;
+        r *= rng.random() < 0.15 ? 2 : 1;
+        var glow = wbMix(base, 0.6);
+        prims.push(['radial', p[0], p[1], r * 0.9, [[0, glow, 0.45], [1, glow, 0]]]);
+        prims.push(['poly', wbStar(p[0], p[1], r, r * 0.14, 4, -Math.PI / 2), wbMix(base, 0.35), 0.95]);
+      } else {
+        r = (5 + rng.random() * 6) * k;
+        prims.push(['poly', wbStar(p[0], p[1], r, r * 0.45, 5, -Math.PI / 2 + rng.random()), wbMix(base, 0.1), 0.9]);
+      }
+    });
+    return prims;
+  }
+
+  // Light burst: halo, a streak trailing behind, cross rays and a white core.
+  function wbTrailFlare(x, y, direction, w, base, lightGround) {
+    var r = w;
+    var white = [255, 255, 255];
+    var core = lightGround ? wbMix(base, 0.25) : white;
+    var edge = wbMix(base, lightGround ? -0.1 : 0.2);
+    var fade = wbMix(base, 0.3);
+    var halo = lightGround
+      ? [[0, base.slice(), 0.95], [0.25, wbMix(base, -0.05), 0.5], [1, base.slice(), 0]]
+      : [[0, wbMix(base, 0.35), 0.75], [0.3, wbMix(base, 0.1), 0.35], [1, base.slice(), 0]];
+    var prims = [['radial', x, y, r * 2.8, halo], ['streak', x, y, Math.atan2(direction[1], direction[0]), r, wbMix(base, 0.55), 0.6]];
+    [[-Math.PI / 2, 3.4], [Math.PI / 2, 3.0], [0, 2.6], [Math.PI, 2.6]].forEach(function (al) {
+      prims.push(['ray', x, y, al[0], r * al[1], r * 0.09 * 2.6, edge, 0.8, fade]);
+      prims.push(['ray', x, y, al[0], r * al[1], r * 0.09, core, 1.0, fade]);
+    });
+    [1, 3, 5, 7].forEach(function (j) {
+      var a = j * Math.PI / 4 + 0.08;
+      prims.push(['ray', x, y, a, r * 1.3, r * 0.05 * 2.6, edge, 0.8, fade]);
+      prims.push(['ray', x, y, a, r * 1.3, r * 0.05, core, 1.0, fade]);
+    });
+    prims.push(['radial', x, y, r * 0.55, [[0, white, 1.0], [0.25, white, 1.0], [0.5, core, 1.0], [1, wbMix(base, 0.2), 0]]]);
+    return prims;
+  }
+
+  function wbTrailSparkleHead(x, y, w, base, rng) {
+    var r = w * 1.3;
+    var glow = wbMix(base, 0.3);
+    var prims = [
+      ['radial', x, y, r * 1.6, [[0, glow, 0.55], [1, glow, 0]]],
+      ['poly', wbStar(x, y, r * 0.5, r * 0.12, 4, -Math.PI / 4), wbMix(base, 0.2), 0.85],
+      ['poly', wbStar(x, y, r, r * 0.11, 4, -Math.PI / 2), wbMix(base, 0.05), 1.0],
+      ['poly', wbStar(x, y, r * 0.55, r * 0.1, 4, -Math.PI / 2), wbMix(base, 0.6), 1.0],
+    ];
+    for (var i = 0; i < 6; i++) {
+      var a = rng.random() * 2 * Math.PI;
+      var d = r * (0.7 + rng.random() * 0.9);
+      var rr = r * (0.1 + rng.random() * 0.16);
+      prims.push(['poly', wbStar(x + Math.cos(a) * d, y + Math.sin(a) * d, rr, rr * 0.18, 4, -Math.PI / 2), wbMix(base, 0.35), 0.95]);
+    }
+    return prims;
+  }
+
+  // What to draw, in drawing order: { body, head, front (polygons), head_in_front }, in the picture's pixels.
+  function wbTrailPlan(trail, height, width, lightGround) {
+    var longest = Math.max(height, width);
+    var k = longest / 1440;
+    var w = trail.width / 100 * longest;
+    var path = wbTrailPath(trail.points.map(function (q) { return [q[0] * width, q[1] * height]; }), trail.path === 'curve');
+    var base = [1, 3, 5].map(function (i) { return parseInt(trail.color.slice(i, i + 2), 16); });
+    var rng = wbTrailRng(trail.seed);
+    var body = wbTrailBody(path, w, base, rng, trail.head_at_end, k);
+    var end = trail.head_at_end ? path.xy.length - 1 : 0;
+    var hx = path.xy[end][0];
+    var hy = path.xy[end][1];
+    var direction = trail.head_at_end ? path.tangent[end] : [-path.tangent[0][0], -path.tangent[0][1]];
+    var head = trail.head === 'sparkle' ? wbTrailSparkleHead(hx, hy, w, base, rng) : wbTrailFlare(hx, hy, direction, w, base, lightGround);
+    var stretches = wbTrailStretches(trail.front, trail.rule);
+    var stretch = stretches[trail.head_at_end ? stretches.length - 1 : 0];
+    return {
+      body: body,
+      head: head,
+      front: wbTrailFrontPolygons(path, trail.front, trail.rule, w * 3.2),
+      head_in_front: !!stretch[trail.head_at_end ? stretch.length - 1 : 0][2],
+    };
+  }
+
+  function wbRgba(c, a) {
+    function ch(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+    return 'rgba(' + ch(c[0]) + ', ' + ch(c[1]) + ', ' + ch(c[2]) + ', ' + Math.max(0, Math.min(1, a)) + ')';
+  }
+
+  function wbTracePath(ctx, pts) {
+    ctx.beginPath();
+    pts.forEach(function (q, i) { if (i === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]); });
+  }
+
+  // Draws plan primitives in order. A radial is filled as its disc: past its radius the worker draws nothing, even where a stop ends above 0.
+  function wbTrailDraw(ctx, prims) {
+    prims.forEach(function (p) {
+      var kind = p[0];
+      var g;
+      if (kind === 'radial') {
+        if (!(p[3] > 0)) return;
+        g = ctx.createRadialGradient(p[1], p[2], 0, p[1], p[2], p[3]);
+        p[4].forEach(function (st) { g.addColorStop(Math.max(0, Math.min(1, st[0])), wbRgba(st[1], st[2])); });
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p[1], p[2], p[3], 0, 2 * Math.PI);
+        ctx.fill();
+      } else if (kind === 'disc') {
+        ctx.fillStyle = wbRgba(p[4], p[5]);
+        ctx.beginPath();
+        ctx.arc(p[1], p[2], Math.max(0, p[3]), 0, 2 * Math.PI);
+        ctx.fill();
+      } else if (kind === 'poly') {
+        ctx.fillStyle = wbRgba(p[2], p[3]);
+        wbTracePath(ctx, p[1]);
+        ctx.closePath();
+        ctx.fill();
+      } else if (kind === 'polyline') {
+        if (p[1].length < 2) return;
+        ctx.strokeStyle = wbRgba(p[3], p[4]);
+        ctx.lineWidth = p[2];
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        wbTracePath(ctx, p[1]);
+        ctx.stroke();
+      } else if (kind === 'ray') {
+        var x = p[1], y = p[2], len = p[4], half = p[5] / 2;
+        var dx = Math.cos(p[3]), dy = Math.sin(p[3]);
+        g = ctx.createLinearGradient(x, y, x + dx * len, y + dy * len);
+        g.addColorStop(0, wbRgba(p[6], p[7]));
+        g.addColorStop(1, wbRgba(p[8], 0));
+        ctx.fillStyle = g;
+        wbTracePath(ctx, [[x - dy * half, y + dx * half], [x + dx * len, y + dy * len], [x + dy * half, y - dx * half]]);
+        ctx.closePath();
+        ctx.fill();
+      } else if (kind === 'streak') {
+        var r = p[4];
+        if (!(r > 0)) return;
+        var cx = (-0.35 * r) / 3.2;
+        ctx.save();
+        ctx.translate(p[1], p[2]);
+        ctx.rotate(p[3]);
+        ctx.scale(3.2, 0.7);
+        g = ctx.createRadialGradient(cx, 0, 0, cx, 0, r);
+        g.addColorStop(0, wbRgba(p[5], p[6]));
+        g.addColorStop(1, wbRgba(p[5], 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, 0, r, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+  }
+
+  // The worker's compositing (imaging/trail.py trail_pngs) at scale s of the picture: backdrop, back layer, outline, figure, front layer.
+  // layers: { backdrop, outline, figure } images at the picture's size; backBox: [x0, y0, x1, y1] shares or null.
+  function wbTrailComposite(canvas, layers, drawn, backBox, s) {
+    var W = layers.backdrop.naturalWidth;
+    var H = layers.backdrop.naturalHeight;
+    var cw = Math.max(1, Math.round(W * s));
+    var ch = Math.max(1, Math.round(H * s));
+    if (canvas.width !== cw) canvas.width = cw;
+    if (canvas.height !== ch) canvas.height = ch;
+    // Scratch layers are kept on the canvas and reused while its size holds.
+    var pool = canvas.wbTrailLayers && canvas.wbTrailLayers.w === cw && canvas.wbTrailLayers.h === ch ? canvas.wbTrailLayers : { w: cw, h: ch, list: [] };
+    canvas.wbTrailLayers = pool;
+    var used = 0;
+    function layer() {
+      var l = pool.list[used];
+      if (!l) {
+        var c = document.createElement('canvas');
+        c.width = cw;
+        c.height = ch;
+        l = pool.list[used] = { c: c, x: c.getContext('2d') };
+      }
+      used += 1;
+      l.x.setTransform(1, 0, 0, 1, 0, 0);
+      l.x.globalCompositeOperation = 'source-over';
+      l.x.clearRect(0, 0, cw, ch);
+      l.x.setTransform(s, 0, 0, s, 0, 0);
+      return l;
+    }
+    function stamp(dst, src, op) {
+      dst.x.setTransform(1, 0, 0, 1, 0, 0);
+      dst.x.globalCompositeOperation = op || 'source-over';
+      dst.x.drawImage(src.c, 0, 0);
+      dst.x.globalCompositeOperation = 'source-over';
+    }
+    var body = layer();
+    wbTrailDraw(body.x, drawn.body);
+    var mask = layer();
+    mask.x.fillStyle = '#000';
+    drawn.front.forEach(function (poly) {
+      wbTracePath(mask.x, poly);
+      mask.x.closePath();
+      mask.x.fill();
+    });
+    var front = layer();
+    stamp(front, body);
+    stamp(front, mask, 'destination-in');
+    var back = layer();
+    stamp(back, body);
+    stamp(back, mask, 'destination-out');
+    var head = layer();
+    wbTrailDraw(head.x, drawn.head);
+    stamp(drawn.head_in_front ? front : back, head);
+    if (backBox) {
+      var x0 = Math.max(0, wbPyRound(backBox[0] * W)) * s;
+      var y0 = Math.max(0, wbPyRound(backBox[1] * H)) * s;
+      var x1 = wbPyRound(backBox[2] * W) * s;
+      var y1 = wbPyRound(backBox[3] * H) * s;
+      back.x.globalCompositeOperation = 'destination-in';
+      back.x.fillRect(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
+      back.x.globalCompositeOperation = 'source-over';
+    }
+    var out = canvas.getContext('2d');
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    out.clearRect(0, 0, cw, ch);
+    out.drawImage(layers.backdrop, 0, 0, cw, ch);
+    out.drawImage(back.c, 0, 0);
+    out.drawImage(layers.outline, 0, 0, cw, ch);
+    out.drawImage(layers.figure, 0, 0, cw, ch);
+    out.drawImage(front.c, 0, 0);
+  }
+
+  // The worker's light_ground: mean luminance of the backdrop above 150.
+  function wbLightGround(img) {
+    var c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    var x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    var d = x.getImageData(0, 0, c.width, c.height).data;
+    var sum = 0;
+    for (var i = 0; i < d.length; i += 4) sum += d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+    return sum / (d.length / 4) > 150;
+  }
+
+  // The stage frame's box as shares of the staged picture (chagama application/stage.py _back_box), or null without a frame.
+  function wbTrailBackBox(parameters) {
+    var frame = parameters && parameters.frame;
+    if (!frame || !frame.box) return null;
+    var c = frame.canvas || [0, 0, 1, 1];
+    var b = frame.box;
+    return [(b[0] - c[0]) / (c[2] - c[0]), (b[1] - c[1]) / (c[3] - c[1]), (b[2] - c[0]) / (c[2] - c[0]), (b[3] - c[1]) / (c[3] - c[1])];
+  }
+
   var WB_TRAIL_FRONT = '#ffb347';
   var WB_TRAIL_BACK = '#6fa8fd';
 
@@ -5309,6 +5783,7 @@ export const appJs = `
       lightingScene: '',
       card: null,
       trail: null,
+      trailSeed: Math.floor(Math.random() * 2147483648),
     };
     var trailCatalog = initial.trail || null;
     var viewer = wbViewer(root, wb);
@@ -5536,13 +6011,121 @@ export const appJs = `
       });
     }
 
+    // The trail options a run sends; the preview draws from the same ones.
+    function trailOptions() {
+      var form = phaseForm(5);
+      var options = {
+        template: wb.trail.template,
+        points: wb.trail.points.map(function (q) { return [wbRound(q[0]), wbRound(q[1])]; }),
+        front: wb.trail.front.slice(),
+        path: wb.trail.path,
+        rule: wb.trail.rule,
+        width: rangeValue('wb_trail_width'),
+        head: wb.trail.head,
+        head_at_end: qs('input[name="wb_trail_head_at_end"]', form).checked,
+        in_frame: qs('input[name="wb_trail_in_frame"]', form).checked,
+        seed: wb.trailSeed,
+      };
+      // Without a recipe colour the worker picks it, unless the user changed the swatch.
+      var colorInput = qs('input[name="wb_trail_color"]', form);
+      if (colorInput.getAttribute('data-wb-trail-color-default') || colorInput.hasAttribute('data-wb-touched')) options.color = colorInput.value;
+      return options;
+    }
+
+    // The input's layers for the live preview, loaded once per input; a failed load leaves the plain image.
+    var trailLayers = { key: '', status: '', layers: null, light: false, frame: null };
+    function trailLayersReady(node) {
+      if (trailLayers.key === node.short_id) return trailLayers.status === 'ready';
+      var key = node.short_id;
+      trailLayers = { key: key, status: 'loading', layers: null, light: false, frame: null };
+      function image(role) {
+        return new Promise(function (resolve, reject) {
+          var img = new Image();
+          img.onload = function () { resolve(img); };
+          img.onerror = reject;
+          img.src = '/g/' + encodeURIComponent(key) + '/assets/' + role;
+        });
+      }
+      var context = fetch('/api/v1/generations/' + encodeURIComponent(node.id) + '/context')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .catch(function () { return null; });
+      Promise.all([image('layer-backdrop'), image('layer-outline'), image('layer-figure'), context])
+        .then(function (res) {
+          if (trailLayers.key !== key) return;
+          var parameters = res[3] && res[3].request ? res[3].request.parameters : null;
+          trailLayers.layers = { backdrop: res[0], outline: res[1], figure: res[2] };
+          trailLayers.light = wbLightGround(res[0]);
+          trailLayers.frame = wbTrailBackBox(parameters);
+          trailLayers.status = 'ready';
+          updateOverlays();
+        })
+        .catch(function () {
+          if (trailLayers.key === key) trailLayers.status = 'failed';
+        });
+      return false;
+    }
+
+    var trailPreviewFrame = 0;
+    var trailPreviewCanvas = null;
+    function scheduleTrailPreview(canvas) {
+      trailPreviewCanvas = canvas;
+      if (trailPreviewFrame) return;
+      trailPreviewFrame = requestAnimationFrame(function () {
+        trailPreviewFrame = 0;
+        if (trailEditing() && trailLayers.status === 'ready') drawTrailPreview(trailPreviewCanvas);
+      });
+    }
+
+    function drawTrailPreview(canvas) {
+      var layers = trailLayers.layers;
+      var W = layers.backdrop.naturalWidth;
+      var H = layers.backdrop.naturalHeight;
+      var o = trailOptions();
+      var spec = {
+        points: o.points,
+        front: o.front,
+        path: o.path,
+        rule: o.rule,
+        width: o.width,
+        color: qs('input[name="wb_trail_color"]', phaseForm(5)).value,
+        head: o.head,
+        head_at_end: o.head_at_end,
+        seed: o.seed,
+      };
+      try {
+        var drawn = wbTrailPlan(spec, H, W, trailLayers.light);
+        wbTrailComposite(canvas, layers, drawn, o.in_frame ? trailLayers.frame : null, Math.min(1, 1024 / Math.max(W, H)));
+        canvas.hidden = false;
+      } catch (e) {
+        canvas.hidden = true;
+      }
+    }
+
+    // The live composite under the markers on the input pane.
+    function updateTrailPreview(overlay, show) {
+      var canvas = qs('.wb-trail-preview', overlay);
+      var input = show ? activeInputNode() : null;
+      if (!input || !trailLayersReady(input)) {
+        if (canvas) canvas.hidden = true;
+        return;
+      }
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.className = 'wb-trail-preview';
+        canvas.hidden = true;
+        overlay.insertBefore(canvas, overlay.firstChild);
+      }
+      scheduleTrailPreview(canvas);
+    }
+
     // The markers and the dashed guide, on every image pane; segments are coloured by whether they cross in front.
-    function updateTrail(overlay) {
+    function updateTrail(overlay, role) {
       var svg = qs('.wb-trail-guide', overlay);
       var pts = qsa('[data-wb-trail-pt]', overlay);
       var show = trailEditing() && overlay.offsetWidth > 0;
       if (svg) svg.style.display = show ? '' : 'none';
       pts.forEach(function (el) { el.hidden = !show; });
+      updateTrailPreview(overlay, show && role === 'input');
       if (!show || !svg) return;
       var w = overlay.offsetWidth;
       var h = overlay.offsetHeight;
@@ -5665,7 +6248,7 @@ export const appJs = `
         if (!overlay) return;
         var role = pane.getAttribute('data-wb-role');
         updateCard(overlay, role === 'input' && stagingPhoto() && !!wb.place);
-        updateTrail(overlay);
+        updateTrail(overlay, role);
         var marker = qs('.wb-focus', overlay);
         marker.hidden = !(role === 'input' && wb.active === WB_LAST && wb.focus);
         if (!marker.hidden) {
@@ -6096,26 +6679,7 @@ export const appJs = `
         if (sceneOf(activeInputNode()) && !sceneOn) stageOptions.light = null;
         return { kind: 'stage', options: stageOptions };
       }
-      if (k === 5) {
-        var trailRun = {
-          kind: 'trail',
-          options: {
-            template: wb.trail.template,
-            points: wb.trail.points.map(function (q) { return [wbRound(q[0]), wbRound(q[1])]; }),
-            front: wb.trail.front.slice(),
-            path: wb.trail.path,
-            rule: wb.trail.rule,
-            width: rangeValue('wb_trail_width'),
-            head: wb.trail.head,
-            head_at_end: qs('input[name="wb_trail_head_at_end"]', form).checked,
-            in_frame: qs('input[name="wb_trail_in_frame"]', form).checked,
-          },
-        };
-        // Without a recipe colour the worker picks it, unless the user changed the swatch.
-        var colorInput = qs('input[name="wb_trail_color"]', form);
-        if (colorInput.getAttribute('data-wb-trail-color-default') || colorInput.hasAttribute('data-wb-touched')) trailRun.options.color = colorInput.value;
-        return trailRun;
-      }
+      if (k === 5) return { kind: 'trail', options: trailOptions() };
       if (k === 6) {
         var lightingOptions = { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null };
         if (wb.lightingScene) lightingOptions.scene = wb.lightingScene;
@@ -6346,6 +6910,10 @@ export const appJs = `
         renderPanel();
         return updateOverlays();
       }
+      if (t.closest('[data-wb-trail-reseed]')) {
+        wb.trailSeed = Math.floor(Math.random() * 2147483648);
+        return updateOverlays();
+      }
       var trailOption = t.closest('[data-wb-trail-path], [data-wb-trail-rule], [data-wb-trail-head]');
       if (trailOption && wb.trail) {
         if (trailOption.hasAttribute('data-wb-trail-path')) wb.trail.path = trailOption.getAttribute('data-wb-trail-path');
@@ -6440,6 +7008,7 @@ export const appJs = `
       if (input.name === 'wb_lighting_strength') qs('[data-wb-lighting-readout]', root).textContent = input.value;
       if (input.name === 'wb_trail_width') qs('[data-wb-trail-width-readout]', root).textContent = input.value;
       if (input.name === 'wb_trail_color') input.setAttribute('data-wb-touched', '');
+      if (/^wb_trail_/.test(input.name)) updateOverlays();
       if (/^wb_dof_(tilt|nearer|bokeh)$/.test(input.name)) qs('[data-wb-dof-readout="' + input.name.slice(7) + '"]', root).textContent = input.value;
     });
 

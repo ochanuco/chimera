@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { clearGenerationData, createGeneration, postJson, req } from './helpers';
 import { appJs } from '../src/ui/static';
 import { formatImageMetaText } from '../src/lib/image-meta';
+import trailPlanFixture from './fixtures/trail_plan.json';
 
 beforeEach(async () => {
   await clearGenerationData();
@@ -357,6 +358,80 @@ describe('GET /work/:shortId', () => {
     expect(curve[2]!.pts.at(-1)![1]).toBeCloseTo(200);
     const line = pieces(points, front, 'both', false, 100, 200);
     expect(line[1]!.pts[8]).toEqual([100, 100]);
+  });
+
+  // test/fixtures/trail_plan.json is a copy of chagama's tests/fixtures/trail_plan.json, which the worker's own plan() is checked against.
+  it('builds the same trail plan as the worker for the shared fixture', () => {
+    const start = appJs.indexOf('function wbCatmull(');
+    const end = appJs.indexOf('var WB_TRAIL_FRONT');
+    const lib = new Function(`${appJs.slice(start, end)}; return { plan: wbTrailPlan, rng: wbTrailRng };`)() as {
+      plan: (trail: unknown, height: number, width: number, lightGround: boolean) => { body: unknown[][]; head: unknown[]; front: unknown[]; head_in_front: boolean };
+      rng: (seed: number) => { random: () => number };
+    };
+    const rng = lib.rng(7);
+    expect([0, 1, 2, 3, 4].map(() => rng.random())).toEqual(trailPlanFixture.rng_seed_7);
+
+    function close(got: unknown, want: unknown, at: string): void {
+      if (typeof want === 'number') {
+        expect(typeof got, at).toBe('number');
+        expect(Math.abs((got as number) - want), at).toBeLessThanOrEqual(1e-6 * Math.max(1, Math.abs(want)));
+      } else if (Array.isArray(want)) {
+        expect(Array.isArray(got) && got.length, at).toBe(want.length);
+        want.forEach((w, i) => close((got as unknown[])[i], w, `${at}.${i}`));
+      } else {
+        expect(got, at).toBe(want);
+      }
+    }
+    expect(trailPlanFixture.cases.length).toBeGreaterThan(0);
+    for (const c of trailPlanFixture.cases) {
+      const drawn = lib.plan(c.trail, c.height, c.width, c.light_ground);
+      const counts: Record<string, number> = {};
+      for (const prim of drawn.body) counts[prim[0] as string] = (counts[prim[0] as string] ?? 0) + 1;
+      expect(counts, c.name).toEqual(c.counts);
+      expect(drawn.head_in_front, c.name).toBe(c.head_in_front);
+      close(drawn.body.slice(0, 60), c.body_head, `${c.name} body head`);
+      close(drawn.body.slice(-60), c.body_tail, `${c.name} body tail`);
+      close(drawn.head, c.head, `${c.name} head`);
+      close(drawn.front, c.front, `${c.name} front`);
+    }
+  });
+
+  it('converts the stage frame to the back box the worker clips the back of the trail to', () => {
+    const start = appJs.indexOf('function wbTrailBackBox(');
+    const backBox = new Function(`${appJs.slice(start, appJs.indexOf('var WB_TRAIL_FRONT'))}; return wbTrailBackBox;`)() as (p: unknown) => number[] | null;
+    expect(backBox({})).toBeNull();
+    expect(backBox({ frame: { box: [0.05, 0.05, 0.95, 0.95] } })).toEqual([0.05, 0.05, 0.95, 0.95]);
+    const box = backBox({ frame: { box: [0.1, 0.2, 0.9, 0.8], canvas: [0, 0.1, 1, 0.9] } })!;
+    [0.1, 0.125, 0.9, 0.875].forEach((v, i) => expect(box[i]).toBeCloseTo(v, 12));
+  });
+
+  it('phase 5 previews the trail live and sends the seed it previewed', async () => {
+    const recipe = `wb-trail-seed-${crypto.randomUUID()}`;
+    const catalog = {
+      schema_version: 3,
+      recipes: [{ name: recipe, poses: [], trail: { color: '#6f5c78' } }],
+      patches: {},
+      trail: {
+        templates: [{ name: 'tsu', label: 'つ', points: [[0.02, 0.34], [0.72, 0.2], [1, 0.52], [0.22, 0.94]], front: [false, false, true, true] }],
+        default_template: 'tsu',
+        paths: ['curve', 'line'],
+        rules: ['both', 'split', 'start'],
+        heads: ['light', 'sparkle'],
+        width: { min: 1, max: 15, default: 5 },
+        point_range: [-1, 2],
+      },
+    };
+    expect((await postJson('/api/v1/catalogs/production', catalog, 'PUT')).status).toBe(200);
+    const { generation: root } = await createGeneration({ requestOverrides: { recipe } });
+    const html = await (await req(`/work/${root.short_id}`)).text();
+    const form = html.slice(html.indexOf('data-wb-form="5"'), html.indexOf('data-wb-form="6"'));
+    expect(form).toContain('data-wb-trail-reseed');
+    expect(form).toContain('散らし直す');
+    expect(appJs).toContain('trailSeed: Math.floor(Math.random() * 2147483648)');
+    expect(appJs).toContain('seed: wb.trailSeed,');
+    expect(appJs).toContain("if (k === 5) return { kind: 'trail', options: trailOptions() };");
+    for (const role of ['layer-backdrop', 'layer-outline', 'layer-figure']) expect(appJs).toContain(`image('${role}')`);
+    expect(appJs).toContain("'/api/v1/generations/' + encodeURIComponent(node.id) + '/context'");
   });
 
   it('picks the random backdrop among the non-night patterns only', async () => {

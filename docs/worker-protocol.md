@@ -1002,6 +1002,12 @@ Generation（`is_delivered`）で、入力を `refines_generation_id` で指し�
 選んだ seed を含むすべての option が残ります。出力は [lighting](#lighting)（lighting の出力も `layer-front` を持つ）・
 [dof](#dof)（`layer-front` をキャラの上に重ねる）・[lens](#lens)（納品の絵として）の入力になり、[photo](#photo) の入力にはなりません。
 
+描く物は 2 段で決まります。まず plan が、options・絵の寸法・背景が明るいか（`layer-backdrop` の平均輝度 0.3R+0.59G+0.11B が 150 を
+超えるか）から、描く順に並べた図形（本体・先端）と前の区間の多角形を、mulberry32 の乱数で作ります。次にそれを画素に塗ります。
+ワークベンチのプレビューは同じ plan を JavaScript で組むので、同じ `seed` なら worker と同じ粒が同じ位置に並びます。plan の一致は
+chagama の `tests/fixtures/trail_plan.json` を両方のテストが読んで確かめます（chimera は `test/fixtures/trail_plan.json` に写しを置く）。
+画素への塗り方は違う（worker は numpy、プレビューは Canvas 2D）ので、縁のぼかしはわずかに違います。
+
 catalog は最上位の `trail` 節にテンプレートと範囲を、各 recipe の `trail` 節に既定の色を公開します。chimera はそのまま
 `list_catalog` に通し、ワークベンチのテンプレートの一覧とスライダーの範囲もここから取ります。
 
