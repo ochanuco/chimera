@@ -110,7 +110,7 @@ Promotion として提案し、実際のコード変更は別途 chagama
     `kind = reference_render` を requests 行として積む。GUI は prompt を書かず、選べるのは worker が抽出した候補だけ。generate を組むのは worker。
 
 chimera は ComfyUI へ到達しません。GUI が積んでよいのは semantic
-判断を伴わない再実行（redraw / deliver / saturation / stage / lighting / dof）と、リロール、pin の再描画（絵柄チェック）、参考画像の
+判断を伴わない再実行（redraw / deliver / saturation / stage / trail / lighting / dof）と、リロール、pin の再描画（絵柄チェック）、参考画像の
 reference / reference_render だけで、GUI が
 触るのは自分の D1 の requests 行と、写真ページ（[ui.md](ui.md#写真photos)）とワークベンチの背景フェーズがアップロードする写真（`kind = import`
 の Request・Job・Generation と R2 の original）と、参考画像ページがアップロードする参考画像（R2 の `references/{request_id}`）のみです。

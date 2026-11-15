@@ -60,7 +60,7 @@ POST /api/v1/requests/{request_id}/jobs
 }
 ```
 
-redraw / deliver / dof / lens / photo / stage / lighting / saturation（と古い repair / masked_redraw / finalize）の Request では、仕上げ元の Generation を
+redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation（と古い repair / masked_redraw / finalize）の Request では、仕上げ元の Generation を
 `source_generation_id` に渡します（[Request](#request)）。
 
 201（新規作成）は `{ id, request_id, seed, index, status, comfy_prompt_id: null, source_generation_id, generations: [] }`
@@ -522,13 +522,13 @@ worker（GPU 機）が claim / heartbeat / 状態遷移するジョブキュー�
 挙げます。
 
 ``` text
-POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / lens / photo / stage / lighting / saturation / reference / import で、finalize・repair・masked_redraw・reference_render は 400（redraw か deliver を使う。repair / masked_redraw は部分描き直し機能の廃止で作れない）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
+POST   /api/v1/requests            kind/payload/recipe_ref?/idempotency_key/created_by を積む。201 / 200(再送) / 409(同じキーで別内容) / 409(original_purged)。kind は generate / redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation / reference / import で、finalize・repair・masked_redraw・reference_render は 400（redraw か deliver を使う。repair / masked_redraw は部分描き直し機能の廃止で作れない）。kind=import は status: "done" と解決済みの値を平置きで渡す（payload は任意、Run の結果なら run_id）
 GET    /api/v1/requests            ?status=&kind=&run_id=&generation_id=&worker_id=&pending=true&limit=&offset=（kind は import も受ける）
 GET    /api/v1/requests/summary    ナビの queue pill 用の集計。詳細は下記
 POST   /api/v1/requests/claim      { worker_id, kinds?, worker_version? } → 200 (claim した行) / 204 (queued が無い)
 GET    /api/v1/requests/{id}
 PUT    /api/v1/requests/{id}/resolution  worker が解決済みの値（recipe / parameters / patches / pose_fingerprint / preset_versions / git_commit / git_dirty / references）を報告。200（再送・Job 作成前の上書き）/ 409（Job 作成後に別の値）。応答は { id, short_id, status, jobs[] }
-POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・lens・photo・stage・lighting・saturation（と古い repair・masked_redraw・finalize）は source_generation_id 必須
+POST   /api/v1/requests/{id}/jobs  { idempotency_key, seed, index, source_generation_id? }。201 / 200(再送) / 409(resolution 前)。redraw・deliver・dof・lens・photo・stage・trail・lighting・saturation（と古い repair・masked_redraw・finalize）は source_generation_id 必須
 PATCH  /api/v1/requests/{id}       worker: running(heartbeat) / queued(release) / done / failed。brain・GUI: cancelled
 PUT    /api/v1/requests/{id}/timings  worker が試行ごとの計測を報告（best-effort）。200 { ok: true } / 404 / 400。下記「Timings」
 GET    /api/v1/requests/{id}/reference-image  kind=reference の参考画像。200（画像）/ 404（画像が無い・kind が違う）
@@ -545,7 +545,7 @@ kind=reference_render は `POST /api/v1/requests` では作れません（400）
 
 -   `status` / `kind`: 完全一致。`kind` には作れなくなった `finalize` / `repair` / `masked_redraw` と、`import`（worker を通らず登録側が `done` で作る Request）も指定できる
 -   `run_id`: `kind = generate` の行のみ持つ
--   `generation_id`: `kind = redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `lighting`（と古い `repair` / `masked_redraw` / `finalize`）の行を対象に、その
+-   `generation_id`: `kind = redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `trail` / `lighting`（と古い `repair` / `masked_redraw` / `finalize`）の行を対象に、その
     `payload.generation_id` が渡した値（UUID / short_id どちらでも可）と一致するものを返す
 -   `worker_id`: claim した worker
 -   `worker_version`: claim した worker のビルド。無ければ null
@@ -554,7 +554,7 @@ kind=reference_render は `POST /api/v1/requests` では作れません（400）
 レスポンスは全カラムを含み、`payload` / `result` は JSON object にパースして返します
 （`payload_hash` は内部実装なので含めません）。`short_id` は生成前に worker が解決値を報告するまで `null` です。
 
-`kind = redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `lighting` の作成は、`payload.generation_id` が指す
+`kind = redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `trail` / `lighting` の作成は、`payload.generation_id` が指す
 Generation の original が purge 済み（`original_purged_at` 非 null）なら 409
 （`code: "original_purged"`）で拒否します（original の purge は止めてあるので、対象は過去に purge された行だけです）。worker はその Generation 自身の画像を読むため
 （[worker-protocol.md](worker-protocol.md)）、original が無いと実行できません。既存の
@@ -601,7 +601,7 @@ v2 の行とは version が違うので上書きしません。
 ### Summary
 
 `GET /api/v1/requests/summary` は queued / running の全件と、直近24hに failed
-になった件のみを対象に、仕上げ元 Generation が属する Request（redraw/deliver/dof/lens/photo/stage/lighting/saturation、古い repair/masked_redraw/finalize も）または
+になった件のみを対象に、仕上げ元 Generation が属する Request（redraw/deliver/dof/lens/photo/stage/trail/lighting/saturation、古い repair/masked_redraw/finalize も）または
 Experiment（generate、`run_id` があるとき）単位にまとめて返します。仕上げ元が解決できない行と、`run_id` の無い
 generate は request 単体のグループです。GUI ナビの queue pill 専用で、他のフィルタは
 持ちません。
@@ -807,7 +807,7 @@ GET  /api/v1/catalogs/{recipe_ref}   カタログ全体（prompt 本文込み）
 recipe ごとに自由です。`PUT` のレスポンスと `GET /api/v1/catalogs` の一覧、および
 MCP `list_catalog` は pose / costume / expression の名前、recipe が持つ場合は
 `parts`（prompt のパーツ名）と `identity_tags`、`parameters`、`patches` の語彙、`dials`、
-`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明 / `shape` / sphere の `radius`）と `photo`（各 option の既定と説明）と `stage` / `lighting`（各 option の既定と説明）、git
+`deliver`（`defaults` / `outlines` / `stroke_light` / `backdrop_color`）と `redraw`（method ごとの `defaults`）、最上位の `dof`（`f_number` の範囲と刻み / `scope` の既定 / `viewfinder` / `focus` の説明 / `guide_radius_per_f`）と `lens`（`strength` の範囲と既定 / `center` の既定と説明 / `shape` / sphere の `radius`）と `photo`（各 option の既定と説明）と `stage` / `lighting`（各 option の既定と説明）と `trail`（テンプレート / path・rule・head の値 / `width` の範囲と既定 / `point_range`）、各 recipe の `trail.color`、git
 情報だけを返し、prompt 本文は含めません（パーツ単位の patch は
 [worker-protocol.md](worker-protocol.md)「prompt のパーツ単位 patch」）。特定の pose の
 中身（prompt 込み）が要るときは `GET /api/v1/catalogs/{recipe_ref}` で全体を取るか、
@@ -824,15 +824,15 @@ pose 名を確かめ、名前のある look は `plain_render` が pin の seed 
 検証せず、GUI がボタンに出す表示にだけ使います。worker へは number に解決せず word を
 そのまま渡し、word の実在確認と number への解決は worker の責務です。
 
-`backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail }]`
-（`thumbnail` は `data:image/png;base64,...` の 120x192 PNG）です。deliver の
+`backdrops` は recipe とは独立なカタログ全体のキーで、`[{ name, label, thumbnail, night }]`
+（`thumbnail` は `data:image/png;base64,...` の 120x192 PNG、`night` は夜の柄（`<柄>-night`、label は `<label>（夜）`））です。夜の柄は名前で選べますが、`"random"` とワークベンチの「ランダム」は選びません。deliver の
 `backdrop` optionが取れるパターン名の一覧で、GUIのワークベンチの納品フェーズはこれをサムネイル
 ピッカーとして描画します。背景色は recipe ごとに違うので、recipe の
 `deliver.backdrops`（同じ形）があれば GUI はその絵の recipe の一覧を使い、無ければ
 top-level の`backdrops`に戻ります。どちらも無い（旧workerが公開したカタログ）場合、GUIは
 サムネイル無しの`stripes`カード1枚にフォールバックします。`PUT`のレスポンス・
 `GET /api/v1/catalogs`の一覧・MCP `list_catalog`は top-level と各 recipe の
-`deliver.backdrops`をname/labelだけの配列に要約し（thumbnail は含めない。キーが無いカタログでは`backdrops`自体を省略）、
+`deliver.backdrops`をname/label/nightだけの配列に要約し（thumbnail は含めない。キーが無いカタログでは`backdrops`自体を省略）、
 `GET /api/v1/catalogs/{recipe_ref}`だけがthumbnail込みの全体を返します：
 
 ``` text
@@ -1169,7 +1169,7 @@ GET /api/v1/generations/{id-or-short-id}/context
 ```
 
 `request` はこの Generation が属する Request で、所属が無ければ `null` です。
-`kind` は `generate` / `redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `lighting` / `saturation` / `import` のいずれか（古い行は `repair` / `masked_redraw` / `finalize` もある）、
+`kind` は `generate` / `redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `trail` / `lighting` / `saturation` / `import` のいずれか（古い行は `repair` / `masked_redraw` / `finalize` もある）、
 `parameters` / `patches` / `preset_versions` は未報告なら `null` です。
 `prompt` / `negative_prompt` は Request の先頭 Job（`job_index` が最小で graph を持つもの）の
 `render_facts` の先頭 sampler から取ります。Job に graph が無ければ `null` です。
@@ -1262,7 +1262,7 @@ Request の`raw_instruction` / `patches_json` / `parameters_json`を探します
 `model`と`phase`はカンマ区切りの複数指定（どれかに一致）です。`model`は`anima` / `il` / `moss` /
 `unknown`（`generations.model_family`が NULL、[domain-model.md](domain-model.md#generation)）で、
 `phase`は`generate`（kind が generate / finalize）・`import`・`redraw`（redraw / repair /
-masked_redraw）・`deliver`・`saturation`・`stage`・`lighting`・`dof`・`lens`・`photo`で、Generation の
+masked_redraw）・`deliver`・`saturation`・`stage`・`trail`・`lighting`・`dof`・`lens`・`photo`で、Generation の
 Request の`kind`に対応します。範囲外の値は400です。MCP `list_generations`は同名の配列入力
 `model` / `phase`を受けます。
 
@@ -1302,7 +1302,7 @@ WebP のものがあり（[domain-model.md](domain-model.md#original-の保持)�
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation
 表現（Generation Search / Context / MCP の対応する出力）に付きます。
 
-`refinement_request`（redraw / deliver / dof / lens / photo / stage / lighting / saturation と古い
+`refinement_request`（redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation と古い
 repair / masked_redraw / finalize のすべてを対象にする）は、この Generation を対象にした最新の
 [Request](#request)（`payload.generation_id` がこの Generation の UUID /
 short_id のどちらかと一致する行のうち、最新の1件）です。無ければ `null`。
@@ -1373,14 +1373,14 @@ GET /api/v1/generations/{id}/tree
 
 -   `kind`: その Generation を作った Request の kind（元絵は `generate`、import した元絵は `import`）
 -   `method`: kind が `redraw` のときの `options.method`（新しい行は `hires` だけ。古い行は `canvas` / `light` も読める）、それ以外は `null`
--   `phase`: ワークベンチのフェーズ。redraw（`hires`、古い行の `canvas` / `light`）= 1、`saturation` = 2、`deliver` = 3、`stage` = 4、`lighting` = 5、`dof` = 6。
+-   `phase`: ワークベンチのフェーズ。redraw（`hires`、古い行の `canvas` / `light`）= 1、`saturation` = 2、`deliver` = 3、`stage` = 4、`trail` = 5、`lighting` = 6、`dof` = 7。
     `saturation` が 2 なのは入力（`pending` では `source_generation_id`）が納品の絵でないときだけで、納品の絵に重ねた `saturation` は `null`。
     作れなくなった `repair` / `masked_redraw` の既存の行は 1（描き直しの候補）。元絵と対応しない kind（`lens` / `photo` を含む）は `null`
 -   `options`: 作った Request の `payload.options`（元絵と options の無い kind は `null`）
--   `delivered`: 納品の絵か（`dof` / `lens` / `photo` / `stage` / `lighting` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
+-   `delivered`: 納品の絵か（`dof` / `lens` / `photo` / `stage` / `trail` / `lighting` の出力を含む。[worker-protocol.md](worker-protocol.md#dof)）
 -   `image_width` / `image_height` / `image_size`: 画像の寸法（px）とバイト数。未記録の行は `null`
 -   `nodes` は `created_at` の古い順
--   `pending`: `status` が `queued` / `running` の redraw / deliver / dof / lens / photo / stage / lighting / saturation で、`payload.generation_id` が
+-   `pending`: `status` が `queued` / `running` の redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation で、`payload.generation_id` が
     この木のどれかを指すもの。処理中の候補を画面の再読み込み後に出すために使う。`source_generation_id` は入力の id
 
 不明な `{id}` は404です。
@@ -1445,7 +1445,7 @@ short_id のどちらでもよく、raw Generation でなければ 400（不明�
 ```
 
 `GET` は行が無いと `picks: {}`、`updated_at: null` を返します。`PUT` の body は `{ "picks": { ... } }` で、`picks` を丸ごと
-置き換え、保存後の同じ形を返します。キーは `"1"`〜`"6"`（フェーズ番号。1 描き直し / 2 彩度 / 3 フチ / 4 背景 / 5 光 / 6 ボケ）、値は `{ "generation_id": "<id か short_id>" }`
+置き換え、保存後の同じ形を返します。キーは `"1"`〜`"7"`（フェーズ番号。1 描き直し / 2 彩度 / 3 フチ / 4 背景 / 5 軌跡 / 6 光 / 7 ボケ）、値は `{ "generation_id": "<id か short_id>" }`
 （元絵から下の木に含まれる Generation。保存は id）か `{ "skip": true }` です。違反は 400 で、何も保存しません。
 
 ### Generation Timeline
