@@ -1709,6 +1709,7 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-trail-template canvas { width: 40px; height: 60px; display: block; }
 .wb-trail-fronts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; }
 .wb-trail-front { display: flex; align-items: center; gap: 0.4rem; }
+.wb-trail-front .wb-pill { min-width: 3rem; }
 .wb-trail-no { font-weight: 700; font-size: 0.8rem; color: var(--text-dim); min-width: 1em; }
 
 .wb-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.5rem; }
@@ -6158,10 +6159,10 @@ export const appJs = `
     function updateTrail(overlay, role) {
       var svg = qs('.wb-trail-guide', overlay);
       var pts = qsa('[data-wb-trail-pt]', overlay);
-      var show = trailEditing() && overlay.offsetWidth > 0;
+      var show = trailEditing() && role === 'input' && overlay.offsetWidth > 0;
       if (svg) svg.style.display = show ? '' : 'none';
       pts.forEach(function (el) { el.hidden = !show; });
-      updateTrailPreview(overlay, show && role === 'input');
+      updateTrailPreview(overlay, show);
       if (!show || !svg) return;
       var w = overlay.offsetWidth;
       var h = overlay.offsetHeight;
@@ -6555,8 +6556,10 @@ export const appJs = `
           b.classList.toggle('wb-trail-template-on', b.getAttribute('data-wb-trail-template') === wb.trail.template);
         });
         qsa('[data-wb-trail-front]', root).forEach(function (b) {
-          var front = wb.trail.front[Number(b.getAttribute('data-wb-trail-front'))];
-          b.classList.toggle('wb-pill-on', (b.getAttribute('data-value') === 'front') === !!front);
+          var front = !!wb.trail.front[Number(b.getAttribute('data-wb-trail-front'))];
+          b.textContent = front ? '前' : '裏';
+          b.setAttribute('aria-pressed', front ? 'true' : 'false');
+          b.classList.toggle('wb-pill-on', front);
         });
         qsa('[data-wb-trail-path]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-trail-path') === wb.trail.path); });
         qsa('[data-wb-trail-rule]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-trail-rule') === wb.trail.rule); });
@@ -6942,7 +6945,13 @@ export const appJs = `
       }
       var trailFront = t.closest('[data-wb-trail-front]');
       if (trailFront && wb.trail) {
-        wb.trail.front[Number(trailFront.getAttribute('data-wb-trail-front'))] = trailFront.getAttribute('data-value') === 'front';
+        var frontIndex = Number(trailFront.getAttribute('data-wb-trail-front'));
+        wb.trail.front[frontIndex] = !wb.trail.front[frontIndex];
+        renderPanel();
+        return updateOverlays();
+      }
+      if (t.closest('[data-wb-trail-mirror]') && wb.trail) {
+        wb.trail.points = wb.trail.points.map(function (q) { return [wbRound(1 - q[0]), q[1]]; });
         renderPanel();
         return updateOverlays();
       }
@@ -7079,7 +7088,7 @@ export const appJs = `
     root.addEventListener('pointerdown', function (ev) {
       if (!trailEditing() || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
       var pane = ev.target.closest ? ev.target.closest('[data-wb-imgpane]') : null;
-      if (!pane) return;
+      if (!pane || pane.getAttribute('data-wb-role') !== 'input') return;
       var index = nearestTrailPoint(pane, ev);
       if (index < 0) return;
       ev.preventDefault();

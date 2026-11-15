@@ -310,7 +310,16 @@ describe('GET /work/:shortId', () => {
       expect(form).toContain(`data-wb-trail-template="${name}"`);
       expect(form).toContain(`<canvas width="40" height="60" data-wb-trail-thumb="${name}">`);
     }
-    for (const i of [0, 1, 2, 3]) expect(form).toContain(`data-wb-trail-front="${i}"`);
+    for (const i of [0, 1, 2, 3]) expect(form).toContain(`data-wb-trail-front="${i}" aria-pressed="false"`);
+    expect(form.match(/data-wb-trail-front=/g)).toHaveLength(4);
+    expect(form).not.toContain('data-value="front"');
+    expect(form).toContain('data-wb-trail-mirror');
+    expect(form).toContain('左右反転');
+    expect(appJs).toContain('wb.trail.front[frontIndex] = !wb.trail.front[frontIndex];');
+    expect(appJs).toContain("b.setAttribute('aria-pressed', front ? 'true' : 'false');");
+    expect(appJs).toContain('return [wbRound(1 - q[0]), q[1]];');
+    expect(appJs).toContain("var show = trailEditing() && role === 'input' && overlay.offsetWidth > 0;");
+    expect(appJs).toContain("if (!pane || pane.getAttribute('data-wb-role') !== 'input') return;");
     for (const path of ['curve', 'line']) expect(form).toContain(`data-wb-trail-path="${path}"`);
     for (const rule of ['both', 'split', 'start']) expect(form).toContain(`data-wb-trail-rule="${rule}"`);
     for (const head of ['light', 'sparkle']) expect(form).toContain(`data-wb-trail-head="${head}"`);
