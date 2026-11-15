@@ -1,7 +1,7 @@
 import { Layout } from '../layout';
 import type { WorkbenchPicks } from '../../schemas/workbenches';
 import type { WorkbenchTree } from '../../lib/workbench';
-import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults } from '../../lib/catalogs';
+import type { DeliverDefaults, DeliverOutlines, DofCatalog, RedrawDefaults, TrailCatalog } from '../../lib/catalogs';
 import { Compass, OutlineEditor } from '../components/OutlineEditor';
 import { DofFields, FALLBACK_DOF } from '../components/DofFields';
 import { CapActions } from '../components/CapActions';
@@ -11,6 +11,8 @@ import { PHOTO_MAX_SIDE, type PhotoItem } from '../../lib/photos';
 export interface BackdropOption {
   name: string;
   label: string;
+  /** 夜の柄。「ランダム」はこれを選ばない。 */
+  night?: boolean;
 }
 
 export interface WorkbenchData {
@@ -34,6 +36,10 @@ export interface WorkbenchData {
   saturation: { strength: number } | null;
   /** Photos uploaded on `/photos` (or from the 背景 phase), newest first. */
   photos: PhotoItem[];
+  /** Catalog `trail`: the 軌跡 phase's templates and ranges; null blocks the phase. */
+  trail: TrailCatalog | null;
+  /** The recipe's `trail.color`: the 軌跡 phase's default colour. */
+  trailColor: string | null;
 }
 
 const PHASES = [
@@ -41,8 +47,9 @@ const PHASES = [
   { no: 2, label: '彩度' },
   { no: 3, label: 'フチ' },
   { no: 4, label: '背景' },
-  { no: 5, label: '光' },
-  { no: 6, label: 'ボケ' },
+  { no: 5, label: '軌跡' },
+  { no: 6, label: '光' },
+  { no: 7, label: 'ボケ' },
 ] as const;
 
 function numberDefault(fields: Record<string, unknown> | undefined, key: string): number | null {
@@ -166,7 +173,7 @@ function StageForm({ data }: { data: WorkbenchData }) {
             </label>
             {patterns.map((bd) => (
               <label class="backdrop-option" data-backdrop-value={bd.name}>
-                <input type="radio" name="backdrop" value={bd.name} data-backdrop-pattern />
+                <input type="radio" name="backdrop" value={bd.name} data-backdrop-pattern {...(bd.night ? { 'data-backdrop-night': '' } : {})} />
                 {data.backdrops.length > 0 && data.recipeRef ? (
                   <img
                     class="backdrop-thumb"
@@ -245,9 +252,98 @@ function StageForm({ data }: { data: WorkbenchData }) {
   );
 }
 
-function LightingForm() {
+function TrailForm({ data }: { data: WorkbenchData }) {
+  const trail = data.trail;
+  if (!trail) {
+    return (
+      <div class="wb-form" data-wb-form="5" hidden>
+        <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      </div>
+    );
+  }
   return (
     <div class="wb-form" data-wb-form="5" hidden>
+      <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
+      <div data-wb-form-body>
+        <div class="wb-trail-templates" role="group" aria-label="形">
+          {trail.templates.map((t) => (
+            <button type="button" class="wb-trail-template" data-wb-trail-template={t.name} title={t.label}>
+              <canvas width="40" height="60" data-wb-trail-thumb={t.name}></canvas>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+        <div class="wb-trail-fronts">
+          {[0, 1, 2, 3].map((i) => (
+            <div class="wb-trail-front">
+              <span class="wb-trail-no">{i + 1}</span>
+              <div class="wb-pills" role="group" aria-label={`点 ${i + 1}`}>
+                <button type="button" class="wb-pill" data-wb-trail-front={String(i)} data-value="front">
+                  前
+                </button>
+                <button type="button" class="wb-pill" data-wb-trail-front={String(i)} data-value="back">
+                  裏
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div class="wb-pills" role="group" aria-label="つなぎ方">
+          <button type="button" class="wb-pill wb-pill-on" data-wb-trail-path="curve">
+            曲線でつなぐ
+          </button>
+          <button type="button" class="wb-pill" data-wb-trail-path="line">
+            折れ線でつなぐ
+          </button>
+        </div>
+        <div class="wb-pills" role="group" aria-label="前に出る区間">
+          <button type="button" class="wb-pill wb-pill-on" data-wb-trail-rule="both">
+            両端が前なら前
+          </button>
+          <button type="button" class="wb-pill" data-wb-trail-rule="split">
+            途中で潜る
+          </button>
+          <button type="button" class="wb-pill" data-wb-trail-rule="start">
+            始点側に従う
+          </button>
+        </div>
+        <label class="wb-field">
+          太さ <span class="mono" data-wb-trail-width-readout>{trail.width.default}</span>
+          <input type="range" name="wb_trail_width" min={String(trail.width.min)} max={String(trail.width.max)} step="0.5" value={String(trail.width.default)} />
+        </label>
+        <label class="wb-field">
+          色
+          <input type="color" name="wb_trail_color" value={data.trailColor ?? '#ffffff'} />
+        </label>
+        <div class="wb-field">
+          先端
+          <div class="wb-pills" role="group" aria-label="先端">
+            <button type="button" class="wb-pill wb-pill-on" data-wb-trail-head="light">
+              光
+            </button>
+            <button type="button" class="wb-pill" data-wb-trail-head="sparkle">
+              きらめき
+            </button>
+          </div>
+        </div>
+        <label class="wb-field">
+          <span>
+            <input type="checkbox" name="wb_trail_head_at_end" checked /> 先端を終点に置く
+          </span>
+        </label>
+        <label class="wb-field">
+          <span>
+            <input type="checkbox" name="wb_trail_in_frame" checked /> 裏の部分は枠の中に収める
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function LightingForm() {
+  return (
+    <div class="wb-form" data-wb-form="6" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <button type="button" class="wb-pill" data-wb-cut-out hidden>
         フチなしで切り抜く
@@ -306,7 +402,7 @@ function FocalLengthField({ dof }: { dof: DofCatalog }) {
 
 function DofForm({ data }: { data: WorkbenchData }) {
   return (
-    <div class="wb-form" data-wb-form="6" hidden>
+    <div class="wb-form" data-wb-form="7" hidden>
       <p class="wb-note wb-unavailable" data-wb-unavailable hidden></p>
       <button type="button" class="wb-pill" data-wb-cut-out hidden>
         フチなしで切り抜く
@@ -334,9 +430,9 @@ function DofForm({ data }: { data: WorkbenchData }) {
   );
 }
 
-/** `/work/:shortId`: the six-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
+/** `/work/:shortId`: the seven-phase workbench. All dynamic parts are drawn by the client from `data-initial` (the tree and picks). */
 export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchData }) {
-  const initial = { tree: data.tree, picks: data.picks, at: data.at };
+  const initial = { tree: data.tree, picks: data.picks, at: data.at, trail: data.trail };
   return (
     <Layout title={`ワークベンチ ${data.root.short_id}`} fullBleed path={path}>
       <GenerationCardTemplate />
@@ -426,7 +522,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
             <div class="wb-panel-body">
               <div>
                 <p class="wb-note">
-                  フェーズ <span data-wb-phase-no>1</span> / 6
+                  フェーズ <span data-wb-phase-no>1</span> / {PHASES.length}
                 </p>
                 <h2 class="wb-panel-title">
                   <span data-wb-phase-title>描き直し</span>の候補を作る
@@ -436,6 +532,7 @@ export function WorkbenchPage({ path, data }: { path: string; data: WorkbenchDat
               <SaturationForm data={data} />
               <DeliverForm data={data} />
               <StageForm data={data} />
+              <TrailForm data={data} />
               <LightingForm />
               <DofForm data={data} />
             </div>
