@@ -6,6 +6,7 @@ import {
   generatePayloadSchema,
   lensPayloadSchema,
   lightingPayloadSchema,
+  trailPayloadSchema,
   photoPayloadSchema,
   redrawPayloadSchema,
   referencePayloadSchema,
@@ -36,6 +37,8 @@ function payloadSchemaFor(kind: PayloadKind): StandardSchemaV1 {
       return stagePayloadSchema;
     case 'lighting':
       return lightingPayloadSchema;
+    case 'trail':
+      return trailPayloadSchema;
     case 'saturation':
       return saturationPayloadSchema;
     case 'reference':

@@ -290,6 +290,7 @@ export const mcpOutputs = {
   lens_generation: createdRequestSchema,
   photo_generation: createdRequestSchema,
   stage_generation: createdRequestSchema,
+  trail_generation: createdRequestSchema,
   lighting_generation: createdRequestSchema,
   saturation_generation: createdRequestSchema,
   get_request: requestSchema,

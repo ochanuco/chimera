@@ -1689,6 +1689,25 @@ details.section .section-body { margin-top: 0.6rem; }
 .wb-loupe-cross::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-loupe-cross::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid rgba(255, 0, 140, 0.85); }
 .wb-focus { z-index: 1; }
+.wb-trail-guide { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+.wb-trail-guide polyline { fill: none; stroke-width: 2; stroke-dasharray: 6 4; stroke-linecap: round; filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)); }
+.wb-trail-pt {
+  position: absolute; z-index: 2; width: 20px; height: 20px; margin: -10px 0 0 -10px; box-sizing: border-box; border-radius: 50%;
+  border: 2px solid #fff; background: #ffb347; color: #10131c; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.75); pointer-events: none;
+}
+.wb-trail-pt-back { background: #6fa8fd; }
+.wb-trail-templates { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.wb-trail-template {
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.25rem; font: inherit; font-size: 0.75rem;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-dim); cursor: pointer;
+}
+.wb-trail-template:hover { border-color: var(--accent); }
+.wb-trail-template-on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text); }
+.wb-trail-template canvas { width: 40px; height: 60px; display: block; }
+.wb-trail-fronts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; }
+.wb-trail-front { display: flex; align-items: center; gap: 0.4rem; }
+.wb-trail-no { font-weight: 700; font-size: 0.8rem; color: var(--text-dim); min-width: 1em; }
 
 .wb-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.5rem; }
 .wb-tile {
@@ -2596,7 +2615,7 @@ export const appJs = `
     var backdrop = backdropMode === 'transparent' ? null : backdropMode;
     // ランダムは送る時点で柄を 1 つに決める。Request には実際に使った柄が残る。
     if (backdropMode === 'random') {
-      var patternNames = qsa('input[name="backdrop"][data-backdrop-pattern]', form).map(function (r) { return r.value; });
+      var patternNames = qsa('input[name="backdrop"][data-backdrop-pattern]:not([data-backdrop-night])', form).map(function (r) { return r.value; });
       backdrop = patternNames[Math.floor(Math.random() * patternNames.length)];
     }
     if (backdropMode === 'color') {
@@ -4895,8 +4914,9 @@ export const appJs = `
     { no: 2, label: '彩度' },
     { no: 3, label: 'フチ' },
     { no: 4, label: '背景' },
-    { no: 5, label: '光' },
-    { no: 6, label: 'ボケ' },
+    { no: 5, label: '軌跡' },
+    { no: 6, label: '光' },
+    { no: 7, label: 'ボケ' },
   ];
   var WB_LAST = WB_PHASES.length;
 
@@ -4917,6 +4937,73 @@ export const appJs = `
     var w = imageWidth * scale;
     var h = imageHeight * scale;
     return [(paneWidth - w) / 2, (paneHeight - h) / 2, w, h];
+  }
+
+  // 5 軌跡 (docs/worker-protocol.md「trail」): the same centripetal Catmull-Rom as the worker, in pixel space, phantom ends 2*p0 - p1.
+  function wbCatmull(p0, p1, p2, p3, t) {
+    function knot(a, b) { return Math.max(1e-3, Math.sqrt(Math.hypot(b[0] - a[0], b[1] - a[1]))); }
+    var t1 = knot(p0, p1);
+    var t2 = t1 + knot(p1, p2);
+    var t3 = t2 + knot(p2, p3);
+    var tt = t1 + (t2 - t1) * t;
+    function lerp(a, b, ta, tb) {
+      return [((tb - tt) * a[0] + (tt - ta) * b[0]) / (tb - ta), ((tb - tt) * a[1] + (tt - ta) * b[1]) / (tb - ta)];
+    }
+    var a1 = lerp(p0, p1, 0, t1);
+    var a2 = lerp(p1, p2, t1, t2);
+    var a3 = lerp(p2, p3, t2, t3);
+    return lerp(lerp(a1, a2, 0, t2), lerp(a2, a3, t1, t3), t1, t2);
+  }
+
+  // Per control segment, its stretches in px and whether each is in front under rule (both / split / start).
+  function wbTrailPieces(points, front, rule, curve, w, h, ox, oy) {
+    ox = ox || 0;
+    oy = oy || 0;
+    var p = points.map(function (q) { return [ox + q[0] * w, oy + q[1] * h]; });
+    var ext = [[2 * p[0][0] - p[1][0], 2 * p[0][1] - p[1][1]]].concat(p, [[2 * p[3][0] - p[2][0], 2 * p[3][1] - p[2][1]]]);
+    var out = [];
+    for (var i = 0; i < 3; i++) {
+      var a = !!front[i];
+      var b = !!front[i + 1];
+      var stretches = rule === 'start' ? [[0, 1, a]] : rule === 'split' ? (a === b ? [[0, 1, a]] : [[0, 0.5, a], [0.5, 1, b]]) : [[0, 1, a && b]];
+      for (var s = 0; s < stretches.length; s++) {
+        var st = stretches[s];
+        var pts = [];
+        for (var j = 0; j <= 16; j++) {
+          var t = st[0] + (st[1] - st[0]) * (j / 16);
+          pts.push(curve ? wbCatmull(ext[i], ext[i + 1], ext[i + 2], ext[i + 3], t) : [p[i][0] + (p[i + 1][0] - p[i][0]) * t, p[i][1] + (p[i + 1][1] - p[i][1]) * t]);
+        }
+        out.push({ front: st[2], pts: pts });
+      }
+    }
+    return out;
+  }
+
+  var WB_TRAIL_FRONT = '#ffb347';
+  var WB_TRAIL_BACK = '#6fa8fd';
+
+  // A 40x60 thumbnail: the frame (the picture) inset so points outside it still show, and the path coloured by front / back.
+  function wbTrailThumb(canvas, points, front, rule, curve) {
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return;
+    var W = canvas.width;
+    var H = canvas.height;
+    var fw = W / 1.6;
+    var fh = H / 1.6;
+    var ox = (W - fw) / 2;
+    var oy = (H - fh) / 2;
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ox + 0.5, oy + 0.5, fw - 1, fh - 1);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    wbTrailPieces(points, front, rule, curve, fw, fh, ox, oy).forEach(function (piece) {
+      ctx.strokeStyle = piece.front ? WB_TRAIL_FRONT : WB_TRAIL_BACK;
+      ctx.beginPath();
+      piece.pts.forEach(function (q, k) { if (k === 0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]); });
+      ctx.stroke();
+    });
   }
 
   var WB_LOUPE_ZOOMS = [2, 3, 5, 8];
@@ -5041,6 +5128,16 @@ export const appJs = `
           guideClip.appendChild(wbEl('div', 'dof-guide-circle wb-guide'));
           overlay.appendChild(guideClip);
           overlay.appendChild(wbEl('div', 'dof-focus-marker wb-focus'));
+          var trailGuide = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          trailGuide.setAttribute('class', 'wb-trail-guide');
+          trailGuide.style.display = 'none';
+          overlay.appendChild(trailGuide);
+          for (var ti = 0; ti < 4; ti++) {
+            var trailPt = wbEl('div', 'wb-trail-pt', String(ti + 1));
+            trailPt.setAttribute('data-wb-trail-pt', String(ti));
+            trailPt.hidden = true;
+            overlay.appendChild(trailPt);
+          }
           pane.appendChild(overlay);
           if (resizeObserver) resizeObserver.observe(pane);
         } else if (pendingItem) {
@@ -5211,7 +5308,9 @@ export const appJs = `
       lightingDir: '',
       lightingScene: '',
       card: null,
+      trail: null,
     };
+    var trailCatalog = initial.trail || null;
     var viewer = wbViewer(root, wb);
     var fillPane = viewer.fillPane;
     var imagePanes = viewer.imagePanes;
@@ -5284,13 +5383,13 @@ export const appJs = `
       return list;
     }
 
-    // The stage options a picture was set with: its own when it is a stage output, its source's for a lighting output.
+    // The stage options a picture was set with: its own when it is a stage output, its source's for a trail or lighting output.
     function stageOf(node) {
       var guard = 0;
       while (node && guard < 10) {
         guard += 1;
         if (node.kind === 'stage') return node.options || {};
-        if (node.kind !== 'lighting') return null;
+        if (node.kind !== 'lighting' && node.kind !== 'trail') return null;
         node = nodeById(node.refines_generation_id);
       }
       return null;
@@ -5387,6 +5486,9 @@ export const appJs = `
         if (o.photo) return '写真 ' + o.photo + (o.height !== undefined ? ' · 高さ ' + o.height : '');
         return (o.backdrop || '既定の柄') + (o.shadow_from ? ' · 影 ' + o.shadow_from : '') + (o.light === null ? ' · シーンなし' : '');
       }
+      if (kind === 'trail') {
+        return trailLabel(o.template) + ' · ' + (o.path === 'line' ? '折れ線' : '曲線');
+      }
       if (kind === 'lighting') {
         var sceneLabel = o.scene === 'sunset' ? ' · 夕日' : o.scene === 'moon' ? ' · 月明かり' : '';
         return '光 ' + (o.strength !== undefined ? o.strength : '') + sceneLabel + (o.direction ? ' · from ' + o.direction : '');
@@ -5395,6 +5497,71 @@ export const appJs = `
       if (kind === 'photo') return '写真 ' + (o.photo || '') + (o.focus === 'subject' || !o.focus ? ' · キャラにピント' : ' · [' + o.focus[0] + ', ' + o.focus[1] + '] にピント') + (o.focal_length ? ' · ' + o.focal_length : '');
       if (kind === 'lens') return (o.strength < 0 ? '逆魚眼' : '魚眼') + (o.strength !== undefined ? ' ' + o.strength : '');
       return '';
+    }
+
+    function trailTemplate(name) {
+      var list = trailCatalog ? trailCatalog.templates : [];
+      for (var i = 0; i < list.length; i++) if (list[i].name === name) return list[i];
+      return null;
+    }
+
+    function trailLabel(name) {
+      var t = trailTemplate(name);
+      return t ? t.label : name || '既定';
+    }
+
+    function loadTrailTemplate(name) {
+      var t = trailTemplate(name);
+      if (!t) return;
+      var prev = wb.trail || { path: 'curve', rule: 'both', head: 'light' };
+      wb.trail = {
+        template: t.name,
+        points: t.points.map(function (q) { return [q[0], q[1]]; }),
+        front: t.front.slice(),
+        path: prev.path,
+        rule: prev.rule,
+        head: prev.head,
+      };
+    }
+
+    function trailEditing() {
+      return wb.active === 5 && !!wb.trail && unavailableText() === '';
+    }
+
+    function drawTrailThumbs() {
+      if (!wb.trail) return;
+      qsa('[data-wb-trail-thumb]', root).forEach(function (canvas) {
+        var t = trailTemplate(canvas.getAttribute('data-wb-trail-thumb'));
+        if (t) wbTrailThumb(canvas, t.points, t.front, wb.trail.rule, wb.trail.path !== 'line');
+      });
+    }
+
+    // The markers and the dashed guide, on every image pane; segments are coloured by whether they cross in front.
+    function updateTrail(overlay) {
+      var svg = qs('.wb-trail-guide', overlay);
+      var pts = qsa('[data-wb-trail-pt]', overlay);
+      var show = trailEditing() && overlay.offsetWidth > 0;
+      if (svg) svg.style.display = show ? '' : 'none';
+      pts.forEach(function (el) { el.hidden = !show; });
+      if (!show || !svg) return;
+      var w = overlay.offsetWidth;
+      var h = overlay.offsetHeight;
+      svg.setAttribute('width', String(w));
+      svg.setAttribute('height', String(h));
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.innerHTML = wbTrailPieces(wb.trail.points, wb.trail.front, wb.trail.rule, wb.trail.path !== 'line', w, h)
+        .map(function (piece) {
+          var d = piece.pts.map(function (q) { return q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' ');
+          return '<polyline points="' + d + '" stroke="' + (piece.front ? WB_TRAIL_FRONT : WB_TRAIL_BACK) + '" />';
+        })
+        .join('');
+      pts.forEach(function (el) {
+        var i = Number(el.getAttribute('data-wb-trail-pt'));
+        var q = wb.trail.points[i];
+        el.style.left = q[0] * 100 + '%';
+        el.style.top = q[1] * 100 + '%';
+        el.classList.toggle('wb-trail-pt-back', !wb.trail.front[i]);
+      });
     }
 
     function itemKind(item) {
@@ -5498,6 +5665,7 @@ export const appJs = `
         if (!overlay) return;
         var role = pane.getAttribute('data-wb-role');
         updateCard(overlay, role === 'input' && stagingPhoto() && !!wb.place);
+        updateTrail(overlay);
         var marker = qs('.wb-focus', overlay);
         marker.hidden = !(role === 'input' && wb.active === WB_LAST && wb.focus);
         if (!marker.hidden) {
@@ -5555,7 +5723,7 @@ export const appJs = `
 
     function needsCutOut() {
       var input = activeInputNode();
-      return !!input && [4, 5, 6].indexOf(wb.active) >= 0 && !isCutOut(input) && ['stage', 'lighting'].indexOf(input.kind) < 0;
+      return !!input && [4, 6, 7].indexOf(wb.active) >= 0 && !isCutOut(input) && ['stage', 'trail', 'lighting'].indexOf(input.kind) < 0;
     }
 
     function unavailableText() {
@@ -5563,6 +5731,8 @@ export const appJs = `
       if (!input) return '';
       if (wb.active === 2 && input.delivered) return '納品済み';
       if (wb.active === 3 && input.delivered && input.phase !== 2) return '納品済み';
+      if (wb.active === 5 && !trailCatalog) return 'カタログに軌跡がありません';
+      if (wb.active === 5 && input.kind !== 'stage') return '先に 4 背景 を付けてください';
       if (needsCutOut()) return '切り抜かれていません';
       return '';
     }
@@ -5636,6 +5806,7 @@ export const appJs = `
       var hint = '';
       if (wb.active === WB_LAST) hint = 'クリックでピント';
       else if (stagingPhoto()) hint = 'クリックで台座';
+      else if (trailEditing()) hint = '番号の点をドラッグ';
       qs('[data-wb-pane-hint]', root).textContent = hint;
       inputPane.classList.toggle('wb-pane-active', hint !== '');
       if (input && stagingPhoto()) {
@@ -5699,7 +5870,7 @@ export const appJs = `
         if (!wb.place) return '台座の位置をクリックしてください';
       }
       if (wb.active === WB_LAST && !wb.focus) return 'ピントを置いてください';
-      if (wb.active === 5 && !hasBackdrop(activeInputNode()) && !wb.lightingDir && !wb.lightingScene) return '背景が無いので、向きかシーンを選んでください';
+      if (wb.active === 6 && !hasBackdrop(activeInputNode()) && !wb.lightingDir && !wb.lightingScene) return '背景が無いので、向きかシーンを選んでください';
       return null;
     }
 
@@ -5759,6 +5930,19 @@ export const appJs = `
             : shadowDir
               ? 'from ' + shadowDir + '（3 のフチの陰影と同じ）'
               : '向きが無いので付きません（3 のフチの陰影が均一）';
+      }
+      if (wb.active === 5 && wb.trail) {
+        qsa('[data-wb-trail-template]', root).forEach(function (b) {
+          b.classList.toggle('wb-trail-template-on', b.getAttribute('data-wb-trail-template') === wb.trail.template);
+        });
+        qsa('[data-wb-trail-front]', root).forEach(function (b) {
+          var front = wb.trail.front[Number(b.getAttribute('data-wb-trail-front'))];
+          b.classList.toggle('wb-pill-on', (b.getAttribute('data-value') === 'front') === !!front);
+        });
+        qsa('[data-wb-trail-path]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-trail-path') === wb.trail.path); });
+        qsa('[data-wb-trail-rule]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-trail-rule') === wb.trail.rule); });
+        qsa('[data-wb-trail-head]', root).forEach(function (b) { b.classList.toggle('wb-pill-on', b.getAttribute('data-wb-trail-head') === wb.trail.head); });
+        drawTrailThumbs();
       }
       var dofPhoto = qs('[data-wb-dof-photo]', root);
       var stagedInPhoto = wb.active === WB_LAST && photoStaged(activeInputNode());
@@ -5913,6 +6097,26 @@ export const appJs = `
         return { kind: 'stage', options: stageOptions };
       }
       if (k === 5) {
+        var trailRun = {
+          kind: 'trail',
+          options: {
+            template: wb.trail.template,
+            points: wb.trail.points.map(function (q) { return [wbRound(q[0]), wbRound(q[1])]; }),
+            front: wb.trail.front.slice(),
+            path: wb.trail.path,
+            rule: wb.trail.rule,
+            width: rangeValue('wb_trail_width'),
+            head: wb.trail.head,
+            head_at_end: qs('input[name="wb_trail_head_at_end"]', form).checked,
+            in_frame: qs('input[name="wb_trail_in_frame"]', form).checked,
+          },
+        };
+        // Without a recipe colour the worker picks it, unless the user changed the swatch.
+        var colorInput = qs('input[name="wb_trail_color"]', form);
+        if (colorInput.getAttribute('data-wb-trail-color-default') || colorInput.hasAttribute('data-wb-touched')) trailRun.options.color = colorInput.value;
+        return trailRun;
+      }
+      if (k === 6) {
         var lightingOptions = { strength: rangeValue('wb_lighting_strength'), direction: wb.lightingDir || null };
         if (wb.lightingScene) lightingOptions.scene = wb.lightingScene;
         return { kind: 'lighting', options: lightingOptions };
@@ -6128,6 +6332,28 @@ export const appJs = `
         wb.shadow = shadowPill.getAttribute('data-wb-shadow') === 'on';
         return render();
       }
+      var trailPick = t.closest('[data-wb-trail-template]');
+      if (trailPick) {
+        var trailName = trailPick.getAttribute('data-wb-trail-template');
+        loadTrailTemplate(trailName);
+        track('trail.template_select', { template: trailName });
+        renderPanel();
+        return updateOverlays();
+      }
+      var trailFront = t.closest('[data-wb-trail-front]');
+      if (trailFront && wb.trail) {
+        wb.trail.front[Number(trailFront.getAttribute('data-wb-trail-front'))] = trailFront.getAttribute('data-value') === 'front';
+        renderPanel();
+        return updateOverlays();
+      }
+      var trailOption = t.closest('[data-wb-trail-path], [data-wb-trail-rule], [data-wb-trail-head]');
+      if (trailOption && wb.trail) {
+        if (trailOption.hasAttribute('data-wb-trail-path')) wb.trail.path = trailOption.getAttribute('data-wb-trail-path');
+        if (trailOption.hasAttribute('data-wb-trail-rule')) wb.trail.rule = trailOption.getAttribute('data-wb-trail-rule');
+        if (trailOption.hasAttribute('data-wb-trail-head')) wb.trail.head = trailOption.getAttribute('data-wb-trail-head');
+        renderPanel();
+        return updateOverlays();
+      }
       var lightingDir = t.closest('[data-compass="lighting"] [data-compass-dir]');
       if (lightingDir) {
         wb.lightingDir = lightingDir.getAttribute('data-compass-dir');
@@ -6212,7 +6438,78 @@ export const appJs = `
       }
       if (input.name === 'wb_saturation_strength') qs('[data-wb-saturation-readout]', root).textContent = input.value;
       if (input.name === 'wb_lighting_strength') qs('[data-wb-lighting-readout]', root).textContent = input.value;
+      if (input.name === 'wb_trail_width') qs('[data-wb-trail-width-readout]', root).textContent = input.value;
+      if (input.name === 'wb_trail_color') input.setAttribute('data-wb-touched', '');
       if (/^wb_dof_(tilt|nearer|bokeh)$/.test(input.name)) qs('[data-wb-dof-readout="' + input.name.slice(7) + '"]', root).textContent = input.value;
+    });
+
+    // A trail point drags on any image pane, out to the point range or the pane's edge, whichever is nearer.
+    var trailDrag = null;
+    function nearestTrailPoint(pane, ev) {
+      var overlay = qs('.wb-overlay', pane);
+      var p = pointIn(pane, ev);
+      if (!p || !overlay) return -1;
+      var r = overlay.getBoundingClientRect();
+      var best = -1;
+      var bestD = 16;
+      wb.trail.points.forEach(function (q, i) {
+        var d = Math.hypot((p.x - q[0]) * r.width, (p.y - q[1]) * r.height);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      return best;
+    }
+
+    function trailPointAt(pane, ev) {
+      var overlay = qs('.wb-overlay', pane);
+      var p = pointIn(pane, ev);
+      if (!p || !overlay) return null;
+      var r = overlay.getBoundingClientRect();
+      var pr = pane.getBoundingClientRect();
+      var range = trailCatalog.pointRange || [-1, 2];
+      var x = Math.min(Math.min(range[1], (pr.right - r.left) / r.width), Math.max(Math.max(range[0], (pr.left - r.left) / r.width), p.x));
+      var y = Math.min(Math.min(range[1], (pr.bottom - r.top) / r.height), Math.max(Math.max(range[0], (pr.top - r.top) / r.height), p.y));
+      return [wbRound(x), wbRound(y)];
+    }
+
+    root.addEventListener('pointerdown', function (ev) {
+      if (!trailEditing() || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      var pane = ev.target.closest ? ev.target.closest('[data-wb-imgpane]') : null;
+      if (!pane) return;
+      var index = nearestTrailPoint(pane, ev);
+      if (index < 0) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      try { pane.setPointerCapture(ev.pointerId); } catch (e) {}
+      trailDrag = { pane: pane, index: index };
+    });
+
+    root.addEventListener('pointermove', function (ev) {
+      if (!trailDrag) return;
+      var q = trailPointAt(trailDrag.pane, ev);
+      if (q) wb.trail.points[trailDrag.index] = q;
+      ev.stopImmediatePropagation();
+      updateOverlays();
+    });
+
+    // The click that ends a drag over a tile in 「全部並べる」 must not pick that tile.
+    var trailDragEnded = false;
+    root.addEventListener('pointerup', function (ev) {
+      if (!trailDrag) return;
+      trailDrag = null;
+      trailDragEnded = true;
+      setTimeout(function () { trailDragEnded = false; }, 0);
+      ev.stopImmediatePropagation();
+      updateOverlays();
+    });
+    root.addEventListener('click', function (ev) {
+      if (!trailDragEnded) return;
+      trailDragEnded = false;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+
+    root.addEventListener('pointercancel', function () {
+      trailDrag = null;
     });
 
     var drawing = null;
@@ -6306,6 +6603,7 @@ export const appJs = `
     }
     var stageForm = phaseForm(4);
     if (stageForm) syncBackdropColor(stageForm);
+    if (trailCatalog) loadTrailTemplate(trailCatalog.defaultTemplate);
     window.addEventListener('resize', function () { fitPanel(); imagePanes().forEach(layoutPane); });
     render();
     if (wb.pending.length > 0) startPolling();

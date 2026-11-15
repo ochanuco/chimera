@@ -33,7 +33,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。「直 POST 禁�
 
 ``` text
 id                TEXT PRIMARY KEY            UUIDv7
-kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | lighting | saturation | reference | reference_render
+kind              TEXT NOT NULL               generate | finalize | redraw | repair | masked_redraw | deliver | dof | lens | photo | stage | trail | lighting | saturation | reference | reference_render
 status            TEXT NOT NULL               queued | running | done | failed | cancelled
 payload_json      TEXT NOT NULL               kind ごとの payload（後述）
 payload_hash      TEXT NOT NULL               kind + 正規化 payload の SHA-256（idempotency 再送の一致判定）
@@ -154,7 +154,7 @@ patch の組み立て失敗のような入力の誤りは claim から 1 秒ほ�
 `created_by` は記録用のラベルで、権限境界ではありません。chimera は単一ユーザー運用で、
 Cloudflare Access の内側にいる主体（人間の GUI、brain の Service Token、worker の Service
 Token）を区別せず、いずれも全 `kind` を積めます（finalize / repair / masked_redraw を除く）。「GUI が積んでよいのは redraw / deliver /
-stage / lighting / dof と、リロール、pin の再描画（絵柄チェック）、参考画像の reference / reference_render だけ」は GUI のコードがそれらの form / ボタンしか
+stage / trail / lighting / dof と、リロール、pin の再描画（絵柄チェック）、参考画像の reference / reference_render だけ」は GUI のコードがそれらの form / ボタンしか
 持たないことで保っており、API が `created_by`
 を見て拒否するものではありません。書き手を自分以外に広げるときは、Access の identity
 （`Cf-Access-Authenticated-User-Email` / Service Token の `common_name`）から `created_by` を
@@ -225,7 +225,7 @@ POST /api/v1/requests/claim
 ```
 
 ``` json
-{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "lighting", "saturation", "reference", "reference_render"], "worker_version": "r44-4608692" }
+{ "worker_id": "gpu-box-1", "kinds": ["generate", "redraw", "repair", "masked_redraw", "deliver", "dof", "lens", "photo", "stage", "trail", "lighting", "saturation", "reference", "reference_render"], "worker_version": "r44-4608692" }
 ```
 
 `worker_version` は省略可（null も可、100 文字まで）。`hello` の `version` と同じ release 版を送り（release 外の worker は null）、claim した行の `worker_version` に書きます。
@@ -733,8 +733,8 @@ worker が作って元絵に付けます（`cut` asset と同じ仕組み）。�
 `viewfinder` の `"on"` は三分割グリッド・`focus` の位置のピント枠・下部のシャッター速度と F 値のバーを重ねた画像で、
 `"both"` は重ねない画像と重ねた画像の 2 枚（`-dof` と `-viewfinder`）を出します。
 
-入力にできるのは層 asset を持つ deliver の出力と、[saturation](#saturation)・[stage](#stage)・[lighting](#lighting) の出力、切り抜き済みの描き直しの出力です。切り抜き済みの描き直しには、その redraw 自身の `depth` を使います。層の無い古い納品の絵、
-dof の出力、それ以外は worker が `failed` にします（納品し直す）。stage で写真に置いた絵（lighting を挟んでも）は
+入力にできるのは層 asset を持つ deliver の出力と、[saturation](#saturation)・[stage](#stage)・[trail](#trail)・[lighting](#lighting) の出力、切り抜き済みの描き直しの出力です。切り抜き済みの描き直しには、その redraw 自身の `depth` を使います。層の無い古い納品の絵、
+dof の出力、それ以外は worker が `failed` にします（納品し直す）。trail の出力（lighting を挟んでも）は `layer-front` をキャラの上に重ねます。stage で写真に置いた絵（trail や lighting を挟んでも）は
 [photo](#photo) と同じく写真の奥行きでぼかし、板の位置と高さは stage の `place` / `height` を使います。そのときだけ
 `stand_at` / `nearer` / `tilt` / `bokeh` / `focal_length`（意味と既定は photo と同じ）を受け、`scope` は使いません。それ以外の絵にこの 5 つを
 付けると worker が `failed` にします。柄の stage は納品の元絵の奥行きを使います。透過納品の絵に dof をかけた出力も透過のままです。出力は納品の Generation
@@ -835,7 +835,7 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
 ### stage
 
 納品の絵のキャラとフチの層を、ぼかさずに新しい背景へ置く worker 実行です（ワークベンチの「4 背景」）。写真に置くか、
-背景の柄（または単色）に影付きで置くかのどちらかで、出力は層 asset を持ち続けるので、続けて [lighting](#lighting) と
+背景の柄（または単色）に影付きで置くかのどちらかで、出力は層 asset を持ち続けるので、続けて [trail](#trail)・[lighting](#lighting)・
 [dof](#dof) をかけられます。
 
 ``` json
@@ -865,7 +865,7 @@ catalog は最上位の `photo` 節に各 option の既定と説明（`height` /
 
 deliver と stage の `backdrop` に `"random"` を書くと、chimera が Request を作るときに、絵の recipe の柄
 （catalog の `recipes[].deliver.backdrops`、無ければトップレベルの `backdrops`。仕上げ元を raw の Generation までさかのぼった
-recipe で引く）から 1 つを選んで置き換えます。保存される payload と worker が読む payload には選んだ柄の名前だけが残り、
+recipe で引く）のうち、夜の柄（`night: true`）を除いたものから 1 つを選んで置き換えます。夜の柄は名前で書けば使えます。保存される payload と worker が読む payload には選んだ柄の名前だけが残り、
 `"random"` は残りません。柄は `idempotency_key` の SHA-256 から選ぶので、同じキーの再送は同じ柄になり、既存の行がそのまま返ります
 （その間に catalog の柄の並びが変わったときだけ、別の柄になって 409 になりえます）。deliver profile の本文に `"random"` があれば、
 profile を展開した後に置き換えます。柄を公開していない catalog では 400 です。
@@ -939,7 +939,7 @@ catalog は最上位の `stage` 節に各 option の既定と説明を公開し�
 
 ### lighting
 
-stage で置いた絵のキャラとフチを、その背景の光に合わせる worker 実行です（ワークベンチの「5 光」）。背景だけ暗い・
+stage で置いた絵のキャラとフチを、その背景の光に合わせる worker 実行です（ワークベンチの「6 光」）。背景だけ暗い・
 色が違うといった浮きを抑えます。
 
 ``` json
@@ -959,11 +959,66 @@ stage で置いた絵のキャラとフチを、その背景の光に合わせ�
 `(環境光の輝度 / 0.35) ^ (0.4 × strength)` 倍、0.35〜1.15 に収める。色かぶりは strength 1 で半分）。`direction` が
 あれば、先に redraw の `light` 下塗りと同じ陰影（平らな奥行き、シルエットからの法線）を付け、明るい側を背景の
 いちばん明るい光の色で染めます。`scene` があれば代わりにそのシーンの light 下塗りの陰影と色で照らし（`direction` の既定は nw）、
-柄の背景も deliver と同じくそのシーンの色に染めます。写真の背景は変えません。入力にできるのは stage の出力と、deliver・saturation の出力、切り抜き済みの描き直しの出力です。背景の無い入力（透過納品、切り抜き済みの描き直し）では環境光の
+柄の背景も deliver と同じくそのシーンの色に染めます。写真の背景は変えません。入力にできるのは stage・trail の出力と、deliver・saturation の出力、切り抜き済みの描き直しの出力です。背景の無い入力（透過納品、切り抜き済みの描き直し）では環境光の
 合わせを飛ばし、`direction` か `scene` だけで照らします（どちらも無ければ worker が `failed` にします）。lighting の出力（stage の出力からかけ直す）は worker が `failed` にします。出力（`-lit`）は納品の Generation で、照らした
-`layer-figure` / `layer-outline` と `layer-backdrop`（シーンで柄を染めたとき以外は元のまま）を asset に持ち、[dof](#dof) の入力になります。
+`layer-figure` / `layer-outline` と `layer-backdrop`（シーンで柄を染めたとき以外は元のまま）を asset に持ち、trail の出力を照らしたときは入力の `layer-front` も持ちます。[dof](#dof) の入力になります。
 
 catalog は最上位の `lighting` 節に `direction` と `strength` を公開します。
+
+### trail
+
+stage で置いた絵に、キャラに巻き付く光の軌跡を描く worker 実行です（ワークベンチの「5 軌跡」）。軌跡は 4 つの点を通り、
+前の区間はキャラの上を横切り、裏の区間はキャラの後ろ（背景）を通ります。
+
+``` json
+{
+  "kind": "trail",
+  "payload": { "generation_id": "abc123", "options": { "template": "tsu", "rule": "split" } }
+}
+```
+
+  options        型
+  -------------- --------------------------------------------------------------------------
+  template       string。catalog の `trail.templates[].name`。省略は `trail.default_template`（`"tsu"`）
+  points         4 つの [x, y]。各座標は -1〜2 で、stage の絵の幅・高さに対する割合（枠の外にも置ける）。省略は template のもの
+  front          4 つの boolean。各点がキャラの前か。省略は template のもの
+  path           "curve" \| "line"。点を centripetal Catmull-Rom の曲線でつなぐか折れ線でつなぐか。省略は "curve"
+  rule           "both" \| "split" \| "start"。どの区間が前に出るか（下記）。省略は "both"
+  width          1〜15。絵の長辺に対する %。省略は 5
+  color          "#rrggbb"。省略は catalog の `recipes[].trail.color`
+  head           "light" \| "sparkle"。先端の形。省略は "light"
+  head_at_end    boolean。先端を終点（4 つ目の点）に置く。false なら始点。省略は true
+  in_frame       boolean。stage に枠があるとき、裏の区間を枠の箱の中に収める。省略は true
+  seed           0〜2^31-1 の整数。省略は worker が選んで記録する
+
+`rule` は、隣り合う 2 点の間の区間（3 つ）ごとに前後を決めます。`both` は両端の点がどちらも前のときだけ前、`split` は
+両端の前後が違う区間を真ん中で切り替え、`start` は区間の始点に従います。
+
+入力にできるのは stage の出力だけです。それ以外（trail の出力も）は worker が `failed` にします。chimera が検証するのは
+型と範囲だけで、`options` の未知のキーは 400 です。`template` の名前が catalog にあるかは worker が見ます。出力は納品の
+Generation（`is_delivered`）で、入力を `refines_generation_id` で指し、`layer-figure` / `layer-outline` と、軌跡の裏の
+区間を塗り込んだ `layer-backdrop`、キャラの上に重ねる前の区間の `layer-front`（RGBA）を asset に持ちます。Request の
+`parameters` は `{kind: "trail", base_generation: <入力の short_id>, ...解決した options}` で、`result.resolved_options` に
+選んだ seed を含むすべての option が残ります。出力は [lighting](#lighting)（lighting の出力も `layer-front` を持つ）・
+[dof](#dof)（`layer-front` をキャラの上に重ねる）・[lens](#lens)（納品の絵として）の入力になり、[photo](#photo) の入力にはなりません。
+
+catalog は最上位の `trail` 節にテンプレートと範囲を、各 recipe の `trail` 節に既定の色を公開します。chimera はそのまま
+`list_catalog` に通し、ワークベンチのテンプレートの一覧とスライダーの範囲もここから取ります。
+
+``` json
+"trail": {
+  "templates": [{"name": "tsu", "label": "つ", "points": [[x, y], …（4 つ）], "front": [false, false, true, true]}, …],
+  "default_template": "tsu",
+  "paths": ["curve", "line"],
+  "rules": ["both", "split", "start"],
+  "heads": ["light", "sparkle"],
+  "width": {"min": 1, "max": 15, "default": 5},
+  "point_range": [-1, 2]
+}
+```
+
+テンプレートは tsu（つ）・tsu-mirror（逆つ）・z（Z）・s（S）・crescent（三日月）・diagonal（斜め）・feet（足元）・rise（昇る）です。
+`recipes[i].trail` は `{"color": "#6f5c78"}`（yukari）と `{"color": "#ab6331"}`（akari）で、フチの外側の色を暗くしたものです。
 
 ### saturation
 
@@ -986,7 +1041,7 @@ catalog は最上位の `lighting` 節に `direction` と `strength` を公開�
   -------------- --------------------------------------------------------------------------
   strength       0〜1、省略は catalog の `saturation.strength.default`（1.0）。圧縮の曲線の補正に掛ける重みで、0 は元のまま、1 は deliver の旧 repin と同じ
 
-`options` の未知のキーは 400 です。`generation_id` は UUID / short_id のどちらでもよく、stage・lighting・dof・lens・photo・
+`options` の未知のキーは 400 です。`generation_id` は UUID / short_id のどちらでもよく、stage・trail・lighting・dof・lens・photo・
 saturation の出力と、deliver の `saturation` が 0 より大きい納品（曲線が二重にかかる）は worker が `failed` にします
 （chimera が検証するのは型だけです）。
 
@@ -1257,7 +1312,7 @@ worker は requests だけを見ます。
 段階 2 の GUI は requests 行を積むことと status を表示することだけです。
 
 - Generation Detail には積む form が無く、最新 request の status（queued / running / done / failed）と、done なら出力 Generation へのリンクを出す。
-  request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `lighting` / `dof`、`created_by = gui`）から積む。
+  request は [ワークベンチ](ui.md#workbench)（`POST /api/v1/requests`、`kind = redraw` / `deliver` / `saturation` / `stage` / `trail` / `lighting` / `dof`、`created_by = gui`）から積む。
 - 参考画像 (`/references`, [ui.md](ui.md#参考画像references)): 画像を [Create Reference](#create-reference) に送って `kind = reference`
   を積み（`created_by = gui`）、解析の done の candidates から選んだタグと seed を [Create Reference Render](#create-reference-render)
   に送って `kind = reference_render` を積む（`created_by = gui`）。GUI は prompt を書かず、選べるのは worker が抽出した候補だけ。
@@ -1285,7 +1340,7 @@ Responsibilities を参照してください。Compare が比較表示のみで�
 ## MCP
 
 `/mcp` の tool のうち requests 行を積むもの（`create_run` の自動起票、`create_request`、`derive_request`、
-`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `stage_generation` / `lighting_generation` / `saturation_generation`）は、REST と同じ
+`plain_render`、`redraw_generation` / `deliver_generation` / `dof_generation` / `lens_generation` / `photo_generation` / `stage_generation` / `trail_generation` / `lighting_generation` / `saturation_generation`）は、REST と同じ
 規則で行を作ります。worker から見える行の形と claim / 状態遷移は REST 由来の行と変わりません。
 tool ごとの契約と `created_by` は
 [experiment-agent.md「requests キューに積む tool」](experiment-agent.md#requests-キューに積む-tool) が正本です。

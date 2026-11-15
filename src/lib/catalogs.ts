@@ -118,6 +118,7 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     if ('dials' in r) summary.dials = r.dials;
     if ('deliver' in r) summary.deliver = stripBackdropThumbnails(r.deliver);
     if ('redraw' in r) summary.redraw = r.redraw;
+    if ('trail' in r) summary.trail = r.trail;
     return summary;
   });
   const backdrops = findBackdrops(doc);
@@ -128,11 +129,12 @@ export function summarizeCatalog(doc: RecipeCatalogDoc) {
     ...('lens' in doc ? { lens: (doc as { lens?: unknown }).lens } : {}),
     ...('saturation' in doc ? { saturation: (doc as { saturation?: unknown }).saturation } : {}),
     ...('photo' in doc ? { photo: (doc as { photo?: unknown }).photo } : {}),
+    ...('trail' in doc ? { trail: (doc as { trail?: unknown }).trail } : {}),
     git_commit: doc.git_commit ?? null,
     git_branch: doc.git_branch ?? null,
     generated_at: doc.generated_at ?? null,
     // name + label only — thumbnail の base64 は summary から常に落とす (PUT 応答 / GET 一覧 / MCP list_catalog 共通)。
-    ...(backdrops.length > 0 ? { backdrops: backdrops.map(({ name, label }) => ({ name, label })) } : {}),
+    ...(backdrops.length > 0 ? { backdrops: backdrops.map(({ name, label, night }) => ({ name, label, night })) } : {}),
   };
 }
 
@@ -140,12 +142,14 @@ export interface CatalogBackdrop {
   name: string;
   label: string;
   thumbnail: string;
+  /** 夜の柄（`<pattern>-night`）。「ランダム」はこれを選ばない。 */
+  night: boolean;
 }
 
 function stripBackdropThumbnails(deliver: unknown): unknown {
   const block = plainObject(deliver);
   if (!block || !Array.isArray(block.backdrops)) return deliver;
-  return { ...block, backdrops: parseBackdrops(block.backdrops).map(({ name, label }) => ({ name, label })) };
+  return { ...block, backdrops: parseBackdrops(block.backdrops).map(({ name, label, night }) => ({ name, label, night })) };
 }
 
 /**
@@ -165,9 +169,9 @@ function parseBackdrops(raw: unknown): CatalogBackdrop[] {
   const result: CatalogBackdrop[] = [];
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
-    const { name, label, thumbnail } = item as Record<string, unknown>;
+    const { name, label, thumbnail, night } = item as Record<string, unknown>;
     if (typeof name === 'string' && typeof label === 'string' && typeof thumbnail === 'string') {
-      result.push({ name, label, thumbnail });
+      result.push({ name, label, thumbnail, night: night === true });
     }
   }
   return result;
@@ -385,4 +389,54 @@ export function findCatalogPose(doc: RecipeCatalogDoc, recipeName: string, poseN
 export function findSaturation(doc: RecipeCatalogDoc): { strength: number } | null {
   const strength = plainObject(plainObject((doc as { saturation?: unknown }).saturation)?.strength)?.default;
   return typeof strength === 'number' && strength >= 0 && strength <= 1 ? { strength } : null;
+}
+
+export interface TrailTemplate {
+  name: string;
+  label: string;
+  points: [number, number][];
+  front: boolean[];
+}
+
+export interface TrailCatalog {
+  templates: TrailTemplate[];
+  defaultTemplate: string;
+  width: { min: number; max: number; default: number };
+  pointRange: [number, number];
+}
+
+function parseTrailTemplate(raw: unknown): TrailTemplate | null {
+  const entry = plainObject(raw);
+  if (!entry || typeof entry.name !== 'string' || typeof entry.label !== 'string') return null;
+  const { points, front } = entry;
+  if (!Array.isArray(points) || points.length !== 4) return null;
+  if (!points.every((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === 'number' && Number.isFinite(v)))) return null;
+  if (!Array.isArray(front) || front.length !== 4 || !front.every((f) => typeof f === 'boolean')) return null;
+  return { name: entry.name, label: entry.label, points: points as [number, number][], front: front as boolean[] };
+}
+
+/** Top-level `trail` — the templates and ranges of the `trail` request kind. null when absent or without a usable template. */
+export function findTrail(doc: RecipeCatalogDoc): TrailCatalog | null {
+  const trail = plainObject((doc as { trail?: unknown }).trail);
+  if (!trail || !Array.isArray(trail.templates)) return null;
+  const templates = trail.templates.map(parseTrailTemplate).filter((t): t is TrailTemplate => t !== null);
+  if (templates.length === 0) return null;
+  const named = typeof trail.default_template === 'string' && templates.some((t) => t.name === trail.default_template);
+  const width = plainObject(trail.width);
+  const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  const range = trail.point_range;
+  const pointRange: [number, number] =
+    Array.isArray(range) && range.length === 2 && range.every((v) => typeof v === 'number') ? [range[0] as number, range[1] as number] : [-1, 2];
+  return {
+    templates,
+    defaultTemplate: named ? (trail.default_template as string) : templates[0]!.name,
+    width: { min: num(width?.min, 1), max: num(width?.max, 15), default: num(width?.default, 5) },
+    pointRange,
+  };
+}
+
+/** `recipes[].trail.color` — the recipe's default trail colour. null when absent or not #rrggbb. */
+export function findTrailColor(doc: RecipeCatalogDoc, recipeName: string): string | null {
+  const color = plainObject(findRecipe(doc, recipeName)?.trail)?.color;
+  return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
 }

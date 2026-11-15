@@ -45,6 +45,8 @@ import {
   findDeliverOutlines,
   findDof,
   findSaturation,
+  findTrail,
+  findTrailColor,
   findRedrawDefaults,
   getCatalog,
 } from '../lib/catalogs';
@@ -630,7 +632,7 @@ pages.get('/work/:shortId', async (c) => {
     deliverDefaults,
     outlines: doc && recipe ? findDeliverOutlines(doc, recipe) : null,
     strokeDefault,
-    backdrops: doc ? findBackdrops(doc, recipe).map(({ name, label }) => ({ name, label })) : [],
+    backdrops: doc ? findBackdrops(doc, recipe).map(({ name, label, night }) => ({ name, label, night })) : [],
     recipeRef,
     recipe,
     catalogVersion: catalog?.row.updated_at ?? null,
@@ -638,6 +640,8 @@ pages.get('/work/:shortId', async (c) => {
     dof: doc ? findDof(doc) : null,
     saturation: doc ? findSaturation(doc) : null,
     photos,
+    trail: doc ? findTrail(doc) : null,
+    trailColor: doc && recipe ? findTrailColor(doc, recipe) : null,
   };
   return c.html(<WorkbenchPage path={c.req.path} data={data} />);
 });

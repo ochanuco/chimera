@@ -312,6 +312,31 @@ describe('Recipe Catalog base_pose', () => {
   });
 });
 
+describe('Recipe Catalog trail', () => {
+  it('passes the top-level trail section and each recipe trail colour through the summary and list_catalog', async () => {
+    const recipeRef = uniqueRecipeRef();
+    const trail = {
+      templates: [{ name: 'tsu', label: 'つ', points: [[0.2, 0.2], [0.8, 0.3], [0.7, 0.8], [0.3, 0.9]], front: [false, false, true, true] }],
+      default_template: 'tsu',
+      paths: ['curve', 'line'],
+      rules: ['both', 'split', 'start'],
+      heads: ['light', 'sparkle'],
+      width: { min: 1, max: 15, default: 5 },
+      point_range: [-1, 2],
+    };
+    const doc = { schema_version: 3, recipes: [{ name: 'yukari', poses: [], trail: { color: '#6f5c78' } }], patches: {}, trail };
+    const put = await postJson<{ trail?: unknown; recipes: { name: string; trail?: unknown }[] }>(`/api/v1/catalogs/${recipeRef}`, doc, 'PUT');
+    expect(put.status).toBe(200);
+    expect(put.body.trail).toEqual(trail);
+    expect(put.body.recipes[0]?.trail).toEqual({ color: '#6f5c78' });
+
+    const tool = await mcpToolCall<{ trail?: unknown; recipes: { name: string; trail?: unknown }[] }>('list_catalog', { recipe_ref: recipeRef });
+    expect(tool.isError).toBe(false);
+    expect(tool.data?.trail).toEqual(trail);
+    expect(tool.data?.recipes[0]?.trail).toEqual({ color: '#6f5c78' });
+  });
+});
+
 describe('Recipe Catalog backdrops', () => {
   it('PUT summary lists backdrops as name/label only, no thumbnail bytes', async () => {
     const recipeRef = uniqueRecipeRef();
@@ -322,8 +347,8 @@ describe('Recipe Catalog backdrops', () => {
     );
     expect(res.status).toBe(200);
     expect(res.body.backdrops).toEqual([
-      { name: 'stripes', label: '斜めストライプ' },
-      { name: 'dots', label: '水玉' },
+      { name: 'stripes', label: '斜めストライプ', night: false },
+      { name: 'dots', label: '水玉', night: false },
     ]);
     expect(JSON.stringify(res.body)).not.toContain(TINY_PNG_BASE64);
   });
@@ -344,8 +369,8 @@ describe('Recipe Catalog backdrops', () => {
     );
     const item = list.body.items.find((i) => i.recipe_ref === recipeRef);
     expect(item?.backdrops).toEqual([
-      { name: 'stripes', label: '斜めストライプ' },
-      { name: 'dots', label: '水玉' },
+      { name: 'stripes', label: '斜めストライプ', night: false },
+      { name: 'dots', label: '水玉', night: false },
     ]);
   });
 
@@ -366,8 +391,8 @@ describe('Recipe Catalog backdrops', () => {
     const tool = await mcpToolCall<{ backdrops?: { name: string; label: string }[] }>('list_catalog', { recipe_ref: recipeRef });
     expect(tool.isError).toBe(false);
     expect(tool.data?.backdrops).toEqual([
-      { name: 'stripes', label: '斜めストライプ' },
-      { name: 'dots', label: '水玉' },
+      { name: 'stripes', label: '斜めストライプ', night: false },
+      { name: 'dots', label: '水玉', night: false },
     ]);
     expect(JSON.stringify(tool.data)).not.toContain(TINY_PNG_BASE64);
   });
@@ -417,7 +442,7 @@ describe('Recipe Catalog backdrops', () => {
     expect((await req(`/api/v1/catalogs/${recipeRef}/backdrops/dots.png?recipe=akari`)).status).toBe(404);
 
     const tool = await mcpToolCall<{ recipes: { name: string; deliver?: { backdrops?: unknown } }[] }>('list_catalog', { recipe_ref: recipeRef });
-    expect(tool.data?.recipes.find((r) => r.name === 'akari')?.deliver?.backdrops).toEqual([{ name: 'stripes', label: '斜めストライプ' }]);
+    expect(tool.data?.recipes.find((r) => r.name === 'akari')?.deliver?.backdrops).toEqual([{ name: 'stripes', label: '斜めストライプ', night: false }]);
     expect(JSON.stringify(tool.data)).not.toContain(OTHER_PNG_BASE64);
   });
 

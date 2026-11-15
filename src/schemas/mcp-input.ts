@@ -14,6 +14,7 @@ import {
   photoOptionsSchema,
   stageOptionsSchema,
   lightingOptionsSchema,
+  trailOptionsSchema,
   saturationOptionsSchema,
   deliverProfileRefSchema,
 } from './request-payloads';
@@ -177,6 +178,23 @@ export const lightingGenerationInputSchema = z.object({
   direction: lightingOptionsSchema.shape.direction,
   strength: lightingOptionsSchema.shape.strength,
   scene: lightingOptionsSchema.shape.scene,
+  idempotency_key: z.string().min(1),
+});
+
+/** `trail_generation` の入力。 */
+export const trailGenerationInputSchema = z.object({
+  generation_id: z.string().min(1),
+  template: trailOptionsSchema.shape.template,
+  points: trailOptionsSchema.shape.points,
+  front: trailOptionsSchema.shape.front,
+  path: trailOptionsSchema.shape.path,
+  rule: trailOptionsSchema.shape.rule,
+  width: trailOptionsSchema.shape.width,
+  color: trailOptionsSchema.shape.color,
+  head: trailOptionsSchema.shape.head,
+  head_at_end: trailOptionsSchema.shape.head_at_end,
+  in_frame: trailOptionsSchema.shape.in_frame,
+  seed: trailOptionsSchema.shape.seed,
   idempotency_key: z.string().min(1),
 });
 

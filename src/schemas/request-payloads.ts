@@ -252,6 +252,31 @@ export const lightingPayloadSchema = z
   })
   .strict();
 
+/** trail（軌跡）の options (docs/worker-protocol.md「trail」)。points は stage の絵の幅・高さに対する割合で、枠の外にも置ける。入力は stage の出力で、worker が判定する。 */
+const trailCoord = z.number().min(-1).max(2);
+export const trailOptionsSchema = z
+  .object({
+    template: z.string().min(1).optional(),
+    points: z.tuple([z.tuple([trailCoord, trailCoord]), z.tuple([trailCoord, trailCoord]), z.tuple([trailCoord, trailCoord]), z.tuple([trailCoord, trailCoord])]).optional(),
+    front: z.tuple([z.boolean(), z.boolean(), z.boolean(), z.boolean()]).optional(),
+    path: z.enum(['curve', 'line']).optional(),
+    rule: z.enum(['both', 'split', 'start']).optional(),
+    width: z.number().min(1).max(15).optional(),
+    color: z.string().regex(HEX_COLOR_RE).optional(),
+    head: z.enum(['light', 'sparkle']).optional(),
+    head_at_end: z.boolean().optional(),
+    in_frame: z.boolean().optional(),
+    seed: z.number().int().min(0).max(2147483647).optional(),
+  })
+  .strict();
+
+export const trailPayloadSchema = z
+  .object({
+    generation_id: z.string().min(1),
+    options: trailOptionsSchema.optional(),
+  })
+  .strict();
+
 /** saturation（彩度）の options (docs/worker-protocol.md「saturation」)。strength は元の彩度と圧縮後の彩度の混ぜ具合。入力は deliver の出力で、deliver の saturation で圧縮済みの絵を含め worker が判定する。 */
 export const saturationOptionsSchema = z
   .object({

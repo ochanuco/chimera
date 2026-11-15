@@ -8,7 +8,7 @@
 Experiment → ExperimentRun → Request → ComfyJob → Generation
 ```
 
-Request は worker への生成要求 1 件で、generate / redraw / deliver / dof / lens / photo / stage / lighting / saturation / import の
+Request は worker への生成要求 1 件で、generate / redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation / import の
 どれも（古い行は repair / masked_redraw / finalize もある）、Generation は必ず Request に属します。Run の結果は `requests.run_id` が Run を指す
 Request で、Run が Request を包含するのではなく、Request が Run を参照します。
 
@@ -23,7 +23,7 @@ Generation ── 仕上げ元（refines_generation_id） ──▶ Generation
   関係             意味
   ---------------- ----------------------------------------------
   素材参照         過去Generationの何を生成材料として利用したか
-  仕上げ元         この Generation が、どの Generation を redraw / deliver / dof / lens / photo / stage / lighting / saturation（と古い repair / masked_redraw）したものか
+  仕上げ元         この Generation が、どの Generation を redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation（と古い repair / masked_redraw）したものか
 
 ## Experiment
 
@@ -495,7 +495,7 @@ chimera を control plane、GPU 機を worker とする配置（[worker-protocol
 ``` text
 id
 short_id          /b/{short_id} の Request の短縮 ID
-kind              generate | redraw | deliver | dof | lens | photo | stage | lighting | import（finalize / repair / masked_redraw は古い行を読むためだけに残る）
+kind              generate | redraw | deliver | dof | lens | photo | stage | trail | lighting | import（finalize / repair / masked_redraw は古い行を読むためだけに残る）
 status            queued | running | done | failed | cancelled
 payload_json
 payload_hash
@@ -531,7 +531,7 @@ Job の `graph` / `render_facts` を正とします。素材参照は `request_r
 
 `run_id` は `kind = generate` で、ExperimentRun から自動起票された行にだけ付きます。
 `payload` は kind ごとの request.json v1 相当の内容（generate）または
-`{ generation_id, options }`（redraw / deliver / dof / lens / photo / stage / lighting / saturation、古い repair / masked_redraw / finalize）です。契約全体（状態遷移、API、payload
+`{ generation_id, options }`（redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation、古い repair / masked_redraw / finalize）です。契約全体（状態遷移、API、payload
 の形、idempotency の導出）は [worker-protocol.md](worker-protocol.md) が正本です。
 
 不変条件:
@@ -641,7 +641,7 @@ created_at
 updated_at
 ```
 
-`source_generation_id` は redraw / deliver / dof / lens / photo / stage / lighting / saturation（と古い repair / masked_redraw / finalize）の Job で仕上げ元の Generation を指します。
+`source_generation_id` は redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation（と古い repair / masked_redraw / finalize）の Job で仕上げ元の Generation を指します。
 
 `graph` は ComfyUI に投稿した prompt グラフ（JSON）です。Job のレコード単体から
 `/prompt` へ再投稿して生成を再現できるようにするために保存します。
@@ -800,6 +800,7 @@ cutout          cut: true の redraw の出力に付く表示用の切り抜き�
 layer-figure    deliver の出力に付く人物の層（RGBA、alpha は切り抜き）。出力と同じ寸法
 layer-outline   deliver の出力に付くフチと落ち影の層（RGBA。何も無ければ全透明）
 layer-backdrop  deliver の出力に付く背景の層（RGB。透過納品では付けない）
+layer-front     trail の出力（と、それを照らした lighting の出力）に付く、キャラの上に重ねる軌跡の層（RGBA）
 cut             alpha / depth をどう作ったかの json（モデル名・revision・
                 trimap の幅など）。alpha / depth と一緒に付く
 meta
@@ -896,7 +897,7 @@ other
 
 ## 仕上げ元
 
-redraw / deliver / dof / lens / photo / stage / lighting / saturation（と古い repair / masked_redraw / finalize）の出力 Generation は、仕上げた元の Generation を
+redraw / deliver / dof / lens / photo / stage / trail / lighting / saturation（と古い repair / masked_redraw / finalize）の出力 Generation は、仕上げた元の Generation を
 `generations.refines_generation_id` で直接指します。再試行の関係は持ちません。
 素材参照（Generation → Request）とは別の関係で、統合しません。
 
@@ -908,9 +909,10 @@ kind `photo` は層 asset を持つ deliver の出力を、写真の Generation�
 ぼかした納品の絵を作ります（[worker-protocol.md](worker-protocol.md#photo)）。写真の `depth` asset は写真の Generation に付きます。
 kind `saturation` は描いた絵（raw か描き直し）から人物をフチなしの透過で切り抜いて彩度を圧縮した納品の絵を作り、その出力の deliver は
 同じ強さの人物にフチを描きます。deliver の出力には、層ごとに彩度を圧縮した同じ層の納品の絵を作ります（[worker-protocol.md](worker-protocol.md#saturation)）。
-kind `stage` は deliver か saturation の出力を、ぼかさずに写真の中か背景の柄の上へ置き、kind `lighting` はその層を背景の光に合わせます
-（[worker-protocol.md](worker-protocol.md#stage)）。いずれの出力も層 asset を持つ納品の絵で、dof の入力になります。重ねる順は
-saturation → deliver → stage → lighting → dof → lens です。
+kind `stage` は deliver か saturation の出力を、ぼかさずに写真の中か背景の柄の上へ置き、kind `trail` は stage の出力に光の軌跡を描き、
+kind `lighting` はその層を背景の光に合わせます（[worker-protocol.md](worker-protocol.md#stage)、[trail](worker-protocol.md#trail)）。
+trail の出力は、軌跡の裏の区間を塗り込んだ `layer-backdrop` と、キャラの上に重ねる前の区間の `layer-front` を持ちます。いずれの出力も
+層 asset を持つ納品の絵で、dof の入力になります。重ねる順は saturation → deliver → stage → trail → lighting → dof → lens です。
 
 ## Workbench
 
@@ -920,12 +922,12 @@ saturation → deliver → stage → lighting → dof → lens です。
 ``` text
 id                  TEXT PRIMARY KEY
 root_generation_id  TEXT NOT NULL UNIQUE   元絵の Generation（generations.id）
-picks_json          TEXT NOT NULL          {"1": {"generation_id": "<id>"} | {"skip": true}, ..., "6": ...}
+picks_json          TEXT NOT NULL          {"1": {"generation_id": "<id>"} | {"skip": true}, ..., "7": ...}
 created_at / updated_at
 ```
 
 フェーズは 1 描き直し（redraw の hires。古い行の canvas / light と、作れなくなった repair / masked_redraw もここに置く）、2 彩度（描いた絵の saturation）、
-3 フチ（deliver）、4 背景（stage）、5 光（lighting）、6 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
+3 フチ（deliver）、4 背景（stage）、5 軌跡（trail）、6 光（lighting）、7 ボケ（dof）です。`picks_json` のキーはフェーズ番号で、値は採用した Generation の id か、そのフェーズを飛ばした印です。
 採用は木のどこかの Generation を指すだけで、Generation 側には何も書きません。木の取得と保存の API は
 [api.md](api.md#generation-tree) です。
 

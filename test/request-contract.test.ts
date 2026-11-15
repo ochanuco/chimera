@@ -134,6 +134,7 @@ describe('createRequestSchema: unknown keys elsewhere', () => {
       ['redraw', { generation_id: generation.id, options: { method: 'hires', hires: 2048 } }],
       ['deliver', { generation_id: generation.id, options: { keep_scene: true } }],
       ['dof', { generation_id: generation.id, options: { focus: [0.5, 0.5] } }],
+      ['trail', { generation_id: generation.id, options: { template: 'tsu' } }],
       ['lighting', { generation_id: generation.id }],
       ['saturation', { generation_id: generation.id, options: { strength: 0.5 } }],
     ] as const;

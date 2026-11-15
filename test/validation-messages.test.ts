@@ -67,7 +67,7 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['publication create: unparsable https url', 'POST', '/api/v1/generations/x/publications', { url: 'https://' }],
   ['publication update: missing url', 'PATCH', '/api/v1/publications/x', {}],
   ['observation: neither pose nor component', 'POST', '/api/v1/observations', { character: 'c', parameter: 'p', value: 'v', outcome: 'accepted', reason: 'r', idempotency_key: 'k' }],
-  ['workbench: unknown phase key', 'PUT', '/api/v1/workbenches/x', { picks: { '7': { skip: true }, '0': { skip: true }, '1': { skip: true } } }],
+  ['workbench: unknown phase key', 'PUT', '/api/v1/workbenches/x', { picks: { '8': { skip: true }, '0': { skip: true }, '1': { skip: true } } }],
   ['workbench: malformed picks', 'PUT', '/api/v1/workbenches/x', { picks: { '1': { generation_id: '' }, '2': { skip: true, generation_id: 'g' } } }],
   ['workbench: extra top-level key', 'PUT', '/api/v1/workbenches/x', { picks: {}, extra: 1 }],
   ['job update: no fields', 'PATCH', '/api/v1/jobs/x', {}],
@@ -191,7 +191,7 @@ const REST_EXPECTED: Record<string, string> = {
   'request claim: empty kinds':
     '400 kinds: Too small: expected array to have >=1 items',
   'request claim: import is not claimable':
-    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"|"reference"|"reference_render"',
+    '400 kinds.0: Invalid option: expected one of "generate"|"redraw"|"repair"|"masked_redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"trail"|"lighting"|"saturation"|"reference"|"reference_render"',
   'experiment create: non-integer seeds':
     '400 base_parameters.seeds: must be an array of 1-16 non-negative integers',
   'experiment create: seeds and count disagree':
@@ -239,7 +239,7 @@ const REST_EXPECTED: Record<string, string> = {
   'observation: neither pose nor component':
     '400 pose: pose か component の少なくとも一方が必要です',
   'workbench: unknown phase key':
-    "400 picks.0: phase key must be one of 1..6, got '0'; picks.7: phase key must be one of 1..6, got '7'",
+    "400 picks.0: phase key must be one of 1..7, got '0'; picks.8: phase key must be one of 1..7, got '8'",
   'workbench: malformed picks':
     '400 picks.1.generation_id: Too small: expected string to have >=1 characters; picks.2: Invalid input',
   'workbench: extra top-level key':
@@ -274,7 +274,7 @@ const MCP_EXPECTED: Record<string, string> = {
   'create_run: bad variables':
     'Input validation error: Invalid arguments for tool create_run: variables.a: Invalid input',
   'create_request: finalize kind':
-    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"lighting"|"saturation"|"reference"',
+    'Input validation error: Invalid arguments for tool create_request: kind: Invalid option: expected one of "generate"|"redraw"|"deliver"|"dof"|"lens"|"photo"|"stage"|"trail"|"lighting"|"saturation"|"reference"',
   'create_request: invalid deliver envelope':
     'Input validation error: Invalid arguments for tool create_request: payload.options.stroke_light: Invalid option: expected one of "even"|"n"|"ne"|"e"|"se"|"s"|"sw"|"w"|"nw", payload: Unrecognized key: "extra"',
   'create_request: bad recipe_ref':
