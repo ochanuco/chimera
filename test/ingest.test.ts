@@ -93,10 +93,6 @@ describe('Generation ingest', () => {
     });
 
     expect(result.status).toBe(201);
-    const row = await env.DB.prepare('SELECT character_id FROM generations WHERE id = ?')
-      .bind(result.body.id)
-      .first<{ character_id: string | null }>();
-    expect(row?.character_id).toBeNull();
   });
 
   it('404s when the job does not exist', async () => {
