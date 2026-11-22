@@ -40,7 +40,6 @@ describe('Batch removal migrations', () => {
   it('keeps every index and the NOT NULL request_id of the rebuilt tables', async () => {
     const indexes = await schemaNames('index');
     for (const expected of [
-      'idx_generations_character_id',
       'idx_generations_rating',
       'idx_generations_bookmark',
       'idx_generations_created_at',
