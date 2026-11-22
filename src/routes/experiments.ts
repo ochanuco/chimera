@@ -17,7 +17,6 @@ import { assignTag, removeTag } from '../lib/tags';
 import { setBookmark } from '../lib/bookmark';
 import { badRequest, conflict, notFound } from '../lib/errors';
 import {
-  assertCharacterExists,
   createExperiment,
   createExperimentRun,
   decorateRuns,
@@ -93,7 +92,7 @@ experiments.get('/', async (c) => {
 
   const rows = await queryExperiments(
     db,
-    { status, character: query.character, bookmark: query.bookmark === 'true' },
+    { status, bookmark: query.bookmark === 'true' },
     limit,
     offset,
   );
@@ -104,7 +103,6 @@ experiments.get('/', async (c) => {
       const latest = latestRuns.get(r.id);
       return {
         ...serializeExperiment(r),
-        character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
         run_count: r.run_count,
         latest_run: latest
           ? {
@@ -129,7 +127,6 @@ experiments.patch('/:id', async (c) => {
   const body = parseOrThrow(updateExperimentSchema, await c.req.json());
   const db = c.env.DB;
   const experiment = await getExperimentOr404(db, c.req.param('id'));
-  if (body.character_id) await assertCharacterExists(db, body.character_id);
 
   const sets: string[] = [];
   const binds: unknown[] = [];
@@ -151,7 +148,6 @@ experiments.patch('/:id', async (c) => {
       body.base_generation_id === null ? null : await resolveBaseGenerationId(db, body.base_generation_id),
     );
   }
-  if (body.character_id !== undefined) assign('character_id', body.character_id);
 
   const now = nowIso();
   if (body.status !== undefined && body.status !== experiment.status) {
@@ -217,7 +213,6 @@ experimentRuns.get('/:runId', async (c) => {
       status: experiment.status,
       base_recipe: experiment.base_recipe,
       base_generation_id: experiment.base_generation_id,
-      character_id: experiment.character_id,
     },
   });
 });

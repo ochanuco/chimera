@@ -12,12 +12,10 @@ export interface ExperimentListItem {
   status: string;
   base_recipe: string | null;
   base_generation_id: string | null;
-  character_id: string | null;
   bookmark: boolean;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
-  character: { id: string; name: string } | null;
   run_count: number;
   latest_run: { id: string; run_index: number; created_at: string; evaluation_overall: string | null } | null;
 }
@@ -69,7 +67,6 @@ export function ExperimentsPage({
               <td>
                 <a href={`/experiments/${e.short_id}`}>{e.name}</a>
               </td>
-              <td>{e.character ? e.character.name : '-'}</td>
               <td>
                 <StatusBadge value={e.status} />
               </td>

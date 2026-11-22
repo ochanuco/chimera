@@ -375,7 +375,6 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
             base_recipe: input.recipe,
             base_parameters: mergedBaseParameters(input),
             base_generation_id: input.base_generation_id,
-            character_id: input.character_id,
           },
           arms: input.arms,
           idempotency_key: input.idempotency_key,
@@ -505,7 +504,6 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           status: experiment.status,
           base_recipe: experiment.base_recipe,
           base_generation_id: experiment.base_generation_id,
-          character_id: experiment.character_id,
         },
         generations,
       });
@@ -1145,7 +1143,7 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
         'Find a Generation to start from when you do not already have a short_id — every other Generation tool ' +
         '(get_generation, get_generation_lineage, get_generation_image, redraw_generation, deliver_generation, ' +
         "derive_request) assumes you already have one. Filters mirror the gallery's own " +
-        'filters (character, tag, rating, bookmark, model family, phase, created_at range) and combine freely; ' +
+        'filters (tag, rating, bookmark, model family, phase, created_at range) and combine freely; ' +
         'model (anima / il / moss / unknown) and phase (generate, import, redraw, deliver, saturation, stage, trail, lighting, dof, lens, photo) each take a list and match any of it; published=true is the ' +
         "delivered-look index — every look that was posted, each still carrying its look:<pose> tag; reference=true " +
         "is the pose basis-render index — every Generation currently pinned via set_pose_reference. rating is " +
@@ -1160,14 +1158,13 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
       inputSchema: listGenerationsInputSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ q, tag, published, reference, rating, bookmark, character, model, phase, from, to, limit, offset }) => {
+    async ({ q, tag, published, reference, rating, bookmark, model, phase, from, to, limit, offset }) => {
       const query: Record<string, string | undefined> = {
         q,
         tag,
         model: model?.join(','),
         phase: phase?.join(','),
         rating,
-        character,
         from,
         to,
         published: published === undefined ? undefined : published ? 'true' : 'false',
@@ -1187,7 +1184,6 @@ export function createChimeraMcpServer(env: Bindings, origin: string, executionC
           safety: item.safety,
           reference: item.reference,
           summary: item.summary,
-          character: item.character,
           created_at: item.created_at,
           request_id: item.request_id,
           canonical_url: item.canonical_url,

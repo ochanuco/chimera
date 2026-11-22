@@ -26,7 +26,6 @@ export interface ExperimentDetailRunGeneration {
   thumbnail_url: string;
   rating: 'bad' | 'neutral' | 'good' | null;
   bookmark: boolean;
-  character_id: string | null;
   created_at: string;
   image_width: number | null;
   image_height: number | null;
@@ -102,12 +101,10 @@ export interface ExperimentDetailData {
   base_recipe: string | null;
   base_parameters: JsonObject | null;
   base_generation_id: string | null;
-  character_id: string | null;
   bookmark: boolean;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
-  character: { id: string; name: string } | null;
   /** base_generation_id を表示用に解決した short_id。resolveGenerationShortIds (routes/pages.tsx) が引く。 */
   base_generation_short_id: string | null;
   tags: string[];
@@ -678,10 +675,6 @@ export function ExperimentDetailPage({
               '-'
             )}
           </td>
-        </tr>
-        <tr>
-          <td>キャラクター</td>
-          <td>{experiment.character ? experiment.character.name : '-'}</td>
         </tr>
         <tr>
           <td>Tags</td>

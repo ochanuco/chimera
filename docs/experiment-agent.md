@@ -111,7 +111,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | --- | --- | --- | --- |
 | `list_experiments` | `status?` | 読み取り | Experiment の一覧。各行に base_recipe / base_parameters / base_generation_id / run_count / latest_run |
 | `get_experiment` | `id` | 読み取り | `GET /api/v1/experiments/{id}` と同じ形（runs / promotions / tags 込み） |
-| `create_experiment` | `name, recipe, parameters?, seeds?, base_generation_id?, character_id?, description?, arms, idempotency_key` | 追記 | Experiment を1件と、arm ごとの Run を作る。各 Run が requests 行を自動起票する。Experiment の `url` / `compare_url` と、arm ごとの Run id・`request_id`・`request_short_id` を返す |
+| `create_experiment` | `name, recipe, parameters?, seeds?, base_generation_id?, description?, arms, idempotency_key` | 追記 | Experiment を1件と、arm ごとの Run を作る。各 Run が requests 行を自動起票する。Experiment の `url` / `compare_url` と、arm ごとの Run id・`request_id`・`request_short_id` を返す |
 | `sweep_patch` | `recipe, name, patches, poses?, description?, idempotency_key` | 追記 | 1つの patch 集合を recipe の pin 済みの全 pose に、その pose の pin の seed で当てる。Experiment を1件と pose ごとの Run を作る。Experiment の `url` / `compare_url` / `check_url` と、pose ごとの Run id・`seed`・`request_id`・`request_short_id`、対象から外した pose の `skipped` を返す |
 | `create_run` | `experiment_id, overrides, objective?, parent_run_id?, idempotency_key?, variables?` | 追記 | Run を1件作る。自動起票した requests 行の id を `run.request_id` に返す |
 | `get_run` | `run_id` | 読み取り | Run、所属 Experiment の要約、結果 Request の Generation 一覧 |
@@ -131,7 +131,7 @@ status が active / stabilized の Experiment を横断して、requests 行（s
 | `trail_generation` | `generation_id, template?, points?, front?, path?, rule?, width?, color?, head?, head_at_end?, in_frame?, seed?, idempotency_key` | 追記 | trail request を積む。stage の絵に光の軌跡を描き、前の区間はキャラの上、裏の区間は背景に塗る |
 | `lighting_generation` | `generation_id, direction?, strength?, idempotency_key` | 追記 | lighting request を積む。stage の絵のキャラとフチを背景の光（露出・色味・向き）に合わせる |
 | `lens_generation` | `generation_id, center?, strength?, shape?, radius?, idempotency_key` | 追記 | lens request を積む。納品の絵を魚眼 / 逆魚眼で歪めるか、球面フィルターで円の内側を膨らませる |
-| `list_generations` | `q?, character?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
+| `list_generations` | `q?, tag?, published?, reference?, rating?, bookmark?, from?, to?, limit?, offset?` | 読み取り | `GET /api/v1/generations` と同じフィルタで Generation を探す |
 | `get_generation` | `generation_id, include_prompts?` | 読み取り | `GET /api/v1/generations/{id}` と同じ形（request / siblings / publications / judgments / pose_reference / refines_generation / assets 込み） |
 | `get_generation_lineage` | `generation_id, depth?` | 読み取り | Request 単位の祖先と子孫。depth 既定 5、上限 10 |
 | `get_generation_image` | `short_id, width?, asset?` | 読み取り | 縮小した JPEG 画像。cutout があれば既定でそちら（透過は薄い灰色に敷く）。載らなければ canonical URL |

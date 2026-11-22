@@ -59,7 +59,6 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['promotion create: not a url', 'POST', '/api/v1/experiments/x/promotions', { pull_request_url: 'nope' }],
   ['promotion update: no fields', 'PATCH', '/api/v1/promotions/x', {}],
   ['judgment: bad verdict', 'POST', '/api/v1/experiments/x/judgments', { baseline_run_id: 'a', arm_run_id: 'b', seed: 1, left_generation_id: 'l', right_generation_id: 'r', verdict: 'both' }],
-  ['generation update: no fields', 'PATCH', '/api/v1/generations/x', {}],
   ['generation rating: bad value', 'PUT', '/api/v1/generations/x/rating', { rating: 'great' }],
   ['generation semantic: missing schema_version', 'PUT', '/api/v1/generations/x/semantic', { summary: 's', core: { pose: 1 } }],
   ['generation safety: probability over 1', 'PUT', '/api/v1/generations/x/safety', { model: 'm', rating: { general: 2, sensitive: 0, questionable: 0, explicit: 0 }, tags: { a: -1 } }],
@@ -76,7 +75,6 @@ const REST_CASES: [label: string, method: Method, path: string, body: unknown][]
   ['preset import: bad recipe_ref', 'POST', '/api/v1/presets/import', { recipe_ref: '-bad' }],
   ['timings put: bad prompt', 'PUT', '/api/v1/requests/x/timings', { worker_id: 'w', attempt: -1, version: 'v3', source: 'worker', status: 'done', prompts: [{ prompt_id: 'p', purpose: 'r', status: 'bad', nodes: [{ node_id: '1' }] }] }],
   ['catalog put: envelope', 'PUT', '/api/v1/catalogs/production', { schema_version: 4, recipes: [{ name: 1 }], patches: [] }],
-  ['character create: empty name', 'POST', '/api/v1/characters', { name: '' }],
   ['tag rename: empty name', 'PATCH', '/api/v1/tags/x', { name: '' }],
 ];
 
@@ -222,8 +220,6 @@ const REST_EXPECTED: Record<string, string> = {
     '400 (root): no fields to update',
   'judgment: bad verdict':
     '400 verdict: Invalid option: expected one of "left"|"right"|"tie"',
-  'generation update: no fields':
-    '400 (root): no fields to update',
   'generation rating: bad value':
     '400 rating: Invalid option: expected one of "bad"|"neutral"|"good"',
   'generation semantic: missing schema_version':
@@ -256,8 +252,6 @@ const REST_EXPECTED: Record<string, string> = {
     '400 attempt: Too small: expected number to be >=0; version: Invalid option: expected one of "v1"|"v2"; prompts.0.status: Invalid option: expected one of "success"|"error"|"interrupted"|"unknown"; prompts.0.nodes.0.class_type: Invalid input: expected string, received undefined; prompts.0.nodes.0.cached: Invalid input: expected boolean, received undefined',
   'catalog put: envelope':
     '400 schema_version: Invalid input; recipes.0.name: Invalid input: expected string, received number; recipes.0.poses: Invalid input: expected array, received undefined; patches: Invalid input: expected record, received array',
-  'character create: empty name':
-    '400 name: Too small: expected string to have >=1 characters',
   'tag rename: empty name':
     '400 name: Too small: expected string to have >=1 characters',
 };

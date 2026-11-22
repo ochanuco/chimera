@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { semanticUpdateSchema, ratingUpdateSchema, updateGenerationSchema, setPoseReferenceForGenerationSchema } from '../schemas/generations';
+import { semanticUpdateSchema, ratingUpdateSchema, setPoseReferenceForGenerationSchema } from '../schemas/generations';
 import { assignTagSchema } from '../schemas/tags';
 import { createPublicationSchema } from '../schemas/publications';
 import { putSafetySchema } from '../schemas/safety';
@@ -70,33 +70,6 @@ generations.get('/:id', async (c) => {
   const db = c.env.DB;
   const generation = await getGenerationOr404(db, c.req.param('id'));
   return c.json(await getGenerationDetail(db, origin(c), generation));
-});
-
-generations.patch('/:id', async (c) => {
-  const body = parseOrThrow(updateGenerationSchema, await c.req.json());
-  const db = c.env.DB;
-  const generation = await getGenerationOr404(db, c.req.param('id'));
-
-  if (body.character_id) {
-    const character = await db.prepare('SELECT 1 FROM characters WHERE id = ?').bind(body.character_id).first();
-    if (!character) throw notFound('character');
-  }
-
-  const sets: string[] = [];
-  const binds: unknown[] = [];
-  if (body.note !== undefined) {
-    sets.push('note = ?');
-    binds.push(body.note);
-  }
-  if (body.character_id !== undefined) {
-    sets.push('character_id = ?');
-    binds.push(body.character_id);
-  }
-  binds.push(generation.id);
-  await db.prepare(`UPDATE generations SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
-
-  const updated = await getGenerationOr404(db, generation.id);
-  return c.json(await buildContext(db, origin(c), updated));
 });
 
 generations.put('/:id/semantic', async (c) => {

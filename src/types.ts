@@ -42,7 +42,6 @@ export interface ExperimentRow {
   base_recipe: string | null;
   base_parameters_json: string | null;
   base_generation_id: string | null;
-  character_id: string | null;
   bookmark: number;
   created_at: string;
   updated_at: string;
@@ -114,17 +113,10 @@ export interface ComfyJobRow {
   updated_at: string;
 }
 
-export interface CharacterRow {
-  id: string;
-  name: string;
-  aliases: string | null;
-}
-
 export interface GenerationRow {
   id: string;
   short_id: string;
   comfy_job_id: string;
-  character_id: string | null;
   seed: number | null;
   original_filename: string | null;
   comfy_output_index: number | null;
@@ -132,7 +124,6 @@ export interface GenerationRow {
   image_width: number | null;
   image_height: number | null;
   image_size: number | null;
-  note: string | null;
   rating: Rating | null;
   bookmark: number;
   semantic_schema_version: number | null;
@@ -166,7 +157,6 @@ export interface GenerationAssetRow {
 export interface TagRow {
   id: string;
   name: string;
-  description: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -225,7 +215,6 @@ export interface RecipeCatalogRow {
   catalog_json: string;
   git_commit: string | null;
   git_branch: string | null;
-  worker_id: string | null;
   published_at: string;
   updated_at: string;
 }

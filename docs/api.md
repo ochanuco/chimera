@@ -33,7 +33,7 @@ POST /api/v1/requests                     # 生成リクエスト登録（idempo
 PUT  /api/v1/requests/{id}/resolution     # worker が解決済みの値を報告
 POST /api/v1/requests/{id}/jobs           # ComfyJob 登録
 POST /api/v1/jobs/{id}/generations        # 画像 ingest（multipart: metadata + image）
-GET  /api/v1/generations?character=...    # 検索
+GET  /api/v1/generations?tag=...          # 検索
 GET  /api/v1/generations/{id}/context     # Claude 向け軽量 context
 PUT  /api/v1/generations/{id}/semantic    # semantic metadata 保存
 POST /api/v1/experiments/{id}/runs        # 検証試行の記録（overrides / evaluation / decision）
@@ -178,26 +178,6 @@ ingested
 failed
 ```
 
-## Character
-
-Character は検索の第一級属性であり、事前登録が必要です。Generation ingest
-の `character_id` には登録済み Character の id を渡します。
-
-``` text
-POST /api/v1/characters
-GET  /api/v1/characters
-```
-
-``` json
-{
-  "name": "結月ゆかり",
-  "aliases": []
-}
-```
-
-CLI / Claude は name で GET
-して既存を解決し、なければ作成してから id を使います。
-
 ## Experiment
 
 Experiment は検証テーマの単位です（詳細は `domain-model.md` の Experiment
@@ -215,8 +195,7 @@ POST /api/v1/experiments
   "name": "黒タイツ+薄紫ソックスの分離",
   "description": "結月ゆかりの脚部で黒タイツと薄紫ソックスを安定して分離する",
   "base_recipe": "dq3",
-  "base_generation_id": "...",
-  "character_id": "..."
+  "base_generation_id": "..."
 }
 ```
 
@@ -239,7 +218,6 @@ GET /api/v1/experiments
 
 ``` text
 status
-character   # idまたはname
 bookmark
 limit
 offset
@@ -262,12 +240,10 @@ offset
       "status": "active",
       "base_recipe": "dq3",
       "base_generation_id": "...",
-      "character_id": "...",
       "bookmark": false,
       "created_at": "...",
       "updated_at": "...",
       "completed_at": null,
-      "character": { "id": "...", "name": "結月ゆかり" },
       "run_count": 3,
       "latest_run": {
         "id": "...",
@@ -299,12 +275,10 @@ List item と同じフィールドに加え、`tags` と `runs`（`run_index`
   "status": "active",
   "base_recipe": "dq3",
   "base_generation_id": "...",
-  "character_id": "...",
   "bookmark": false,
   "created_at": "...",
   "updated_at": "...",
   "completed_at": null,
-  "character": { "id": "...", "name": "結月ゆかり" },
   "tags": ["legwear"],
   "run_count": 1,
   "runs": [
@@ -424,8 +398,7 @@ Run の各フィールドに加え、`request` / `generation` と以下を返し
   "short_id": "abc123",
   "name": "...",
   "status": "active",
-  "base_recipe": "dq3",
-  "character_id": "..."
+  "base_recipe": "dq3"
 }
 ```
 
@@ -1127,15 +1100,10 @@ GET /api/v1/generations/{id-or-short-id}/context
   "image": {
     "url": "https://example/g/abc123/image"
   },
-  "character": {
-    "id": "...",
-    "name": "結月ゆかり"
-  },
   "created_at": "...",
   "rating": "good",
   "bookmark": true,
   "tags": ["outfit-good"],
-  "note": "...",
   "summary": "...",
   "semantic": {
     "schema_version": 1,
@@ -1237,7 +1205,6 @@ GET /api/v1/generations
 主なquery:
 
 ``` text
-character
 q
 tag
 published
@@ -1280,7 +1247,6 @@ Generationより新しいものを`limit`件、新しい順で返します。`cr
 主な用途:
 
 ``` text
-character=yukari
 tag=outfit-good
 bookmark=true
 from=2026-01-01
@@ -1337,7 +1303,7 @@ Gallery live insertion カードフラグメント）も同じフィールドを
 `exclude_rating=bad|neutral|good` はその rating を除外します（未評価の行は残ります）。
 
 `ids=` は Generation の short_id / UUID をカンマまたは空白区切りで並べたもので、指定すると
-それらのみを返します（最大100件、超過は400）。`ids` は `character` などの他フィルタと
+それらのみを返します（最大100件、超過は400）。`ids` は `tag` などの他フィルタと
 組み合わせられます。
 
 `cursor=` は newest-first のkeysetページングを進めるための不透明な文字列です。指定すると
@@ -1459,7 +1425,7 @@ short_id のどちらでもよく、raw Generation でなければ 400（不明�
 GET /api/v1/generations/timeline
 ```
 
-Generation Searchと同じ絞り込みquery（`character` / `tag` / `published` / `reference` / `from` /
+Generation Searchと同じ絞り込みquery（`tag` / `published` / `reference` / `from` /
 `to` / `rating` / `bookmark` / `comfy_prompt_id` / `original_filename` / `origin` /
 `exclude_rating` / `model` / `phase` / `ids`）を受け取り、条件に合う枚数をJST（UTC+9）の15分枠ごとに新しい順で返します。
 `cursor` / `after` / `created_before` / `limit`は使いません。枠のないものは含みません。
@@ -1665,10 +1631,6 @@ PUT /api/v1/generations/{id}/rating
   "rating": "good"
 }
 ```
-
-## Notes
-
-主要エンティティの通常PATCHで編集します。
 
 ## Canonical Routes
 

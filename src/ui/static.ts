@@ -1100,26 +1100,6 @@ details.section .section-body { margin-top: 0.6rem; }
   }
 }
 
-.note-form textarea {
-  width: 100%;
-  min-height: 5rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  padding: 0.5rem;
-  font-family: inherit;
-}
-.note-form button {
-  margin-top: 0.4rem;
-  background: var(--accent);
-  color: #10131c;
-  border: none;
-  border-radius: 6px;
-  padding: 0.35rem 0.9rem;
-  cursor: pointer;
-}
-.save-status { margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-dim); }
 
 .dial-label { font-size: 0.8rem; color: var(--text-dim); margin-right: 0.2rem; }
 .dof-tools { display: flex; align-items: center; gap: 0.5rem; flex-basis: 100%; font-size: 0.8rem; color: var(--text-dim); }
@@ -2243,29 +2223,6 @@ export const appJs = `
           }
         }
       }, 200);
-    });
-  }
-
-  function initNoteForm() {
-    document.addEventListener('submit', async function (ev) {
-      const form = ev.target.closest('.note-form');
-      if (!form) return;
-      ev.preventDefault();
-      const kind = form.getAttribute('data-kind');
-      const id = form.getAttribute('data-id');
-      const textarea = qs('textarea[name="note"]', form);
-      const status = qs('.save-status', form);
-      try {
-        await api('/api/v1/' + kind + '/' + id, 'PATCH', { note: textarea.value });
-        if (status) {
-          status.textContent = 'saved';
-          setTimeout(function () { status.textContent = ''; }, 1500);
-        }
-        track('note.save', { kind: kind, id: id, length: textarea.value.length });
-      } catch (e) {
-        trackError('note.save', e, { kind: kind, id: id });
-        if (status) status.textContent = 'failed: ' + e.message;
-      }
     });
   }
 
@@ -7646,7 +7603,6 @@ export const appJs = `
     initTagAdd();
     initTagRemove();
     initTagSuggestions();
-    initNoteForm();
     initPublicationAdd();
     initPublicationUrlSave();
     initPublicationRemove();

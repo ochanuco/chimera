@@ -1,28 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRequest, createGeneration, getJson, postJson, req } from './helpers';
 
-describe('Characters', () => {
-  it('creates and lists characters', async () => {
-    const name = `char-${crypto.randomUUID().slice(0, 8)}`;
-    const created = await postJson<{ id: string; name: string; aliases: string[] }>('/api/v1/characters', {
-      name,
-      aliases: ['alias-a'],
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.aliases).toEqual(['alias-a']);
-
-    const list = await getJson<{ items: { name: string }[] }>('/api/v1/characters');
-    expect(list.body.items.some((c) => c.name === name)).toBe(true);
-  });
-
-  it('rejects a duplicate character name', async () => {
-    const name = `dup-${crypto.randomUUID().slice(0, 8)}`;
-    await postJson('/api/v1/characters', { name });
-    const second = await postJson('/api/v1/characters', { name });
-    expect(second.status).toBe(409);
-  });
-});
-
 describe('Experiments', () => {
   it('supports create/list/get/patch', async () => {
     const created = await postJson<{ id: string; name: string }>('/api/v1/experiments', {

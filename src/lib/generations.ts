@@ -7,13 +7,12 @@ import { listPublicationsForGeneration, serializePublication } from './publicati
 import { getSafetyForGeneration, serializeSafety, type SafetySummary } from './safety';
 import { renderFactsForJob, resolveRequestRenderFacts } from './render-facts';
 import { drawnPoseView, getPoseReferenceOfGeneration, type GenerationPoseReference } from './preset-references';
-import { isUuid } from './uuidv7';
 import { findRootGeneration } from './workbench';
 import { badRequest } from './errors';
 import { MODEL_FILTER_VALUES } from './model-family';
 import { listJudgmentsForGeneration } from './judgments';
 import { isPhase, PHASE_KINDS, PHASES, type Phase } from './phases';
-import type { RequestReferenceRow, CharacterRow, ComfyJobRow, GenerationAssetRow, GenerationRow, RequestRow, RequestStatus } from '../types';
+import type { RequestReferenceRow, ComfyJobRow, GenerationAssetRow, GenerationRow, RequestRow, RequestStatus } from '../types';
 
 function parseSemantic(row: GenerationRow) {
   if (!row.semantic_json) return null;
@@ -97,10 +96,7 @@ async function loadBuiltContext(db: D1Database, org: string, generation: Generat
   const request = generation.request_id
     ? await db.prepare('SELECT * FROM requests WHERE id = ?').bind(generation.request_id).first<RequestRow>()
     : null;
-  const [character, tags, references, requestBlock, requestGenerations] = await Promise.all([
-    generation.character_id
-      ? db.prepare('SELECT * FROM characters WHERE id = ?').bind(generation.character_id).first<CharacterRow>()
-      : Promise.resolve(null),
+  const [tags, references, requestBlock, requestGenerations] = await Promise.all([
     listTagsForTarget(db, 'generation_tags', generation.id),
     db
       .prepare('SELECT * FROM request_references WHERE source_generation_id = ? ORDER BY created_at ASC')
@@ -124,12 +120,10 @@ async function loadBuiltContext(db: D1Database, org: string, generation: Generat
     canonical_url: canonicalGenerationUrl(org, generation.short_id),
     image: { url: generationImageUrl(org, generation.short_id) },
     original_purged_at: generation.original_purged_at,
-    character: character ? { id: character.id, name: character.name } : null,
     created_at: generation.created_at,
     rating: generation.rating,
     bookmark: toBool(generation.bookmark),
     tags: tags.map((t) => t.name),
-    note: generation.note,
     summary: generation.summary,
     semantic: parseSemantic(generation),
     request: requestBlock,
@@ -221,7 +215,6 @@ export interface GenerationListItem {
   rating: GenerationRow['rating'];
   bookmark: boolean;
   summary: string | null;
-  character: { id: string; name: string | null } | null;
   tags: string[];
   created_at: string;
   request_id: string | null;
@@ -382,15 +375,6 @@ function buildGenerationFilter(query: Record<string, string | undefined>): { con
   const conditions: string[] = [];
   const binds: unknown[] = [];
 
-  if (query.character) {
-    if (isUuid(query.character)) {
-      conditions.push('g.character_id = ?');
-      binds.push(query.character);
-    } else {
-      conditions.push('g.character_id IN (SELECT id FROM characters WHERE name = ?)');
-      binds.push(query.character);
-    }
-  }
   if (query.tag) {
     conditions.push(
       'EXISTS (SELECT 1 FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id AND t.name = ?)',
@@ -537,7 +521,7 @@ export async function queryGenerations(
   const { results } = await db
     .prepare(
       // tags を JOIN + GROUP BY g.id で集めると、LIMIT の前に全 generations を集約してしまう (created_at の索引で止まれない)。
-      `SELECT g.*, ch.name AS character_name,
+      `SELECT g.*,
          (SELECT json_group_array(t.name) FROM generation_tags gt JOIN tags t ON t.id = gt.tag_id WHERE gt.generation_id = g.id) AS tag_names_json,
          rg.short_id AS refines_generation_short_id,
          EXISTS (SELECT 1 FROM generation_publications gp WHERE gp.generation_id = g.id) AS is_published,
@@ -545,7 +529,6 @@ export async function queryGenerations(
          (SELECT pr.recipe FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_recipe,
          (SELECT pr.name FROM preset_references pr WHERE pr.generation_id = g.id AND pr.superseded_at IS NULL ORDER BY pr.created_at DESC LIMIT 1) AS reference_pose
        FROM generations g
-       LEFT JOIN characters ch ON ch.id = g.character_id
        LEFT JOIN generations rg ON rg.id = g.refines_generation_id
        LEFT JOIN generation_safety gs ON gs.generation_id = g.id
        ${where}
@@ -555,7 +538,6 @@ export async function queryGenerations(
     .bind(...binds, limit + 1, query.cursor || afterCursor ? 0 : offset)
     .all<
       GenerationRow & {
-        character_name: string | null;
         tag_names_json: string;
         refines_generation_short_id: string | null;
         is_published: number;
@@ -609,7 +591,6 @@ export async function queryGenerations(
       rating: r.rating,
       bookmark: toBool(r.bookmark),
       summary: r.summary,
-      character: r.character_id ? { id: r.character_id, name: r.character_name } : null,
       tags,
       created_at: r.created_at,
       request_id: r.request_id,

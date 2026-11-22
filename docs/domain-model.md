@@ -43,7 +43,6 @@ status
 base_recipe
 base_generation_id
 base_parameters_json
-character_id
 bookmark
 created_at
 updated_at
@@ -674,8 +673,6 @@ checkpoint が1つ以上あれば`il`の順で判定します（`src/lib/model-f
 Generation（`refines_generation_id`あり）は仕上げ元の`model_family`をそのまま引き継ぎます。
 Gallery の`model`絞り込みが使います（`unknown`は NULL）。
 
-MVPでは1 Generationにつき Character は0..1です。
-
 主な属性:
 
 ``` text
@@ -685,11 +682,9 @@ request_id
 refines_generation_id
 model_family
 comfy_job_id
-character_id
 seed
 original_filename
 r2_object_key
-note
 rating
 bookmark
 semantic_schema_version
@@ -846,18 +841,6 @@ region は自由文字列で、絵ごとに増えて構いません。
 本体に適用される「物理削除しない」不変条件は GenerationAsset
 には適用しません — 置換は明示的な仕様です。
 
-## Character
-
-検索の第一級属性です。
-
-``` text
-id
-name
-aliases
-```
-
-MVPでは複数キャラクター画像を対象外とします。
-
 ## 素材参照
 
 新しい Request を生成するために、過去 Generation
@@ -954,7 +937,6 @@ Tag 名は自由入力です。ただし UI / Claude とも既存 Tag
 tags
 - id
 - name
-- description
 - created_at
 - updated_at
 ```
@@ -1021,14 +1003,9 @@ Favorite ではなく Bookmark と呼びます。品質評価の段階ではあ�
 「超気に入った」Generation は再利用したい Generation と実質同じ集合なので、
 Rating を4段階に増やす代わりに Bookmark で表現します。
 
-## Note / Summary
+## Summary
 
-各主要エンティティは人間用 `note` を持てます。
-
-Generation はさらに Claude が生成する `summary` / semantic metadata
-を持ちます。
-
-Bookmark にメモを付与せず、メモは対象エンティティ自身に保持します。
+Generation は Claude が生成する `summary` / semantic metadata を持ちます。
 
 ## Semantic Metadata
 

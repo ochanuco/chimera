@@ -81,6 +81,24 @@ describe('Generation ingest', () => {
     expect(first.body.id).not.toBe(second.body.id);
   });
 
+  it('accepts a legacy character_id from an old worker and ignores it', async () => {
+    const request = await createRequest();
+    const job = await createJob(request.body.id);
+
+    const result = await ingestGeneration(job.body.id, {
+      seed: 5,
+      original_filename: 'legacy.png',
+      comfy_output_index: 0,
+      character_id: crypto.randomUUID(),
+    });
+
+    expect(result.status).toBe(201);
+    const row = await env.DB.prepare('SELECT character_id FROM generations WHERE id = ?')
+      .bind(result.body.id)
+      .first<{ character_id: string | null }>();
+    expect(row?.character_id).toBeNull();
+  });
+
   it('404s when the job does not exist', async () => {
     const result = await ingestGeneration(crypto.randomUUID(), {
       seed: 1,
