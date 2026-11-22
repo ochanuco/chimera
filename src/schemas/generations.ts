@@ -34,10 +34,3 @@ export const ratingUpdateSchema = z.object({
 export const setPoseReferenceForGenerationSchema = z.object({
   idempotency_key: z.string().min(1).optional(),
 });
-
-export const updateGenerationSchema = z
-  .object({
-    note: z.string().nullable().optional(),
-    character_id: z.string().min(1).nullable().optional(),
-  })
-  .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });

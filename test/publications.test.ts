@@ -203,7 +203,7 @@ describe('migrations/0021 backfill (exercised directly: migrations run once per 
     const { generation: g1 } = await createGeneration();
     const tag1Id = crypto.randomUUID();
     const linkCreatedAt = '2025-01-02T03:04:05.000Z';
-    await env.DB.prepare("INSERT INTO tags (id, name, description, created_at, updated_at) VALUES (?, 'publish', NULL, ?, ?)")
+    await env.DB.prepare("INSERT INTO tags (id, name, created_at, updated_at) VALUES (?, 'publish', ?, ?)")
       .bind(tag1Id, linkCreatedAt, linkCreatedAt)
       .run();
     await env.DB.prepare(
@@ -230,7 +230,7 @@ describe('migrations/0021 backfill (exercised directly: migrations run once per 
     const { generation: g2 } = await createGeneration();
     const tag2Id = crypto.randomUUID();
     const now = new Date().toISOString();
-    await env.DB.prepare("INSERT INTO tags (id, name, description, created_at, updated_at) VALUES (?, 'publish', NULL, ?, ?)")
+    await env.DB.prepare("INSERT INTO tags (id, name, created_at, updated_at) VALUES (?, 'publish', ?, ?)")
       .bind(tag2Id, now, now)
       .run();
     await env.DB.prepare(

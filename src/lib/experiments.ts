@@ -13,7 +13,7 @@ import {
 import { parseJsonObjectOrNull, type JsonObject } from './overrides';
 import { badRequest, conflict, notFound } from './errors';
 import { listTagsForTarget } from './tags';
-import { isUuid, uuidv7 } from './uuidv7';
+import { uuidv7 } from './uuidv7';
 import { resolveRequestRenderFacts } from './render-facts';
 import { runOverridePose } from './experiment-rules';
 import { listCurrentReferences } from './preset-references';
@@ -50,11 +50,6 @@ export async function resolveGenerationOr404(db: D1Database, idOrShortId: string
   return generation;
 }
 
-export async function assertCharacterExists(db: D1Database, characterId: string): Promise<void> {
-  const found = await db.prepare('SELECT 1 FROM characters WHERE id = ?').bind(characterId).first();
-  if (!found) throw notFound('character');
-}
-
 /** short_id / UUID どちらでも受け、他の FK と同様に UUID で保存する。 */
 export async function resolveBaseGenerationId(db: D1Database, idOrShortId: string): Promise<string> {
   const generation = await getGenerationByIdOrShortId(db, idOrShortId);
@@ -69,12 +64,10 @@ export interface CreateExperimentInput {
   base_recipe?: string;
   base_parameters?: JsonObject;
   base_generation_id?: string;
-  character_id?: string;
 }
 
 /** POST /api/v1/experiments と create_experiment MCP tool が共有する。常に status 'active' で作る。 */
 export async function createExperiment(db: D1Database, body: CreateExperimentInput): Promise<ExperimentRow> {
-  if (body.character_id) await assertCharacterExists(db, body.character_id);
   const baseGenerationId = body.base_generation_id ? await resolveBaseGenerationId(db, body.base_generation_id) : null;
 
   const now = nowIso();
@@ -88,7 +81,6 @@ export async function createExperiment(db: D1Database, body: CreateExperimentInp
     base_recipe: body.base_recipe ?? null,
     base_parameters_json: body.base_parameters ? JSON.stringify(body.base_parameters) : null,
     base_generation_id: baseGenerationId,
-    character_id: body.character_id ?? null,
     bookmark: 0,
     created_at: now,
     updated_at: now,
@@ -97,8 +89,8 @@ export async function createExperiment(db: D1Database, body: CreateExperimentInp
   await db
     .prepare(
       `INSERT INTO experiments
-         (id, short_id, name, description, note, status, base_recipe, base_parameters_json, base_generation_id, character_id, bookmark, created_at, updated_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, short_id, name, description, note, status, base_recipe, base_parameters_json, base_generation_id, bookmark, created_at, updated_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -110,7 +102,6 @@ export async function createExperiment(db: D1Database, body: CreateExperimentInp
       row.base_recipe,
       row.base_parameters_json,
       row.base_generation_id,
-      row.character_id,
       row.bookmark,
       row.created_at,
       row.updated_at,
@@ -215,21 +206,14 @@ export async function decorateRuns(db: D1Database, runs: ExperimentRunRow[], org
 
 /** GET /api/v1/experiments/{id} と get_experiment MCP tool が共有する detail 組み立て。 */
 export async function getExperimentDetail(db: D1Database, experiment: ExperimentRow, org: string) {
-  const [runRows, promotionRows, tags, character] = await Promise.all([
+  const [runRows, promotionRows, tags] = await Promise.all([
     listRuns(db, experiment.id),
     listPromotions(db, experiment.id),
     listTagsForTarget(db, 'experiment_tags', experiment.id),
-    experiment.character_id
-      ? db
-          .prepare('SELECT id, name FROM characters WHERE id = ?')
-          .bind(experiment.character_id)
-          .first<{ id: string; name: string }>()
-      : Promise.resolve(null),
   ]);
 
   return {
     ...serializeExperiment(experiment),
-    character: character ?? null,
     tags: tags.map((t) => t.name),
     run_count: runRows.length,
     runs: await decorateRuns(db, runRows, org),
@@ -314,11 +298,10 @@ export async function getExperimentRunFamily(db: D1Database, requestId: string):
 
 export interface ExperimentListFilters {
   status?: ExperimentStatus;
-  character?: string;
   bookmark?: boolean;
 }
 
-export type ExperimentListRow = ExperimentRow & { character_name: string | null; run_count: number };
+export type ExperimentListRow = ExperimentRow & { run_count: number };
 
 /** GET /api/v1/experiments と list_experiments MCP tool が共有するクエリ。 */
 export async function queryExperiments(
@@ -333,24 +316,14 @@ export async function queryExperiments(
     conditions.push('e.status = ?');
     binds.push(filters.status);
   }
-  if (filters.character) {
-    if (isUuid(filters.character)) {
-      conditions.push('e.character_id = ?');
-      binds.push(filters.character);
-    } else {
-      conditions.push('e.character_id IN (SELECT id FROM characters WHERE name = ?)');
-      binds.push(filters.character);
-    }
-  }
   if (filters.bookmark) conditions.push('e.bookmark = 1');
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const { results } = await db
     .prepare(
-      `SELECT e.*, ch.name AS character_name,
+      `SELECT e.*,
          (SELECT COUNT(*) FROM experiment_runs r WHERE r.experiment_id = e.id) AS run_count
        FROM experiments e
-       LEFT JOIN characters ch ON ch.id = e.character_id
        ${where}
        ORDER BY e.updated_at DESC, e.id DESC
        LIMIT ? OFFSET ?`,

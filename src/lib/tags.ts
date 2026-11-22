@@ -13,12 +13,12 @@ async function findOrCreateTag(db: D1Database, name: string): Promise<TagRow> {
   const id = uuidv7();
   const now = nowIso();
   const result = await db
-    .prepare('INSERT INTO tags (id, name, description, created_at, updated_at) VALUES (?, ?, NULL, ?, ?) ON CONFLICT (name) DO NOTHING')
+    .prepare('INSERT INTO tags (id, name, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (name) DO NOTHING')
     .bind(id, name, now, now)
     .run();
 
   if (result.meta.changes === 1) {
-    return { id, name, description: null, created_at: now, updated_at: now };
+    return { id, name, created_at: now, updated_at: now };
   }
 
   const existing = await db

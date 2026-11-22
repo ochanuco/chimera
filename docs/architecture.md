@@ -39,7 +39,7 @@ Mac から ComfyUI への経路は LAN でも持ちません。契約は
 
 -   semantic 判断主体（Claude Code / Agent）と自然言語で対話する。
 -   Discord / Web GUI で生成結果を確認する。
--   Rating、Tag、Bookmark、Note を必要に応じて編集する。
+-   Rating、Tag、Bookmark を必要に応じて編集する。
 -   複数 Generation の「ポーズ」「服装」などを選択し、再生成を依頼する。
 
 ### semantic 判断主体（Claude Code / Agent / Human）
@@ -95,8 +95,8 @@ Promotion として提案し、実際のコード変更は別途 chagama
 ### Web GUI
 
 -   Gallery / Generation を画像中心で閲覧する。
--   Character / Tag / Date / Rating / Bookmark で検索する。
--   Tag / Rating / Bookmark / Note を編集する。
+-   Tag / Date / Rating / Bookmark で検索する。
+-   Tag / Rating / Bookmark を編集する。
 -   Provenance（親・子・兄弟）を必要なときだけ表示する。
 -   複数 Generation の比較と Claude へ渡す参照情報の作成を支援する。
 -   Experiment 一覧・詳細を閲覧する。
@@ -129,10 +129,9 @@ reference / reference_render だけで、GUI が
 -   Request（worker キュー）
 -   ComfyJob
 -   Generation
--   Character
 -   Tag
 -   素材参照（request_references）
--   Rating / Bookmark / Note / Semantic metadata
+-   Rating / Bookmark / Semantic metadata
 
 ### R2
 

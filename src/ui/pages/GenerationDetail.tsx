@@ -4,7 +4,6 @@ import { CopyIdButton } from '../components/CopyIdButton';
 import type { GenerationFamily } from '../../lib/generation-family';
 import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
 import { RequestSection, type RequestStatusLine } from '../components/RequestSection';
-import { NoteSection } from '../components/NoteSection';
 import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
@@ -23,11 +22,9 @@ export interface GenerationDetailData {
   image: { url: string };
   /** original.png が過去の保持ジョブで削除された時刻。null なら未削除。 */
   original_purged_at: string | null;
-  character: { id: string; name: string } | null;
   created_at: string;
   rating: 'bad' | 'neutral' | 'good' | null;
   bookmark: boolean;
-  note: string | null;
   summary: string | null;
   semantic: {
     schema_version: number;
@@ -265,7 +262,6 @@ export function GenerationDetailPage({
               比較に追加
             </button>
           </h1>
-          {data.character ? <p>{data.character.name}</p> : null}
           <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
 
           <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
@@ -515,8 +511,6 @@ export function GenerationDetailPage({
               </table>
             </div>
           </details>
-
-          <NoteSection kind="generations" id={data.id} note={data.note} />
 
           <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
         </div>

@@ -93,7 +93,6 @@ Request の `created_by` で区別します。
 条件例:
 
 ``` text
-character = 結月ゆかり
 tag = outfit-good
 date = 2026-01..2026-05
 ```
@@ -111,7 +110,6 @@ Old G123 -- purpose=reference / aspect=outfit --> New Request
 
 主な検索軸:
 
--   Character
 -   Tag
 -   Date
 -   Rating

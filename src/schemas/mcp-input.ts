@@ -59,7 +59,6 @@ export const createExperimentInputSchema = z
   .object({
     name: z.string().min(1),
     description: z.string().optional(),
-    character_id: z.string().min(1).optional(),
     recipe: z.string().min(1),
     parameters: jsonObject.optional(),
     seeds: z.array(z.number().int().nonnegative()).min(1).max(16).optional(),
@@ -237,7 +236,6 @@ export const listGenerationsInputSchema = z.object({
   reference: z.boolean().optional(),
   rating: z.enum(['bad', 'neutral', 'good']).optional(),
   bookmark: z.boolean().optional(),
-  character: z.string().min(1).optional(),
   model: z.array(z.enum(MODEL_FILTER_VALUES)).min(1).optional(),
   phase: z.array(z.enum(PHASES)).min(1).optional(),
   from: z.string().optional(),

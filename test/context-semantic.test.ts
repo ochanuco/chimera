@@ -7,12 +7,10 @@ interface ContextShape {
   short_id: string;
   canonical_url: string;
   image: { url: string };
-  character: unknown;
   created_at: string;
   rating: string | null;
   bookmark: boolean;
   tags: string[];
-  note: string | null;
   summary: string | null;
   semantic: unknown;
   references: unknown[];
@@ -27,7 +25,6 @@ describe('Generation context API', () => {
     expect(res.body).toMatchObject({
       id: generation.id,
       canonical_url: generation.canonical_url,
-      character: null,
       rating: null,
       bookmark: false,
       tags: [],

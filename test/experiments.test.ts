@@ -15,13 +15,11 @@ interface Experiment {
   status: string;
   base_recipe: string | null;
   base_generation_id: string | null;
-  character_id: string | null;
   bookmark: boolean;
   completed_at: string | null;
 }
 
 interface ExperimentDetail extends Experiment {
-  character: { id: string; name: string } | null;
   tags: string[];
   run_count: number;
   runs: unknown[];
@@ -82,11 +80,6 @@ describe('Create Experiment', () => {
     const byShortId = await getJson<Experiment>(`/api/v1/experiments/${created.body.short_id}`);
     expect(byShortId.status).toBe(200);
     expect(byShortId.body.id).toBe(created.body.id);
-  });
-
-  it('404s when character_id does not exist', async () => {
-    const res = await createExperiment({ character_id: crypto.randomUUID() });
-    expect(res.status).toBe(404);
   });
 });
 

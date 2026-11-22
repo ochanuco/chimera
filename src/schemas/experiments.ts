@@ -35,7 +35,6 @@ export const createExperimentSchema = z.object({
   base_recipe: z.string().optional(),
   base_parameters: baseParametersSchema.optional(),
   base_generation_id: z.string().min(1).optional(),
-  character_id: z.string().min(1).optional(),
 });
 
 export const updateExperimentSchema = z
@@ -46,7 +45,6 @@ export const updateExperimentSchema = z
     base_recipe: z.string().nullable().optional(),
     base_parameters: baseParametersSchema.nullable().optional(),
     base_generation_id: z.string().min(1).nullable().optional(),
-    character_id: z.string().min(1).nullable().optional(),
     status: experimentStatusSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });

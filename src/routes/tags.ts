@@ -11,7 +11,6 @@ function serialize(row: TagRow) {
   return {
     id: row.id,
     name: row.name,
-    description: row.description,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

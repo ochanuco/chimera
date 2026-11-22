@@ -90,14 +90,6 @@ jobs.post('/:jobId/generations', async (c) => {
   }
   const metadata = parseOrThrow(ingestMetadataSchema, metadataJson);
 
-  if (metadata.character_id) {
-    const character = await db
-      .prepare('SELECT 1 FROM characters WHERE id = ?')
-      .bind(metadata.character_id)
-      .first();
-    if (!character) throw notFound('character');
-  }
-
   const imageBuffer = await image.arrayBuffer();
   const contentType = image.type || 'image/png';
   const origin = new URL(c.req.url).origin;
@@ -155,17 +147,16 @@ jobs.post('/:jobId/generations', async (c) => {
   try {
     await db
       .prepare(
-        `INSERT INTO generations (id, short_id, comfy_job_id, character_id, seed, original_filename,
-          comfy_output_index, r2_object_key, image_width, image_height, image_size, note, rating, bookmark,
+        `INSERT INTO generations (id, short_id, comfy_job_id, seed, original_filename,
+          comfy_output_index, r2_object_key, image_width, image_height, image_size, rating, bookmark,
           semantic_schema_version, summary, semantic_json, summary_status, summary_model, summary_updated_at, created_at,
           request_id, refines_generation_id, model_family)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`,
       )
       .bind(
         id,
         shortId,
         job.id,
-        metadata.character_id ?? null,
         metadata.seed,
         metadata.original_filename,
         metadata.comfy_output_index,

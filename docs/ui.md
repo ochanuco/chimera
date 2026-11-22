@@ -152,7 +152,7 @@ view / bad を保ちます。選んでいる間だけ「解除」が出ます。
 redraw / repair / masked_redraw、それ以外は同名の kind です（対応表は`src/lib/phases.ts`）。`model`も
 `phase`も[api.md](api.md#generation-search)の絞り込みで、タイムラインと枠範囲にも同じ値が渡ります。
 
-Character / 日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはパネルに置かず、
+日付範囲 / ComfyUI Job ID / original filenameによる絞り込みはパネルに置かず、
 `GET /api/v1/generations`のqueryとしてMCP/APIから使います（[api.md](api.md#generation-search)）。
 
 `ID`の指定を解決した結果がGeneration 1件だけになったとき（他の指定と組み合わせた結果も
@@ -526,7 +526,7 @@ Generation Detailには生成要求を積む編集欄（描き直し・Repair・
 `ワークベンチで開く`の右に副ボタン`リロール`（`/reroll/{short_id}`）を置きます。仕上げ済みの Generation か、recipe を持つ generate から作られた
 Generation にだけ出ます（import など振り直せない元絵には出しません）。
 人物レイヤー（`layer-figure` と `layer-outline`）を持つ Generation には、同じ並びに副ボタン`枠に入れる`（`/frame/{short_id}`、[枠](#枠)）も出ます。
-評価・ブックマーク、タグ、メモ、公開、基準にする、比較に追加、Requestsの一覧と`profile に登録`、安全性、系譜、解決値、
+評価・ブックマーク、タグ、公開、基準にする、比較に追加、Requestsの一覧と`profile に登録`、安全性、系譜、解決値、
 親 / 子 / 兄弟のカードは従来どおりです。
 
 情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
@@ -544,7 +544,6 @@ Semantic
 Workflow
 ComfyUI Job
 Git
-Note
 Requests
 ```
 
@@ -948,7 +947,6 @@ queued / runningのrequestがある間は、ページが3秒ごとにrequestを�
 
 ``` text
 name
-character
 status
 run count
 latest run
@@ -960,7 +958,7 @@ bookmark
 status で絞り込めます。
 
 `/experiments/{short_id}` は詳細です。Experiment概要（Base Recipe / Base
-Generation（サムネイル付きリンク） / Character / Tag / 各時刻）、Runの一覧、
+Generation（サムネイル付きリンク） / Tag / 各時刻）、Runの一覧、
 Promotionの順に並べます。
 
 Runsセクションの先頭には、Runが1件以上あるとき Compare セクション（`#experiment-compare`）を置きます。
@@ -1213,7 +1211,6 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `experiment.status` | `experiment_id`, `from`, `to` | Experimentのstatus遷移（`initExperimentStatus`） |
 | `tag.add` | `kind`, `id`, `tag` | tag追加（`initTagAdd`） |
 | `tag.remove` | `kind`, `id`, `tag_id` | tag削除（`initTagRemove`） |
-| `note.save` | `kind`, `id`, `length` | noteの保存（`initNoteForm`） |
 | `publication.add` | `generation_id`, `has_url` | Publicationの追加（`initPublicationAdd`） |
 | `publication.url` | `generation_id`, `has_url` | PublicationのURL入力（`initPublicationUrlSave`） |
 | `publication.remove` | `generation_id`, `has_url` | Publicationの削除（`initPublicationRemove`） |

@@ -27,7 +27,6 @@ export const ingestMetadataSchema = z.object({
   seed: z.number().int(),
   original_filename: z.string().min(1),
   comfy_output_index: z.number().int().nonnegative(),
-  character_id: z.string().min(1).optional(),
 });
 
 export type IngestMetadataInput = StandardSchemaV1.InferOutput<typeof ingestMetadataSchema>;

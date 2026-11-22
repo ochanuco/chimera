@@ -14,7 +14,6 @@ interface SearchItem {
   short_id: string;
   rating: string | null;
   bookmark: boolean;
-  character: { id: string; name: string } | null;
   tags: string[];
   created_at: string;
   refines_generation_short_id: string | null;
@@ -36,18 +35,6 @@ async function createRefinedGeneration() {
 }
 
 describe('Generation search', () => {
-  it('filters by character name', async () => {
-    const character = await postJson<{ id: string; name: string }>('/api/v1/characters', {
-      name: `yukari-${crypto.randomUUID().slice(0, 8)}`,
-    });
-    const { generation } = await createGeneration({ metadata: { character_id: character.body.id } });
-
-    const res = await getJson<SearchResult>(`/api/v1/generations?character=${character.body.name}`);
-    expect(res.status).toBe(200);
-    expect(res.body.items.map((g) => g.id)).toContain(generation.id);
-    expect(res.body.items[0]?.character?.name).toBe(character.body.name);
-  });
-
   it('filters by tag', async () => {
     const { generation } = await createGeneration();
     const tagName = `outfit-good-${crypto.randomUUID().slice(0, 8)}`;

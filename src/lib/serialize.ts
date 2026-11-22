@@ -35,7 +35,6 @@ export type GenerationLightSource = Pick<
   | 'short_id'
   | 'rating'
   | 'bookmark'
-  | 'character_id'
   | 'created_at'
   | 'image_width'
   | 'image_height'
@@ -53,7 +52,6 @@ export function serializeGenerationLight(row: GenerationLightSource, origin: str
     thumbnail_url: generationPreviewUrl(origin, row.short_id),
     rating: row.rating,
     bookmark: toBool(row.bookmark),
-    character_id: row.character_id,
     created_at: row.created_at,
     image_width: row.image_width,
     image_height: row.image_height,
@@ -106,7 +104,6 @@ export function serializeExperiment(row: ExperimentRow) {
     base_recipe: row.base_recipe,
     base_parameters: parseJsonObjectOrNull(row.base_parameters_json),
     base_generation_id: row.base_generation_id,
-    character_id: row.character_id,
     bookmark: toBool(row.bookmark),
     created_at: row.created_at,
     updated_at: row.updated_at,

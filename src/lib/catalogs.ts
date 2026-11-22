@@ -22,7 +22,6 @@ export async function putCatalog(
   db: D1Database,
   recipeRef: string,
   doc: RecipeCatalogDoc,
-  workerId?: string,
 ): Promise<RecipeCatalogRow> {
   const now = nowIso();
   const existing = await db
@@ -33,16 +32,15 @@ export async function putCatalog(
 
   await db
     .prepare(
-      `INSERT INTO recipe_catalogs (recipe_ref, catalog_json, git_commit, git_branch, worker_id, published_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO recipe_catalogs (recipe_ref, catalog_json, git_commit, git_branch, published_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (recipe_ref) DO UPDATE SET
          catalog_json = excluded.catalog_json,
          git_commit = excluded.git_commit,
          git_branch = excluded.git_branch,
-         worker_id = excluded.worker_id,
          updated_at = excluded.updated_at`,
     )
-    .bind(recipeRef, JSON.stringify(doc), doc.git_commit ?? null, doc.git_branch ?? null, workerId ?? null, publishedAt, now)
+    .bind(recipeRef, JSON.stringify(doc), doc.git_commit ?? null, doc.git_branch ?? null, publishedAt, now)
     .run();
 
   const row = await db.prepare('SELECT * FROM recipe_catalogs WHERE recipe_ref = ?').bind(recipeRef).first<RecipeCatalogRow>();
@@ -62,7 +60,6 @@ export async function getCatalog(db: D1Database, recipeRef: string): Promise<Cat
 
 export interface CatalogListItem extends ReturnType<typeof summarizeCatalog> {
   recipe_ref: string;
-  worker_id: string | null;
   published_at: string;
   updated_at: string;
 }
@@ -75,7 +72,6 @@ export async function listCatalogs(db: D1Database): Promise<CatalogListItem[]> {
 
   return (results ?? []).map((r) => ({
     recipe_ref: r.recipe_ref,
-    worker_id: r.worker_id,
     published_at: r.published_at,
     updated_at: r.updated_at,
     ...summarizeCatalog(JSON.parse(r.catalog_json) as RecipeCatalogDoc),
