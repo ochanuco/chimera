@@ -706,16 +706,30 @@ image_size
 ```
 
 Generation は原則物理削除しません。失敗画像も履歴として保持し、Tag /
-status 等で扱います。original 画像（`r2_object_key` の R2 オブジェクト）も削除しません
-（下記「original の保持」）。
+status 等で扱います。ただし価値の印が無い Generation の original 画像（`r2_object_key` の R2 オブジェクト）と
+asset は、一定期間の後に R2 から消します（下記「original の保持」）。
 
 ### original の保持
 
-original.png は削除しません。deliver をやり直すときも、redraw の入力にするときも、
-worker が元の絵の original を読むためです。保持期間による削除ジョブは動かしていません。
+価値の印（rating が good / neutral、bookmark、Publication）が無い Generation の original と asset は、
+cron trigger の `scheduled` ハンドラが R2 から消し、`original_purged_at` を記録します（`src/lib/original-purge.ts`、
+[ADR-0001](adr/0001-purge-unvalued-originals.md)）。1 tick に 100 件までで、残りは次の tick が拾います。
+次のものは消しません。
 
-過去に削除済みの Generation（`original_purged_at` が非 NULL）は、行と `preview.webp`（1024px WebP、
-[architecture.md](architecture.md)「R2」節参照）だけが残り、そのまま読めます。
+| 残すもの | 理由 |
+|---|---|
+| 価値の印がある Generation | 完成品と、残すと決めた絵 |
+| 価値の印がある Generation の祖先（`refines_generation_id` を根まで辿った全部） | 印のある絵への dof や、saturation への deliver は、worker が下の絵を読むため |
+| kind `import` の Generation | 写真ページとワークベンチの背景が選ぶ写真 |
+| 木のどれかが 14 日以内に作られた、木のワークベンチが 14 日以内に触られた、木のどれかを queued / running の Request が読む（`$.generation_id`、`$.options.photo`、`$.references[*].generation_id`、`reroll_of_generation_id`） | 作業中の木 |
+| pin（`preset_references` の両列）、Preset の起点、Experiment の base、ExperimentRun、PairwiseJudgment から参照されている Generation | 記録が指す絵 |
+
+消えるのは、印のある絵につながらない枝（試して捨てた下書きや加工）です。
+
+削除済みの Generation（`original_purged_at` が非 NULL）は、行と `preview.webp`（1024px WebP、
+[architecture.md](architecture.md)「R2」節参照）だけが残り、そのまま読めます。消す前に preview を用意し、
+cutout を持つものは cutout 由来の preview（`preview-cutout.webp`）を `preview.webp` に移してから、
+asset の行と R2 オブジェクトを消します。
 `GET /g/{short_id}/image` は 410 (`original_purged`) を返し、redraw / deliver の起票は 409 (`original_purged`) で拒否されます（[api.md](api.md)、
 [worker-protocol.md](worker-protocol.md)）。GUI は preview を代わりに表示します（[ui.md](ui.md)）。
 cutout を持つ Generation の preview は original でなく cutout から作ります（`preview-cutout.webp`。[architecture.md](architecture.md)「R2」）。

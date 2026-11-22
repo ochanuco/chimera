@@ -19,7 +19,7 @@ pnpm run typecheck && pnpm test
 ## 設計上の不変条件（壊さないこと）
 
 - 関係 2 種の分離: 素材参照（Generation → Request、request_references）と仕上げ元（Generation → Generation、generations.refines_generation_id）を統合しない
-- Generation は物理削除しない。削除より rating / tag によるラベリング。original 画像（`generations/{id}/original.png`）も削除しない（redraw / deliver が読むため）。過去に削除済みの行（`original_purged_at`）は preview で読める（`docs/domain-model.md`「original の保持」）
+- Generation は物理削除しない。削除より rating / tag によるラベリング。original 画像と asset は、価値の印（good / neutral、bookmark、Publication）が無く作業中でもないものだけを 14 日の後に cron が R2 から消す。印のある絵の祖先と import の写真は消さない。削除済みの行（`original_purged_at`）は preview で読める（`docs/domain-model.md`「original の保持」、`src/lib/original-purge.ts`）
 - 冪等性: Request / Job 作成は idempotency_key、ingest は (comfy_job_id, comfy_output_index) unique。再送は既存レコードを 200 で返す
 - ingest は D1 INSERT → R2 PUT の順（行が ID / R2 key を確定し、orphan object を作らない）。R2 key は `generations/{generation_id}/original.png`
 - 参考画像（kind `reference` の入力）だけは R2 から消す一時領域 `references/{request_id}` に置く。置く順は ingest と同じ D1 INSERT → R2 PUT で、Generation は作らず、画像もハッシュも D1 に残さない（D1 に残すのは worker が送った WD tagger の判定 `reference_safety` だけ）。Request の終端（done / failed / cancelled、retry の queued は除く）と 24 時間の cron で消す。例外は判定が none / caution の done で、24 時間の cron まで残し MCP `get_reference_image` で読める。判定が sensitive / block ならその PUT の時点で消す（`docs/architecture.md`「R2」）

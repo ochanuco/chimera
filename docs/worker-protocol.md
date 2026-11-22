@@ -1584,9 +1584,9 @@ chimera が patch を検証するのにこれが要ります。
 - Service Token の期限切れは claim / heartbeat の 403 として現れます。worker は
   ログに出して poll を続け、chimera 側は何もしません。
 - `redraw` / `deliver` は `payload.generation_id` が指す Generation
-  自身の画像を読みます（この節「payload」参照）。original の purge は止めてあり（`docs/domain-model.md`
-  「original の保持」）新しく purge されることはありませんが、すでに purge 済みの行
-  （`original_purged_at` 非 null）は original を読めないので、chimera は request の作成自体を 409（`original_purged`）で拒否し、queued
+  自身の画像を読みます（この節「payload」参照）。価値の印が無い Generation の original は保持期間ジョブが消すので
+  （`docs/domain-model.md`「original の保持」）、purge 済みの行
+  （`original_purged_at` 非 null）は original を読めません。chimera は request の作成自体を 409（`original_purged`）で拒否し、queued
   行は作られません。`generate` request（derive_request 含む）はこの制限を受けません。
 - 古い Generation には original が lossless WebP のものがあり
   （`docs/domain-model.md`「original の保持」）、`GET /api/v1/generations/{id}/context` が
