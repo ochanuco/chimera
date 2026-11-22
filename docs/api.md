@@ -20,6 +20,11 @@ Web GUI     → Read / user mutation
 -   `references` / `refinement` / `story` は request.json
     と同様、キー省略と明示的な `null` のどちらも「該当なし」として受理する。
     `refinement` と `story` は値の形を問わず受理して無視する（Story と再試行の関係は廃止済み）。
+-   D1 が一時的に応じないとき（D1 の overloaded）は、503 と `Retry-After`（秒）を
+    `{"error": {"code": "d1_overloaded"}}` で返す。D1 は負荷と関係なく 1〜2 分ほど
+    応じないことがあるので、クライアントは `Retry-After` 以上待って再試行し、数分は諦めない。
+    1 つの API が複数の文を順に書くことがあり、途中の文で断られると前の文は残るので、
+    再試行するのは冪等な呼び出し（GET / PUT / DELETE と idempotency_key つき）だけにする。
 
 代表的な流れ:
 

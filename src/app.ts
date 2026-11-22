@@ -1,6 +1,7 @@
-import { Hono } from 'hono';
+import { Hono, type ErrorHandler } from 'hono';
 import { createMcpHandler } from 'agents/mcp/server';
 import { ApiError } from './lib/errors';
+import { D1_OVERLOADED_RETRY_AFTER_SECONDS, isD1Overloaded } from './lib/d1-overloaded';
 import { ValidationError, formatValidationIssues } from './lib/validate';
 import { jobs } from './routes/jobs';
 import { generations } from './routes/generations';
@@ -64,7 +65,7 @@ app.all('/mcp', (c) => {
 
 app.route('/', pages);
 
-app.onError((err, c) => {
+export const handleError: ErrorHandler = (err, c) => {
   if (err instanceof ApiError) {
     return c.json(err.toJSON(), err.status as 400 | 404 | 409 | 410);
   }
@@ -72,7 +73,13 @@ app.onError((err, c) => {
     return c.json({ error: { code: 'validation_error', message: formatValidationIssues(err.issues) } }, 400);
   }
   console.error(err);
+  if (isD1Overloaded(err)) {
+    c.header('Retry-After', String(D1_OVERLOADED_RETRY_AFTER_SECONDS));
+    return c.json({ error: { code: 'd1_overloaded', message: 'database temporarily unavailable; retry later' } }, 503);
+  }
   return c.json({ error: { code: 'internal_error', message: 'internal server error' } }, 500);
-});
+};
+
+app.onError(handleError);
 
 app.notFound((c) => c.json({ error: { code: 'not_found', message: 'route not found' } }, 404));
