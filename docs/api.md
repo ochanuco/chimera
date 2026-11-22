@@ -556,7 +556,7 @@ kind=reference_render は `POST /api/v1/requests` では作れません（400）
 
 `kind = redraw` / `deliver` / `dof` / `lens` / `photo` / `stage` / `trail` / `lighting` の作成は、`payload.generation_id` が指す
 Generation の original が purge 済み（`original_purged_at` 非 null）なら 409
-（`code: "original_purged"`）で拒否します（original の purge は止めてあるので、対象は過去に purge された行だけです）。worker はその Generation 自身の画像を読むため
+（`code: "original_purged"`）で拒否します（purge の対象は [domain-model.md「original の保持」](domain-model.md#original-の保持)）。worker はその Generation 自身の画像を読むため
 （[worker-protocol.md](worker-protocol.md)）、original が無いと実行できません。既存の
 idempotency_key での再送（新規作成ではない）はこのチェックの対象外です。`generate` /
 derive request は対象外です。
@@ -1021,7 +1021,7 @@ metadata 例:
 Management API がR2へ保存し、D1へGenerationを登録します。
 
 同じ `(comfy_job_id, comfy_output_index)` への再送（既存行の replay）は既存行を200で返します。
-その Generation の original が過去の保持期間ジョブで既に purge 済み（`original_purged_at` 非
+その Generation の original が保持期間ジョブで既に purge 済み（`original_purged_at` 非
 null）なら、replay は original を R2 へ書き戻しません — purge 済みのまま200を返します。
 
 レスポンス例:
@@ -1296,7 +1296,7 @@ pin されていれば `{ "recipe": "...", "pose": "..." }`、無ければ `null
 WebP のものがあり（[domain-model.md](domain-model.md#original-の保持)）、その場合 `image_url` は
 `Content-Type: image/webp` を返します。画素は元の PNG と同一です。
 
-`original_purged_at` は過去の保持期間ジョブがその original を削除した時刻（ジョブは廃止済みで、新たに削除されることはない）
+`original_purged_at` は保持期間ジョブがその original と asset を削除した時刻（[domain-model.md「original の保持」](domain-model.md#original-の保持)）
 （[domain-model.md](domain-model.md#original-の保持)）。null なら未削除で、`image_url`
 がそのまま使えます。非 null な Generation を `image_url` で読むと 410 です — `thumbnail_url`
 （preview）を使ってください。この欄は `image_url` を返すすべての Generation

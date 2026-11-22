@@ -10,7 +10,7 @@ function originalKey(generationId: string): string {
   return `generations/${generationId}/original.png`;
 }
 
-/** A Generation whose original was purged by the retired retention job: row and preview kept, original gone. */
+/** A Generation whose original was purged by the retention job: row and preview kept, original gone. */
 async function purgedGeneration() {
   const created = await createGeneration();
   await env.IMAGES.put(originalKey(created.generation.id), await makeSolidPng(64, 64, [10, 20, 30]));

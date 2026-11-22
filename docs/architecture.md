@@ -161,8 +161,9 @@ request を終えるため、生成元の request が `done` / `failed` / `cance
 `Cache-Control: no-store` で返し、ブラウザに緑背景の preview を残しません。GUI/API の
 サムネイル用途はすべてこちらを指します（`docs/api.md`「Generation Search」）。
 
-`original.png` は削除しません（redraw / deliver が元の絵の original を読むため）。
-過去に削除済みの行は `original_purged_at` が非 NULL のまま、preview で表示されます。
+価値の印が無い Generation の original と asset は、14 日の後に `scheduled` ハンドラが消します
+（`src/lib/original-purge.ts`。何を残すかは [domain-model.md「original の保持」](domain-model.md#original-の保持)）。
+削除済みの行は `original_purged_at` が非 NULL になり、preview で表示されます。
 
 `references/{request_id}` は例外で、消すための一時領域です。kind `reference` の Request の参考画像を
 `POST /api/v1/references` が置き（D1 INSERT → R2 PUT の順）、worker が解析の後に内容の判定（WD tagger、

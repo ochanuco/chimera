@@ -23,7 +23,8 @@
   "observability": {
     "enabled": true
   },
-  // 参考画像の一時領域 references/ の掃除 (src/lib/reference-images.ts の sweepReferenceImages)。
+  // 参考画像の一時領域 references/ の掃除 (src/lib/reference-images.ts の sweepReferenceImages) と、
+  // 価値の印が無い Generation の original・asset の削除 (src/lib/original-purge.ts)。
   "triggers": {
     "crons": ["0 * * * *"]
   },
