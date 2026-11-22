@@ -99,6 +99,10 @@ attempt の扱いは途絶と同じ規則です。
 `/api/v1/requests` 配下。すべて Cloudflare Access の内側で、worker は既存の
 Service Token を使います。
 
+D1 が一時的に応じないときは、どの API も 503（`d1_overloaded`）と `Retry-After` を返します
+（[api.md「Principles」](api.md#principles)）。D1 は 1〜2 分応じないことがあるので、worker は
+冪等な呼び出しを `Retry-After` 以上の間隔で数分は再試行します。claim は再試行せず、次のポーリングに任せます。
+
 ### Create Request
 
 ``` text
