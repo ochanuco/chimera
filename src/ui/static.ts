@@ -312,7 +312,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   display: flex;
   flex-direction: column;
 }
-.card-media { position: relative; border-radius: var(--radius-ctl); overflow: hidden; }
+/* バッジの z-index をカードの中に閉じ込め、sticky な日付の見出しの上に出さない */
+.card-media { position: relative; isolation: isolate; border-radius: var(--radius-ctl); overflow: hidden; }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }

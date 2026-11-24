@@ -347,7 +347,6 @@ export function GalleryPage({
 }) {
   return (
     <Layout title="ギャラリー" path={path}>
-      <h1>ギャラリー</h1>
       <GalleryToolbar filters={filters} count={timeline ? timeline.slots.reduce((sum, s) => sum + s.count, 0) : null} />
 
       <datalist id="tag-suggestions"></datalist>
