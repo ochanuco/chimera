@@ -163,6 +163,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain('Workflow');
     expect(html).toContain('Pass 1');
     expect(html).toContain('model.safetensors');
+    expect(html).toContain('<dt class="kv-k">モデル</dt><dd class="kv-v">model.safetensors</dd>');
     expect(html).toContain('class="prompt-chip"');
     expect(html).toContain('a test prompt');
     expect(html).toContain('Raw graph');

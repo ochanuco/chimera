@@ -325,7 +325,7 @@ export function GenerationDetailPage({
           </dl>
 
           {data.judgments.length > 0 ? (
-            <details class="section gd-judgments">
+            <details class="section gd-fold gd-judgments" open>
               <summary>判定 ({data.judgments.length})</summary>
               <div class="section-body">
                 <table class="kv-table">
