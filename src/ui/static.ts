@@ -1378,6 +1378,9 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 
 .promote-profile-form { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 .promote-profile-status { font-size: 0.8rem; color: var(--text-dim); }
+.promote-profile-form input { flex: 1; min-width: 0; height: var(--ctl-h); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-ctl); background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-sm); }
+.promote-profile-form button { flex: none; height: var(--ctl-h); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-ctl); background: var(--bg-elevated); color: var(--text); font: inherit; font-size: var(--fs-sm); white-space: nowrap; cursor: pointer; }
+.promote-profile-form button:hover { background: var(--raised); }
 
 .request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
 .request-status-queued { color: var(--link); }
