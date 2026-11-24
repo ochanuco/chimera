@@ -94,8 +94,7 @@ Chimera
 パネル外クリックまたは
 Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)と共通の挙動、`initPopoverClose`）。
 
-現在地に対応するナビ項目には`aria-current="page"`を付け、下線（`text-decoration-color:
-var(--accent)`）で強調します。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/work` 配下（`/work/{short_id}`含む）ではワークベンチ、`/experiments` 配下
+現在地に対応するナビ項目には`aria-current="page"`を付け、浮きの面（`--raised`）で塗ります。ほかの項目は副文字の色です。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/work` 配下（`/work/{short_id}`含む）ではワークベンチ、`/experiments` 配下
 （`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`・`/stats`・`/photos`・`/references`では`More`のsummaryが
 アクティブになります。`/compare`はグリッドから入る
 導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
