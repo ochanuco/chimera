@@ -93,63 +93,100 @@ function reasonText(verdict: SafetyVerdictView, reasons: string[]): string | nul
 }
 
 const HOT_TAG_THRESHOLD = 0.5;
-const MAX_RISKY_TAGS = 8;
 
 const RISK_ORDER: TagXRisk[] = ['exposure', 'certain', 'suspect', 'safe'];
 
-function riskyTags(tags: Record<string, number> | undefined): [string, number][] {
-  return Object.entries(tags ?? {})
+/** 区分の色を残すのは見落とすと困る 2 つだけ。全年齢と少し際どいは無彩色 (docs/ui.md「色」)。 */
+const BAR_COLOR_VARS: Record<keyof SafetyRatingView, string> = {
+  general: '--text-dim',
+  sensitive: '--text-dim',
+  questionable: RATING_COLOR_VARS.questionable,
+  explicit: RATING_COLOR_VARS.explicit,
+};
+
+/** 保存されたタグ全部。TAG_X_RISK のタグを区分順・確率順で先に、残りを確率順に並べる。 */
+function detectedTags(tags: Record<string, number> | undefined): [string, number, TagXRisk | null][] {
+  const entries = Object.entries(tags ?? {});
+  const risky = entries
     .filter(([name]) => RISKY_TAGS.includes(name))
     .sort((a, b) => RISK_ORDER.indexOf(TAG_X_RISK[a[0]]!) - RISK_ORDER.indexOf(TAG_X_RISK[b[0]]!) || b[1] - a[1])
-    .slice(0, MAX_RISKY_TAGS);
+    .map(([name, value]): [string, number, TagXRisk | null] => [name, value, TAG_X_RISK[name]!]);
+  const rest = entries
+    .filter(([name]) => !RISKY_TAGS.includes(name))
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value]): [string, number, TagXRisk | null] => [name, value, null]);
+  return [...risky, ...rest];
 }
 
-/** 詳細ページの `安全性` セクション。4 区分の 2×2 セル・タグを常に出す。未採点は「未採点」。 */
-export function SafetySection({ safety }: { safety: SafetyDetailData | null | undefined }) {
+/** 詳細ページの見出しと値の表に入る `安全度` 行と `検出` 行。未採点は `安全度 未採点` の 1 行だけ。 */
+export function SafetyRows({ safety }: { safety: SafetyDetailData | null | undefined }) {
   if (!safety) {
     return (
-      <p class="safety-row">
-        <span class="safety-row-label">安全性</span> <span class="safety-unrated">未採点</span>
-      </p>
+      <div class="kv-row safety-row">
+        <dt class="kv-k">安全度</dt>
+        <dd class="kv-v">
+          <span class="safety-unrated">未採点</span>
+        </dd>
+      </div>
     );
   }
   const reason = reasonText(safety.verdict, safety.reasons);
-  const tags = riskyTags(safety.tags);
+  const tags = detectedTags(safety.tags);
+  const top = RATING_LABELS.reduce((best, [key]) => (safety.rating[key] > safety.rating[best] ? key : best), 'general' as keyof SafetyRatingView);
   return (
-    <section class="safety-section">
-      <div class="safety-head">
-        <span class="safety-row-label">安全性</span>
-        {safety.verdict === 'none' ? <span class="safety-ok">問題なし</span> : <SafetyBadge safety={safety} />}
-      </div>
-      {reason ? <p class="safety-reasons">{reason}</p> : null}
-      <div class="safety-cells">
-        {RATING_LABELS.map(([key, label]) => {
-          const limited = key === 'questionable';
-          const over = limited && safety.rating[key] >= SENSITIVE_QUESTIONABLE_THRESHOLD;
-          return (
-            <div
-              class={`safety-cell${over ? ' over' : ''}`}
-              style={`--c:var(${RATING_COLOR_VARS[key]});--p:${safety.rating[key] * 100}%`}
-            >
-              {limited ? <span class="safety-cell-tick" style={`left:${SENSITIVE_QUESTIONABLE_THRESHOLD * 100}%`} /> : null}
-              <span class="safety-cell-label">{label}</span>
-              <span class="safety-cell-value safety-num">{fmtPct(safety.rating[key])}</span>
-              {limited ? <span class="safety-cell-limit safety-num">/ {pct(SENSITIVE_QUESTIONABLE_THRESHOLD)}</span> : null}
-            </div>
-          );
-        })}
+    <>
+      <div class="kv-row safety-section">
+        <dt class="kv-k">安全度</dt>
+        <dd class="kv-v">
+          <div class="safety-head">
+            {safety.verdict === 'none' ? <span class="safety-ok">問題なし</span> : <SafetyBadge safety={safety} />}
+          </div>
+          {reason ? <p class="safety-reasons">{reason}</p> : null}
+          <div class="safety-cells">
+            {RATING_LABELS.map(([key, label]) => {
+              const limited = key === 'questionable';
+              const over = limited && safety.rating[key] >= SENSITIVE_QUESTIONABLE_THRESHOLD;
+              return (
+                <div
+                  class={`safety-cell${over ? ' over' : ''}${key === top ? ' top' : ''}`}
+                  style={`--c:var(${BAR_COLOR_VARS[key]});--p:${safety.rating[key] * 100}%`}
+                >
+                  <span class="safety-cell-label">{label}</span>
+                  <span class="safety-cell-bar">
+                    {limited ? (
+                      <span
+                        class="safety-cell-tick"
+                        style={`left:${SENSITIVE_QUESTIONABLE_THRESHOLD * 100}%`}
+                        aria-label={`しきい値 ${pct(SENSITIVE_QUESTIONABLE_THRESHOLD)}`}
+                      />
+                    ) : null}
+                  </span>
+                  <span class="safety-cell-value safety-num">
+                    {fmtPct(safety.rating[key])}
+                    {limited ? <span class="safety-cell-limit"> / {pct(SENSITIVE_QUESTIONABLE_THRESHOLD)}</span> : null}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </dd>
       </div>
       {tags.length > 0 ? (
-        <div class="safety-tags">
-          {tags.map(([name, value]) => (
-            <span class={`safety-tag risk-${TAG_X_RISK[name]}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}`}>
-              {name}
-              <span class="safety-num">{Math.round(value * 100)}%</span>
-            </span>
-          ))}
+        <div class="kv-row">
+          <dt class="kv-k">検出</dt>
+          <dd class="kv-v">
+            <div class="safety-tags">
+              {tags.map(([name, value, risk]) => (
+                <span class={`safety-tag${risk ? ` risk-${risk}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}` : ''}`}>
+                  {name}
+                  <span class="safety-num">{Math.round(value * 100)}</span>
+                </span>
+              ))}
+            </div>
+          </dd>
         </div>
       ) : null}
-    </section>
+    </>
   );
 }
 

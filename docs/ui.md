@@ -66,6 +66,7 @@ UI は無彩色にし、色は絵と rating だけが持ちます。どの画面
 | 入力 | 入力欄・select・ボタンの高さを揃える。長い URL や JSON は折り返す |
 | 進み具合 | ワークベンチの段。今の段だけ線の色で塗る |
 | 表 | 見出しの列を固定し、枠の中だけを横にスクロールする。右端を暗くして続きを示す |
+| 見出しと値の表 | 44px の見出しの列と値の列。1 項目 1 行 |
 | 空とエラー | 空は次にできることを 1 つ示す。エラーは何が起きて、どうなるかを書く |
 | ポップオーバー | 浮きの面、角丸 12px、影は 1 種類。スマホでは下から出すシートにする |
 
@@ -536,13 +537,13 @@ Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求
 
 ### Compare entry
 
-Generation Detailの`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は
+Generation Detailの`⋯`の中の`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は
 `{ id, short_id }`）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
 telemetry `compare.add`）。
 
 `#compare-bar`はLayoutが全ページの下端に固定配置し、setが空でない間だけ表示します。表示中は
 `main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detailの
-2カラムはその分だけ高さを縮めます。バーの中身は左から次の順です。
+2ペインはその分だけ高さを縮めます。バーの中身は左から次の順です。
 
 -   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
     （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
@@ -554,115 +555,148 @@ telemetry `compare.add`）。
 
 ## Generation Detail
 
-幅1100px以上では左ペインに画像をペイン全体で表示し、右ペイン（幅比 2:1）に
-情報を縦に並べます。それ未満の幅では画像を最上部に大きく表示する縦一列です。
+幅1100px以上では、左のペインに絵だけを最大の大きさで出し、右に幅440pxの列を置いて操作と情報を縦に並べます。
+右の列は単独でスクロールし、ページ全体はスクロールしません。それ未満の幅では、絵を最上部に出し、その下に右の列の中身を同じ順に続けます。
 
 ``` text
-[ IMAGE ] | abc123  比較に追加
-[ IMAGE ] | 結月ゆかり
-[ IMAGE ] | good  🔖
-[ IMAGE ] | 基準にする
-[ IMAGE ] | 公開 ...
-[ IMAGE ] | #pose-good ×  #outfit-good ×   [add tag] [+]
-```
-
-見出しのshort_idとコピーボタンの隣には、このGenerationがredraw / deliver / repair /
-masked_redrawで書き換えた元のraw Generationがあるとき、小さな`--text-dim`色の
-`元 <short_id>`（short_idは`/g/{short_id}`へのリンク）とそのコピーボタンを添えます。
-rawのGenerationには出しません（`GET /api/v1/generations/{id}`の`refines_generation`）。
-
-cutout asset（描き直しの`cut: true`が付ける透明の切り抜き）を持つGenerationは、主画像に原寸の
-`GET /g/{short_id}/assets/cutout`を市松の上に出し、画像meta欄の上に`切り抜き表示 · 元画像（緑背景）`の1行を添えます
-（`元画像`は`/g/{short_id}/image`へのリンク。originalがpurge済みなら出しません）。
-
-originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）の
-Generationは、画像に`GET /g/{short_id}/preview`（1024pxのpreview）を表示し、画像meta欄の下に
-`原寸は破棄済み（preview のみ）`と添えます。
-
-Generation Detailには生成要求を積む編集欄（描き直し・Repair・納品・ボケ）はありません。編集は
-[ワークベンチ](#workbench)で行い、画像の下に主ボタンの`ワークベンチで開く`（`/work/{short_id}`）を置きます。
-`ワークベンチで開く`の右に副ボタン`リロール`（`/reroll/{short_id}`）を置きます。仕上げ済みの Generation か、recipe を持つ generate から作られた
-Generation にだけ出ます（import など振り直せない元絵には出しません）。
-人物レイヤー（`layer-figure` と `layer-outline`）を持つ Generation には、同じ並びに副ボタン`枠に入れる`（`/frame/{short_id}`、[枠](#枠)）も出ます。
-評価・ブックマーク、タグ、公開、基準にする、比較に追加、Requestsの一覧と`profile に登録`、安全性、系譜、解決値、
-親 / 子 / 兄弟のカードは従来どおりです。
-
-情報セクションは折りたたみ可能（`<details>`）ですが、既定ですべて展開して
-表示します（展開クリックを不要にするため）。生JSON（Semantic の Raw JSON、
-Workflow の Raw graph）と、末尾のRequestsだけ既定で畳みます。
-
-``` text
-仕上げの解決値
-Summary
-Semantic
-親
-子
-兄弟
-同じ Request の Generation
-Workflow
-ComfyUI Job
-Git
-Requests
+[ IMAGE ] | 913sg9 ⧉                          11/25 12:01
+[ IMAGE ] | 元 o3b450 ⧉   元絵 hbcc45 ⧉
+[ IMAGE ] | [ ワークベンチで開く ] [リロール] [⋯]
+[ IMAGE ] | [ bad | neutral | good ]          [🔖]
+[ IMAGE ] | 描画    58 秒（待ち 12 秒）
+[ IMAGE ] | モデル  hassaku-il-v22
+[ IMAGE ] | 安全度  問題なし / 4 区分の細い帯
+[ IMAGE ] | 検出    purple_hair 96  pantyhose 95 …
+[ IMAGE ] | 公開    [投稿 URL] [記録] / 記録済みの URL
+[ IMAGE ] | タグ    #portfolio × / [add tag] [+]
+[ IMAGE ] | 判定 (N)
+[ IMAGE ] | 同じ指示の 4 枚  ▢ ▢ ▢ ▢
+[ IMAGE ] | ▸ prompt と指示文
+[ IMAGE ] | ▸ 系譜
+[ IMAGE ] | ▸ 記録
 ```
 
 ページの`<title>`は`<short_id> · 詳細`です。この画面はワークベンチとリロールの見出しでは`詳細`と呼びます。
 
-rating/bookmark行の直後は「基準」行です。このGenerationがposeの基準 renderとしてpinされていれば
-`基準 <pose名>`ピルを、されていなければ`基準にする`ボタンを表示します。ボタンは
-`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md#pose-reference-pin)）でpinし、
-その場で行をピルに書き換えます。recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでない
-Generationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
+### 絵
 
-rating/bookmark行・基準行の下に`安全性`セクションを置きます（[Safety](api.md#safety)）。折りたたまず常に表示し、
-上から次の順に並べます。未採点は`未採点`のみです。
+cutout asset（描き直しの`cut: true`が付ける透明の切り抜き）を持つGenerationは、原寸の`GET /g/{short_id}/assets/cutout`を市松の上に出します。
+originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)）のGenerationは`GET /g/{short_id}/preview`（1024pxのpreview）を出します。
 
-- 見出し行: `安全性`と、判定が`none`でなければ`出さない`（赤塗り）・`センシティブ`（赤）・`注意`（黄）のピル、`none`なら`問題なし`。
-  `block`のときは露出タグと`15%`の閾値を示す理由の1行をこの下に出します。
-- 判定の理由の1行（`none`以外）。`block`は露出タグと`15%`、`sensitive`は`かなり際どい`の値や乳・股間のタグ（`15%`以上／`35%`以上）、
-  `caution`は尻・下着のタグ（`50%`以上）を値の大きい順に並べ、閾値を添えます。
-- 4区分（全年齢・少し際どい・かなり際どい・成人向け）の2×2セル。各セルは区分名と大きな%を持ち、背景を値の幅だけ左から区分の色
-  （緑・黄・赤・濃赤）で薄く塗ります。`かなり際どい`のセルだけ`15%`の位置に縦線の目盛りを置き、%の後ろに`/ 15%`を添えます。
-  値が`15%`以上のとき、そのセルの枠と数字が赤になります。
-- 効いていそうなタグ（見出しは付けません）: `TAG_X_RISK`のタグのうち保存されているものを、露出・乳股間・尻下着・X で効きにくいの順、同じ区分内は確率順に最大8件。
-  枠は露出と乳・股間が濃赤、尻・下着が赤、X で効きにくいタグ（タイツ・脚・足・座り方など）は灰で文字も薄くします。
-  50%以上のタグは太字にします。区分は X での見え方の経験則です。
+絵の下には小さな`--text-dim`の1行（画像meta欄）だけを置き、次を` · `でつなぎます。
+
+-   画像の寸法とサイズ（`896×1440 · 76.7 KB`）
+-   cutoutを出しているとき`切り抜き表示 · 元画像（緑背景）`（`元画像`は`/g/{short_id}/image`へのリンク。originalがpurge済みなら出しません）
+-   purge済みのとき`原寸は破棄済み（preview のみ）`
+
+### 見出しと系譜
+
+1行目はshort_id（等幅、17px）とコピーボタン、右端に作成日時（JSTの`MM/DD HH:mm`）です。
+その下の行に、このGenerationがredraw / deliver / repair / masked_redrawで書き換えた元のGenerationがあれば
+`元 <short_id>`を、連鎖の起点の元絵が元と違えば`元絵 <short_id>`を並べます。short_idは`/g/{short_id}`へのリンクで、
+それぞれにコピーボタンが付きます（`GET /api/v1/generations/{id}`の`refines_generation` / `root_generation`）。rawのGenerationには出しません。
+
+### 操作
+
+Generation Detailには生成要求を積む編集欄（描き直し・Repair・納品・ボケ）はありません。編集は[ワークベンチ](#workbench)で行います。
+操作の行は、主ボタン`ワークベンチで開く`（`/work/{short_id}`、残りの幅をすべて使う）、副ボタン`リロール`（`/reroll/{short_id}`）、
+`⋯`のアイコンボタンの順です。`リロール`は仕上げ済みの Generation か、recipe を持つ generate から作られた Generation にだけ出ます
+（import など振り直せない元絵には出しません）。[枠](#枠)へはワークベンチの背景フェーズから入ります。
+
+`⋯`はポップオーバー（`<details>`、外側のクリックか Escape で閉じる、`initPopoverClose`）で、次の 2 つを持ちます。
+
+-   基準: このGenerationがposeの基準 renderとしてpinされていれば`基準 <pose名>`を、されていなければ`基準にする`ボタンを出します。
+    ボタンは`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md#pose-reference-pin)）でpinし、その場で表示を`基準 <pose名>`に書き換えます。
+    recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでないGenerationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
+-   `比較に追加`（[Compare entry](#compare-entry)）
+
+その下の行は評価（bad / neutral / good を 1 つにつないだ部品、残りの幅）とブックマークのアイコンボタンです。
+ブックマークは線の図形で、済みは塗りです。
+
+### 見出しと値の表
+
+続く表は、上から次の行です。値が無い行は出しません。
+
+-   `描画`: このGenerationのComfyUI Jobの実行時間（`prompt_timings`の`execution_end_at - execution_start_at`、
+    [worker-protocol.md](worker-protocol.md#timings)）。計測行が無ければ、終わった（done / failed）Requestの`finished_at - claimed_at`で代えます。
+    どちらも無い（importなど）ときは行を出しません。後ろに`（待ち …）`として、Requestが積まれてから worker が取るまで
+    （`claimed_at - created_at`）を添えます。書式は`42 秒` / `3 分 12 秒` / `1 時間 5 分`です。描画時間は Detail のページだけが引き、
+    `GET /api/v1/generations/{id}`には載せません。
+-   `モデル`: render_factsのcheckpoint名（複数なら` + `でつなぐ）。
+-   `安全度`: [Safety](api.md#safety)の判定。未採点は`未採点`だけです。
+-   `検出`: 判定に使ったタガーのタグすべて。
+-   `公開`: [Publication](domain-model.md#publication)の記録。
+-   `タグ`: 付与済みタグと追加フォーム。
+
+#### 安全度と検出
+
+`安全度`は、1行目に判定（`none`は`問題なし`、それ以外は`出さない`（赤塗り）・`センシティブ`（赤）・`注意`（黄）のピル）を出し、
+`none`以外は判定の理由の1行を続けます。`block`は露出タグと`15%`、`sensitive`は`かなり際どい`の値や乳・股間のタグ（`15%`以上／`35%`以上）、
+`caution`は尻・下着のタグ（`50%`以上）を値の大きい順に並べ、閾値を添えます。
+
+その下に4区分（全年齢・少し際どい・かなり際どい・成人向け）を1区分1行で、区分名・高さ6pxの帯・%の順に並べます。
+帯に色を付けるのは`かなり際どい`と`成人向け`だけで、全年齢と少し際どいは無彩色です。いちばん値の大きい区分は区分名と%を本文の色にします。
+`かなり際どい`の帯には`15%`の位置に縦線の目盛りを置き、%の後ろに`/ 15%`を添えます。値が`15%`以上のとき、その行の文字が赤になります。
+
+`検出`は保存されているタグを`名前 確率`（確率は整数の%）の小さなチップで、折り返してすべて並べます。
+`TAG_X_RISK`のタグを先に、露出・乳股間・尻下着・X で効きにくいの順、同じ区分内は確率順に並べ、残りのタグを確率順に続けます。
+`TAG_X_RISK`のタグは、枠を露出と乳・股間が濃赤、尻・下着が赤にし、50%以上を太字にします。区分は X での見え方の経験則です。
 
 %は小数1桁で、0.1%未満は`0%`です。同じピルをGalleryなどのサムネイル左下（`公開済み`の隣）にも出します。
 採点済みのカードはサムネイル下端に4区分の3px帯を重ね、判定が`none`のカードにはホバー時だけ`際 93.1%`（`少し際どい`の値）を右下に出します
 （`hover: none`の端末では常時表示）。Galleryの新着カードは
 判定の保存後に`safety`メッセージで差し替わり、ピルと帯がリロードなしで現れます（[新着](#新着)）。判定が`block`のGenerationで
-`公開を記録`を押すと確認ダイアログを出し、`sensitive`では記録後にXのセンシティブ設定を付ける注意を出します。
+`記録`を押すと確認ダイアログを出し、`sensitive`では記録後にXのセンシティブ設定を付ける注意を出します。
 
-続く`公開`セクションは[Publication](domain-model.md#publication)
-が1件以上あれば送信アイコン付きで`公開済み（N）`を`#4fd8a4`で、無ければ`未公開`を
-`--text-dim`で表示します。続けて記録済みのPublicationを`MM-DD HH:mm`（`--text-dim`）・
-URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入力欄）・`×`削除ボタンの行として
-新しい順に並べ、末尾に`投稿 URL（空でも記録できる）`のテキスト入力と`公開を記録`ボタン
-（枠線・文字とも`#4fd8a4`、角丸6px）の追加フォームを置きます。追加・URL入力・削除の
-いずれも`/api/v1/generations/{id}/publications`・`/api/v1/publications/{id}`をfetchし、
-リロードなしでセクションを書き換えます。
+#### 公開
 
-`公開`の下に、このGenerationが[PairwiseJudgment](domain-model.md)の左右どちらかに出ているときだけ`判定 (N)`
-セクションを出します。1判定1行で、この絵から見た結果（`勝ち` / `負け` / `引き分け`）、相手の
-short_id（`/g/`へのリンク、rating付き）、seed、基準側だったときの`基準側`、判定日、Experimentが
-残っていれば`実験`リンクを並べます。
+`公開`は、先頭に`投稿 URL`のテキスト入力（空でも記録できる）と`記録`ボタンの追加フォームを置きます。その下に、
+記録が1件以上あれば送信アイコン付きの`公開済み（N）`を、無ければ`未公開`を出し、記録済みのPublicationを
+`MM-DD HH:mm`（`--text-dim`）・URL（あればリンク、無ければ`URL なし`と埋め込み用のURL入力欄）・`×`削除ボタンの行として新しい順にすべて並べます。
+長いURLは折り返します。追加・URL入力・削除のいずれも`/api/v1/generations/{id}/publications`・`/api/v1/publications/{id}`をfetchし、
+リロードなしで行を書き換えます。
 
 #### タグ追加
 
-`公開`の下には付与済みタグのチップ（各チップに`×`削除ボタン）とタグ追加フォームを置きます。
+`タグ`の行には付与済みタグのチップ（各チップに`×`削除ボタン）とタグ追加フォームを置きます。
 フォームは自由入力のテキスト欄で、入力のたびに200ms待って`GET /api/v1/tags?q=`（前方一致、
 最大20件）を引き、既存タグ名を`<datalist>`の候補として出します。未登録の名前を送ればそのタグを
 作って付与します。追加・削除ともリロードせずチップを書き換えます。
 
-`仕上げの解決値`セクションは、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
+### 判定
+
+表の下に、このGenerationが[PairwiseJudgment](domain-model.md)の左右どちらかに出ているときだけ`判定 (N)`
+を開いた`<details>`で出します。1判定1行で、この絵から見た結果（`勝ち` / `負け` / `引き分け`）、相手の
+short_id（`/g/`へのリンク、rating付き）、seed、基準側だったときの`基準側`、判定日、Experimentが
+残っていれば`実験`リンクを並べます。
+
+### 同じ指示の N 枚
+
+同じRequestに属する他のGeneration（`GET /api/v1/generations/{id}` の `siblings`）があるとき、右の列の下寄せで
+`同じ指示の N 枚`（Nは表示中の1枚を含む）とサムネイル（`/g/{short_id}/preview`）の帯を出します。並びは作られた順で、どれを開いても同じです。
+表示中の1枚は白い輪で囲み、リンクにしません。ほかは各`/g/{short_id}`へのリンクで、titleに出力のindex（`output N`）を出します。
+
+### 折りたたみ
+
+最後に、既定で畳んだ3つの`<details>`を置きます。
+
+-   `prompt と指示文`: Requestの指示文（`raw_instruction`、あれば）と、[Workflow](#workflow)
+-   `系譜`: `親 (N)`・`子 (N)`・`兄弟 (N)`の FamilyCard の帯
+-   `記録`: `仕上げの解決値`（あれば）、`要約`、`Semantic`（Raw JSONは畳む）、`ComfyUI Job`、`Git`、[Requests](#requests)（畳む）
+
+#### 仕上げの解決値
+
+`仕上げの解決値`は、このGenerationを産んだrequestの結果が`resolved_options`を持つとき
 だけ出します。workerが解決した値（resolved）を1項目1行の表にし（`dof`はF値・ピント位置・ボケの範囲・
 ファインダーの行に分け、`stroke_light`・`light`・`backdrop`はDeliverフォームと同じ語で、redrawの`method`・`scene`・`from`・`keep_regions`も表示（古いcanvas / lightの行を含む）。古いfinalizeの行もそのまま読めます）、
 要求した`options`（requested）とresolvedの生JSONは既定で畳んだ`Raw JSON`に入れます。
 
+#### 系譜
+
 親・子・兄弟は、FamilyCard（サムネイル + タイプバッジ + short_id + 補足テキストの横並びカード、
 `family-strip`）で表示します。関係は 素材参照（Generation → Request、`request_references`）と
 仕上げ元（Generation → Generation、`generations.refines_generation_id`）の2種に分離されたまま
-（CLAUDE.md の不変条件）で、画面上は用途別セクションではなく「親・子・兄弟」の3セクションにまとめます。
+（CLAUDE.md の不変条件）で、画面上は用途別ではなく「親・子・兄弟」の3つにまとめます。
 カードのリンク先は相手の `/g/{short_id}` です。Requestを相手にする関係は、そのRequestの最初のGeneration
 （Jobのindex、出力のindexの昇順で先頭）を代表にし、カードに「via request」という補足を添えて、
 Generation自身の関係と区別します。まだGenerationを持たないRequest（queued / running）はカードにしません。
@@ -682,12 +716,9 @@ Generation自身の関係と区別します。まだGenerationを持たないReq
 `run_index`）から読み取り時に導出するだけの表示専用の軸です（CLAUDE.mdの2種統合禁止の対象外で、行を
 作りません）。Reference / Refinement / Experiment はそれぞれ青・橙・紫の固定配色です。
 
-`同じ Request の Generation` セクションは、このGenerationと同じRequestに属する他のGeneration
-（`GET /api/v1/generations/{id}` の `siblings`）を、バッジ `Request` のFamilyCardで並べます。
-カードは各Generationの `/g/{short_id}` へのリンクで、補足テキストに出力のindex（`output N`）を出します。
-他のGenerationが無ければ `None.` と表示します。
+#### Workflow
 
-Workflowセクションは「同じ Request の Generation」の直後にあります。このGenerationの
+Workflowは`prompt と指示文`の中にあります。このGenerationの
 ComfyJobから抽出したrender_facts（[domain-model.md](domain-model.md#comfyjob)参照）
 を使い、`/g/{short_id}` だけを見て（ほぼ）同じワークフローを再現できるだけの
 情報を読みやすいレイアウトで並べます:
@@ -1239,7 +1270,7 @@ semantic情報はDetailに置きます。
 
 | 幅 | 挙動 |
 |---|---|
-| 1100px以上 | Generation Detailが2:1の2ペイン。Gallery / Bookmarksのグリッドは6列 |
+| 1100px以上 | Generation Detailが絵と幅440pxの列の2ペイン。Gallery / Bookmarksのグリッドは6列 |
 | 1100px以下 | Detailは縦一列。グリッドは4列（800px以下は190px以上の幅で入るだけ並べる） |
 | 600px以下 | ナビ・カード・反映ピルのタップ領域を2.75rem以上に広げ、キュー状態pillは数字だけにする |
 

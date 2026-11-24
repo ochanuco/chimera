@@ -163,11 +163,12 @@ describe('frame editor page', () => {
 });
 
 describe('frame editor entry points and assets', () => {
-  it('shows the 枠に入れる link on the detail page only with layers', async () => {
+  it('keeps the frame editor off the detail page even with layers (the workbench stage phase links to it)', async () => {
     const { generation } = await createGeneration();
-    expect(await (await req(`/g/${generation.short_id}`)).text()).not.toContain('枠に入れる');
     await addLayers(generation.id);
-    expect(await (await req(`/g/${generation.short_id}`)).text()).toContain(`href="/frame/${generation.short_id}"`);
+    const html = await (await req(`/g/${generation.short_id}`)).text();
+    expect(html).not.toContain('枠に入れる');
+    expect(html).not.toContain(`href="/frame/${generation.short_id}"`);
   });
 
   it('serves frame.js as immutable javascript that parses', async () => {
