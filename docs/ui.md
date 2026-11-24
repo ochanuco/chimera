@@ -159,11 +159,16 @@ Request の `short_id` から最初の Generation の `/g/` へ 302 で飛ばし
 -   過去Generationを再利用する
 -   Rating / Bookmarkを付ける
 
-nav直下にsticky なツールバーを持ちます。
+nav直下に1行のツールバー（高さ60px）を持ちます。デスクトップではnavの下にstickyで、狭い幅では折り返します。
+幅600px以下ではstickyにせず、ページと一緒に流します。スクロール中に上に残るのはnavと日付見出しだけです。
 
 ``` text
-[ 納品以外 | 納品 | すべて ]   bad も表示 ☐   途中を隠す ☐   [ 絞り込み ▾ ]
+[ 納品以外 | 納品 | すべて ] │ (bad も表示) (途中を隠す) (段階: すべて ▾) (絞り込み)          41 枚
 ```
+
+左から、`view`の切り替え（[部品](#部品)の切り替え）、区切り線、bad と途中を隠すのチップ、段階のポップオーバー、
+`絞り込み`パネル、右端に枚数です。チップは on のとき明るい枠と文字になり、塗りません。
+枚数は同じ絞り込みのタイムライン（枠ごとの枚数）の合計で、タイムラインを持たない`ids`指定の一覧では出しません。
 
 `view` は3値の切り替えです。ラベルは `納品以外` / `納品` / `すべて` で、既定は `view=all`（raw / 仕上げ済み両方）、
 `view=raw`（redraw/deliver/repair/masked_redrawの出力ではない raw Generationのみ）、
@@ -178,9 +183,9 @@ bad でない続き（その Generation を仕上げ元にする Generation）�
 ワークベンチで積んだ絵は最後のフェーズの出力だけが残ります。採用しなかった候補は先端なので残ります。
 view / bad と同じく他の絞り込みをまたいで保持し、新着のライブ反映も止めません。
 
-`絞り込み`パネル（`<details>`。いずれかの項目に値が入っているときは開いた状態で描画）は
+`絞り込み`パネル（`<details>`。いずれかの項目に値が入っているときは開いた状態で描画）と段階のポップオーバーは
 パネル外クリックまたはEscapeで閉じます（nav の `More` / キュー状態pill と共通の挙動、
-`initPopoverClose`）。次を持ちます。
+`initPopoverClose`）。幅600px以下ではどちらもツールバーの左端から開き、画面の幅に収めます。`絞り込み`パネルは次を持ちます。
 
 ``` text
 ID（複数可、改行またはカンマ区切り、short_id と UUID の混在可）
@@ -203,9 +208,10 @@ pin されているGenerationだけに絞ります（[domain-model.md](domain-mo
 繰り返して送ります（リンクはカンマ区切りの1値）。`unknown`は系統が決まらない Generation
 （`model_family`が NULL）です。
 
-フェーズはパネルに入れず、ツールバーの下段にボタンとして並べます。ワークベンチのフェーズ列と同じ順に
-元絵 › 描き直し › 彩度 › フチ › 背景 › 軌跡 › 光 › ボケ をつなぎ、区切りの後ろにレンズ / 写真合成 / 取り込みを置きます。
-ボタンは押すたびにその値を`phase`（カンマ区切り、複数選択は OR）に足し引きするリンクで、ほかの絞り込みと
+フェーズはパネルに入れず、`段階: <選択>`のポップオーバー（`details.phase-menu`）にチップとして並べます。
+見出しは、選んでいなければ`すべて`、1つならその名前、2つ以上なら`<先頭> ほか N`です。中はワークベンチのフェーズ列と同じ順に
+元絵 › 描き直し › 彩度 › フチ › 背景 › 軌跡 › 光 › ボケ をつなぎ、区切り線の下にレンズ / 写真合成 / 取り込みを置きます。
+チップは押すたびにその値を`phase`（カンマ区切り、複数選択は OR）に足し引きするリンクで、ほかの絞り込みと
 view / bad を保ちます。選んでいる間だけ「解除」が出ます。パネルの検索は選択中の`phase`を hidden で送り直します。
 フェーズはその Generation の Request の`kind`に対応し、`generate`は generate / finalize、`redraw`は
 redraw / repair / masked_redraw、それ以外は同名の kind です（対応表は`src/lib/phases.ts`）。`model`も
@@ -261,10 +267,9 @@ redraw / repair / masked_redraw、それ以外は同名の kind です（対応�
     先頭ページの先頭カードが同じ画面位置に残るようスクロールを補正します。`.load-more` / `.load-newer`
     リンクはこのとき取り除きます（JS無効環境ではリンクのまま機能します）
 -   スケルトンは子要素を持たない1要素で、サムネ領域（`--thumb-ar`）と固定高の`card-row`を擬似要素で
-    作ります。実カードの`card-row`も同じ固定高（`--card-row-h`）で、短いrow2つ（short_idの行と
-    ratingの行。各`--card-id-h` / `--card-rate-h`、幅600px以下は各2.75rem、それ以外は各1.5rem）と
-    パディング・gapの合計です。枠線も含めて実カードと外寸が一致します。塗りは`--bg`の単色で、
-    アニメーションはありません
+    作ります。実カードの`card-row`も同じ固定高（`--card-row-h`）で、ratingとbookmarkの1行
+    （`--card-rate-h`、操作の高さ`--ctl-h`と同じ36px、`pointer: coarse`では44px）と上下8pxのパディングの合計です。
+    枠線も含めて実カードと外寸が一致します。サムネ領域の塗りは`--bg-elevated`の単色で、アニメーションはありません
 -   画面の上下1.5画面ぶんに入った枠でスケルトンが残っているものを、隣り合う枠をまとめて1リクエスト
     （最大200枚。1枠が200枚を超えるときはその枠だけ）で取得し、スケルトンを同じ位置のカードと1対1で
     置き換えます。同時に最大3リクエストで、画面中央に近い順に取ります。取得は
@@ -345,9 +350,9 @@ badにすると、カードはその位置のまま不透明度0.4（hover時0.7
 
 反映待ちが1件以上あると、グリッドの直前に全幅の帯（枠線・角丸10px・`--accent`文字・0.85rem/600・
 高さ2.75rem以上）を出し、`新着 N 件 · bad M 件を隠す`（0件の側は省きます）と表示します。帯が
-sticky toolbarの下へスクロールアウトしている間は、同じ文言のピル（`--accent`地・`#10131c`文字・
+navとツールバーの下（スマホでツールバーが流れ去った後はnavの下）へスクロールアウトしている間は、同じ文言のピル（`--accent`地・`#10131c`文字・
 角丸999px・`0.4rem 1rem`パディング・影付き、新着があるときは上矢印アイコン付き。幅600px以下では
-2.75rem以上の高さ）をtoolbarの直下中央に浮かべます。
+2.75rem以上の高さ）をその直下中央に浮かべます。
 
 帯かピルを押すと、新着を到着の古い順にグリッド先頭へ挿入し（＝新しいものが一番上に来ます）、
 薄くしたbadのカードを取り除きます。「途中を隠す」では、挿入した新着の仕上げ元のカードも取り除きます。新着を挿入したときは最上部へスクロールします
@@ -376,25 +381,30 @@ Compare の列・実験のマトリクスと Run・[絵柄チェック](#絵柄�
 （[architecture.md](architecture.md)「R2」）。サムネイルの背景は常に市松なので、透明部分はそのまま透けて見えます。
 ギャラリー、タイムライン、ブックマーク、Compare、ワークベンチのミニサムネイルが同じ`/preview`を使うため、どこでも切り抜きが見えます。
 
-カードはサムネイル1枚と、その下の2行（short_idとbookmarkの行、rating（bad/neutral/good）の行）です。
-short_idは等幅の文字そのものがボタンで、クリックするとクリップボードへコピーし、0.9秒間`--good`色に
-変えて末尾に✓を出します。サムネイルは[Generation Detail](#generation-detail)への素のリンク
-`<a href="/g/{short_id}">`です。サムネイル左上には
-（上から順に、両方あれば縦に積みます）、このGenerationがredraw/deliver/repair/
-masked_redrawで書き換えた元のraw Generationがあるとき`元 <short_id>`バッジ（`#402e21`地に
-橙文字、short_idは等幅）。バッジはクリックで元のshort_idをコピーし（遷移しない）、コピー後は
-short_idのボタンと同じく0.9秒間`--good`色に変えて✓を出します。サムネイルのリンク内なので
-`<button>`ではなく`role="button"`・`tabindex="0"`の`<span>`で、Enter / Spaceでも動きます。
-このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw（と古いfinalize）
-request（JSONのフィールド名は`refinement_request`）があるとき進捗ピル（後述）を、左下には[Publication](domain-model.md#publication)が
-1件以上あるとき送信アイコン付きの`公開済み`ピルを、このGenerationがpose の基準 render として
-pin されているとき`基準 <pose名>`ピル（[domain-model.md](domain-model.md#基準-render-の-pin)）を、両方
-あれば横並びで重ねます。幅600px以下ではbookmarkをサムネイル
-右上の2.75rem角のタップ領域へ移し、ratingの3ボタンは行いっぱいに広がります（各2.75rem以上）。
-short_idのボタンも高さ2.75rem以上にします。仕上げ元の無い（raw の）カードには、short_idの行のbookmarkの隣に
-小さな`↻`リンク（`/reroll/{short_id}`、[リロール](#リロール)）を置きます（幅600px以下でもタップ領域は2.75rem角）。`card-row`の高さは固定（short_idの行とratingの行を各
-1.5rem、幅600px以下は各2.75rem。パディング・gapを含む）で、バッジなどで変わりません。
-読み込み前のスケルトンと同じ外寸にするためです（[Gallery timeline](#gallery-timeline)）。
+カードはサムネイル1枚と、その下の1行（rating と bookmark）です。カード自体は箱を持たず、サムネイルの角を8pxで丸めます。
+`compact`だけは面と線の箱に入れます。
+
+サムネイルは[Generation Detail](#generation-detail)への素のリンク`<a href="/g/{short_id}">`で、その上に次を重ねます。
+
+-   左下: short_id。下端の暗いぼかしの上に等幅で出し、文字そのものがボタンです。クリックするとクリップボードへコピーし、
+    0.9秒間`--good`色に変えて末尾に✓を出します。
+-   左上: バッジを上から積みます。どれも浮きの暗い半透明の地（`rgba(21,21,23,0.85)`）・角丸4px・高さ20px・12pxの文字です。
+    上の段（`.thumb-badges-top`）は、このGenerationがredraw/deliver/repair/masked_redrawで書き換えた元のraw Generationが
+    あるときの`元 <short_id>`バッジ（副文字、short_idは等幅）と、このGenerationを対象にした最新のredraw/deliver/repair/masked_redraw
+    （と古いfinalize）request（JSONのフィールド名は`refinement_request`）の進捗ピル（後述）です。下の段（`.thumb-badges-bottom`）は、
+    安全度の判定が none 以外のときの安全度バッジ、[Publication](domain-model.md#publication)が1件以上あるときの送信アイコン付き
+    `公開済み`、pose の基準 render として pin されているときの`基準 <pose名>`（[domain-model.md](domain-model.md#基準-render-の-pin)）を横に並べます。
+    `元`バッジはクリックで元のshort_idをコピーし（遷移しない）、コピー後はshort_idと同じく0.9秒間`--good`色に変えて✓を出します。
+    サムネイルのリンク内なので`<button>`ではなく`role="button"`・`tabindex="0"`の`<span>`で、Enter / Spaceでも動きます。
+-   右上: `✎`（`/work/{short_id}`、ワークベンチ）と、仕上げ元の無い（raw の）カードだけ`↻`（`/reroll/{short_id}`、[リロール](#リロール)）。
+    操作の高さの正方形のアイコンボタンで、ポインタを載せたときとフォーカスがあるときに出し、ホバーの無い端末では常に出します。
+
+下の行は、bad / neutral / good を1つにつないだ評価（選ばれた項目だけその評価の色で塗り、文字は暗くする）と、
+操作の高さの正方形のbookmarkボタン（線のしおりの図形で、済みは塗り）です。`card-row`の高さは固定（`--card-row-h`）で、
+バッジなどで変わりません。読み込み前のスケルトンと同じ外寸にするためです（[Gallery timeline](#gallery-timeline)）。
+
+`compact`のカードは幅が7rem前後なので、short_idを12pxに、評価とbookmarkを高さ28px（`pointer: coarse`では36px）に詰め、
+評価は頭文字（`b` / `n` / `g`）だけを見せます（ボタンの文字は読み上げ用に残します）。`✎` / `↻`は出しません。
 
 進捗ピル（`rgba(18,18,20,0.86)`地・`--border`の1px枠・角丸999px、テキストはstatusごとに
 色分け）はkind（`描き直し`/`納品`/`repair`/`masked redraw`、古い行は`finalize`）とstatusから組み立てます。
@@ -414,13 +424,14 @@ short_idを取得して`kind · done → <short_id>`に差し替えます）。
 カード表示例:
 
 ``` text
-[ IMAGE ]
- 元 abc123            ← rawを書き換えた出力のときだけ
- 納品 · queued        ← redraw/deliver/repair/masked_redraw requestがあるときだけ
- 公開済み             ← Publicationが1件以上あるときだけ
-
-abc123                    🔖   ← short_idはクリックでコピー
-bad  neutral  good
+┌──────────────────────┐
+│ 元 abc123      ✎ ↻ │  ← 元: rawを書き換えた出力のときだけ。✎ ↻ はホバー / フォーカス時
+│ 納品 · queued        │  ← redraw/deliver/repair/masked_redraw requestがあるときだけ
+│ 公開済み             │  ← Publicationが1件以上あるときだけ
+│                      │
+│ xyz789               │  ← short_id。クリックでコピー
+└──────────────────────┘
+[ bad | neutral | good ] [しおり]
 ```
 
 Bookmarks / Compareも同じカードコンポーネントを使い、from-badge / 公開済みピルは
@@ -541,15 +552,16 @@ Generation Detailの`⋯`の中の`比較に追加`ボタンがsessionStorageの
 `{ id, short_id }`）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
 telemetry `compare.add`）。
 
-`#compare-bar`はLayoutが全ページの下端に固定配置し、setが空でない間だけ表示します。表示中は
-`main`の下にバーの高さ（`--compare-bar-h`、3.75rem）分の余白を足し、Generation Detailの
+`#compare-bar`はLayoutが全ページの下端中央に浮かべるパネル（浮きの面・角丸12px・影、高さ56px、下から20px。
+幅600px以下は下から12px）で、setが空でない間だけ表示します。幅は中身に合わせ、画面の幅から左右16pxを引いた幅を上限にします。
+表示中は`main`の下にバーが占める高さ（`--compare-bar-h`、76px）分の余白を足し、Generation Detailの
 2ペインはその分だけ高さを縮めます。バーの中身は左から次の順です。
 
--   選択中の各Generationのサムネイルチップ（2.75rem角、右上に×）。クリックでsetから外します
+-   選択中の各Generationのサムネイルチップ（40px角、右上に×）。クリックでsetから外します
     （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
     10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
 -   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
--   `比較 (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク（telemetry `compare.open`）
+-   `比較 (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク。主ボタン（telemetry `compare.open`）
 
 別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーを描き直します。
 
@@ -1246,8 +1258,8 @@ cold load の含める / 除くトグル（`?period=&cold=include|exclude`、既
 Generations
 ```
 
-BookmarkはFavoriteではなく再利用・再訪のための導線です。どの対象も🔖の1操作で切り替えます。
-Generationはカードと Generation Detail、
+BookmarkはFavoriteではなく再利用・再訪のための導線です。どの対象も1操作で切り替えます。
+Generationはカードと Generation Detail にしおりのアイコンボタンを、
 ExperimentはExperiment一覧の行とExperiment詳細に🔖を置きます。
 
 GenerationsセクションはGalleryと同じ3-way view switch（`納品以外` / `納品` /
@@ -1270,9 +1282,13 @@ semantic情報はDetailに置きます。
 
 | 幅 | 挙動 |
 |---|---|
-| 1100px以上 | Generation Detailが絵と幅440pxの列の2ペイン。Gallery / Bookmarksのグリッドは6列 |
+| 1100px以上 | Generation Detailが絵と幅440pxの列の2ペイン。Gallery / Bookmarksのグリッドは6列。Galleryのツールバーは1行（60px）でsticky |
 | 1100px以下 | Detailは縦一列。グリッドは4列（800px以下は190px以上の幅で入るだけ並べる） |
-| 600px以下 | ナビ・カード・反映ピルのタップ領域を2.75rem以上に広げ、キュー状態pillは数字だけにする |
+| 600px以下 | ナビ・反映ピルのタップ領域を2.75rem以上に広げ、キュー状態pillは数字だけにする。Galleryのツールバーは折り返してstickyにせず、ポップオーバーはツールバーの左端から開く |
+
+カードの操作（評価・bookmark・`✎` / `↻`）の大きさは幅ではなくポインタで決め、操作の高さ（36px、`pointer: coarse`では44px）に揃えます。
+
+レールのあるページ（Gallery）では、幅601px以上のときnavの右にもレールの幅を空け、キュー状態pillをレールの列の左に置きます。
 
 ## Telemetry
 

@@ -37,13 +37,13 @@ export const styleCss = `
   --ctl-h: 36px;
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5);
   --nav-h: 3rem;
-  --compare-bar-h: 3.75rem;
+  /* 浮かせた比較バーが下端から占める高さ（バー 56px + 下の余白 20px） */
+  --compare-bar-h: 76px;
   --rail-w: 56px;
   --thumb-ar: 2 / 3;
-  /* card-row の高さは固定（スケルトンと実カードを同じ寸法にするため。docs/ui.md「Gallery timeline」） */
-  --card-id-h: 1.5rem;
-  --card-rate-h: 1.5rem;
-  --card-row-h: calc(0.9rem + 0.3rem + var(--card-id-h) + var(--card-rate-h));
+  /* card-row（評価とブックマークの 1 行）の高さは固定（スケルトンと実カードを同じ寸法にするため。docs/ui.md「Gallery timeline」） */
+  --card-rate-h: var(--ctl-h);
+  --card-row-h: calc(var(--card-rate-h) + 16px);
   /* 透過/余白を判別するための市松（img 自体は変更しない） */
   --checker:
     linear-gradient(45deg, #2a2a2e 25%, transparent 25%, transparent 75%, #2a2a2e 75%) 0 0 / 16px 16px,
@@ -296,7 +296,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   gap: 1rem;
 }
 /* Gallery / Bookmarks は 1 行 6 枚 */
-.grid.grid-gallery { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.grid.grid-gallery { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px 12px; }
 @media (max-width: 1100px) {
   .grid.grid-gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
@@ -304,23 +304,34 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   .grid.grid-gallery { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 }
 
+/* 枠は透明の 1px（帯の選択や実験の空きマスが色を付ける）。絵の角だけを丸める */
 .card {
   position: relative;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
   display: flex;
   flex-direction: column;
 }
+.card-media { position: relative; border-radius: var(--radius-ctl); overflow: hidden; }
 .card .thumb-link { display: block; position: relative; aspect-ratio: var(--thumb-ar); overflow: hidden; background: var(--checker); }
 .card .thumb-link img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .card .thumb-link .thumb-fg { object-fit: contain; }
-.card-row { box-sizing: border-box; height: var(--card-row-h); padding: 0.4rem 0.55rem 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
-.card-id-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; height: var(--card-id-h); }
-.card-row .rating-group { height: var(--card-rate-h); }
+/* short_id の下に敷く暗いぼかし */
+.card-media::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  background: linear-gradient(rgba(21, 21, 23, 0), rgba(21, 21, 23, 0.85));
+  pointer-events: none;
+  z-index: 1;
+}
+.card-media .rating-bar-strip, .card-media .card-safety-pct { z-index: 2; }
+.card-row { box-sizing: border-box; height: var(--card-row-h); padding: 8px 0; display: flex; gap: 6px; }
 /* 読み込み前の枠。子要素を持たず、実カードと同じ外寸（サムネ + 固定高の card-row）を擬似要素で作る */
-.card.card-skeleton::before { content: ''; display: block; aspect-ratio: var(--thumb-ar); background: var(--bg); }
+.card.card-skeleton::before { content: ''; display: block; aspect-ratio: var(--thumb-ar); border-radius: var(--radius-ctl); background: var(--bg-elevated); }
 .card.card-skeleton::after { content: ''; display: block; height: var(--card-row-h); }
 
 /* position は .thumb-link 内でのみ絶対配置 (docs/ui.md「Gallery」) */
@@ -342,18 +353,41 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .card-from-badge-link { text-decoration: none; }
 .card-from-badge-link:hover { text-decoration: none; opacity: 0.85; }
 
-/* from-badge が無ければ request ピルのみがこの位置に来る (docs/ui.md「Gallery」) */
-.card .thumb-link .thumb-badges-top {
+/* バッジはすべてサムネイルの左上に積む。上の段が元絵と進捗、下の段が安全度・公開済み・基準 (docs/ui.md「GenerationCard」) */
+.card .thumb-link .thumb-badges {
   position: absolute;
-  top: 0.4rem;
-  left: 0.4rem;
-  z-index: 1;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.3rem;
-  max-width: calc(100% - 0.8rem);
+  gap: 4px;
+  max-width: calc(100% - 12px);
 }
+.thumb-badges .thumb-badges-top { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; }
+.thumb-badges .thumb-badges-bottom { display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; }
+.thumb-badges .card-from-badge,
+.thumb-badges .card-request-badge,
+.thumb-badges .card-published-pill,
+.thumb-badges .card-reference-pill,
+.thumb-badges .safety-badge {
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-badge);
+  background: rgba(21, 21, 23, 0.85);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  line-height: 20px;
+}
+.thumb-badges .card-from-badge.copy-id-text,
+.thumb-badges .card-from-badge.copy-id-text:hover,
+.thumb-badges .card-published-pill,
+.thumb-badges .card-reference-pill { color: var(--text-dim); }
+.thumb-badges .card-from-badge.copy-id-text:hover { opacity: 1; color: var(--text); }
+.thumb-badges .card-from-badge.copy-id-text.copied { color: var(--good); }
+.thumb-badges .safety-badge-block { background: var(--r-explicit); color: #fff; }
 
 /* request-status-* は .request-status-list と共通の色クラス（本ファイル下方） */
 .card-request-badge {
@@ -372,17 +406,6 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   text-overflow: ellipsis;
 }
 .card-request-result { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-
-.card .thumb-link .thumb-badges-bottom {
-  position: absolute;
-  bottom: 0.4rem;
-  left: 0.4rem;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  max-width: calc(100% - 0.8rem);
-}
 
 .card-published-pill,
 .card-reference-pill {
@@ -478,23 +501,87 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .copy-id-text:hover { color: var(--accent); }
 .copy-id-text.copied { color: var(--good); }
 .copy-id-text.copied::after { content: ' ✓'; }
-.card-id { font-size: 0.78rem; }
-.card-id-actions { display: flex; align-items: center; gap: 0.3rem; }
-.card-id-link { color: var(--text-dim); font-size: 0.95rem; line-height: 1; text-decoration: none; }
-/* ボタンの UA 既定 padding に任せず、リンクとブックマークで同じ当たり判定と間隔にする。 */
-.card-id-link, .card-bookmark-btn { padding: 0.1rem 0.4rem; }
-.card-id-link:hover { color: var(--accent); text-decoration: none; }
-.card-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; padding: 0 0.55rem 0.5rem; font-size: 0.75rem; color: var(--text-dim); }
-/* 帯・行に並べる小さい版。幅は置く側が決める。ワークベンチ / リロールへのリンクは省く。 */
-.card-compact { border-radius: 8px; }
-.card-compact .card-row { height: auto; padding: 0.25rem 0.35rem 0.35rem; gap: 0.2rem; }
-.card-compact .card-id-row, .card-compact .card-row .rating-group { height: 1.25rem; }
-.card-compact .card-id { font-size: 0.68rem; }
-.card-compact .card-id-link { display: none; }
-.card-compact .card-bookmark-btn { padding: 0 0.15rem; font-size: 0.75rem; }
-.card-compact .rating-group { gap: 0.15rem; }
-.card-compact .rate-btn { flex: 1; font-size: 0.6rem; padding: 0 0.1rem; }
-.card-compact .card-extra { padding: 0 0.35rem 0.35rem; font-size: 0.68rem; }
+/* short_id はサムネイルの左下、ぼかしの上に重ねる。押すとコピー */
+.card-media .card-id {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 2;
+  height: var(--ctl-h);
+  max-width: 100%;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+/* ワークベンチとリロールはサムネイルの右上。ポインタを載せるかフォーカスで出し、指で触る端末では常に出す */
+.card-id-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.card:hover .card-id-actions, .card:focus-within .card-id-actions { opacity: 1; }
+@media (hover: none) { .card-id-actions { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .card-id-actions { transition: none; } }
+.card-id-link {
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  border-radius: var(--radius-ctl);
+  background: rgba(21, 21, 23, 0.85);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+.card-id-link:hover { background: var(--raised); text-decoration: none; }
+@media (hover: none) {
+  .card:not(.card-compact) .thumb-badges { max-width: calc(100% - 2 * var(--ctl-h) - 22px); }
+}
+.card-row .card-bookmark-btn {
+  flex: none;
+  width: var(--card-rate-h);
+  height: var(--card-rate-h);
+  padding: 0;
+  border-radius: var(--radius-ctl);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-row .bookmark-btn { opacity: 1; filter: none; font-size: inherit; }
+.card-row .bookmark-btn:hover { color: var(--text); }
+.card-row .bookmark-btn[data-bookmarked="true"] { color: var(--text); }
+.card-row .bookmark-btn[data-bookmarked="true"] svg { fill: currentColor; }
+.card-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 0 0 8px; font-size: var(--fs-xs); color: var(--text-dim); }
+/* 帯・行に並べる小さい版。幅は置く側が決める。面と線の箱に入れ、ワークベンチ / リロールへのリンクは省く。
+ * 幅が 7rem 前後なので、評価は頭文字だけを出す（文字は読み上げ用に残す）。 */
+.card-compact { background: var(--bg-elevated); border-color: var(--border); overflow: hidden; }
+.card-compact .card-media { border-radius: 0; }
+.card-compact .card-media::after { height: 28px; }
+.card-compact .card-media .card-id { height: 24px; padding: 0 6px; font-size: var(--fs-xs); }
+.card-compact .card-id-actions { display: none; }
+.card-compact .card-row { height: auto; padding: 4px; gap: 4px; }
+.card-compact .card-row .rating-group { height: 28px; }
+.card-compact .card-row .card-bookmark-btn { width: 28px; height: 28px; }
+.card-compact .rate-btn::before { font-size: var(--fs-xs); }
+.card-compact .rate-btn[data-rating="bad"]::before { content: 'b'; }
+.card-compact .rate-btn[data-rating="neutral"]::before { content: 'n'; }
+.card-compact .rate-btn[data-rating="good"]::before { content: 'g'; }
+.card-compact .card-extra { padding: 0 4px 4px; }
+@media (pointer: coarse) {
+  .card-compact .card-row .rating-group { height: 36px; }
+  .card-compact .card-row .card-bookmark-btn { width: 36px; height: 36px; }
+}
 
 .rating-group { display: flex; gap: 0.25rem; }
 .rate-btn {
@@ -598,32 +685,35 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 
 
 
-/* 固定配置のバーが main 末尾を隠さないよう余白を足す */
+/* 下端の中央に浮かせるパネル。main の末尾を隠さないよう --compare-bar-h 分の余白を足す */
 .compare-bar {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: var(--compare-bar-h);
-  background: var(--bg-elevated);
-  border-top: 1px solid var(--border);
-  padding: 0 1.25rem;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  height: 56px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  background: var(--raised);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-pop);
+  padding: 0 8px;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 8px;
   z-index: 20;
 }
 .compare-bar.hidden { display: none; }
 body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--compare-bar-h)); }
-.compare-chips { flex: 1; min-width: 0; display: flex; gap: 0.4rem; overflow-x: auto; }
+.compare-chips { flex: 0 1 auto; min-width: 0; display: flex; gap: 6px; overflow-x: auto; }
 .compare-chip {
   position: relative;
   flex: none;
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-ctl);
   overflow: hidden;
   background: var(--checker);
   cursor: pointer;
@@ -638,7 +728,7 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   border-radius: 999px;
   background: rgba(8, 8, 10, 0.8);
   color: var(--text);
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   line-height: 1rem;
   text-align: center;
 }
@@ -648,13 +738,13 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
 .compare-chip-overflow { opacity: 0.4; }
 .compare-clear {
   flex: none;
-  min-height: 2.75rem;
+  height: var(--ctl-h);
   background: none;
-  border: 1px solid var(--border);
+  border: 0;
   color: var(--text-dim);
-  border-radius: 6px;
-  padding: 0 0.8rem;
-  font-size: 0.8rem;
+  border-radius: var(--radius-ctl);
+  padding: 0 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 .compare-clear:hover { color: var(--text); }
@@ -662,18 +752,21 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   flex: none;
   display: flex;
   align-items: center;
-  min-height: 2.75rem;
+  height: max(40px, var(--ctl-h));
   background: var(--accent);
   color: var(--on-accent);
-  border-radius: 6px;
-  padding: 0 0.9rem;
+  border-radius: var(--radius-ctl);
+  padding: 0 20px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
+.compare-bar a.compare-go:hover { text-decoration: none; filter: brightness(0.92); }
 @media (max-width: 600px) {
-  .compare-bar { padding: 0 0.75rem; gap: 0.5rem; }
+  .compare-bar { bottom: 12px; }
 }
 
+/* 1 行のツールバー（高さ 60px）。狭い幅では折り返す */
 .gallery-toolbar {
   position: sticky;
   top: var(--nav-h);
@@ -682,87 +775,99 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.75rem 0;
-  margin-bottom: 1rem;
+  gap: 8px;
+  padding: 12px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
+.toolbar-divider { width: 1px; height: 20px; margin: 0 8px; background: var(--border); }
+.gallery-count { margin-left: auto; font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
 
 .view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 264px;
+  max-width: 100%;
+  height: var(--ctl-h);
   padding: 3px;
+  border-radius: var(--radius-ctl);
+  background: var(--bg-elevated);
 }
 .view-switch-item {
-  padding: 0.35rem 0.85rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-dim);
-}
-.view-switch-item:hover { text-decoration: none; }
-.view-switch-item[aria-current="true"] { background: var(--bg); color: var(--text); }
-
-.bad-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.45rem;
-  font-size: 0.85rem;
-  color: var(--text-dim);
-  border: 1px solid var(--border);
+  justify-content: center;
   border-radius: 6px;
-  padding: 0.4rem 0.7rem;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
 }
-.bad-toggle:hover { text-decoration: none; color: var(--text); }
-.bad-toggle-box {
-  width: 0.9rem;
-  height: 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg);
-  display: inline-block;
-}
-.bad-toggle[aria-pressed="true"] .bad-toggle-box { background: var(--accent); border-color: var(--accent); }
+.view-switch-item:hover { text-decoration: none; color: var(--text); }
+.view-switch-item[aria-current="true"] { background: var(--border); color: var(--text); font-weight: 600; }
 
-/* フェーズの複数選択。並びと見た目はワークベンチのフェーズ列 (.wb-steps) に揃える。 */
-.phase-bar { flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 0.5rem 0.9rem; overflow-x: auto; }
-.phase-chain { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 0.25rem; flex: none; }
-.phase-chain li { display: flex; align-items: center; gap: 0.25rem; }
-.phase-sep { color: var(--text-dim); font-size: 0.8rem; }
-.phase-extra { display: flex; align-items: center; gap: 0.25rem; flex: none; padding-left: 0.9rem; border-left: 1px solid var(--border); }
-.phase-chip {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 3.5rem; min-height: 2rem; padding: 0.15rem 0.6rem;
-  border-radius: 8px; border: 1px solid var(--border); font-size: 0.78rem; color: var(--text-dim); white-space: nowrap;
-}
-.phase-chip:hover { text-decoration: none; color: var(--text); }
-.phase-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.phase-clear { flex: none; font-size: 0.78rem; color: var(--text-dim); }
-
-.filter-panel { position: relative; }
+/* チップ: on は明るい枠と文字（塗らない） */
+.bad-toggle,
+.phase-menu > summary,
 .filter-panel summary {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 4px;
+  height: var(--ctl-h);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
   list-style: none;
   cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
-  color: var(--text);
 }
+.bad-toggle:hover,
+.phase-menu > summary:hover,
+.filter-panel summary:hover { text-decoration: none; color: var(--text); }
+.bad-toggle[aria-pressed="true"],
+.phase-menu > summary[aria-pressed="true"],
+.phase-menu[open] > summary,
+.filter-panel[open] summary { border-color: var(--text); color: var(--text); }
+.phase-menu > summary::-webkit-details-marker { display: none; }
+
+.phase-menu { position: relative; }
+.phase-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px;
+  background: var(--raised);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-pop);
+}
+/* フェーズの複数選択。並びはワークベンチのフェーズ列 (.wb-steps) に揃える。 */
+.phase-bar { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.phase-chain { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.phase-chain li { display: flex; align-items: center; gap: 4px; }
+.phase-sep { color: var(--text-dim); font-size: var(--fs-xs); }
+.phase-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-top: 12px; border-top: 1px solid var(--border); align-self: stretch; }
+.phase-chip {
+  display: inline-flex; align-items: center; justify-content: center; height: var(--ctl-h); padding: 0 12px;
+  border-radius: 999px; border: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap;
+}
+.phase-chip:hover { text-decoration: none; color: var(--text); }
+.phase-chip[aria-pressed="true"] { border-color: var(--text); color: var(--text); }
+.phase-clear { font-size: var(--fs-sm); color: var(--text-dim); }
+
+.filter-panel { position: relative; }
 .filter-panel summary::-webkit-details-marker { display: none; }
-.filter-panel[open] summary { border-color: var(--accent); color: var(--accent); }
 .filter-panel .filter-form {
   position: absolute;
-  top: calc(100% + 0.4rem);
+  top: calc(100% + 6px);
   left: 0;
   z-index: 20;
   min-width: 260px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-width: calc(100vw - 32px);
+  box-shadow: var(--shadow-pop);
 }
 .filter-form textarea[name="ids"] {
   background: var(--bg);
@@ -838,6 +943,10 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
 
 /* Gallery タイムライン: 15 分枠の見出しはグリッドの全幅アイテム、右端に固定のレール (docs/ui.md「Gallery」) */
 .container:has([data-gallery-grid]) { padding-right: calc(var(--rail-w) + 1rem); }
+/* キュー状態をレールの列の左に寄せる。スマホは nav の幅に余裕が無いので寄せない */
+@media (min-width: 601px) {
+  body:has(.gallery-rail) .nav { padding-right: calc(var(--rail-w) + 16px); }
+}
 .gallery-date-header {
   grid-column: 1 / -1;
   position: sticky;
@@ -931,31 +1040,12 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
   .gallery-rail-label { font-size: 0.65rem; }
 }
 
+/* スマホ: ツールバーは固定せず流す。ポップオーバーはツールバーの左端から開く */
 @media (max-width: 600px) {
-  .gallery-toolbar .view-switch { flex: 1 1 100%; }
-  .view-switch-item { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
-  .bad-toggle, .filter-panel summary { min-height: 2.75rem; }
-
-  .card .card-bookmark-btn {
-    position: absolute;
-    top: 0.4rem;
-    right: 0.4rem;
-    width: 2.75rem;
-    height: 2.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(18, 18, 20, 0.72);
-    border-radius: 999px;
-    z-index: 2;
-  }
-  :root { --card-id-h: 2.75rem; --card-rate-h: 2.75rem; }
-  .card-row .rate-btn { flex: 1; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
-  .card-row .card-id { min-height: 2.75rem; }
-  .card-id-link { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; }
-  .card-compact .card-id-row, .card-compact .card-row .rating-group { height: 2rem; }
-  .card-compact .card-row .rate-btn, .card-compact .card-row .card-id { min-height: 2rem; }
-  .card.card-compact .card-bookmark-btn { position: static; width: auto; height: 2rem; background: none; }
+  .gallery-toolbar { position: relative; top: auto; }
+  .gallery-toolbar .view-switch { width: 100%; }
+  .gallery-toolbar .toolbar-divider { display: none; }
+  .phase-menu, .filter-panel { position: static; }
 }
 
 details.section {
@@ -1103,23 +1193,28 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .gd-more-panel .compare-add-btn:hover { background: var(--bg-elevated); }
 
 .gd-marks { display: flex; gap: 8px; }
-.gd-marks .rating-group {
+.gd-marks .rating-group { height: max(40px, var(--ctl-h)); }
+.card-row .rating-group { height: var(--card-rate-h); }
+.gd-marks .rating-group,
+.card-row .rating-group {
   flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
-  height: max(40px, var(--ctl-h));
   border: 1px solid var(--border);
   border-radius: var(--radius-ctl);
   overflow: hidden;
 }
-.gd-marks .rate-btn { border: 0; border-right: 1px solid var(--border); border-radius: 0; padding: 0; background: var(--bg-elevated); color: var(--text-dim); font-size: var(--fs-sm); }
-.gd-marks .rate-btn:last-child { border-right: 0; }
-.gd-marks .rate-btn:hover { color: var(--text); }
-.gd-marks .rate-btn.active { font-weight: 600; }
-.gd-marks .rate-btn[data-rating="good"].active { background: var(--good); color: var(--on-accent); }
-.gd-marks .rate-btn[data-rating="neutral"].active { background: var(--neutral); color: var(--on-accent); }
-.gd-marks .rate-btn[data-rating="bad"].active { background: var(--bad); color: var(--on-accent); }
+:is(.gd-marks, .card-row) .rate-btn { border: 0; border-right: 1px solid var(--border); border-radius: 0; padding: 0; background: var(--bg-elevated); color: var(--text-dim); font-size: var(--fs-sm); }
+:is(.gd-marks, .card-row) .rate-btn:last-child { border-right: 0; }
+:is(.gd-marks, .card-row) .rate-btn:hover { color: var(--text); }
+:is(.gd-marks, .card-row) .rate-btn.active { font-weight: 600; }
+:is(.gd-marks, .card-row) .rate-btn[data-rating="good"].active { background: var(--good); color: var(--on-accent); }
+:is(.gd-marks, .card-row) .rate-btn[data-rating="neutral"].active { background: var(--neutral); color: var(--on-accent); }
+:is(.gd-marks, .card-row) .rate-btn[data-rating="bad"].active { background: var(--bad); color: var(--on-accent); }
+.card-row .rate-btn { font-size: var(--fs-xs); }
+.card-compact .card-row .rate-btn { font-size: 0; }
 .gd-marks .bookmark-btn { opacity: 1; filter: none; font-size: inherit; }
 .gd-marks .bookmark-btn[data-bookmarked="true"] { color: var(--text); }
 .gd-marks .bookmark-btn[data-bookmarked="true"] svg { fill: currentColor; }
@@ -1401,7 +1496,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .exp-matrix th { font-weight: 600; text-align: left; vertical-align: top; white-space: nowrap; }
 .exp-matrix-seed { font-family: ui-monospace, monospace; color: var(--text-dim); font-size: 0.8rem; }
 .exp-matrix-cell { width: 180px; min-width: 180px; vertical-align: top; }
-.exp-matrix-empty .card { border-style: dashed; background: transparent; }
+.exp-matrix-empty .card { border-style: dashed; border-color: var(--border); background: transparent; }
 .exp-matrix-empty .exp-matrix-wait { display: flex; align-items: center; justify-content: center; aspect-ratio: var(--thumb-ar); color: var(--text-dim); }
 .exp-matrix-empty .exp-matrix-wait-row { height: var(--card-row-h); }
 .exp-compare-seeds { display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: baseline; font-size: 0.85rem; color: var(--text-dim); }
@@ -3431,11 +3526,10 @@ export const appJs = `
     if (!strip || !pill) return;
     var show = false;
     if (!strip.classList.contains('hidden')) {
-      var toolbar = qs('.gallery-toolbar');
-      var toolbarBottom = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+      var toolbarBottom = galleryStickyBottom();
       show = strip.getBoundingClientRect().bottom <= toolbarBottom;
-      // toolbar の高さは折り返しで変わるので、CSS の既定位置ではなく実測した直下に置く
-      if (show && toolbar) pill.style.top = toolbarBottom + 8 + 'px';
+      // toolbar の高さは折り返しで変わり、スマホでは流れるので、CSS の既定位置ではなく実測した直下に置く
+      if (show) pill.style.top = toolbarBottom + 8 + 'px';
     }
     pill.classList.toggle('hidden', !show);
   }
@@ -3786,7 +3880,7 @@ export const appJs = `
   // Opening one closes the others with no extra logic: this listener fires before the <details>
   // summary's own toggle, so the popover about to open is still closed here and is skipped.
   function popoverDetailsEls() {
-    return qsa('details.nav-more, details.nav-queue, details.filter-panel, details.gd-more');
+    return qsa('details.nav-more, details.nav-queue, details.filter-panel, details.phase-menu, details.gd-more');
   }
 
   function initPopoverClose() {
@@ -4414,6 +4508,8 @@ export const appJs = `
       tl.days[date].slots += 1;
     });
     tl.ready = slots.length > 0 && tl.total > 0;
+    const count = qs('[data-gallery-count]');
+    if (count) count.textContent = tl.total.toLocaleString() + ' 枚';
   }
 
   function galleryRailSlotAt(f) {
@@ -4463,10 +4559,16 @@ export const appJs = `
     return Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
   }
 
-  function galleryStickyOffset(grid) {
+  // nav と、sticky なら toolbar の下端。スマホの toolbar は流れるので、スクロールで nav の下へ消えたら nav の下端になる。
+  function galleryStickyBottom() {
     const toolbar = qs('.gallery-toolbar');
     const nav = qs('.nav');
-    const top = toolbar ? toolbar.getBoundingClientRect().bottom : nav ? nav.getBoundingClientRect().bottom : 0;
+    const navBottom = nav ? nav.getBoundingClientRect().bottom : 0;
+    return toolbar ? Math.max(navBottom, toolbar.getBoundingClientRect().bottom) : navBottom;
+  }
+
+  function galleryStickyOffset(grid) {
+    const top = galleryStickyBottom();
     const dateHeader = qs('.gallery-date-header', grid);
     return top + (dateHeader ? dateHeader.offsetHeight : 0);
   }
@@ -4944,7 +5046,8 @@ export const appJs = `
     const toolbar = qs('.gallery-toolbar');
     const nav = qs('.nav');
     if (!grid || !toolbar || !nav) return;
-    grid.style.setProperty('--gallery-sticky-top', nav.offsetHeight + toolbar.offsetHeight + 'px');
+    const sticky = getComputedStyle(toolbar).position === 'sticky';
+    grid.style.setProperty('--gallery-sticky-top', nav.offsetHeight + (sticky ? toolbar.offsetHeight : 0) + 'px');
   }
 
   function initGalleryTimeline() {
