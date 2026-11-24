@@ -516,6 +516,8 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
   font-size: var(--fs-sm);
   line-height: 1;
 }
+/* 絵の上の ID は青にすると色の絵に沈むので、ホバーでも白のまま下線で示す */
+.card-media .card-id:hover { color: var(--text); text-decoration: underline; }
 /* ワークベンチとリロールはサムネイルの右上。ポインタを載せるかフォーカスで出し、指で触る端末では常に出す */
 .card-id-actions {
   position: absolute;
@@ -1292,7 +1294,8 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .gd-same-strip { display: flex; flex-wrap: wrap; gap: 8px; }
 .gd-same-thumb { display: block; width: 72px; aspect-ratio: 8 / 9; border-radius: var(--radius-ctl); overflow: hidden; background: var(--checker); }
 .gd-same-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.gd-same-thumb[aria-current="true"] { box-shadow: 0 0 0 2px var(--text); }
+/* 白い絵でも輪が絵に溶けないよう、地の色の隙間を挟む */
+.gd-same-thumb[aria-current="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
 
 .gd-folds { margin-top: auto; }
 .gd-side details.gd-fold { margin: 0; padding: 0; background: none; border: 0; border-top: 1px solid var(--border); border-radius: 0; }
@@ -1688,7 +1691,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .ab-reveal-line { color: var(--text); font-size: 0.9rem; margin-bottom: 0.75rem; }
 .ab-next {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--on-accent);
   border: none;
   border-radius: 8px;
   font-size: 1rem;
