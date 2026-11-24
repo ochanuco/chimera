@@ -157,7 +157,7 @@ a:hover { text-decoration: underline; }
 .nav-queue-dot.warn { background: var(--neutral); }
 .nav-queue-sep { color: var(--text-dim); font-weight: 400; }
 .nav-queue-running { color: var(--neutral); }
-.nav-queue-queued { color: var(--accent); }
+.nav-queue-queued { color: var(--link); }
 .nav-queue-failed { color: var(--bad); }
 .nav-queue-offline { color: var(--text-dim); }
 
@@ -499,7 +499,7 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 .copy-id-btn:hover { color: var(--text); }
 /* ID 文字そのものがコピー操作（copy-id-btn とは別）。コピー後は文字を置き換えず色と ✓ で知らせる */
 .copy-id-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); padding: 0; cursor: copy; }
-.copy-id-text:hover { color: var(--accent); }
+.copy-id-text:hover { color: var(--link); }
 .copy-id-text.copied { color: var(--good); }
 .copy-id-text.copied::after { content: ' ✓'; }
 /* short_id はサムネイルの左下、ぼかしの上に重ねる。押すとコピー */
@@ -1014,7 +1014,7 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
   transform: translateY(-50%);
   border-radius: 9px;
   background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(124, 156, 245, 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
   opacity: 0.55;
   transition: opacity 0.15s;
 }
@@ -1092,7 +1092,7 @@ details.section .section-body { margin-top: 0.6rem; }
   gap: 0.25rem;
 }
 .prompt-chips.negative .prompt-chip { color: var(--text-dim); border-color: var(--border); background: color-mix(in srgb, var(--bg-elevated) 60%, transparent); }
-.prompt-chip.chip-lora { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); color: var(--accent); }
+.prompt-chip.chip-lora { border-color: color-mix(in srgb, var(--link) 60%, var(--border)); color: var(--link); }
 .prompt-chip.chip-break { border-style: dashed; color: var(--text-dim); }
 .prompt-chip.diff-added { border-color: var(--good); box-shadow: inset 0 0 0 1px var(--good); }
 .prompt-chip.diff-weight { border-color: var(--neutral); box-shadow: inset 0 0 0 1px var(--neutral); }
@@ -1380,7 +1380,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .promote-profile-status { font-size: 0.8rem; color: var(--text-dim); }
 
 .request-status-list { list-style: none; margin: 0.6rem 0 0; padding: 0; font-size: 0.85rem; }
-.request-status-queued { color: var(--accent); }
+.request-status-queued { color: var(--link); }
 .request-status-running { color: var(--neutral); }
 .request-status-done { color: var(--good); }
 .request-status-failed { color: var(--bad); }
@@ -1529,7 +1529,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
   background: color-mix(in srgb, var(--neutral) 22%, transparent);
   color: var(--neutral);
 }
-.status-badge[data-value="active"] { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.status-badge[data-value="active"] { background: color-mix(in srgb, var(--link) 22%, transparent); color: var(--link); }
 .status-badge[data-value="stabilized"] { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
 .status-badge[data-value="promoted"] { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
 .status-badge[data-value="abandoned"] { background: color-mix(in srgb, var(--text-dim) 22%, transparent); color: var(--text-dim); }
@@ -1569,7 +1569,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .exp-delta-path { color: var(--text-dim); }
 .exp-delta-added { color: var(--good); }
 .exp-delta-removed { color: var(--bad); }
-.exp-delta-changed { color: var(--accent); }
+.exp-delta-changed { color: var(--link); }
 .exp-delta-kept { color: var(--text-dim); }
 .exp-delta-reason { color: var(--text-dim); font-style: italic; }
 .exp-delta-empty { color: var(--text-dim); font-style: italic; }
@@ -1697,7 +1697,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .exp-facts { margin-bottom: 0.4rem; }
 .exp-facts th { text-align: left; padding: 0.2rem 0.8rem 0.2rem 0; font-size: 0.78rem; color: var(--text-dim); font-weight: 600; }
 .exp-facts td { padding: 0.2rem 0.8rem 0.2rem 0; font-size: 0.85rem; }
-.exp-facts-diff { background: rgba(124, 156, 245, 0.18); }
+.exp-facts-diff { background: color-mix(in srgb, var(--link) 18%, transparent); }
 .exp-facts-legend { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 1rem; }
 .exp-facts-patches td { color: var(--text-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 
@@ -1914,7 +1914,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
   background: var(--accent); color: var(--on-accent); cursor: pointer;
 }
 .wb-adopt:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
-.wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: rgba(124, 156, 245, 0.15); font-size: 0.85rem; }
+.wb-done { margin: 0; padding: 0.5rem 0.8rem; border-radius: 8px; background: color-mix(in srgb, var(--link) 15%, transparent); font-size: 0.85rem; }
 
 .wb-panel {
   flex: 1 1 18rem; min-width: 0; max-width: 380px; height: calc(100dvh - var(--wb-panel-top, 6rem) - 1.5rem); overflow: hidden;

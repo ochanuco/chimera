@@ -22,7 +22,7 @@ export function formatMs(ms: number | null): string {
 const CHART_W = 640;
 const CHART_H = 160;
 const PAD = { l: 52, r: 12, t: 10, b: 22 };
-const SERIES_COLOR: Record<string, string> = { v1: 'var(--text-dim)', v2: 'var(--accent)' };
+const SERIES_COLOR: Record<string, string> = { v1: 'var(--text-dim)', v2: 'var(--link)' };
 const PALETTE = ['var(--accent)', 'var(--good)', 'var(--neutral)', 'var(--bad)', 'var(--graph-experiment)', 'var(--graph-relation)'];
 
 interface Series {
