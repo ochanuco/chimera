@@ -31,7 +31,7 @@ pnpm run typecheck && pnpm test
 ## 本番
 
 - https://chimera.chanu.co （D1 `chimera` / R2 `chimera-images`）
-- デプロイは main へのマージで GitHub Actions の `deploy` workflow が自動で実行する（`scripts/deploy.sh production` = `wrangler deploy`）。承認が要るのは、前回の記録がない・ロールバック・`migrations/` の変更を含むときだけで、Environment `production-approval` で止まる。何が出るかと承認の要否は run の `plan` ジョブの Job Summary に出る。手動実行（入力 `ref` は main か main 上の SHA）はロールバック用。`pnpm exec wrangler deploy` の手打ちはしない
+- デプロイは main へのマージで GitHub Actions の `deploy` workflow が自動で実行する（`scripts/deploy.sh production` = `wrangler deploy`）。承認が要るのは、前回の記録がない・ロールバック・追加系でない migration（CREATE TABLE / CREATE INDEX / ALTER TABLE ADD 以外の文を含む、または既存 migration の変更）を含むときだけで、Environment `production-approval` で止まる。何が出るかと承認の要否は run の `plan` ジョブの Job Summary に出る。手動実行（入力 `ref` は main か main 上の SHA）はロールバック用。`pnpm exec wrangler deploy` の手打ちはしない
 - D1 migration は deploy（`scripts/deploy.sh`）が `wrangler deploy` の前に `--remote` で適用する。手で当てない
 - Workers Builds は PR ごとの Preview Builds だけが使う。production build の deploy command は `pnpm exec wrangler versions upload`（Cloudflare ダッシュボードで設定。リポジトリには無い）で、反映はしない
 - API 疎通確認用の Service Token は 1Password `chimera-claude-agent`（`op` で取得、コミット禁止）
