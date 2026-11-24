@@ -118,6 +118,17 @@ function detectedTags(tags: Record<string, number> | undefined): [string, number
   return [...risky, ...rest];
 }
 
+const DETECTED_TAGS_VISIBLE = 12;
+
+function tagChip([name, value, risk]: [string, number, TagXRisk | null]) {
+  return (
+    <span class={`safety-tag${risk ? ` risk-${risk}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}` : ''}`}>
+      {name}
+      <span class="safety-num">{Math.round(value * 100)}</span>
+    </span>
+  );
+}
+
 /** 詳細ページの見出しと値の表に入る `安全度` 行と `検出` 行。未採点は `安全度 未採点` の 1 行だけ。 */
 export function SafetyRows({ safety }: { safety: SafetyDetailData | null | undefined }) {
   if (!safety) {
@@ -132,6 +143,11 @@ export function SafetyRows({ safety }: { safety: SafetyDetailData | null | undef
   }
   const reason = reasonText(safety.verdict, safety.reasons);
   const tags = detectedTags(safety.tags);
+  // tagger は 1 枚に 80 前後のタグを返す。全部並べると 公開 と タグ が画面の下へ押し出されるので、
+  // 際どさの区分つきのタグは全部、それ以外は確率の高い順に枠まで出し、残りは押したときだけ広げる。
+  const visible = Math.max(DETECTED_TAGS_VISIBLE, tags.filter(([, , risk]) => risk !== null).length);
+  const shown = tags.slice(0, visible);
+  const rest = tags.slice(visible);
   const top = RATING_LABELS.reduce((best, [key]) => (safety.rating[key] > safety.rating[best] ? key : best), 'general' as keyof SafetyRatingView);
   return (
     <>
@@ -176,12 +192,15 @@ export function SafetyRows({ safety }: { safety: SafetyDetailData | null | undef
           <dt class="kv-k">検出</dt>
           <dd class="kv-v">
             <div class="safety-tags">
-              {tags.map(([name, value, risk]) => (
-                <span class={`safety-tag${risk ? ` risk-${risk}${value >= HOT_TAG_THRESHOLD ? ' hot' : ''}` : ''}`}>
-                  {name}
-                  <span class="safety-num">{Math.round(value * 100)}</span>
-                </span>
-              ))}
+              {shown.map(tagChip)}
+              {rest.length > 0 ? (
+                <>
+                  <span class="safety-tags-rest" hidden>
+                    {rest.map(tagChip)}
+                  </span>
+                  <button type="button" class="safety-tags-more">ほか {rest.length} 件</button>
+                </>
+              ) : null}
             </div>
           </dd>
         </div>

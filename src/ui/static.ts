@@ -1243,6 +1243,9 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .safety-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .safety-tag { height: 22px; padding: 0 8px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 999px; font-size: var(--fs-xs); color: var(--text-dim); white-space: nowrap; }
 .safety-tag.hot { font-weight: 600; }
+.safety-tags-rest:not([hidden]) { display: contents; }
+.safety-tags-more { height: 22px; padding: 0 6px; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.safety-tags-more:hover { text-decoration: underline; }
 .safety-tag.risk-exposure, .safety-tag.risk-certain { border-color: var(--r-explicit); color: var(--text); }
 .safety-tag.risk-suspect { border-color: var(--r-questionable); color: var(--text); }
 
@@ -1302,7 +1305,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .gd-fold details.section { margin: 8px 0 0; padding: 0; background: none; border: 0; }
 .gd-fold details.section > summary { font-size: var(--fs-xs); font-weight: 400; color: var(--text-dim); }
 .gd-fold pre { overflow-x: auto; font-size: var(--fs-xs); }
-.gd-fold .kv-table td { font-size: var(--fs-sm); }
+.gd-fold .kv-table td { font-size: var(--fs-sm); overflow-wrap: anywhere; }
 
 @media (min-width: 1100px) {
   .gd { display: flex; height: calc(100vh - var(--nav-h)); overflow: hidden; }
@@ -2055,6 +2058,16 @@ export const appJs = `
 
   // 連続コピー時に前回のタイマーが ✓ を早く消さないよう、ボタンごとに保持する
   var copyIdTextTimers = new WeakMap();
+
+  function initSafetyTagsMore() {
+    document.addEventListener('click', function (ev) {
+      const btn = ev.target.closest('.safety-tags-more');
+      if (!btn) return;
+      const rest = btn.parentElement.querySelector('.safety-tags-rest');
+      if (rest) rest.hidden = false;
+      btn.remove();
+    });
+  }
 
   function initCopyIdButtons() {
     document.addEventListener('click', function (ev) {
@@ -7826,6 +7839,7 @@ export const appJs = `
     initPopoverClose();
     initCompareBar();
     initCopyIdButtons();
+    initSafetyTagsMore();
     initCompareCols();
     initCompareSame();
     initExperimentStatus();
