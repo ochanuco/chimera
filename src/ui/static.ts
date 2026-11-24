@@ -1046,6 +1046,8 @@ html:has(.gallery-rail)::-webkit-scrollbar { display: none; }
   .gallery-toolbar .view-switch { width: 100%; }
   .gallery-toolbar .toolbar-divider { display: none; }
   .phase-menu, .filter-panel { position: static; }
+  /* ツールバーの幅に収め、右のレールの下に潜らせない */
+  .phase-menu-panel, .filter-panel .filter-form { left: 0; right: 0; width: auto; min-width: 0; max-width: none; }
 }
 
 details.section {

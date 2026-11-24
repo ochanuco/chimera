@@ -245,7 +245,7 @@ redraw / repair / masked_redraw、それ以外は同名の kind です（対応�
 カードの大きさと6 / 4 / autoの列数は見出しの有無で変わりません。
 
 ``` text
-10月6日（火）  397 枚 · 49 枠      ← 日付見出し。nav と toolbar の下に sticky
+10月6日（火）  397 枚 · 49 枠      ← 日付見出し。nav と toolbar の下に sticky（幅600px以下は nav の下）
 21:45–22:00 · 12 枚                ← 枠見出し
 [card] [card] ...
 ```
