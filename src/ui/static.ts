@@ -197,11 +197,13 @@ a.nav-queue-row:hover { background: var(--bg); text-decoration: none; }
 
 @media (max-width: 600px) {
   .nav {
-    padding: 0 0.6rem;
-    gap: 0.4rem;
+    padding: 0 4px;
+    gap: 0;
     font-size: 0.8rem;
   }
-  .nav a.brand { margin-right: 0; }
+  .nav a.brand { display: none; }
+  .nav a,
+  .nav-more summary { padding: 0 8px; }
   .nav > a,
   .nav-more > summary {
     min-height: 2.75rem;
