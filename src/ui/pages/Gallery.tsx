@@ -226,6 +226,9 @@ function GalleryToolbar({ filters, count }: { filters: GalleryFilters; count: nu
           {count.toLocaleString()} 枚
         </span>
       ) : null}
+      <button type="button" class="gallery-select-btn" data-compare-select-toggle aria-pressed="false">
+        選んで比べる
+      </button>
     </div>
   );
 }

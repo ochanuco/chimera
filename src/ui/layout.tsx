@@ -12,8 +12,8 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
   path = '',
   children,
 }) => {
-  // /compare is entered from the Gallery grid (Compare entry, docs/ui.md「Navigation」), so it
-  // keeps Gallery marked current rather than leaving nav without an active item.
+  // /compare is entered from the Gallery's 選んで比べる mode (and Detail's direct links, docs/ui.md
+  // 「Compare entry」), so it keeps Gallery marked current rather than leaving nav without an active item.
   const galleryActive = path === '/gallery' || path === '/compare';
   const bookmarksActive = path === '/bookmarks';
   const workbenchActive = isActiveSection(path, '/work');
@@ -62,12 +62,12 @@ export const Layout: FC<PropsWithChildren<{ title?: string; fullBleed?: boolean;
         </nav>
         <main class={fullBleed ? 'container container-full' : 'container'}>{children}</main>
         <div id="compare-bar" class="compare-bar hidden">
-          <div id="compare-chips" class="compare-chips"></div>
+          <span id="compare-count" class="compare-count" role="status" aria-live="polite"></span>
           <button type="button" id="compare-clear" class="compare-clear">
-            すべて解除
+            解除
           </button>
-          <a id="compare-link" class="compare-go" href="#">
-            比較 (0)
+          <a id="compare-link" class="compare-go" aria-disabled="true">
+            比べる
           </a>
         </div>
         <script src={`/assets/app.js?v=${assetVersion}`}></script>

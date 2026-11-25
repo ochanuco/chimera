@@ -90,6 +90,14 @@ export interface ProducedByOptions {
   resolved: Record<string, unknown>;
 }
 
+/** /compare が受け取る上限（それ以上は先頭だけを出して警告する）。 */
+const COMPARE_MAX = 9;
+
+/** 並べた順に列を作る /compare への直リンク。compare set（sessionStorage）は触らない。 */
+function compareHref(shortIds: string[]): string {
+  return `/compare?ids=${shortIds.map(encodeURIComponent).join(',')}`;
+}
+
 /** `LoRA name @strength_model (clip strength_clip)`, omitting the clip part when absent or equal to strength_model. */
 function formatLoraLine(l: RenderFacts['loras'][number]): string {
   let s = `${l.lora_name} @${l.strength_model ?? '?'}`;
@@ -216,6 +224,7 @@ export function GenerationDetailPage({
         a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
       )
     : [];
+  const sameRequestCompare = sameRequest.slice(0, COMPARE_MAX).map((g) => g.short_id);
 
   return (
     <Layout title={`${data.short_id} · 詳細`} fullBleed path={path}>
@@ -266,6 +275,11 @@ export function GenerationDetailPage({
                   <CopyIdButton value={rootGeneration.short_id} />
                 </span>
               ) : null}
+              {data.refines_generation ? (
+                <a class="gd-lineage-compare" href={compareHref([data.refines_generation.short_id, data.short_id])}>
+                  元と比べる
+                </a>
+              ) : null}
             </nav>
           ) : null}
 
@@ -288,9 +302,6 @@ export function GenerationDetailPage({
               </summary>
               <div class="gd-more-panel">
                 <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
-                <button type="button" class="compare-add-btn" data-generation-id={data.id} data-short-id={data.short_id}>
-                  比較に追加
-                </button>
               </div>
             </details>
           </div>
@@ -352,7 +363,12 @@ export function GenerationDetailPage({
 
           {sameRequest.length > 0 ? (
             <nav class="gd-same" aria-label={`同じ指示の ${sameRequest.length} 枚`}>
-              <span class="kv-k">同じ指示の {sameRequest.length} 枚</span>
+              <div class="gd-same-head">
+                <span class="kv-k">同じ指示の {sameRequest.length} 枚</span>
+                <a class="gd-same-compare" href={compareHref(sameRequestCompare)}>
+                  {sameRequestCompare.length} 枚を並べて比べる
+                </a>
+              </div>
               <div class="gd-same-strip">
                 {sameRequest.map((g) => {
                   const current = g.id === data.id;

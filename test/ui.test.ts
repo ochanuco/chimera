@@ -121,16 +121,56 @@ describe('Web GUI pages', () => {
     expect(body).toContain(`/g/${generation.short_id}/image`);
   });
 
-  it('every page carries exactly one compare bar from the Layout, and Generation Detail has the compare entry button', async () => {
+  it('every page carries exactly one compare bar from the Layout, and Generation Detail no longer adds to the compare set', async () => {
     const { generation } = await createGeneration();
     for (const path of ['/gallery', '/bookmarks', '/experiments', `/g/${generation.short_id}`, '/compare?ids=']) {
       const body = await (await req(path)).text();
       expect(body.split('id="compare-bar"').length - 1, path).toBe(1);
       expect(body, path).toContain('id="compare-clear"');
+      expect(body, path).toMatch(/<a id="compare-link" class="compare-go" aria-disabled="true">/);
     }
 
     const detail = await (await req(`/g/${generation.short_id}`)).text();
-    expect(detail).toContain(`class="compare-add-btn" data-generation-id="${generation.id}" data-short-id="${generation.short_id}"`);
+    expect(detail).not.toContain('compare-add-btn');
+    expect(detail).not.toContain('比較に追加');
+  });
+
+  it('GET /gallery puts the 選んで比べる toggle at the right end of the toolbar, after the count', async () => {
+    await createGeneration();
+    const html = await (await req('/gallery?limit=200')).text();
+    const toolbar = html.slice(html.indexOf('class="gallery-toolbar"'), html.indexOf('data-gallery-grid'));
+    expect(toolbar).toContain('<button type="button" class="gallery-select-btn" data-compare-select-toggle="true" aria-pressed="false">選んで比べる</button></div>');
+    expect(toolbar.indexOf('data-gallery-count')).toBeGreaterThan(-1);
+    expect(toolbar.indexOf('data-gallery-count')).toBeLessThan(toolbar.indexOf('data-compare-select-toggle'));
+  });
+
+  it('GET /g/{short_id} links 元と比べる to /compare with [元, this] only for a refined Generation', async () => {
+    const { generation: raw } = await createGeneration();
+    const refined = await createGeneration();
+    await env.DB.prepare('UPDATE generations SET refines_generation_id = ? WHERE id = ?').bind(raw.id, refined.generation.id).run();
+
+    const html = await (await req(`/g/${refined.generation.short_id}`)).text();
+    const lineage = html.slice(html.indexOf('class="gd-lineage"'), html.indexOf('class="gd-actions"'));
+    expect(lineage).toContain(`<a class="gd-lineage-compare" href="/compare?ids=${raw.short_id},${refined.generation.short_id}">元と比べる</a>`);
+
+    const rawHtml = await (await req(`/g/${raw.short_id}`)).text();
+    expect(rawHtml).not.toContain('元と比べる');
+  });
+
+  it('GET /g/{short_id} links N 枚を並べて比べる to /compare with the same-Request Generations in strip order', async () => {
+    const { job, generation: first } = await createGeneration();
+    const second = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00002_.png', comfy_output_index: 1 });
+    const third = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00003_.png', comfy_output_index: 2 });
+    const other = await createGeneration();
+
+    const ids = `${first.short_id},${second.body.short_id},${third.body.short_id}`;
+    for (const shortId of [first.short_id, third.body.short_id]) {
+      const html = await (await req(`/g/${shortId}`)).text();
+      expect(html, shortId).toContain(`<a class="gd-same-compare" href="/compare?ids=${ids}">3 枚を並べて比べる</a>`);
+    }
+
+    const single = await (await req(`/g/${other.generation.short_id}`)).text();
+    expect(single).not.toContain('並べて比べる');
   });
 
   it('GET /g/{short_id} shows the Workflow section with the checkpoint, Pass 1, positive chips, and Raw graph', async () => {
