@@ -708,37 +708,17 @@ h2 { font-size: 1.1rem; margin-top: 2rem; }
 }
 .compare-bar.hidden { display: none; }
 body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--compare-bar-h)); }
-.compare-chips { flex: 0 1 auto; min-width: 0; display: flex; gap: 6px; overflow-x: auto; }
-.compare-chip {
-  position: relative;
-  flex: none;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ctl);
+.compare-count {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-left: 12px;
+  margin-right: 8px;
   overflow: hidden;
-  background: var(--checker);
-  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--text-dim);
 }
-.compare-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.compare-chip-x {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 1rem;
-  height: 1rem;
-  border-radius: 999px;
-  background: rgba(8, 8, 10, 0.8);
-  color: var(--text);
-  font-size: var(--fs-xs);
-  line-height: 1rem;
-  text-align: center;
-}
-.compare-chip:hover { border-color: var(--bad); }
-.compare-chip:hover .compare-chip-x { background: var(--bad); }
-/* 先頭 9 件だけが /compare に渡る */
-.compare-chip-overflow { opacity: 0.4; }
 .compare-clear {
   flex: none;
   height: var(--ctl-h);
@@ -765,6 +745,9 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
   white-space: nowrap;
 }
 .compare-bar a.compare-go:hover { text-decoration: none; filter: brightness(0.92); }
+/* 2 枚に満たない間は href を外して押せなくする */
+.compare-bar a.compare-go[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.compare-bar a.compare-go[aria-disabled="true"]:hover { filter: none; }
 @media (max-width: 600px) {
   .compare-bar { bottom: 12px; }
 }
@@ -785,6 +768,56 @@ body:has(#compare-bar:not(.hidden)) main { padding-bottom: calc(1.25rem + var(--
 }
 .toolbar-divider { width: 1px; height: 20px; margin: 0 8px; background: var(--border); }
 .gallery-count { margin-left: auto; font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
+/* 枚数の右。枚数が無い一覧（ids 指定）ではこれが右端へ寄る */
+.gallery-select-btn {
+  flex: none;
+  margin-left: auto;
+  height: var(--ctl-h);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gallery-count ~ .gallery-select-btn { margin-left: 0; }
+.gallery-select-btn:hover { background: var(--raised); }
+.gallery-select-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.gallery-select-btn[aria-pressed="true"]:hover { filter: brightness(0.92); }
+
+/* 選択モード（body[data-compare-select]）: カードは比較の set のトグルだけになる。評価・ブックマーク・✎ ↻ は
+   場所を残して隠し、サムネイルに重なる ID とバッジは押せなくしてサムネイルへ通す */
+[data-compare-select="true"] [data-gallery-grid] .card-row,
+[data-compare-select="true"] [data-gallery-grid] .card-id-actions { visibility: hidden; }
+[data-compare-select="true"] [data-gallery-grid] .card-id,
+[data-compare-select="true"] [data-gallery-grid] .thumb-badges { pointer-events: none; }
+[data-compare-select="true"] [data-gallery-grid] .card-media[data-compare-order] { cursor: pointer; }
+[data-compare-select="true"] [data-gallery-grid] .card-media[data-compare-order=""] { opacity: 0.75; }
+[data-compare-select="true"] [data-gallery-grid] .card-media[data-compare-order]:not([data-compare-order=""]) { box-shadow: 0 0 0 3px var(--text); }
+/* 右上の丸に選んだ順。選んでいないカードは輪だけ */
+[data-compare-select="true"] [data-gallery-grid] .card-media[data-compare-order]::before {
+  content: attr(data-compare-order);
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  background: rgba(21, 21, 23, 0.6);
+  box-shadow: inset 0 0 0 1.5px var(--text);
+  color: var(--on-accent);
+  pointer-events: none;
+}
+[data-compare-select="true"] [data-gallery-grid] .card-media[data-compare-order]:not([data-compare-order=""])::before { background: var(--text); }
 
 .view-switch {
   display: inline-grid;
@@ -1133,6 +1166,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 .gd-lineage { margin-top: -8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; color: var(--text-dim); }
 .gd-lineage .detail-from { display: inline-flex; align-items: center; gap: 4px; }
 .gd-lineage a { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.gd-lineage a.gd-lineage-compare { margin-left: auto; font-family: inherit; font-size: var(--fs-xs); color: var(--text); }
 
 .gd-actions { display: flex; gap: 8px; }
 .gd-btn { height: max(40px, var(--ctl-h)); padding: 0 14px; border-radius: var(--radius-ctl); display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; font-size: var(--fs-sm); }
@@ -1176,7 +1210,6 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
   box-shadow: var(--shadow-pop);
 }
 .gd-more-panel .pose-reference-btn,
-.gd-more-panel .compare-add-btn,
 .gd-more-panel .card-reference-pill {
   width: 100%;
   height: var(--ctl-h);
@@ -1194,8 +1227,7 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
   cursor: pointer;
 }
 .gd-more-panel .card-reference-pill { color: var(--text-dim); cursor: default; }
-.gd-more-panel .pose-reference-btn:hover,
-.gd-more-panel .compare-add-btn:hover { background: var(--bg-elevated); }
+.gd-more-panel .pose-reference-btn:hover { background: var(--bg-elevated); }
 
 .gd-marks { display: flex; gap: 8px; }
 .gd-marks .rating-group { height: max(40px, var(--ctl-h)); }
@@ -1291,6 +1323,22 @@ body:has(#compare-bar:not(.hidden)) main:has(> .gd) { padding-bottom: var(--comp
 
 .gd-same { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 .gd-same + .gd-folds { margin-top: 0; }
+.gd-same-head { display: flex; align-items: center; gap: 8px; }
+.gd-same-head .kv-k { flex: 1; min-width: 0; }
+.gd-same-compare {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  white-space: nowrap;
+}
+.gd-same-compare:hover { text-decoration: none; background: var(--bg-elevated); }
+@media (pointer: coarse) { .gd-same-compare { height: var(--ctl-h); } }
 .gd-same-strip { display: flex; flex-wrap: wrap; gap: 8px; }
 .gd-same-thumb { display: block; width: 72px; aspect-ratio: 8 / 9; border-radius: var(--radius-ctl); overflow: hidden; background: var(--checker); }
 .gd-same-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -3928,20 +3976,24 @@ export const appJs = `
     window.addEventListener('scroll', updateGalleryPendingPill, { passive: true });
   }
 
-  // 「比較に追加」ボタンが sessionStorage の compare set をトグルし、#compare-bar がこの set を
-  // 描画する (docs/ui.md「Compare entry」)。要素は { id, short_id }: short_id を持つのはチップの
-  // サムネイルをカードと同じ画像 URL にしてブラウザキャッシュを共有するため。
+  // sessionStorage の compare set（タブ内限定、要素は { id, short_id }。docs/ui.md「Compare entry」）。
+  // Gallery の選択モードでカードを押すとトグルし、#compare-bar がこの set を描く。
   var COMPARE_SET_KEY = 'chimera-compare-set';
   var COMPARE_MAX = 9;
+  var compareHintTimer = null;
+  var compareCardsObserver = null;
+  var compareSyncQueued = false;
 
   function readCompareSet() {
     try {
       var raw = sessionStorage.getItem(COMPARE_SET_KEY);
       var parsed = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(parsed)) return [];
-      return parsed.filter(function (e) {
-        return e && typeof e.id === 'string';
-      });
+      return parsed
+        .filter(function (e) {
+          return e && typeof e.id === 'string';
+        })
+        .slice(0, COMPARE_MAX);
     } catch (e) {
       return [];
     }
@@ -3962,91 +4014,187 @@ export const appJs = `
     }
     return -1;
   }
-  function renderCompareChips(container, entries) {
-    var key = entries.map(compareRef).join(',');
-    if (container.getAttribute('data-ids') === key) return;
-    container.setAttribute('data-ids', key);
-    container.textContent = '';
-    entries.forEach(function (entry, i) {
-      var chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = i < COMPARE_MAX ? 'compare-chip' : 'compare-chip compare-chip-overflow';
-      chip.setAttribute('data-generation-id', entry.id);
-      chip.title = compareRef(entry) + ' を比較から外す';
-      chip.setAttribute('aria-label', chip.title);
-      var img = document.createElement('img');
-      img.src = '/g/' + encodeURIComponent(compareRef(entry)) + '/preview';
-      img.alt = '';
-      var x = document.createElement('span');
-      x.className = 'compare-chip-x';
-      x.setAttribute('aria-hidden', 'true');
-      x.textContent = '×';
-      chip.appendChild(img);
-      chip.appendChild(x);
-      container.appendChild(chip);
-    });
+  function compareSelecting() {
+    return document.body.getAttribute('data-compare-select') === 'true';
+  }
+  function compareCountText(count) {
+    return count + ' 枚を選択中' + (compareSelecting() ? '（' + COMPARE_MAX + ' 枚まで）' : '');
   }
   function updateCompareBar() {
     var entries = readCompareSet();
     var bar = document.getElementById('compare-bar');
     if (bar) {
-      bar.classList.toggle('hidden', entries.length === 0);
+      bar.classList.toggle('hidden', entries.length === 0 && !compareSelecting());
+      if (!compareHintTimer) qs('#compare-count', bar).textContent = compareCountText(entries.length);
       var link = qs('#compare-link', bar);
-      link.textContent = '比較 (' + Math.min(entries.length, COMPARE_MAX) + ')';
-      link.setAttribute('href', '/compare?ids=' + entries.slice(0, COMPARE_MAX).map(compareRef).join(','));
-      renderCompareChips(qs('#compare-chips', bar), entries);
+      if (entries.length >= 2) {
+        link.setAttribute('href', '/compare?ids=' + entries.map(compareRef).map(encodeURIComponent).join(','));
+        link.removeAttribute('aria-disabled');
+      } else {
+        link.removeAttribute('href');
+        link.setAttribute('aria-disabled', 'true');
+      }
     }
-    qsa('.compare-add-btn').forEach(function (btn) {
-      var active = compareIndexOf(entries, btn.getAttribute('data-generation-id')) !== -1;
-      btn.classList.toggle('active', active);
-      btn.textContent = active ? '比較から外す' : '比較に追加';
+    syncCompareCards(entries);
+  }
+  // 上限で押されたとき、枚数の欄を 2 秒だけ上限の知らせに差し替える。
+  function showCompareLimitHint() {
+    var count = qs('#compare-count');
+    if (!count) return;
+    if (compareHintTimer) clearTimeout(compareHintTimer);
+    count.textContent = '選べるのは ' + COMPARE_MAX + ' 枚まで';
+    compareHintTimer = setTimeout(function () {
+      compareHintTimer = null;
+      updateCompareBar();
+    }, 2000);
+  }
+
+  function clearCompareLimitHint() {
+    if (!compareHintTimer) return;
+    clearTimeout(compareHintTimer);
+    compareHintTimer = null;
+  }
+
+  function compareCardId(media) {
+    var card = media.closest('.card');
+    var group = card ? qs('.rating-group', card) : null;
+    return group ? group.getAttribute('data-generation-id') : null;
+  }
+  // 選択の印はカードの JSX に持たせず、.card-media の data 属性と .thumb-link の aria で付け外しする。
+  // 無限スクロール・スケルトンの差し替え・新着で入ったカードにも付くよう、モード中はグリッドの追加を見て描き直す。
+  function syncCompareCards(entries) {
+    var grid = galleryGrid();
+    if (!grid) return;
+    var selecting = compareSelecting();
+    var order = {};
+    entries.forEach(function (e, i) {
+      order[e.id] = i + 1;
+    });
+    qsa('.card-media', grid).forEach(function (media) {
+      var link = qs('.thumb-link', media);
+      var id = compareCardId(media);
+      if (!link || !id) return;
+      if (!selecting) {
+        if (!media.hasAttribute('data-compare-order')) return;
+        media.removeAttribute('data-compare-order');
+        link.removeAttribute('role');
+        link.removeAttribute('aria-pressed');
+        link.removeAttribute('aria-label');
+        return;
+      }
+      var n = order[id];
+      var value = n ? String(n) : '';
+      if (media.getAttribute('data-compare-order') === value && link.hasAttribute('aria-pressed')) return;
+      media.setAttribute('data-compare-order', value);
+      link.setAttribute('role', 'button');
+      link.setAttribute('aria-pressed', n ? 'true' : 'false');
+      link.setAttribute('aria-label', link.getAttribute('data-short-id') + ' を比較に入れる');
     });
   }
-  function toggleCompare(id, shortId) {
-    if (!id) return;
-    var entries = readCompareSet();
-    var idx = compareIndexOf(entries, id);
-    if (idx === -1) entries.push({ id: id, short_id: shortId || null });
-    else entries.splice(idx, 1);
-    writeCompareSet(entries);
-    updateCompareBar();
-    track('compare.add', { generation_id: id, count: entries.length });
+  function scheduleCompareSync() {
+    if (compareSyncQueued) return;
+    compareSyncQueued = true;
+    requestAnimationFrame(function () {
+      compareSyncQueued = false;
+      if (compareSelecting()) syncCompareCards(readCompareSet());
+    });
   }
-  function removeFromCompare(id) {
+  function setCompareSelecting(on) {
+    clearCompareLimitHint();
+    if (on) document.body.setAttribute('data-compare-select', 'true');
+    else document.body.removeAttribute('data-compare-select');
+    var btn = qs('[data-compare-select-toggle]');
+    if (btn) {
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.textContent = on ? '選ぶのをやめる' : '選んで比べる';
+    }
+    var grid = galleryGrid();
+    if (grid && window.MutationObserver) {
+      if (on && !compareCardsObserver) {
+        compareCardsObserver = new MutationObserver(scheduleCompareSync);
+        compareCardsObserver.observe(grid, { childList: true, subtree: true });
+      } else if (!on && compareCardsObserver) {
+        compareCardsObserver.disconnect();
+        compareCardsObserver = null;
+      }
+    }
+    updateCompareBar();
+  }
+  function toggleCompareCard(media) {
+    var id = compareCardId(media);
+    var link = qs('.thumb-link', media);
+    if (!id || !link) return;
     var entries = readCompareSet();
     var idx = compareIndexOf(entries, id);
-    if (idx === -1) return;
-    entries.splice(idx, 1);
+    if (idx === -1) {
+      if (entries.length >= COMPARE_MAX) {
+        showCompareLimitHint();
+        return;
+      }
+      entries.push({ id: id, short_id: link.getAttribute('data-short-id') || null });
+      track('compare.add', { generation_id: id, count: entries.length });
+    } else {
+      entries.splice(idx, 1);
+      track('compare.remove', { generation_id: id, count: entries.length });
+    }
+    clearCompareLimitHint();
     writeCompareSet(entries);
     updateCompareBar();
-    track('compare.remove', { generation_id: id, count: entries.length });
   }
   function clearCompare() {
     var count = readCompareSet().length;
+    clearCompareLimitHint();
     writeCompareSet([]);
     updateCompareBar();
     track('compare.clear', { count: count });
   }
+  function selectingCardMedia(target) {
+    if (!compareSelecting() || !target.closest) return null;
+    var media = target.closest('.card-media');
+    return media && media.closest('[data-gallery-grid]') ? media : null;
+  }
   function initCompareBar() {
+    // 選択モード中のカードは遷移せず set をトグルする。capture で先に拾い、既定の遷移だけを止める。
+    document.addEventListener(
+      'click',
+      function (ev) {
+        var media = selectingCardMedia(ev.target);
+        if (!media) return;
+        ev.preventDefault();
+        toggleCompareCard(media);
+      },
+      true,
+    );
+    // Enter は <a> の click になるので、ボタンとして足すのは Space だけ。
+    document.addEventListener(
+      'keydown',
+      function (ev) {
+        if (ev.key === 'Escape' && compareSelecting()) {
+          setCompareSelecting(false);
+          return;
+        }
+        if (ev.key !== ' ') return;
+        var media = selectingCardMedia(ev.target);
+        if (!media || !ev.target.closest('.thumb-link')) return;
+        ev.preventDefault();
+        toggleCompareCard(media);
+      },
+      true,
+    );
     document.addEventListener('click', function (ev) {
       if (!ev.target.closest) return;
-      var addBtn = ev.target.closest('.compare-add-btn');
-      if (addBtn) {
-        toggleCompare(addBtn.getAttribute('data-generation-id'), addBtn.getAttribute('data-short-id'));
-        return;
-      }
-      var chip = ev.target.closest('.compare-chip');
-      if (chip) {
-        removeFromCompare(chip.getAttribute('data-generation-id'));
+      if (ev.target.closest('[data-compare-select-toggle]')) {
+        setCompareSelecting(!compareSelecting());
         return;
       }
       if (ev.target.closest('#compare-clear')) {
         clearCompare();
         return;
       }
-      if (ev.target.closest('#compare-link')) track('compare.open', { count: readCompareSet().length });
+      var go = ev.target.closest('#compare-link');
+      if (go && go.hasAttribute('href')) track('compare.open', { count: readCompareSet().length });
     });
-    // 別ページで set を変えてから Back で戻ったとき (bfcache 復元) にバーを描き直す
+    // 別ページで set を変えてから Back で戻ったとき (bfcache 復元) にバーと印を描き直す
     window.addEventListener('pageshow', function (ev) {
       if (ev.persisted) updateCompareBar();
     });
