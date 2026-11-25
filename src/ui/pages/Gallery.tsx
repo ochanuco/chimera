@@ -92,7 +92,38 @@ function PhaseButton({ filters, phase }: { filters: GalleryFilters; phase: Phase
   );
 }
 
+/** 段階のポップオーバーの見出し。選んでいなければ「すべて」、2 つ以上なら先頭と残りの数。 */
+function phaseSummaryLabel(filters: GalleryFilters): string {
+  const selected = selectedValues(filters.phase).filter((p): p is Phase => p in PHASE_LABELS);
+  const head = selected[0];
+  if (head === undefined) return 'すべて';
+  const first = PHASE_LABELS[head];
+  return selected.length === 1 ? first : `${first} ほか ${selected.length - 1}`;
+}
+
+function ChevronIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 /** フェーズの複数選択（OR）。押すたびにその値を `phase` に足し引きする。 */
+function PhaseMenu({ filters }: { filters: GalleryFilters }) {
+  return (
+    <details class="phase-menu">
+      <summary aria-pressed={filters.phase ? 'true' : 'false'}>
+        段階: {phaseSummaryLabel(filters)}
+        <ChevronIcon />
+      </summary>
+      <div class="phase-menu-panel">
+        <PhaseBar filters={filters} />
+      </div>
+    </details>
+  );
+}
+
 function PhaseBar({ filters }: { filters: GalleryFilters }) {
   return (
     <nav class="phase-bar" aria-label="フェーズ">
@@ -122,19 +153,19 @@ function PhaseBar({ filters }: { filters: GalleryFilters }) {
   );
 }
 
-function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
+function GalleryToolbar({ filters, count }: { filters: GalleryFilters; count: number | null }) {
   const hasActiveFilter = Boolean(filters.ids || filters.tag || filters.rating || filters.bookmark || filters.published || filters.reference || filters.model);
   return (
     <div class="gallery-toolbar">
       <ViewSwitch basePath="/gallery" current={filters.view} params={activeParams(filters)} />
+      <span class="toolbar-divider" aria-hidden="true"></span>
       <a class="bad-toggle" href={toggleHref(filters, 'bad')} aria-pressed={filters.bad ? 'true' : 'false'}>
-        <span class="bad-toggle-box" aria-hidden="true"></span>
         bad も表示
       </a>
       <a class="bad-toggle" href={toggleHref(filters, 'tip')} aria-pressed={filters.tip ? 'true' : 'false'} data-tip-toggle>
-        <span class="bad-toggle-box" aria-hidden="true"></span>
         途中を隠す
       </a>
+      <PhaseMenu filters={filters} />
       <details class="filter-panel" open={hasActiveFilter}>
         <summary>
           <FilterIcon />
@@ -190,7 +221,11 @@ function GalleryToolbar({ filters }: { filters: GalleryFilters }) {
           <button type="submit">検索</button>
         </form>
       </details>
-      <PhaseBar filters={filters} />
+      {count !== null ? (
+        <span class="gallery-count" data-gallery-count>
+          {count.toLocaleString()} 枚
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -312,8 +347,7 @@ export function GalleryPage({
 }) {
   return (
     <Layout title="ギャラリー" path={path}>
-      <h1>ギャラリー</h1>
-      <GalleryToolbar filters={filters} />
+      <GalleryToolbar filters={filters} count={timeline ? timeline.slots.reduce((sum, s) => sum + s.count, 0) : null} />
 
       <datalist id="tag-suggestions"></datalist>
 

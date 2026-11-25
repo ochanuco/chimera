@@ -28,8 +28,8 @@ export function PublishIcon() {
   );
 }
 
-/** `公開` section (docs/ui.md「Generation Detail」節): rating/bookmark 行の直後に置く。JS側の書き換え
- * (initPublicationAdd 等, src/ui/static.ts) はこの markup と同じ形を組み立てる。 */
+/** Generation Detail の見出しと値の表の `公開` 行 (docs/ui.md「Generation Detail」)。記録の欄を先に、記録済みを後に置く。
+ * JS側の書き換え (initPublicationAdd 等, src/ui/static.ts) はこの markup と同じ形を組み立てる。 */
 export function PublicationSection({
   generationId,
   publications,
@@ -41,15 +41,20 @@ export function PublicationSection({
 }) {
   const risky = safety && (safety.verdict === 'block' || safety.verdict === 'sensitive') ? safety : null;
   return (
-    <details
-      class="section publication-section"
-      open
+    <div
+      class="kv-row publication-section"
       data-generation-id={generationId}
       data-safety-verdict={risky?.verdict}
       data-safety-label={risky ? SAFETY_LABELS[risky.verdict as 'block' | 'sensitive'] : undefined}
     >
-      <summary>公開</summary>
-      <div class="section-body">
+      <dt class="kv-k">公開</dt>
+      <dd class="kv-v">
+        <form class="publication-add-form">
+          <input type="text" name="url" placeholder="投稿 URL" aria-label="投稿 URL" />
+          <button type="submit" class="publication-add-btn">
+            記録
+          </button>
+        </form>
         <p class={`publication-status${publications.length > 0 ? ' published' : ''}`}>
           {publications.length > 0 ? (
             <>
@@ -73,19 +78,13 @@ export function PublicationSection({
                   <input type="text" class="publication-url-input" placeholder="投稿 URL" />
                 </>
               )}
-              <button type="button" class="publication-remove-btn">
+              <button type="button" class="publication-remove-btn" aria-label="この記録を消す">
                 ×
               </button>
             </li>
           ))}
         </ul>
-        <form class="publication-add-form">
-          <input type="text" name="url" placeholder="投稿 URL" />
-          <button type="submit" class="publication-add-btn">
-            公開を記録
-          </button>
-        </form>
-      </div>
-    </details>
+      </dd>
+    </div>
   );
 }

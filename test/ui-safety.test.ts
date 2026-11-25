@@ -11,7 +11,7 @@ async function rated(r: ReturnType<typeof rating>, tags: Record<string, number> 
 }
 
 describe('detail page 安全性 section', () => {
-  it('shows the four cells, threshold tick and risky tags without folding', async () => {
+  it('shows the four bars, threshold tick and every detected tag with the risky ones first', async () => {
     const g = await rated(rating(0.975), { pantyhose: 0.96, sitting: 0.82, feet: 0.3, ass: 0.2, cameltoe: 0.2, shirt: 0.9 });
     const html = await (await req(`/g/${g.short_id}`)).text();
     expect(html).not.toContain('<details class="safety-row"');
@@ -34,10 +34,23 @@ describe('detail page 安全性 section', () => {
     expect(html).toMatch(/safety-tag risk-suspect">ass/);
     expect(html).toMatch(/safety-tag risk-safe hot">pantyhose/);
     expect(html).toMatch(/safety-tag risk-safe">feet/);
-    expect(html).not.toContain('>shirt<');
+    expect(html).toContain('<span class="safety-tag">shirt<span class="safety-num">90</span>');
+    expect(html.indexOf('>feet<')).toBeLessThan(html.indexOf('>shirt<'));
     expect(html.indexOf('cameltoe')).toBeLessThan(html.indexOf('>ass<'));
     expect(html.indexOf('>ass<')).toBeLessThan(html.indexOf('pantyhose'));
     expect(html.indexOf('pantyhose')).toBeLessThan(html.indexOf('sitting'));
+  });
+
+  it('shows the first 12 detected tags and folds the rest behind ほか n 件', async () => {
+    const tags = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`tag_${String(i).padStart(2, '0')}`, 0.9 - i * 0.01]));
+    const g = await rated(rating(0.1), { ...tags, cameltoe: 0.2 });
+    const html = await (await req(`/g/${g.short_id}`)).text();
+    const [shown, rest] = html.split('<span class="safety-tags-rest" hidden="">');
+    expect(rest).toBeDefined();
+    expect(shown!.match(/class="safety-tag[ "]/g)).toHaveLength(12);
+    expect(shown).toContain('>cameltoe<');
+    expect(rest!.split('</span><button')[0]!.match(/class="safety-tag[ "]/g)).toHaveLength(19);
+    expect(html).toContain('<button type="button" class="safety-tags-more">ほか 19 件</button>');
   });
 
   it('marks the かなり際どい cell over once it reaches the threshold', async () => {

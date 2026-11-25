@@ -10,7 +10,7 @@ import { loadOrCreateGenerationPreview } from '../lib/generation-preview';
 import { queryGenerations } from '../lib/generations';
 import { findProducingRequest } from '../lib/requests';
 import { isDeliverResult } from '../lib/promote';
-import { resolveFrameSource } from '../lib/frame';
+import { loadGenerationTiming } from '../lib/generation-timing';
 import {
   GenerationDetailPage,
   type GenerationDetailData,
@@ -137,7 +137,7 @@ images.get('/:shortId', async (c) => {
   const canPromoteToProfile = data.rating === 'good' && (await isDeliverResult(db, generation));
 
   const producedByOptions = await findProducedByOptions(db, generation.id);
-  const frameSource = await resolveFrameSource(db, generation);
+  const timing = await loadGenerationTiming(db, generation.comfy_job_id);
   const hasCutout =
     (await db
       .prepare(`SELECT 1 AS x FROM generation_assets WHERE generation_id = ? AND role = 'cutout' AND region = ''`)
@@ -157,8 +157,9 @@ images.get('/:shortId', async (c) => {
       requests={requests}
       canPromoteToProfile={canPromoteToProfile}
       producedByOptions={producedByOptions}
-      frameable={frameSource.hasLayers}
       hasCutout={hasCutout}
+      timing={timing}
+      outputIndex={generation.comfy_output_index}
     />,
   );
 });

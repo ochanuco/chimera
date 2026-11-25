@@ -2,16 +2,17 @@ import { Layout } from '../layout';
 import { formatImageMetaText, type ImageMeta } from '../../lib/image-meta';
 import { CopyIdButton } from '../components/CopyIdButton';
 import type { GenerationFamily } from '../../lib/generation-family';
-import { FamilyStrip, type FamilyCardData } from '../components/FamilyCard';
+import { FamilyStrip } from '../components/FamilyCard';
 import { RequestSection, type RequestStatusLine } from '../components/RequestSection';
 import { ResolvedOptionsTable } from '../components/ResolvedOptionsTable';
 import { PoseReferenceRow, type PoseReferenceData } from '../components/PoseReferenceRow';
 import { PromptChips } from '../components/PromptChips';
-import { SafetySection, type SafetyDetailData } from '../components/SafetyBadge';
+import { SafetyRows, type SafetyDetailData } from '../components/SafetyBadge';
 import { PublicationSection, type PublicationData } from '../components/PublicationSection';
 import { RatingBookmark } from '../components/RatingBookmark';
 import { TagsEditor } from '../components/TagsEditor';
 import type { RenderFacts, RenderLatentSource, RenderSampler } from '../../lib/render-facts';
+import { formatDuration, formatJstMinute, type GenerationTiming } from '../../lib/generation-timing';
 
 export type { PublicationData };
 
@@ -170,8 +171,9 @@ export function GenerationDetailPage({
   requests,
   canPromoteToProfile,
   producedByOptions,
-  frameable,
   hasCutout,
+  timing,
+  outputIndex,
 }: {
   path: string;
   data: GenerationDetailData;
@@ -184,31 +186,42 @@ export function GenerationDetailPage({
   canPromoteToProfile: boolean;
   /** このGeneration自身を産んだ redraw/deliver/repair/masked_redraw request の options。resolved_options を worker がまだ書かない行は null。 */
   producedByOptions: ProducedByOptions | null;
-  /** 人物レイヤー (layer-figure / layer-outline) があり、/frame で枠に入れられる。 */
-  frameable: boolean;
   /** cutout asset (透過 PNG) がある。主画像は original (緑背景の絵) でなく cutout を出す。 */
   hasCutout: boolean;
+  /** 描画時間と待ち。分からない Generation (import など) は null で、描画の行を出さない。 */
+  timing: GenerationTiming | null;
+  /** 表示中の Generation の comfy_output_index (同じ指示の帯の title 用)。 */
+  outputIndex?: number | null;
 }) {
   // A refined Generation rerolls its raw source; a raw one needs a recipe-driven generate request.
   const rerollable = data.refines_generation !== null || (data.request?.kind === 'generate' && Boolean(data.request.recipe));
   const parentCards = family.parents;
   const childCards = family.children;
   const siblingCards = family.siblings;
-  const requestGenerationCards: FamilyCardData[] = data.siblings.map(
-    (g): FamilyCardData => ({
-      kind: 'request',
-      href: `/g/${g.short_id}`,
-      shortId: g.short_id,
-      imageUrl: `/g/${g.short_id}/preview`,
-      detail: g.comfy_output_index !== null ? `output ${g.comfy_output_index}` : null,
-    }),
-  );
+  const rootGeneration = data.root_generation && data.root_generation.id !== data.refines_generation?.id ? data.root_generation : null;
+  const checkpoints = data.comfy_job?.render_facts?.checkpoints ?? [];
+  const imageMetaText = formatImageMetaText(imageMeta);
+  const imageMetaParts = [
+    imageMetaText ? <>{imageMetaText}</> : null,
+    hasCutout && !data.original_purged_at ? (
+      <>
+        切り抜き表示 · <a href={data.image.url}>元画像（緑背景）</a>
+      </>
+    ) : null,
+    data.original_purged_at ? <>原寸は破棄済み（preview のみ）</> : null,
+  ].filter((x) => x !== null);
+  // 同じ Request の Generation と自分を、作られた順 (uuidv7 の id 順) に並べる。どれを開いても並びが変わらない。
+  const sameRequest = data.siblings.length > 0
+    ? [...data.siblings, { id: data.id, short_id: data.short_id, comfy_output_index: outputIndex ?? null }].sort((a, b) =>
+        a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+      )
+    : [];
 
   return (
     <Layout title={`${data.short_id} · 詳細`} fullBleed path={path}>
-      <div class="detail-layout">
-        <div class="detail-left">
-          <div class="gen-detail-hero">
+      <div class="gd">
+        <div class="gd-image">
+          <div class="gd-hero">
             <img
               src={
                 hasCutout
@@ -220,58 +233,99 @@ export function GenerationDetailPage({
               alt={data.short_id}
             />
           </div>
-          {hasCutout && !data.original_purged_at ? (
+          {imageMetaParts.length > 0 ? (
             <p class="image-meta">
-              切り抜き表示 · <a href={data.image.url}>元画像（緑背景）</a>
+              {imageMetaParts.map((part, i) => (
+                <>
+                  {i > 0 ? ' · ' : null}
+                  {part}
+                </>
+              ))}
             </p>
           ) : null}
-          {formatImageMetaText(imageMeta) ? <p class="image-meta">{formatImageMetaText(imageMeta)}</p> : null}
-          {data.original_purged_at ? <p class="image-meta">原寸は破棄済み（preview のみ）</p> : null}
-          <p class="detail-workbench">
-            <a class="workbench-open-link" href={`/work/${data.short_id}`}>
+        </div>
+        <aside class="gd-side">
+          <div class="gd-head">
+            <h1 class="gd-id">{data.short_id}</h1>
+            <CopyIdButton value={data.short_id} />
+            <time class="gd-date" datetime={data.created_at}>
+              {formatJstMinute(data.created_at)}
+            </time>
+          </div>
+          {data.refines_generation || rootGeneration ? (
+            <nav class="gd-lineage" aria-label="系譜">
+              {data.refines_generation ? (
+                <span class="detail-from">
+                  元 <a href={`/g/${data.refines_generation.short_id}`}>{data.refines_generation.short_id}</a>
+                  <CopyIdButton value={data.refines_generation.short_id} />
+                </span>
+              ) : null}
+              {rootGeneration ? (
+                <span class="detail-from">
+                  元絵 <a href={`/g/${rootGeneration.short_id}`}>{rootGeneration.short_id}</a>
+                  <CopyIdButton value={rootGeneration.short_id} />
+                </span>
+              ) : null}
+            </nav>
+          ) : null}
+
+          <div class="gd-actions">
+            <a class="gd-btn gd-btn-primary workbench-open-link" href={`/work/${data.short_id}`}>
               ワークベンチで開く
             </a>
-            {frameable ? (
-              <a class="reroll-open-link" href={`/frame/${data.short_id}`}>
-                枠に入れる
-              </a>
-            ) : null}
             {rerollable ? (
-              <a class="reroll-open-link" href={`/reroll/${data.short_id}`}>
+              <a class="gd-btn gd-btn-secondary reroll-open-link" href={`/reroll/${data.short_id}`}>
                 リロール
               </a>
             ) : null}
-          </p>
-        </div>
-        <div class="detail-right">
-          <h1>
-            {data.short_id} <CopyIdButton value={data.short_id} />{' '}
-            {data.refines_generation ? (
-              <span class="detail-from">
-                元 <a href={`/g/${data.refines_generation.short_id}`}>{data.refines_generation.short_id}</a>{' '}
-                <CopyIdButton value={data.refines_generation.short_id} />
-              </span>
-            ) : null}{' '}
-            {data.root_generation && data.root_generation.id !== data.refines_generation?.id ? (
-              <span class="detail-from">
-                元絵 <a href={`/g/${data.root_generation.short_id}`}>{data.root_generation.short_id}</a>{' '}
-                <CopyIdButton value={data.root_generation.short_id} />
-              </span>
-            ) : null}{' '}
-            <button type="button" class="compare-add-btn" data-generation-id={data.id} data-short-id={data.short_id}>
-              比較に追加
-            </button>
-          </h1>
+            <details class="gd-more">
+              <summary class="gd-icon-btn" aria-label="ほかの操作" title="ほかの操作">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="12" r="1.6" />
+                  <circle cx="12" cy="12" r="1.6" />
+                  <circle cx="19" cy="12" r="1.6" />
+                </svg>
+              </summary>
+              <div class="gd-more-panel">
+                <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
+                <button type="button" class="compare-add-btn" data-generation-id={data.id} data-short-id={data.short_id}>
+                  比較に追加
+                </button>
+              </div>
+            </details>
+          </div>
+
           <RatingBookmark id={data.id} rating={data.rating} bookmark={data.bookmark} />
 
-          <PoseReferenceRow generationId={data.id} poseReference={data.pose_reference} />
-
-          <SafetySection safety={data.safety} />
-
-          <PublicationSection generationId={data.id} publications={data.publications} safety={data.safety} />
+          <dl class="kv-list">
+            {timing ? (
+              <div class="kv-row">
+                <dt class="kv-k">描画</dt>
+                <dd class="kv-v gd-timing">
+                  {formatDuration(timing.renderMs)}
+                  {timing.waitMs !== null ? <span class="kv-dim">（待ち {formatDuration(timing.waitMs)}）</span> : null}
+                </dd>
+              </div>
+            ) : null}
+            {checkpoints.length > 0 ? (
+              <div class="kv-row">
+                <dt class="kv-k">モデル</dt>
+                <dd class="kv-v">{checkpoints.join(' + ')}</dd>
+              </div>
+            ) : null}
+            <SafetyRows safety={data.safety} />
+            <PublicationSection generationId={data.id} publications={data.publications} safety={data.safety} />
+            <div class="kv-row">
+              <dt class="kv-k">タグ</dt>
+              <dd class="kv-v">
+                <datalist id="tag-suggestions"></datalist>
+                <TagsEditor kind="generations" id={data.id} tags={tags} />
+              </dd>
+            </div>
+          </dl>
 
           {data.judgments.length > 0 ? (
-            <details class="section" open>
+            <details class="section gd-fold gd-judgments" open>
               <summary>判定 ({data.judgments.length})</summary>
               <div class="section-body">
                 <table class="kv-table">
@@ -296,224 +350,240 @@ export function GenerationDetailPage({
             </details>
           ) : null}
 
-          <datalist id="tag-suggestions"></datalist>
-          <TagsEditor kind="generations" id={data.id} tags={tags} />
-
-          {producedByOptions ? (
-            <details class="section" open>
-              <summary>仕上げの解決値</summary>
-              <div class="section-body">
-                <ResolvedOptionsTable requested={producedByOptions.requested} resolved={producedByOptions.resolved} />
+          {sameRequest.length > 0 ? (
+            <nav class="gd-same" aria-label={`同じ指示の ${sameRequest.length} 枚`}>
+              <span class="kv-k">同じ指示の {sameRequest.length} 枚</span>
+              <div class="gd-same-strip">
+                {sameRequest.map((g) => {
+                  const current = g.id === data.id;
+                  const title = g.comfy_output_index !== null ? `${g.short_id} · output ${g.comfy_output_index}` : g.short_id;
+                  return current ? (
+                    <span class="gd-same-thumb" aria-current="true" title={`${title}（表示中）`}>
+                      <img src={`/g/${g.short_id}/preview`} alt={g.short_id} loading="lazy" />
+                    </span>
+                  ) : (
+                    <a class="gd-same-thumb" href={`/g/${g.short_id}`} title={title}>
+                      <img src={`/g/${g.short_id}/preview`} alt={g.short_id} loading="lazy" />
+                    </a>
+                  );
+                })}
               </div>
-            </details>
+            </nav>
           ) : null}
 
-          <details class="section" open>
-            <summary>要約</summary>
-            <div class="section-body">{data.summary ?? '要約なし'}</div>
-          </details>
+          <div class="gd-folds">
+            <details class="section gd-fold">
+              <summary>prompt と指示文</summary>
+              <div class="section-body">
+                {data.request?.raw_instruction ? (
+                  <div class="prompt-field">
+                    <div class="prompt-field-label">
+                      指示文 <CopyIdButton value={data.request.raw_instruction} />
+                    </div>
+                    <p class="prompt-raw">{data.request.raw_instruction}</p>
+                  </div>
+                ) : null}
+                <h3 class="gd-fold-head">Workflow</h3>
+          <div class="workflow">
+            {(() => {
+              const facts = data.comfy_job?.render_facts ?? null;
+              const graph = data.comfy_job?.graph ?? null;
+              const requestPrompt = data.request?.prompt ?? null;
+              const requestNegative = data.request?.negative_prompt ?? null;
 
-          <details class="section" open>
-            <summary>Semantic</summary>
-            <div class="section-body">
-              {data.semantic ? (
+              if (!facts) {
+                return (
+                  <>
+                    <p>(no graph)</p>
+                    {renderPromptField('positive', requestPrompt, null, 'positive')}
+                    {renderPromptField('negative', requestNegative, null, 'negative')}
+                    <table class="kv-table">
+                      <tr>
+                        <td>seed</td>
+                        <td>{data.comfy_job?.seed ?? '-'}</td>
+                      </tr>
+                    </table>
+                  </>
+                );
+              }
+
+              const modelsLine = (() => {
+                const parts: string[] = [];
+                if (facts.models.clip.length > 0) parts.push(`clip: ${facts.models.clip.join(', ')}`);
+                if (facts.models.vae) parts.push(`vae: ${facts.models.vae}`);
+                return parts.length > 0 ? parts.join(' · ') : null;
+              })();
+
+              const headerRows: { label: string; value: unknown }[] = [
+                {
+                  label: 'Model',
+                  value: (
+                    <>
+                      {facts.checkpoints.length > 0 ? facts.checkpoints.join('  +  ') : '-'}
+                      {modelsLine ? <div class="workflow-line">{modelsLine}</div> : null}
+                    </>
+                  ),
+                },
+                ...facts.loras.map((l) => ({ label: 'LoRA', value: formatLoraLine(l) })),
+                ...facts.controlnets.map((cn) => ({ label: 'ControlNet', value: formatControlNetLine(cn) })),
+              ];
+
+              const pass1 = facts.samplers[0] ?? null;
+              const requestDiffers =
+                pass1 !== null && requestPrompt !== null && requestPrompt.trim() !== (pass1.prompt.positive ?? '').trim();
+
+              return (
                 <>
                   <table class="kv-table">
-                    {Object.entries(data.semantic.core).map(([k, v]) => (
+                    {headerRows.map((r) => (
                       <tr>
-                        <td>{k}</td>
-                        <td>{v ?? '-'}</td>
+                        <td>{r.label}</td>
+                        <td>{r.value}</td>
                       </tr>
                     ))}
                   </table>
-                  <p>強み: {data.semantic.strengths.length ? data.semantic.strengths.join(', ') : '-'}</p>
-                  <p>欠点: {data.semantic.defects.length ? data.semantic.defects.join(', ') : '-'}</p>
+
+                  {facts.samplers.map((s, i) => {
+                    const continuesIdx = findContinuesPassIndex(facts.samplers, i);
+                    const prev = i > 0 ? facts.samplers[i - 1]! : null;
+                    return (
+                      <div class="workflow-pass">
+                        <div class="workflow-pass-head">
+                          Pass {i + 1} · node {s.node_id}
+                          {continuesIdx !== null ? ` · continues pass ${continuesIdx + 1}` : ''}
+                        </div>
+                        <p class="workflow-line">{formatLatentLine(s.latent)}</p>
+                        <p class="workflow-line">{formatSamplerLine(s)}</p>
+                        {renderPassPromptField('positive', s.prompt.positive, prev?.prompt.positive ?? null, i, 'positive')}
+                        {renderPassPromptField('negative', s.prompt.negative, prev?.prompt.negative ?? null, i, 'negative')}
+                      </div>
+                    );
+                  })}
+
+                  <table class="kv-table">
+                    <tr>
+                      <td>Output</td>
+                      <td>{facts.output.filename_prefix ?? '-'}</td>
+                    </tr>
+                  </table>
+
+                  {requestDiffers ? (
+                    <>
+                      <p class="workflow-line">request prompt differs</p>
+                      <details class="section-sub">
+                        <summary>Request prompt</summary>
+                        <div class="section-body">
+                          {renderPromptField('positive', requestPrompt, pass1!.prompt.positive, 'positive')}
+                        </div>
+                      </details>
+                    </>
+                  ) : null}
+
                   <details class="section-sub">
-                    <summary>Raw JSON</summary>
-                    <pre>{JSON.stringify(data.semantic.attributes, null, 2)}</pre>
+                    <summary>Raw graph</summary>
+                    <pre>{JSON.stringify(graph, null, 2)}</pre>
                   </details>
                 </>
-              ) : (
-                <p>未解析</p>
-              )}
-            </div>
-          </details>
+              );
+            })()}
+          </div>
+              </div>
+            </details>
 
-          <details class="section" open>
-            <summary>親 ({parentCards.length})</summary>
-            <div class="section-body">
-              <FamilyStrip items={parentCards} />
-            </div>
-          </details>
+            <details class="section gd-fold">
+              <summary>系譜</summary>
+              <div class="section-body">
+                <details class="section-sub" open>
+                  <summary>親 ({parentCards.length})</summary>
+                  <FamilyStrip items={parentCards} />
+                </details>
+                <details class="section-sub" open>
+                  <summary>子 ({childCards.length})</summary>
+                  <FamilyStrip items={childCards} />
+                </details>
+                <details class="section-sub" open>
+                  <summary>兄弟 ({siblingCards.length})</summary>
+                  <FamilyStrip items={siblingCards} />
+                </details>
+              </div>
+            </details>
 
-          <details class="section" open>
-            <summary>子 ({childCards.length})</summary>
-            <div class="section-body">
-              <FamilyStrip items={childCards} />
-            </div>
-          </details>
+            <details class="section gd-fold">
+              <summary>記録</summary>
+              <div class="section-body">
+                {producedByOptions ? (
+                  <details class="section-sub" open>
+                    <summary>仕上げの解決値</summary>
+                    <ResolvedOptionsTable requested={producedByOptions.requested} resolved={producedByOptions.resolved} />
+                  </details>
+                ) : null}
 
-          <details class="section" open>
-            <summary>兄弟 ({siblingCards.length})</summary>
-            <div class="section-body">
-              <FamilyStrip items={siblingCards} />
-            </div>
-          </details>
+                <details class="section-sub" open>
+                  <summary>要約</summary>
+                  <p>{data.summary ?? '要約なし'}</p>
+                </details>
 
-          <details class="section" open>
-            <summary>同じ Request の Generation ({requestGenerationCards.length})</summary>
-            <div class="section-body">
-              <FamilyStrip items={requestGenerationCards} />
-            </div>
-          </details>
-
-          <details class="section" open>
-            <summary>Workflow</summary>
-            <div class="section-body">
-              <div class="workflow">
-                {(() => {
-                  const facts = data.comfy_job?.render_facts ?? null;
-                  const graph = data.comfy_job?.graph ?? null;
-                  const requestPrompt = data.request?.prompt ?? null;
-                  const requestNegative = data.request?.negative_prompt ?? null;
-
-                  if (!facts) {
-                    return (
-                      <>
-                        <p>(no graph)</p>
-                        {renderPromptField('positive', requestPrompt, null, 'positive')}
-                        {renderPromptField('negative', requestNegative, null, 'negative')}
-                        <table class="kv-table">
-                          <tr>
-                            <td>seed</td>
-                            <td>{data.comfy_job?.seed ?? '-'}</td>
-                          </tr>
-                        </table>
-                      </>
-                    );
-                  }
-
-                  const modelsLine = (() => {
-                    const parts: string[] = [];
-                    if (facts.models.clip.length > 0) parts.push(`clip: ${facts.models.clip.join(', ')}`);
-                    if (facts.models.vae) parts.push(`vae: ${facts.models.vae}`);
-                    return parts.length > 0 ? parts.join(' · ') : null;
-                  })();
-
-                  const headerRows: { label: string; value: unknown }[] = [
-                    {
-                      label: 'Model',
-                      value: (
-                        <>
-                          {facts.checkpoints.length > 0 ? facts.checkpoints.join('  +  ') : '-'}
-                          {modelsLine ? <div class="workflow-line">{modelsLine}</div> : null}
-                        </>
-                      ),
-                    },
-                    ...facts.loras.map((l) => ({ label: 'LoRA', value: formatLoraLine(l) })),
-                    ...facts.controlnets.map((cn) => ({ label: 'ControlNet', value: formatControlNetLine(cn) })),
-                  ];
-
-                  const pass1 = facts.samplers[0] ?? null;
-                  const requestDiffers =
-                    pass1 !== null && requestPrompt !== null && requestPrompt.trim() !== (pass1.prompt.positive ?? '').trim();
-
-                  return (
+                <details class="section-sub" open>
+                  <summary>Semantic</summary>
+                  {data.semantic ? (
                     <>
                       <table class="kv-table">
-                        {headerRows.map((r) => (
+                        {Object.entries(data.semantic.core).map(([k, v]) => (
                           <tr>
-                            <td>{r.label}</td>
-                            <td>{r.value}</td>
+                            <td>{k}</td>
+                            <td>{v ?? '-'}</td>
                           </tr>
                         ))}
                       </table>
-
-                      {facts.samplers.map((s, i) => {
-                        const continuesIdx = findContinuesPassIndex(facts.samplers, i);
-                        const prev = i > 0 ? facts.samplers[i - 1]! : null;
-                        return (
-                          <div class="workflow-pass">
-                            <div class="workflow-pass-head">
-                              Pass {i + 1} · node {s.node_id}
-                              {continuesIdx !== null ? ` · continues pass ${continuesIdx + 1}` : ''}
-                            </div>
-                            <p class="workflow-line">{formatLatentLine(s.latent)}</p>
-                            <p class="workflow-line">{formatSamplerLine(s)}</p>
-                            {renderPassPromptField('positive', s.prompt.positive, prev?.prompt.positive ?? null, i, 'positive')}
-                            {renderPassPromptField('negative', s.prompt.negative, prev?.prompt.negative ?? null, i, 'negative')}
-                          </div>
-                        );
-                      })}
-
-                      <table class="kv-table">
-                        <tr>
-                          <td>Output</td>
-                          <td>{facts.output.filename_prefix ?? '-'}</td>
-                        </tr>
-                      </table>
-
-                      {requestDiffers ? (
-                        <>
-                          <p class="workflow-line">request prompt differs</p>
-                          <details class="section-sub">
-                            <summary>Request prompt</summary>
-                            <div class="section-body">
-                              {renderPromptField('positive', requestPrompt, pass1!.prompt.positive, 'positive')}
-                            </div>
-                          </details>
-                        </>
-                      ) : null}
-
+                      <p>強み: {data.semantic.strengths.length ? data.semantic.strengths.join(', ') : '-'}</p>
+                      <p>欠点: {data.semantic.defects.length ? data.semantic.defects.join(', ') : '-'}</p>
                       <details class="section-sub">
-                        <summary>Raw graph</summary>
-                        <pre>{JSON.stringify(graph, null, 2)}</pre>
+                        <summary>Raw JSON</summary>
+                        <pre>{JSON.stringify(data.semantic.attributes, null, 2)}</pre>
                       </details>
                     </>
-                  );
-                })()}
+                  ) : (
+                    <p>未解析</p>
+                  )}
+                </details>
+
+                <details class="section-sub" open>
+                  <summary>ComfyUI Job</summary>
+                  <table class="kv-table">
+                    <tr>
+                      <td>prompt_id</td>
+                      <td>{data.comfy_job?.comfy_prompt_id ?? '-'}</td>
+                    </tr>
+                    <tr>
+                      <td>status</td>
+                      <td>{data.comfy_job?.status ?? '-'}</td>
+                    </tr>
+                    <tr>
+                      <td>original_filename</td>
+                      <td>{data.original_filename ?? '-'}</td>
+                    </tr>
+                  </table>
+                </details>
+
+                <details class="section-sub" open>
+                  <summary>Git</summary>
+                  <table class="kv-table">
+                    <tr>
+                      <td>commit</td>
+                      <td>{data.request?.git_commit ?? '-'}</td>
+                    </tr>
+                    <tr>
+                      <td>dirty</td>
+                      <td>{data.request?.git_dirty ? 'yes' : 'no'}</td>
+                    </tr>
+                  </table>
+                </details>
+
+                <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
               </div>
-            </div>
-          </details>
-
-          <details class="section" open>
-            <summary>ComfyUI Job</summary>
-            <div class="section-body">
-              <table class="kv-table">
-                <tr>
-                  <td>prompt_id</td>
-                  <td>{data.comfy_job?.comfy_prompt_id ?? '-'}</td>
-                </tr>
-                <tr>
-                  <td>status</td>
-                  <td>{data.comfy_job?.status ?? '-'}</td>
-                </tr>
-                <tr>
-                  <td>original_filename</td>
-                  <td>{data.original_filename ?? '-'}</td>
-                </tr>
-              </table>
-            </div>
-          </details>
-
-          <details class="section" open>
-            <summary>Git</summary>
-            <div class="section-body">
-              <table class="kv-table">
-                <tr>
-                  <td>commit</td>
-                  <td>{data.request?.git_commit ?? '-'}</td>
-                </tr>
-                <tr>
-                  <td>dirty</td>
-                  <td>{data.request?.git_dirty ? 'yes' : 'no'}</td>
-                </tr>
-              </table>
-            </div>
-          </details>
-
-          <RequestSection requests={requests as RequestStatusLine[]} canPromoteToProfile={canPromoteToProfile} shortId={data.short_id} />
-        </div>
+            </details>
+          </div>
+        </aside>
       </div>
     </Layout>
   );

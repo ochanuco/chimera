@@ -78,8 +78,17 @@ function RequestBadge({ r }: { r: RequestBadgeData }) {
   );
 }
 
-/** Generation のサムネイルを出す全ページ共通のカード（docs/ui.md「GenerationCard」）: サムネイル（バッジ付き）+ short_id・ワークベンチ・リロール・
- * bookmark の行 + rating の行。rating / bookmark / short_id コピーはページ共通の委譲ハンドラが class と data 属性で拾う。
+/** 線のブックマーク。済みは塗り（CSS が data-bookmarked で切り替える）。 */
+function BookmarkIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 3h12v18l-6-4-6 4z" />
+    </svg>
+  );
+}
+
+/** Generation のサムネイルを出す全ページ共通のカード（docs/ui.md「GenerationCard」）: バッジ・short_id・ワークベンチ / リロールを重ねたサムネイル +
+ * rating と bookmark の 1 行。rating / bookmark / short_id コピーはページ共通の委譲ハンドラが class と data 属性で拾う。
  * `compact` は帯やリストに並べる小さい版、`href` はサムネイルの行き先（既定は Generation Detail）、`children` はカードの下端に足す行。 */
 export function GenerationCard({
   g,
@@ -96,84 +105,90 @@ export function GenerationCard({
   children?: unknown;
 }) {
   const hasTopBadges = Boolean(g.refines_generation_short_id) || Boolean(g.refinement_request);
+  const hasBottomBadges = Boolean(g.published) || Boolean(g.reference) || Boolean(g.safety && g.safety.verdict !== 'none');
   const slot = timeline && g.created_at ? slotKeyOf(g.created_at) : null;
   return (
     <div class={compact ? 'card card-compact' : 'card'} data-slot={slot ?? undefined}>
-      <a class="thumb-link" href={href ?? `/g/${g.short_id}`} data-short-id={g.short_id}>
-        <img class="thumb-fg" src={g.thumbnail_url ?? `/g/${g.short_id}/preview`} alt={g.short_id} loading="lazy" />
-        {hasTopBadges ? (
-          <div class="thumb-badges-top">
-            {g.refines_generation_short_id ? (
-              <span
-                class="card-from-badge copy-id-btn copy-id-text"
-                role="button"
-                tabindex={0}
-                data-copy-id={g.refines_generation_short_id}
-                title={`Copy ${g.refines_generation_short_id}`}
-                aria-label={`Copy ${g.refines_generation_short_id}`}
-              >
-                元 <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
-              </span>
-            ) : null}
-            {g.refinement_request ? <RequestBadge r={g.refinement_request} /> : null}
-          </div>
-        ) : null}
-        {g.published || g.reference || (g.safety && g.safety.verdict !== 'none') ? (
-          <div class="thumb-badges-bottom">
-            <SafetyBadge safety={g.safety} />
-            {g.published ? (
-              <span class="card-published-pill">
-                <SendIcon /> 公開済み
-              </span>
-            ) : null}
-            {g.reference ? (
-              <span class="card-reference-pill" title={`${g.reference.recipe} の ${g.reference.pose} の基準 render`}>
-                基準 {g.reference.pose}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-        <SafetyStrip safety={g.safety} />
-      </a>
-      <div class="card-row">
-        <div class="card-id-row">
-          <button
-            type="button"
-            class="copy-id-btn copy-id-text card-id"
-            data-copy-id={g.short_id}
-            title={`Copy ${g.short_id}`}
-            aria-label={`Copy ${g.short_id}`}
-          >
-            {g.short_id}
-          </button>
-          <span class="card-id-actions">
-            <a class="card-id-link" data-card-link="work" href={`/work/${g.short_id}`} title="ワークベンチで開く" aria-label={`Open ${g.short_id} in workbench`}>
-              ✎
+      <div class="card-media">
+        <a class="thumb-link" href={href ?? `/g/${g.short_id}`} data-short-id={g.short_id}>
+          <img class="thumb-fg" src={g.thumbnail_url ?? `/g/${g.short_id}/preview`} alt={g.short_id} loading="lazy" />
+          {hasTopBadges || hasBottomBadges ? (
+            <div class="thumb-badges">
+              {hasTopBadges ? (
+                <div class="thumb-badges-top">
+                  {g.refines_generation_short_id ? (
+                    <span
+                      class="card-from-badge copy-id-btn copy-id-text"
+                      role="button"
+                      tabindex={0}
+                      data-copy-id={g.refines_generation_short_id}
+                      title={`Copy ${g.refines_generation_short_id}`}
+                      aria-label={`Copy ${g.refines_generation_short_id}`}
+                    >
+                      元 <span class="card-from-badge-id">{g.refines_generation_short_id}</span>
+                    </span>
+                  ) : null}
+                  {g.refinement_request ? <RequestBadge r={g.refinement_request} /> : null}
+                </div>
+              ) : null}
+              {hasBottomBadges ? (
+                <div class="thumb-badges-bottom">
+                  <SafetyBadge safety={g.safety} />
+                  {g.published ? (
+                    <span class="card-published-pill">
+                      <SendIcon /> 公開済み
+                    </span>
+                  ) : null}
+                  {g.reference ? (
+                    <span class="card-reference-pill" title={`${g.reference.recipe} の ${g.reference.pose} の基準 render`}>
+                      基準 {g.reference.pose}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <SafetyStrip safety={g.safety} />
+        </a>
+        <button
+          type="button"
+          class="copy-id-btn copy-id-text card-id"
+          data-copy-id={g.short_id}
+          title={`Copy ${g.short_id}`}
+          aria-label={`Copy ${g.short_id}`}
+        >
+          {g.short_id}
+        </button>
+        <span class="card-id-actions">
+          <a class="card-id-link" data-card-link="work" href={`/work/${g.short_id}`} title="ワークベンチで開く" aria-label={`Open ${g.short_id} in workbench`}>
+            ✎
+          </a>
+          {g.refines_generation_short_id ? null : (
+            <a class="card-id-link" data-card-link="reroll" href={`/reroll/${g.short_id}`} title="リロール" aria-label={`Reroll ${g.short_id}`}>
+              ↻
             </a>
-            {g.refines_generation_short_id ? null : (
-              <a class="card-id-link" data-card-link="reroll" href={`/reroll/${g.short_id}`} title="リロール" aria-label={`Reroll ${g.short_id}`}>
-                ↻
-              </a>
-            )}
-            <button
-              type="button"
-              class="bookmark-btn card-bookmark-btn"
-              data-kind="generations"
-              data-id={g.id}
-              data-bookmarked={g.bookmark ? 'true' : 'false'}
-              title="ブックマーク"
-            >
-              🔖
-            </button>
-          </span>
-        </div>
-        <div class="rating-group" data-generation-id={g.id} data-current={g.rating ?? ''}>
+          )}
+        </span>
+      </div>
+      <div class="card-row">
+        <div class="rating-group" data-generation-id={g.id} data-current={g.rating ?? ''} role="group" aria-label="評価">
           {RATINGS.map((r) => (
             <button type="button" class={`rate-btn${g.rating === r ? ' active' : ''}`} data-rating={r}>
               {r}
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          class="bookmark-btn card-bookmark-btn"
+          data-kind="generations"
+          data-id={g.id}
+          data-bookmarked={g.bookmark ? 'true' : 'false'}
+          title="ブックマーク"
+          aria-label="ブックマーク"
+        >
+          <BookmarkIcon />
+        </button>
       </div>
       {children ? <div class="card-extra">{children}</div> : null}
     </div>

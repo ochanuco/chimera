@@ -9,7 +9,7 @@ describe('Generation Detail: 公開 section', () => {
     expect(html).toContain('未公開');
     expect(html).not.toContain('公開済み');
     expect(html).toContain('投稿 URL');
-    expect(html).toContain('公開を記録');
+    expect(html).toContain('publication-add-btn">記録<');
   });
 
   it('shows 公開済み（N） with the url as a link, or "URL なし" plus a fill-in input, per record', async () => {

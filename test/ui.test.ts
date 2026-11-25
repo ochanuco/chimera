@@ -163,6 +163,7 @@ describe('Web GUI pages', () => {
     expect(html).toContain('Workflow');
     expect(html).toContain('Pass 1');
     expect(html).toContain('model.safetensors');
+    expect(html).toContain('<dt class="kv-k">モデル</dt><dd class="kv-v">model.safetensors</dd>');
     expect(html).toContain('class="prompt-chip"');
     expect(html).toContain('a test prompt');
     expect(html).toContain('Raw graph');
@@ -1356,25 +1357,30 @@ describe('Family panel (親/子/兄弟 thumbnail cards)', () => {
     expect(rawHtml).toContain(`href="/g/${refined.generation.short_id}"`);
   });
 
-  it('GET /g/{short_id} lists the other Generations of the same Request in a 同じ Request の Generation strip', async () => {
+  it('GET /g/{short_id} shows the Generations of the same Request as a 同じ指示の N 枚 strip, the current one unlinked', async () => {
     const { job, generation: first } = await createGeneration();
     const second = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00002_.png', comfy_output_index: 1 });
     const third = await ingestGeneration(job.id, { seed: 123, original_filename: 'out_00003_.png', comfy_output_index: 2 });
     const other = await createGeneration();
 
     const html = await (await req(`/g/${first.short_id}`)).text();
-    expect(html).toContain('同じ Request の Generation (2)');
-    expect(html).toContain('rel-badge rel-request');
-    expect(html).toContain(`href="/g/${second.body.short_id}"`);
-    expect(html).toContain(`href="/g/${third.body.short_id}"`);
-    expect(html).toContain('output 1');
-    expect(html).not.toContain(`href="/g/${other.generation.short_id}"`);
-    // The strip never lists the Generation being viewed.
-    const strip = html.slice(html.indexOf('同じ Request の Generation'), html.indexOf('Workflow'));
+    expect(html).toContain('同じ指示の 3 枚');
+    const strip = html.slice(html.indexOf('class="gd-same"'), html.indexOf('class="gd-folds"'));
+    expect(strip).toContain(`href="/g/${second.body.short_id}"`);
+    expect(strip).toContain(`href="/g/${third.body.short_id}"`);
+    expect(strip).toContain('output 1');
+    expect(strip).not.toContain(`href="/g/${other.generation.short_id}"`);
     expect(strip).not.toContain(`href="/g/${first.short_id}"`);
+    expect(strip).toMatch(new RegExp(`aria-current="true" title="${first.short_id} · output 0（表示中）"`));
+    // 作られた順に並び、どれを開いても同じ並びになる。
+    expect(strip.indexOf(first.short_id)).toBeLessThan(strip.indexOf(second.body.short_id));
+    expect(strip.indexOf(second.body.short_id)).toBeLessThan(strip.indexOf(third.body.short_id));
+    const fromThird = await (await req(`/g/${third.body.short_id}`)).text();
+    const thirdStrip = fromThird.slice(fromThird.indexOf('class="gd-same"'), fromThird.indexOf('class="gd-folds"'));
+    expect(thirdStrip.indexOf(first.short_id)).toBeLessThan(thirdStrip.indexOf(third.body.short_id));
 
     const single = await (await req(`/g/${other.generation.short_id}`)).text();
-    expect(single).toContain('同じ Request の Generation (0)');
+    expect(single).not.toContain('同じ指示の');
   });
 
   it('GET /g/{short_id} has no Map, Story, Batch, or /graph links', async () => {
