@@ -92,7 +92,7 @@ Escapeで閉じます（キュー状態pill・[絞り込みパネル](#gallery)�
 
 現在地に対応するナビ項目には`aria-current="page"`を付け、浮きの面（`--raised`）で塗ります。ほかの項目は副文字の色です。`/gallery`ではGallery、`/bookmarks`ではBookmarks、`/work` 配下（`/work/{short_id}`含む）ではワークベンチ、`/experiments` 配下
 （`/experiments/{short_id}` `/experiments/{short_id}/ab`含む）と`/check`・`/stats`・`/photos`・`/references`では`More`のsummaryが
-アクティブになります。`/compare`はグリッドから入る
+アクティブになります。`/compare`はGalleryの`選んで比べる`から入る
 導線なのでGalleryをアクティブにします。`/g/{short_id}`はどの項目もアクティブになりません。
 
 幅600px以下では、ブランド `Chimera` を隠し（`ギャラリー` と同じリンク先のため）、ナビの水平パディングを4px・項目の左右を8px・文字を0.8remに詰めて、幅390pxに収めます。
@@ -158,12 +158,14 @@ nav直下に1行のツールバー（高さ60px）を持ちます。デスクト
 幅600px以下ではstickyにせず、ページと一緒に流します。スクロール中に上に残るのはnavと日付見出しだけです。
 
 ``` text
-[ 納品以外 | 納品 | すべて ] │ (bad も表示) (途中を隠す) (段階: すべて ▾) (絞り込み)          41 枚
+[ 納品以外 | 納品 | すべて ] │ (bad も表示) (途中を隠す) (段階: すべて ▾) (絞り込み)     41 枚 [選んで比べる]
 ```
 
 左から、`view`の切り替え（[部品](#部品)の切り替え）、区切り線、bad と途中を隠すのチップ、段階のポップオーバー、
-`絞り込み`パネル、右端に枚数です。チップは on のとき明るい枠と文字になり、塗りません。
+`絞り込み`パネル、右寄せで枚数と`選んで比べる`の副ボタンです。チップは on のとき明るい枠と文字になり、塗りません。
 枚数は同じ絞り込みのタイムライン（枠ごとの枚数）の合計で、タイムラインを持たない`ids`指定の一覧では出しません。
+そのときは`選んで比べる`が右端に寄ります。狭い幅では折り返し、`選んで比べる`は次の行の左端に出ます。
+`選んで比べる`は比べる絵を選ぶ選択モードに入ります（[Compare entry](#compare-entry)）。
 
 `view` は3値の切り替えです。ラベルは `納品以外` / `納品` / `すべて` で、既定は `view=all`（raw / 仕上げ済み両方）、
 `view=raw`（redraw/deliver/repair/masked_redrawの出力ではない raw Generationのみ）、
@@ -398,6 +400,9 @@ Compare の列・実験のマトリクスと Run・[絵柄チェック](#絵柄�
 操作の高さの正方形のbookmarkボタン（線のしおりの図形で、済みは塗り）です。`card-row`の高さは固定（`--card-row-h`）で、
 バッジなどで変わりません。読み込み前のスケルトンと同じ外寸にするためです（[Gallery timeline](#gallery-timeline)）。
 
+Galleryの[選択モード](#選択モード)の間は、サムネイルが遷移せずcompare setの入れ外しになり、下の行と`✎` / `↻`は場所を残して隠れます。
+選んだ順の番号と輪はカードのマークアップではなく、モード中にJSが付けるdata属性とCSSで出します。
+
 `compact`のカードは幅が7rem前後なので、short_idを12pxに、評価とbookmarkを高さ28px（`pointer: coarse`では36px）に詰め、
 評価は頭文字（`b` / `n` / `g`）だけを見せます（ボタンの文字は読み上げ用に残します）。`✎` / `↻`は出しません。
 
@@ -543,22 +548,43 @@ Compareが書き込むのはrating/bookmarkだけで、ComfyUIへの生成要求
 
 ### Compare entry
 
-Generation Detailの`⋯`の中の`比較に追加`ボタンがsessionStorageのcompare set（タブ内限定、要素は
-`{ id, short_id }`）をトグルします（ボタンのラベルは`比較から外す`に切り替わります、
-telemetry `compare.add`）。
+Compareへの入口は、Galleryで絵を選ぶ選択モードと、Generation Detailの2つの直リンク（[見出しと系譜](#見出しと系譜)の`元と比べる`と
+[同じ指示の N 枚](#同じ指示の-n-枚)の`N 枚を並べて比べる`）です。直リンクは`/compare?ids=`にshort_idを並べて開くだけで、
+compare setには触れません。
+
+#### 選択モード
+
+Galleryのツールバーの`選んで比べる`を押すと選択モードに入ります。ボタンは主ボタンの塗りの`選ぶのをやめる`
+（`aria-pressed="true"`）に変わり、もう一度押すかEscapeでモードを抜けます。モードはページの中だけの状態で、
+リロードやページの移動をまたいで持ち越しません（選んだ絵はcompare setに残ります）。
+
+モード中のカードは、サムネイルを押すとGeneration Detailへ遷移せず、その絵をcompare setに入れ外しします
+（入れるとtelemetry `compare.add`、外すと`compare.remove`）。選んだカードはサムネイルを本文の色の3pxの輪で囲み、
+右上の丸（28px）に選んだ順の番号（1, 2, 3…）を塗りで出します。外すと残りの番号を詰め直します。選んでいないカードは
+サムネイルを少し薄くし（不透明度0.75）、右上の丸を輪だけで出します。評価とブックマークの行、`✎` / `↻`は場所を残して隠し、
+サムネイルに重なるshort_idとバッジは押せなくしてサムネイルの操作に通します。サムネイルのリンクは`role="button"`・`aria-pressed`・
+`aria-label="<short_id> を比較に入れる"`を持ち、EnterとSpaceで入れ外しします。
+
+選択の印はカードのマークアップには持たせず、モード中にJSが`.card-media`の`data-compare-order`と`.thumb-link`のariaを付けます。
+スケルトンの差し替え・[新着](#新着)の反映・`ids`一覧の無限スクロールで後から入ったカードにも、グリッドの追加を見て同じ印を付けます。
+
+setは9枚までです。9枚の状態でほかのカードを押しても入れず、バーの枚数の欄を2秒だけ`選べるのは 9 枚まで`に差し替えます。
+
+#### compare set とバー
+
+compare setはsessionStorage（`chimera-compare-set`、タブ内限定、要素は`{ id, short_id }`）に置きます。
 
 `#compare-bar`はLayoutが全ページの下端中央に浮かべるパネル（浮きの面・角丸12px・影、高さ56px、下から20px。
-幅600px以下は下から12px）で、setが空でない間だけ表示します。幅は中身に合わせ、画面の幅から左右16pxを引いた幅を上限にします。
+幅600px以下は下から12px）で、setが空でない間と選択モードの間だけ表示します。幅は中身に合わせ、画面の幅から左右16pxを引いた幅を上限にします。
 表示中は`main`の下にバーが占める高さ（`--compare-bar-h`、76px）分の余白を足し、Generation Detailの
 2ペインはその分だけ高さを縮めます。バーの中身は左から次の順です。
 
--   選択中の各Generationのサムネイルチップ（40px角、右上に×）。クリックでsetから外します
-    （telemetry `compare.remove`）。サムネイルはカードと同じ`/g/{short_id}/preview`で、
-    10件目以降は`/compare`に渡らないため薄く表示します。横に溢れたらチップの列だけ横スクロールします
--   `すべて解除`: setを空にしてバーを消します（telemetry `compare.clear`）
--   `比較 (N)`: `/compare?ids=...`（先頭9件のshort_id）へのリンク。主ボタン（telemetry `compare.open`）
+-   `N 枚を選択中`（選択モードの間は`N 枚を選択中（9 枚まで）`）。副文字で、入りきらなければ末尾を省略します
+-   `解除`: setを空にします（telemetry `compare.clear`）。選択モードの外ではバーも消えます
+-   `比べる`: `/compare?ids=...`（setの順のshort_id）へのリンク。主ボタンで、2枚に満たない間は`href`を外し`aria-disabled="true"`で薄く出します
+    （telemetry `compare.open`）
 
-別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーを描き直します。
+別ページでsetを変えてからBackで戻った（bfcacheから復元された）ときもバーとカードの印を描き直します。
 
 ## Generation Detail
 
@@ -567,7 +593,7 @@ telemetry `compare.add`）。
 
 ``` text
 [ IMAGE ] | 913sg9 ⧉                          11/25 12:01
-[ IMAGE ] | 元 o3b450 ⧉   元絵 hbcc45 ⧉
+[ IMAGE ] | 元 o3b450 ⧉   元絵 hbcc45 ⧉               元と比べる
 [ IMAGE ] | [ ワークベンチで開く ] [リロール] [⋯]
 [ IMAGE ] | [ bad | neutral | good ]          [🔖]
 [ IMAGE ] | 描画    58 秒（待ち 12 秒）
@@ -577,7 +603,8 @@ telemetry `compare.add`）。
 [ IMAGE ] | 公開    [投稿 URL] [記録] / 記録済みの URL
 [ IMAGE ] | タグ    #portfolio × / [add tag] [+]
 [ IMAGE ] | 判定 (N)
-[ IMAGE ] | 同じ指示の 4 枚  ▢ ▢ ▢ ▢
+[ IMAGE ] | 同じ指示の 4 枚            [4 枚を並べて比べる]
+[ IMAGE ] | ▢ ▢ ▢ ▢
 [ IMAGE ] | ▸ prompt と指示文
 [ IMAGE ] | ▸ 系譜
 [ IMAGE ] | ▸ 記録
@@ -602,6 +629,7 @@ originalがpurge済み（[domain-model.md](domain-model.md#original-の保持)�
 その下の行に、このGenerationがredraw / deliver / repair / masked_redrawで書き換えた元のGenerationがあれば
 `元 <short_id>`を、連鎖の起点の元絵が元と違えば`元絵 <short_id>`を並べます。short_idは`/g/{short_id}`へのリンクで、
 それぞれにコピーボタンが付きます（`GET /api/v1/generations/{id}`の`refines_generation` / `root_generation`）。rawのGenerationには出しません。
+`元`があるときは行の右端に`元と比べる`（12pxの本文の色のリンク）を置き、`/compare?ids=<元のshort_id>,<このshort_id>`を開きます。
 
 ### 操作
 
@@ -610,12 +638,10 @@ Generation Detailには生成要求を積む編集欄（描き直し・Repair・
 `⋯`のアイコンボタンの順です。`リロール`は仕上げ済みの Generation か、recipe を持つ generate から作られた Generation にだけ出ます
 （import など振り直せない元絵には出しません）。[枠](#枠)へはワークベンチの背景フェーズから入ります。
 
-`⋯`はポップオーバー（`<details>`、外側のクリックか Escape で閉じる、`initPopoverClose`）で、次の 2 つを持ちます。
-
--   基準: このGenerationがposeの基準 renderとしてpinされていれば`基準 <pose名>`を、されていなければ`基準にする`ボタンを出します。
-    ボタンは`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md#pose-reference-pin)）でpinし、その場で表示を`基準 <pose名>`に書き換えます。
-    recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでないGenerationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
--   `比較に追加`（[Compare entry](#compare-entry)）
+`⋯`はポップオーバー（`<details>`、外側のクリックか Escape で閉じる、`initPopoverClose`）で、基準の1項目を持ちます。
+このGenerationがposeの基準 renderとしてpinされていれば`基準 <pose名>`を、されていなければ`基準にする`ボタンを出します。
+ボタンは`POST /api/v1/generations/{id}/pose-reference`（[api.md](api.md#pose-reference-pin)）でpinし、その場で表示を`基準 <pose名>`に書き換えます。
+recipe / poseはサーバーがGenerationの属するRequestから推測し、rating goodでないGenerationなどは拒否されます（[domain-model.md](domain-model.md#基準-render-の-pin)）。
 
 その下の行は評価（bad / neutral / good を 1 つにつないだ部品、残りの幅）とブックマークのアイコンボタンです。
 ブックマークは線の図形で、済みは塗りです。
@@ -684,6 +710,8 @@ short_id（`/g/`へのリンク、rating付き）、seed、基準側だったと
 同じRequestに属する他のGeneration（`GET /api/v1/generations/{id}` の `siblings`）があるとき、右の列の下寄せで
 `同じ指示の N 枚`（Nは表示中の1枚を含む）とサムネイル（`/g/{short_id}/preview`）の帯を出します。並びは作られた順で、どれを開いても同じです。
 表示中の1枚は白い輪で囲み、リンクにしません。ほかは各`/g/{short_id}`へのリンクで、titleに出力のindex（`output N`）を出します。
+見出しの右端に`N 枚を並べて比べる`（高さ28px・線の小さなボタン、`pointer: coarse`では操作の高さ）を置き、帯と同じ順のshort_idで
+`/compare?ids=`を開きます。Compareの上限を超えるときは先頭の9枚を渡し、ラベルの枚数も9にします。
 
 ### 折りたたみ
 
@@ -1322,10 +1350,10 @@ autocapture・pageview・pageleaveに加えセッションリプレイも有効�
 | `queue.open` | `counts` | [キュー状態](#キュー状態)pillを開く（`initNavQueue`） |
 | `queue.group.click` | `kinds`, `has_request` | キュー状態パネルの行クリック（`navQueueRow`） |
 | `judge.pick` | `experiment_id`, `verdict`, `seed`, `index`, `judged`, `duplicate`（既判定時のみ） | A/B judgeの投票（`initAbJudge`） |
-| `compare.add` | `generation_id`, `count` | [Compare entry](#compare-entry)の`比較に追加`/`比較から外す`ボタン |
-| `compare.remove` | `generation_id`, `count` | compareバーのチップで外す（`initCompareBar`） |
-| `compare.clear` | `count` | compareバーの`すべて解除`（`initCompareBar`） |
-| `compare.open` | `count` | Compareへ遷移（`initCompareBar`） |
+| `compare.add` | `generation_id`, `count` | [選択モード](#選択モード)でカードをcompare setに入れる |
+| `compare.remove` | `generation_id`, `count` | 選択モードでカードをcompare setから外す（`initCompareBar`） |
+| `compare.clear` | `count` | compareバーの`解除`（`initCompareBar`） |
+| `compare.open` | `count` | compareバーの`比べる`でCompareへ遷移（`initCompareBar`） |
 | `gallery.filter` | filter-formの各入力値 | Galleryのfilter送信（`initGalleryFilter`） |
 | `gallery.view` | `view`, `bad` | Gallery / Bookmarksのview切り替え・bad表示トグル（`initGalleryView`） |
 | `gallery.pending_apply` | `new_count`, `hidden_count`, `source`（`strip` / `pill`） | [Gallery pending changes](#gallery-pending-changes)の反映（`applyGalleryPending`） |
