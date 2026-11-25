@@ -4049,6 +4049,12 @@ export const appJs = `
     }, 2000);
   }
 
+  function clearCompareLimitHint() {
+    if (!compareHintTimer) return;
+    clearTimeout(compareHintTimer);
+    compareHintTimer = null;
+  }
+
   function compareCardId(media) {
     var card = media.closest('.card');
     var group = card ? qs('.rating-group', card) : null;
@@ -4094,6 +4100,7 @@ export const appJs = `
     });
   }
   function setCompareSelecting(on) {
+    clearCompareLimitHint();
     if (on) document.body.setAttribute('data-compare-select', 'true');
     else document.body.removeAttribute('data-compare-select');
     var btn = qs('[data-compare-select-toggle]');
@@ -4130,11 +4137,13 @@ export const appJs = `
       entries.splice(idx, 1);
       track('compare.remove', { generation_id: id, count: entries.length });
     }
+    clearCompareLimitHint();
     writeCompareSet(entries);
     updateCompareBar();
   }
   function clearCompare() {
     var count = readCompareSet().length;
+    clearCompareLimitHint();
     writeCompareSet([]);
     updateCompareBar();
     track('compare.clear', { count: count });

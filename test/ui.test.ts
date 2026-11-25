@@ -121,7 +121,7 @@ describe('Web GUI pages', () => {
     expect(body).toContain(`/g/${generation.short_id}/image`);
   });
 
-  it('every page carries exactly one compare bar from the Layout, and Generation Detail no longer adds to the compare set', async () => {
+  it('every page carries exactly one compare bar from the Layout, and Generation Detail has no compare-set button', async () => {
     const { generation } = await createGeneration();
     for (const path of ['/gallery', '/bookmarks', '/experiments', `/g/${generation.short_id}`, '/compare?ids=']) {
       const body = await (await req(path)).text();
